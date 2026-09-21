@@ -2084,6 +2084,8 @@ export const zh: TranslationKeys = {
         '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
       reviewOutsideVault:
         '该文件在 vault 之外，无法在编辑器中评审；撤销仍然可用。',
+      reviewWhileRunning:
+        'Agent 仍在运行，可能继续修改文件。请等它结束后再评审。',
     },
     errorCard: {
       title: '本次回复生成失败',
@@ -2184,6 +2186,7 @@ export const zh: TranslationKeys = {
           '改前内容在本设备不可用，以下只是本次写入的新内容。',
         collapsedLines: '⋯ 省略 {{count}} 行',
         truncatedLines: '还有 {{count}} 行未显示',
+        readingCurrent: '正在读取文件当前内容…',
       },
     },
     toolSummary: {

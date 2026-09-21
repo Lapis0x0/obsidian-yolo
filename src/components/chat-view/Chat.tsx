@@ -1331,6 +1331,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessagesStateRef,
     setChatMessages,
     currentConversationId,
+    isCurrentConversationRunActive,
     conversationOverrides,
     conversationModelId,
     chatMode,

@@ -150,6 +150,7 @@ export type UseChatDomainActionsParams = {
   chatMessagesStateRef: MutableRefObject<ChatMessage[]>
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>
   currentConversationId: string
+  isCurrentConversationRunActive: boolean
   conversationOverrides: ConversationOverrideSettings | null
   conversationModelId: string
   chatMode: ChatMode
@@ -223,6 +224,7 @@ export function useChatDomainActions({
   chatMessagesStateRef,
   setChatMessages,
   currentConversationId,
+  isCurrentConversationRunActive,
   conversationOverrides,
   conversationModelId,
   chatMode,
@@ -1061,6 +1063,19 @@ export function useChatDomainActions({
 
       const snapshots = usableSnapshotPair(firstSnapshot, latestSnapshot)
       if (snapshots) {
+        // 覆盖层没有监听文件改动：agent 若在审阅期间再次写同一文件，跨越
+        // suggestion 边界的待决块会被未经用户确认地判定为已结算。所以本对话的
+        // agent 仍在运行（含等待审批）时不打开修订视图。
+        if (isCurrentConversationRunActive) {
+          new Notice(
+            t(
+              'chat.editSummary.reviewWhileRunning',
+              'Agent 仍在运行，可能继续修改文件。请等它结束后再评审。',
+            ),
+          )
+          return
+        }
+
         if (!snapshots.latest.afterExists) {
           new Notice(
             t(
@@ -1116,7 +1131,15 @@ export function useChatDomainActions({
         ),
       )
     },
-    [app, app.vault, app.workspace, currentConversationId, plugin, t],
+    [
+      app,
+      app.vault,
+      app.workspace,
+      currentConversationId,
+      isCurrentConversationRunActive,
+      plugin,
+      t,
+    ],
   )
 
   const updateToolMessageInChatHistory = useCallback(

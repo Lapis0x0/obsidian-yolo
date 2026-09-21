@@ -1889,6 +1889,7 @@ export type TranslationKeys = {
       fileMissing?: string
       snapshotUnavailable?: string
       reviewOutsideVault?: string
+      reviewWhileRunning?: string
     }
     errorCard?: {
       title?: string
@@ -1987,6 +1988,7 @@ export type TranslationKeys = {
         originalUnavailable?: string
         collapsedLines?: string
         truncatedLines?: string
+        readingCurrent?: string
       }
     }
     toolSummary?: {

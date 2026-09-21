@@ -2210,6 +2210,8 @@ export const en: TranslationKeys = {
         'This device has no snapshot of that edit, so it cannot be undone or reviewed. Snapshots stay on the device that made the edit.',
       reviewOutsideVault:
         'This file lives outside the vault, so it cannot be reviewed in the editor. Undo still works.',
+      reviewWhileRunning:
+        'The agent is still running and may edit the file again. Review it once the run finishes.',
     },
     errorCard: {
       title: 'This response failed to generate',
@@ -2322,6 +2324,7 @@ export const en: TranslationKeys = {
           'The pre-edit content is not available on this device; below is only the content this call wrote.',
         collapsedLines: '⋯ {{count}} unchanged lines hidden',
         truncatedLines: '{{count}} more lines not shown',
+        readingCurrent: 'Reading the current file…',
       },
     },
     toolSummary: {

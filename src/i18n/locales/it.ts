@@ -2078,6 +2078,8 @@ export const it: DeepPartial<TranslationKeys> = {
         'Questo dispositivo non ha uno snapshot di quella modifica, quindi non puo essere annullata ne revisionata. Gli snapshot restano sul dispositivo che ha fatto la modifica.',
       reviewOutsideVault:
         'Questo file si trova fuori dal vault, quindi non puo essere revisionato nell editor. Annulla funziona comunque.',
+      reviewWhileRunning:
+        "L'agente e ancora in esecuzione e potrebbe modificare di nuovo il file. Revisionalo al termine dell'esecuzione.",
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',
@@ -2190,6 +2192,7 @@ export const it: DeepPartial<TranslationKeys> = {
           "Il contenuto precedente alla modifica non è disponibile su questo dispositivo; qui sotto c'è solo il contenuto scritto da questa chiamata.",
         collapsedLines: '⋯ {{count}} righe invariate nascoste',
         truncatedLines: 'Altre {{count}} righe non mostrate',
+        readingCurrent: 'Lettura del file attuale…',
       },
     },
     toolSummary: {
