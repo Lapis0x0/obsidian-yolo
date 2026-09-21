@@ -25,6 +25,8 @@ import type {
 import type { ContentPart } from '../../../types/llm/request'
 import type { ResponseUsage } from '../../../types/llm/response'
 import {
+  type CliToolCallCapability,
+  type FileChangeRows,
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
@@ -32,6 +34,10 @@ import {
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 import { createToolEditSummary } from '../../../utils/chat/editSummary'
+import {
+  buildFileChangeRowsFromContent,
+  buildFileChangeRowsFromTexts,
+} from '../../tools/file-change-rows'
 import { createCliToolCallRequest } from '../tool-call'
 import type {
   CliApprovalDecision,
@@ -101,6 +107,45 @@ const mapAcpToolKindToCapability = (
   }
   return undefined
 }
+
+/**
+ * The call's capability, from the protocol alone — never from which agent
+ * sent it. `kind` comes first; a call whose `kind` classifies nothing (it is
+ * optional, and omitted means `other`) but that has reported a `diff` is a
+ * file change all the same: a `diff` item is ACP's own statement that the
+ * call changes that file.
+ */
+const getAcpToolCallCapability = (
+  state: AcpToolCallState,
+): CliToolCallCapability | undefined =>
+  mapAcpToolKindToCapability(state.kind) ??
+  (state.diffs.length > 0 ? 'file_change' : undefined)
+
+/**
+ * The card's file-change rows, built from the diffs the call reported — one
+ * per path, already folded and truncated, so what persists with the request
+ * is bounded no matter how large the files are.
+ *
+ * `oldText` carries ACP's three meanings through: a string is the prior
+ * content (a real diff), `null` is a new file (everything added), and an
+ * omitted field says nothing about the prior state, so only the written
+ * content is shown, marked as such (`afterOnly`).
+ */
+const buildAcpFileChangeRows = (diffs: readonly Diff[]): FileChangeRows[] =>
+  diffs.map(({ path, oldText, newText }) =>
+    oldText === undefined
+      ? buildFileChangeRowsFromContent(path, newText)
+      : buildFileChangeRowsFromTexts(path, oldText ?? '', newText),
+  )
+
+/** `request.metadata.fileChangeRows` for a file-change call that has diffs. */
+const getAcpFileChangeRows = (
+  capability: CliToolCallCapability | undefined,
+  diffs: readonly Diff[],
+): FileChangeRows[] | undefined =>
+  capability === 'file_change' && diffs.length > 0
+    ? buildAcpFileChangeRows(diffs)
+    : undefined
 
 const mapAcpToolCallStatusToResponseStatus = (
   status: ToolCallStatus,
@@ -277,7 +322,7 @@ export const mapAcpToolCallState = (
   state: AcpToolCallState,
   runtimeId: CliRuntimeId,
 ): [ChatAssistantMessage, ChatToolMessage] => {
-  const capability = mapAcpToolKindToCapability(state.kind)
+  const capability = getAcpToolCallCapability(state)
   const request = createCliToolCallRequest({
     id: state.toolCallId,
     input:
@@ -290,6 +335,7 @@ export const mapAcpToolCallState = (
       name: state.name ?? state.title,
       ...(capability ? { capability } : {}),
     },
+    fileChangeRows: getAcpFileChangeRows(capability, state.diffs),
   })
   const responseStatus = mapAcpToolCallStatusToResponseStatus(state.status)
   const response: ToolCallResponse =
@@ -590,7 +636,8 @@ export const buildPendingApprovalMessages = (
     diffs: mergeAcpDiffs(known?.diffs ?? [], toolCall.content),
     rawInput: toolCall.rawInput ?? known?.rawInput,
   }
-  const capability = mapAcpToolKindToCapability(state.kind)
+  const capability = getAcpToolCallCapability(state)
+  const fileChangeRows = getAcpFileChangeRows(capability, state.diffs)
   const argumentsValue =
     capability === 'command_execution'
       ? { command: extractAcpCommandText(state) }
@@ -606,6 +653,7 @@ export const buildPendingApprovalMessages = (
         name: state.name ?? title,
         ...(capability ? { capability } : {}),
       },
+      ...(fileChangeRows ? { fileChangeRows } : {}),
     },
   }
   return toolPair({

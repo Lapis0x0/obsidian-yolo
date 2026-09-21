@@ -9,6 +9,10 @@ import type {
 
 import type { ChatToolMessage } from '../../../types/chat'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import {
+  buildFileChangeRowsFromContent,
+  buildFileChangeRowsFromTexts,
+} from '../../tools/file-change-rows'
 
 import {
   AcpSessionAggregator,
@@ -560,6 +564,67 @@ describe('ACP file-change diffs', () => {
       addedLines: 1,
     })
   })
+
+  const rowsOf = (tool: ChatToolMessage) =>
+    tool.toolCalls[0].request.metadata?.fileChangeRows
+
+  it('builds file-change rows from each oldText form', () => {
+    const aggregator = new AcpSessionAggregator()
+    const pendingTool = startEdit(aggregator, [
+      { path: '/vault/edited.md', oldText: 'a\nb\n', newText: 'a\nc\n' },
+      { path: '/vault/new.md', oldText: null, newText: 'x\ny\n' },
+      { path: '/vault/unknown.md', newText: 'z\n' },
+    ])
+    const expected = [
+      // A string is the prior content: a real diff.
+      buildFileChangeRowsFromTexts('/vault/edited.md', 'a\nb\n', 'a\nc\n'),
+      // `null` is a new file: everything added.
+      buildFileChangeRowsFromTexts('/vault/new.md', '', 'x\ny\n'),
+      // Omitted says nothing about the prior state: written content only.
+      buildFileChangeRowsFromContent('/vault/unknown.md', 'z\n'),
+    ]
+    expect(expected.map((file) => file.completeness)).toEqual([
+      'diff',
+      'diff',
+      'afterOnly',
+    ])
+
+    // Present while the call is still running…
+    expect(pendingTool.toolCalls[0].response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    expect(rowsOf(pendingTool)).toEqual(expected)
+    // …and kept after the completing update replaces `content`.
+    const completed = complete(aggregator)
+    expect(rowsOf(completed)).toEqual(expected)
+    expect(
+      completed.toolCalls[0].request.metadata?.cliToolCall?.capability,
+    ).toBe('file_change')
+  })
+
+  it('treats a call with a diff as a file change even without an edit kind', () => {
+    const aggregator = new AcpSessionAggregator()
+    const tool = apply(aggregator, {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'edit-2',
+      title: 'patch',
+      content: [
+        { type: 'diff', path: '/vault/a.md', oldText: 'a', newText: 'b' },
+      ],
+    })
+    expect(tool.toolCalls[0].request.metadata?.cliToolCall?.capability).toBe(
+      'file_change',
+    )
+    expect(rowsOf(tool)).toEqual([
+      buildFileChangeRowsFromTexts('/vault/a.md', 'a', 'b'),
+    ])
+  })
+
+  it('attaches no rows to a file-change call that reported no diff', () => {
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [])
+    expect(rowsOf(complete(aggregator))).toBeUndefined()
+  })
 })
 
 describe('ACP approval decision mapping', () => {
@@ -706,6 +771,63 @@ describe('buildPendingApprovalMessages', () => {
       kind: 'complete',
       value: { command: 'echo hi' },
     })
+  })
+
+  it('carries the diff the approval request itself reports as file-change rows', () => {
+    // Hermes: a separate toolCallId, the diff on the request's own content.
+    const [, tool] = buildPendingApprovalMessages(
+      {
+        sessionId: 'sess-1',
+        toolCall: {
+          toolCallId: 'edit-approval-1',
+          title: 'Approve edit: test.md',
+          content: [
+            {
+              type: 'diff',
+              path: '/vault/test.md',
+              oldText: 'a\n',
+              newText: 'b\n',
+            },
+          ],
+        },
+        options: [],
+      },
+      'hermes',
+    )
+    expect(tool.toolCalls[0]).toMatchObject({
+      request: {
+        metadata: {
+          cliToolCall: { capability: 'file_change' },
+          fileChangeRows: [
+            buildFileChangeRowsFromTexts('/vault/test.md', 'a\n', 'b\n'),
+          ],
+        },
+      },
+      response: { status: ToolCallResponseStatus.PendingApproval },
+    })
+  })
+
+  it('carries the diff an earlier notification reported for the same call', () => {
+    // CodeBuddy: the request is an increment and reports no content itself.
+    const [, tool] = buildPendingApprovalMessages(
+      {
+        sessionId: 'sess-1',
+        toolCall: { toolCallId: 'edit-3', rawInput: { path: 'x.md' } },
+        options: [],
+      },
+      'codebuddy',
+      {
+        toolCallId: 'edit-3',
+        title: 'Write',
+        kind: 'edit',
+        status: 'pending',
+        content: [],
+        diffs: [{ path: '/vault/x.md', oldText: null, newText: 'new\n' }],
+      },
+    )
+    expect(tool.toolCalls[0].request.metadata?.fileChangeRows).toEqual([
+      buildFileChangeRowsFromTexts('/vault/x.md', '', 'new\n'),
+    ])
   })
 })
 

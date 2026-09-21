@@ -1,5 +1,6 @@
 import {
   type CliToolCallMetadata,
+  type FileChangeRows,
   type ToolCallArguments,
   type ToolCallRequest,
   createCompleteToolCallArguments,
@@ -15,18 +16,25 @@ export const createCliToolCallRequest = ({
   metadata,
   input,
   arguments: providedArguments,
+  fileChangeRows,
 }: {
   id: string
   metadata: CliToolCallMetadata
   input?: unknown
   arguments?: ToolCallArguments
+  /** What a `file_change` call changed, built by the runtime's mapping layer
+   * (`core/tools/file-change-rows.ts`); the card draws it as given. */
+  fileChangeRows?: FileChangeRows[]
 }): ToolCallRequest => ({
   id,
   name: metadata.name,
   arguments:
     providedArguments ??
     createCompleteToolCallArguments({ value: toArgumentsRecord(input) }),
-  metadata: { cliToolCall: metadata },
+  metadata: {
+    cliToolCall: metadata,
+    ...(fileChangeRows ? { fileChangeRows } : {}),
+  },
 })
 
 export const getCliToolCallDisplayName = (
