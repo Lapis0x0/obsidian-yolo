@@ -646,6 +646,13 @@
 
 .yolo-models-table .yolo-drag-handle {
   all: unset;
+  /* `all: unset` strips Obsidian's button chrome but also the base handle's
+     own behavior. Without `position: relative` the touch hit-area ::before
+     anchors to a distant ancestor and covers the whole settings pane. */
+  position: relative;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
