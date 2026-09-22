@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "dev": "npm run runtime:build && npm run module:build && concurrently --kill-others-on-fail -n app,styles,modules,sync -c blue,magenta,green,yellow \"npm:dev:app\" \"npm:styles:watch\" \"npm:dev:modules\" \"npm:dev:sync\"",
-    "ob": "osascript -e 'quit app \"Obsidian\"' >/dev/null 2>&1 || true; while pgrep -x Obsidian >/dev/null; do sleep 0.2; done; open -a Obsidian --args --remote-debugging-port=9222 && npm run dev",
+    "ob": "osascript -e 'quit app \"Obsidian\"' >/dev/null 2>&1 || true; while pgrep -x Obsidian >/dev/null; do sleep 0.2; done; node scripts/obsidian-open-dev-vault-only.mjs && open -a Obsidian --args --remote-debugging-port=9222 && npm run dev",
     "dev:app": "node esbuild.config.mjs",
     "dev:modules": "node scripts/watch-first-party-modules.mjs",
     "dev:sync": "node scripts/sync-dev-artifacts.mjs",
