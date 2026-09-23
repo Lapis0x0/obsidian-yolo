@@ -68,6 +68,14 @@ export type PdfTextLayer = Readonly<{
   destroy(): void
 }>
 
+/** One text content item of a page — one text-layer span. */
+export type PdfTextItem = Readonly<{
+  /** The item's text exactly as the span holds it (not normalized). */
+  text: string
+  /** A line ends after this item. */
+  endsLine: boolean
+}>
+
 export type PdfEnginePage = Readonly<{
   pageNumber: number
   /** Viewport size at scale 1 (PDF units, page rotation applied). */
@@ -109,6 +117,12 @@ export type PdfEnginePage = Readonly<{
   /** Frees the page's operator list and decoded images once no render of it
    * is in flight (pdf.js `PDFPageProxy.cleanup`); the page stays usable. */
   cleanup(): void
+  /**
+   * The page's text, one entry per text-layer span in `data-idx` order — so
+   * an entry's index and a character offset into its text are the
+   * coordinates a selection tuple names. Fetched once per page and kept.
+   */
+  getTextItems(): Promise<readonly PdfTextItem[]>
 }>
 
 export type PdfEngineDocument = Readonly<{

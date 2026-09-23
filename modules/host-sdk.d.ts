@@ -28,6 +28,7 @@ import type {
   YoloModulePdfRectV1,
   YoloModulePdfSelectionTupleV1,
   YoloModulePdfTaskV1,
+  YoloModulePdfTextItemV1,
   YoloModulePdfTextLayerV1,
   YoloModulePdfTextSelectionV1,
   YoloModulePdfV1,
@@ -66,6 +67,7 @@ declare global {
   type YoloModuleHostPdfRectV1 = YoloModulePdfRectV1
   type YoloModuleHostPdfSelectionTupleV1 = YoloModulePdfSelectionTupleV1
   type YoloModuleHostPdfTaskV1<T> = YoloModulePdfTaskV1<T>
+  type YoloModuleHostPdfTextItemV1 = YoloModulePdfTextItemV1
   type YoloModuleHostPdfTextLayerV1 = YoloModulePdfTextLayerV1
   type YoloModuleHostPdfTextSelectionV1 = YoloModulePdfTextSelectionV1
   type YoloModuleHostToolSetV1 = YoloModuleToolSetV1

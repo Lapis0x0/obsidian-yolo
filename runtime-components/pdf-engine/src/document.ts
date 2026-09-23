@@ -11,6 +11,7 @@ import type {
   PdfPoint,
   PdfRect,
   PdfTask,
+  PdfTextItem,
   PdfTextLayer,
   PdfTextSelection,
   PdfTextSelectionTuple,
@@ -84,6 +85,7 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
     }
     return proxy.getViewport({ scale })
   }
+  let textItems: Promise<readonly PdfTextItem[]> | null = null
 
   return Object.freeze({
     pageNumber: proxy.pageNumber,
@@ -186,7 +188,38 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
       // when the last one ends, so this is safe to call at any time.
       proxy.cleanup()
     },
+
+    getTextItems(): Promise<readonly PdfTextItem[]> {
+      textItems ??= readTextItems(proxy)
+      // A failed read is not kept: the next ask tries again.
+      textItems.catch(() => {
+        textItems = null
+      })
+      return textItems
+    },
   })
+}
+
+/**
+ * The page's text content as the text layer numbers it: the same request
+ * `buildTextLayer` streams (so the same items), and the same rule pdf.js's
+ * `TextLayer` uses to turn items into spans — every item carrying a `str`
+ * becomes one span, in order, and marked-content markers become none. So
+ * entry `i` here is span `data-idx=i` there.
+ */
+async function readTextItems(
+  proxy: PDFPageProxy,
+): Promise<readonly PdfTextItem[]> {
+  const content = await proxy.getTextContent({
+    includeMarkedContent: true,
+    disableNormalization: true,
+  })
+  const items: PdfTextItem[] = []
+  for (const item of content.items) {
+    if (!('str' in item)) continue
+    items.push(Object.freeze({ text: item.str, endsLine: item.hasEOL }))
+  }
+  return Object.freeze(items)
 }
 
 function buildTextLayer(

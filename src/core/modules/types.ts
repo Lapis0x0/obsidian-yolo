@@ -861,6 +861,15 @@ export type YoloModulePdfTextLayerV1 = Readonly<{
   destroy(): void
 }>
 
+/** One text content item of a page: the text of one text-layer span. */
+export type YoloModulePdfTextItemV1 = Readonly<{
+  /** Exactly the span's text — not normalized, so offsets into it are the
+   * offsets a selection tuple uses. */
+  text: string
+  /** A line ends after this item (pdf.js's `hasEOL`). */
+  endsLine: boolean
+}>
+
 /**
  * One page. `scale` is CSS pixels per PDF unit everywhere, and a page drawn
  * with `render`, a text layer built with `renderTextLayer`, and the point
@@ -914,6 +923,14 @@ export type YoloModulePdfPageV1 = Readonly<{
    * far away from: without it a long document keeps every page it ever drew.
    */
   cleanup(): void
+  /**
+   * The page's text without building a text layer: one item per text-layer
+   * span, in `data-idx` order, so item `i` at character offset `k` is
+   * `(i, k)` in a selection tuple — what `createRange` on the page's layer
+   * resolves once it is built. For searching a document whose pages are
+   * not all laid out. Fetched once per page and kept with the document.
+   */
+  getTextItems(): Promise<readonly YoloModulePdfTextItemV1[]>
 }>
 
 export type YoloModulePdfDocumentV1 = Readonly<{
