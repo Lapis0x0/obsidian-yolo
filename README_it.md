@@ -39,23 +39,6 @@
 <table>
 <tr>
 <td width="200" align="center" valign="middle">
-  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://www.atlascloud.ai/logo-white.svg">
-      <img src="https://www.atlascloud.ai/logo.svg" alt="Atlas Cloud" width="163">
-    </picture>
-  </a>
-</td>
-<td valign="middle">
-  <b><a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">Atlas Cloud</a></b> offre agli sviluppatori un'unica API per creare con modelli AI linguistici, visivi e video. Una sola integrazione dà accesso a oltre 300 modelli selezionati per ogni modalità, senza dover gestire separatamente ciascun provider. Dagli agent basati su LLM alla generazione di immagini e video, Atlas Cloud semplifica la sperimentazione, il confronto tra modelli e l'adozione dell'AI multimodale in produzione.
-  <br><br>
-  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo"><b>Scopri Atlas Cloud →</b></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://www.atlascloud.ai/console/coding-plan"><b>Scopri il Coding Plan →</b></a>
-</td>
-</tr>
-<tr>
-<td width="200" align="center" valign="middle">
   <a href="https://go.apimart.ai/gh-obsidian-yolo">
     <img src="./assets/sponsor-apimart.png" alt="APIMart" width="163">
   </a>
