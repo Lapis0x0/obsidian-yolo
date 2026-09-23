@@ -180,6 +180,7 @@ export const zh = {
     convertFailed: '无法把这张卡片转为笔记。',
     createNoteFailed: '新建笔记失败。',
     dropFailed: '无法把拖入的文件加到白板上。',
+    pasteFailed: '无法把粘贴的文件加到白板上。',
     importFailed: '无法导入这个 Canvas 文件。',
     exportAnnotatedPdfFailed: '无法导出带注释的 PDF，文件可能已加密或损坏。',
   },

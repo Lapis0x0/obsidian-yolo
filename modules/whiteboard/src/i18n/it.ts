@@ -186,6 +186,7 @@ export const it = {
     convertFailed: 'Impossibile convertire questa scheda in una nota.',
     createNoteFailed: 'Impossibile creare la nota.',
     dropFailed: 'Impossibile aggiungere alla lavagna il file trascinato.',
+    pasteFailed: 'Impossibile aggiungere alla lavagna il file incollato.',
     importFailed: 'Impossibile importare questo file Canvas.',
     exportAnnotatedPdfFailed:
       'Impossibile esportare il PDF con le annotazioni. Potrebbe essere protetto o danneggiato.',

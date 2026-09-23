@@ -93,6 +93,11 @@ export type EditingControllerDeps = Readonly<{
   onRenameChange: () => void
   /** Where Escape's live-content layer goes. */
   keyLayers: KeyLayers
+  /** Gives the keyboard back to the board: a field left by a key would
+   * otherwise leave focus on nothing, where the board's copy and paste
+   * (./clipboardController.ts) cannot hear it. A field left by a press
+   * needs nothing — the press focuses whatever it landed on. */
+  focusBoard: () => void
 }>
 
 export class EditingController {
@@ -416,6 +421,7 @@ export class EditingController {
         key: 'Escape',
         handler: () => {
           editor.blur()
+          this.deps.focusBoard()
           return true
         },
       },
@@ -646,6 +652,7 @@ export class EditingController {
     // particular must not travel on to whatever Obsidian would close with it.
     e.stopPropagation()
     this.endRename(e.key === 'Enter', target)
+    this.deps.focusBoard()
   }
 
   isRenaming(target: LabelTarget): boolean {

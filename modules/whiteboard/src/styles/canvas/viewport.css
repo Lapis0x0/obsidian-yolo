@@ -24,6 +24,12 @@
   );
 }
 
+/* Focusable so copy and paste reach the board (ui/canvas/clipboardController.ts);
+ * a press focuses it, and being focused has no look of its own. */
+.yolo-whiteboard-viewport:focus {
+  outline: none;
+}
+
 /* What a pan captures the pointer on, and the only place its cursor lives.
  * Blink takes the cursor from the capturing element for as long as the
  * capture lasts, so an empty, pointer-transparent box with this one rule *is*

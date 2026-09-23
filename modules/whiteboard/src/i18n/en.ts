@@ -190,6 +190,7 @@ export const en = {
     convertFailed: 'Could not convert this card into a note.',
     createNoteFailed: 'Could not create the note.',
     dropFailed: 'Could not add the dropped file to this whiteboard.',
+    pasteFailed: 'Could not add the pasted file to this whiteboard.',
     importFailed: 'Could not import this Canvas file.',
     exportAnnotatedPdfFailed:
       'Could not export the PDF with its annotations. It may be encrypted or damaged.',

@@ -17,8 +17,8 @@
 
 import type { ScreenPoint } from './camera'
 import {
-  type BoardNode,
   type Board,
+  type BoardNode,
   type Edge,
   type NodeId,
   parseBoardValue,

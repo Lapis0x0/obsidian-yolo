@@ -80,6 +80,7 @@ import { createWhiteboardTranslation } from '../i18n'
 import { CameraController } from './canvas/cameraController'
 import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
+import { ClipboardController } from './canvas/clipboardController'
 import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
 import { EdgeLayer } from './canvas/edgeLayer'
@@ -271,6 +272,9 @@ export class WhiteboardCanvas {
   /** Card creation, drops and the right-click menus
    * (./canvas/dropImport.ts). Built in `ensureDom`. */
   private dropImport!: DropImport
+  /** Copy, cut and paste (./canvas/clipboardController.ts). Built in
+   * `ensureDom`. */
+  private clipboard!: ClipboardController
   /** What is being typed: a card's editor, a label, live content
    * (./canvas/editingController.ts). Built in `ensureDom`. */
   private editing!: EditingController
@@ -557,6 +561,7 @@ export class WhiteboardCanvas {
     }
     this.cameraController.dispose()
     this.interaction.destroy()
+    this.clipboard.destroy()
     this.viewportEl?.removeEventListener('wheel', this.cameraController.onWheel)
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
@@ -863,6 +868,7 @@ export class WhiteboardCanvas {
       closePopover: () => this.toolbarController.closePopover(),
       onRenameChange: () => this.keymap.syncSelectionScope(),
       keyLayers: this.keymap,
+      focusBoard: () => viewport.focus({ preventScroll: true }),
     })
     // A PDF card draws its pages for the zoom they are seen at, so it has to
     // hear about every zoom — and redraws once one holds still (the reader's
@@ -942,6 +948,13 @@ export class WhiteboardCanvas {
       deleteNodes: (ids) => this.deleteNodes(ids),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       resetCamera: () => this.cameraController.resetCamera(),
+    })
+    this.clipboard = new ClipboardController({
+      core: this.core,
+      viewportEl: viewport,
+      viewportCenterWorld: () => this.dropImport.viewportCenterWorld(),
+      deleteNodes: (ids) => this.deleteNodes(ids),
+      rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
     this.interaction = new InteractionController({
       core: this.core,
@@ -1050,6 +1063,7 @@ export class WhiteboardCanvas {
 
   private setupInteraction(): void {
     this.interaction.bind()
+    this.clipboard.bind()
     this.viewportEl.addEventListener('wheel', this.cameraController.onWheel, {
       passive: false,
     })
