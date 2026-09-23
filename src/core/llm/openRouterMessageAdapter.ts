@@ -25,10 +25,10 @@ const readReasoningDetails = (
 
 /**
  * Streamed `reasoning_details` arrive as fragments of the same block (same
- * `index`): the text pieces concatenate, the other fields (signature, id,
- * format) are whatever the latest fragment carries.
+ * `index`): the text and encrypted-data pieces concatenate, the other fields
+ * (signature, id, format) are whatever the latest fragment carries.
  */
-const TEXT_FIELDS = ['text', 'summary'] as const
+const TEXT_FIELDS = ['text', 'summary', 'data'] as const
 
 const accumulateReasoningDetails = (
   blocks: OpenRouterReasoningDetail[],

@@ -75,7 +75,12 @@ describe('OpenRouterMessageAdapter', () => {
             signature: 'sig',
             index: 0,
           },
-          { type: 'reasoning.encrypted', data: 'opaque', index: 1 },
+          { type: 'reasoning.encrypted', data: 'opa', index: 1 },
+        ],
+      }),
+      chunk({
+        reasoning_details: [
+          { type: 'reasoning.encrypted', data: 'que', index: 1 },
         ],
       }),
       chunk({ content: 'Done' }),
@@ -84,7 +89,7 @@ describe('OpenRouterMessageAdapter', () => {
 
     expect(
       parsed.slice(0, -1).map((c) => c.choices[0].delta.providerMetadata),
-    ).toEqual([undefined, undefined, undefined])
+    ).toEqual([undefined, undefined, undefined, undefined])
     expect(parsed.at(-1)?.choices[0].delta.providerMetadata).toEqual({
       openrouter: {
         reasoningDetails: [
