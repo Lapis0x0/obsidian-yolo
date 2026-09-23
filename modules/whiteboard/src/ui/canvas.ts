@@ -51,7 +51,6 @@ import {
   rectAnchoredAt,
   resolveEdgeSides,
 } from '../domain/edges'
-import { parsePdfLink } from '../domain/excerpt'
 import {
   type Board,
   type BoardNode,
@@ -128,7 +127,6 @@ import {
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
 import { resolveCardContext } from '../host/cardContext'
-import { exportAnnotatedPdf } from '../host/exportAnnotatedPdf'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
@@ -139,7 +137,7 @@ import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import type { CanvasCore } from './canvas/core'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { OverviewLayer } from './canvas/overviewLayer'
-import { PdfExcerpts } from './canvas/pdfExcerpts'
+import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import {
   ALIGN_MENU,
@@ -190,9 +188,6 @@ import {
 } from './constants'
 import { asElement, asNode } from './eventTarget'
 import { blockStartLine, nextOverviewState } from './lod'
-import { AnnotationController } from './pdf/annotationController'
-import type { PdfReader } from './pdf/pdfReader'
-import { READER_PANEL_DEFAULT_WIDTH, ReaderPanel } from './pdf/readerPanel'
 import {
   PromptOverlay,
   type PromptOverlayOptions,
@@ -273,15 +268,6 @@ const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
 const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
 const ERROR_HINT_CLASS = 'yolo-whiteboard-error-hint'
 const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
-
-/** How much of the view the board keeps however wide the reading panel is
- * dragged. */
-const READER_PANEL_MIN_BOARD_WIDTH = 240
-/** How often a position read in the panel is written to its card's node.
- * The node is the position's only persistent home — the card's own reader
- * may be parked, evicted or never built — but writing it on every scroll
- * frame would rebuild the board index at scroll rate. */
-const READER_PANEL_COMMIT_MS = 800
 
 // `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
 // type), which owns the mounted-card map it describes.
@@ -709,21 +695,9 @@ export class WhiteboardCanvas {
    * it runs at full rate. */
   private interacting = false
 
-  // Reading panel: one PDF card read at full height beside the board
-  // (./pdf/readerPanel.ts). The panel is a second reader over the card's
-  // file; this class owns which card that is and keeps the two readers, and
-  // the node's `startPage`, at the same place.
-  private readerPanel: ReaderPanel | null = null
-  /** The card the panel is reading, whenever the panel is open. */
-  private readerPanelNodeId: NodeId | null = null
-  private readerPanelCommitTimer: number | null = null
-  /** Mod+F, bound only while there is a reader to search (see
-   * `syncReaderKeymap`). */
-  private readerKeymapDisposer: (() => void) | null = null
-  /** The PDF annotation toolbar and comment editor, over the whole view
-   * (./pdf/annotationController.ts). */
-  private annotationController: AnnotationController | null = null
-  private pdfExcerpts!: PdfExcerpts
+  /** PDF reading on this board — the reading panel, annotations, excerpts,
+   * links into its PDFs (./canvas/pdfIntegration.ts). Built in `ensureDom`. */
+  private pdf!: PdfIntegration
 
   /** What every controller reads and commits through (./canvas/core.ts).
    * Closures over this canvas, so each read is live. */
@@ -867,12 +841,7 @@ export class WhiteboardCanvas {
         board = boardWithPageWindow(board, this.focusedNodeId, page)
       }
     }
-    // The panel's position is written to its card on a timer; the last
-    // stretch of reading must not wait for it.
-    const panelPage = this.readerPanel?.getPosition() ?? null
-    if (this.readerPanelNodeId !== null && panelPage !== null) {
-      board = boardWithPageWindow(board, this.readerPanelNodeId, panelPage)
-    }
+    board = this.pdf.foldPanelPosition(board)
     if (this.editing) {
       const liveText = this.editing.editor.getValue()
       const action = planNodeCommit(board, this.editing.nodeId, liveText)
@@ -890,7 +859,7 @@ export class WhiteboardCanvas {
   /** About to load a different file into this leaf. */
   clear(): void {
     // The panel reads a card of the board that is leaving.
-    this.closeReaderPanel(false)
+    this.pdf.closeReaderPanel(false)
     this.teardownAllCards()
     this.board = emptyBoard()
     this.syncBoardIndex()
@@ -899,9 +868,7 @@ export class WhiteboardCanvas {
   }
 
   onResize(): void {
-    // A narrower view may leave the panel wider than it may be; giving the
-    // difference back lays the board out again (`layoutForReaderPanel`).
-    this.readerPanel?.refit()
+    this.pdf.refitPanel()
     if (this.parseFailed) return
     // How far out the wheel may zoom is derived from the viewport's size.
     this.cameraController.invalidateScaleFloor()
@@ -944,13 +911,7 @@ export class WhiteboardCanvas {
     this.vaultSubscriptionDisposer = null
     this.viewKeymapDisposer?.()
     this.viewKeymapDisposer = null
-    // Its position is already in what the host saved (`getViewData` runs
-    // first), so it closes without writing it again.
-    this.closeReaderPanel(false)
-    // Still armed if a PDF card is focused; the scope outlives this canvas
-    // (a popout migration builds a new one on the same view).
-    this.readerKeymapDisposer?.()
-    this.readerKeymapDisposer = null
+    this.pdf.destroy()
 
     this.endRename(true)
     this.prompt?.close()
@@ -960,8 +921,6 @@ export class WhiteboardCanvas {
     this.canvasControls?.destroy()
     this.canvasControls = null
     this.toolbarController.destroy()
-    this.annotationController?.destroy()
-    this.annotationController = null
     this.overviewLayer?.destroy()
     this.overviewLayer = null
     this.teardownAllCards()
@@ -1237,11 +1196,11 @@ export class WhiteboardCanvas {
       purgeNode: (id) => this.purgeNodeRuntime(id),
       getSourcePath: this.core.getSourcePath,
       getViewScale: () => this.cameraController.view.scale,
-      getPdfStartPosition: (id) => this.pdfStartPosition(id),
+      getPdfStartPosition: (id) => this.pdf.pdfStartPosition(id),
       openAnnotations: (path) => this.annotationStores.acquire(path),
-      getAnnotationEvents: () => this.annotationController?.events,
+      getAnnotationEvents: () => this.pdf.annotationEvents,
       onPdfPositionChange: (id, position) =>
-        this.onCardPdfPosition(id, position),
+        this.pdf.onCardPdfPosition(id, position),
       pdfPageLabel: this.pdfPageLabel,
       reportError: this.core.reportError,
       t: this.core.t,
@@ -1265,7 +1224,7 @@ export class WhiteboardCanvas {
       getEdge: this.core.getEdge,
       isEditableNode: (node) => this.isEditableNode(node),
       isPdfNode: (node) => isPdfNode(node),
-      openReader: (id) => this.openReaderPanel(id),
+      openReader: (id) => this.pdf.openReaderPanel(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
       getView: this.core.getView,
       getViewportSize: () => ({
@@ -1286,47 +1245,18 @@ export class WhiteboardCanvas {
       distributeSelection: (axis) => this.distributeSelection(axis),
       tidySelection: () => this.tidySelection(),
     })
-    // Over the whole view rather than the viewport: it serves the reading
-    // panel as well as the cards. Built after the board's toolbar, so the two
-    // never compete for the same layer.
-    this.pdfExcerpts = new PdfExcerpts(this.host, {
-      getBoard: this.core.getBoard,
-      canCreate: this.core.canCreate,
-      pdfNodeForReader: (reader) => this.pdfNodeForReader(reader),
-      nextNodeId: (board) => this.nextNodeId(board),
-      addCard: (node) => this.addExcerptCard(node),
-      isInView: (rect) => {
-        const view = computeWorldViewportRect(
-          this.viewportEl.clientWidth,
-          this.viewportEl.clientHeight,
-          this.cameraController.view,
-          0,
-        )
-        return (
-          rect.x >= view.left &&
-          rect.y >= view.top &&
-          rect.x + rect.w <= view.right &&
-          rect.y + rect.h <= view.bottom
-        )
-      },
-      getSourcePath: this.core.getSourcePath,
-      t: this.core.t,
-      reportError: this.core.reportError,
-    })
-    this.annotationController?.destroy()
-    this.annotationController = new AnnotationController({
-      parent: root,
-      host: this.host,
-      prefs: this.annotationPrefs,
-      t: this.core.t,
-      getSourcePath: this.core.getSourcePath,
-      registerKeymap: (bindings) => this.context.registerKeymap(bindings),
-      excerpts: {
-        addText: (reader, excerpt) => this.pdfExcerpts.addText(reader, excerpt),
-        addArea: (reader, page, rect) =>
-          this.pdfExcerpts.addArea(reader, page, rect),
-      },
-      reportError: this.core.reportError,
+    this.pdf = new PdfIntegration({
+      core: this.core,
+      rootEl: root,
+      viewportEl: viewport,
+      readerPanelPrefs: this.readerPanelPrefs,
+      annotationStores: this.annotationStores,
+      annotationPrefs: this.annotationPrefs,
+      getPdfPosition: (id) => this.cardRenderer.getPdfPosition(id),
+      getEnteredNodeId: () => this.enteredNodeId,
+      onResize: () => this.onResize(),
+      runEscape: () => this.onEscape(),
+      isTypingIntoField: () => this.isTypingIntoField(),
     })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
@@ -1459,14 +1389,7 @@ export class WhiteboardCanvas {
    * pointer listeners; released in `dispose()`. */
   private setupVaultSubscription(): void {
     this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
-      // The panel's file is gone: there is nothing left to read. (A rename
-      // reaches the panel through the board instead — the rename rewriter
-      // updates the card, and `syncReaderPanelWithBoard` follows it.)
-      if (
-        event.type === 'delete' &&
-        event.entry.path === this.readerPanel?.path
-      ) {
-        this.closeReaderPanel(false)
+      if (event.type === 'delete' && this.pdf.onFileDeleted(event.entry.path)) {
         return
       }
       if (event.type !== 'modify') return
@@ -1774,9 +1697,9 @@ export class WhiteboardCanvas {
         {
           title: this.t('menu.openReader'),
           icon: 'book-open',
-          onSelect: () => this.openReaderPanel(single.id),
+          onSelect: () => this.pdf.openReaderPanel(single.id),
         },
-        this.exportAnnotatedPdfItem(single.file),
+        this.pdf.exportAnnotatedPdfItem(single.file),
       )
     }
     if (this.canEdit && single?.type === 'text') {
@@ -1879,10 +1802,7 @@ export class WhiteboardCanvas {
     if (!this.acceptsDrop) return
     // A selection dragged out of a reader lands only on open canvas; over a
     // card it is not a drop at all.
-    if (
-      this.annotationController?.isExcerptDrag(e) &&
-      this.nodeIdAtPointer(e) !== null
-    ) {
+    if (this.pdf.isExcerptDrag(e) && this.nodeIdAtPointer(e) !== null) {
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
       this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
       return
@@ -1906,15 +1826,8 @@ export class WhiteboardCanvas {
     e.preventDefault()
     const at = this.worldPointFromEvent(e)
     // Text selected in one of this view's PDF readers, dragged out: an
-    // excerpt card where it was dropped (./canvas/pdfExcerpts.ts).
-    const excerpt = this.annotationController?.takeExcerptDrag(e)
-    if (excerpt) {
-      if (
-        this.nodeIdAtPointer(e) === null &&
-        this.pdfExcerpts.addText(excerpt.reader, excerpt.excerpt, at)
-      ) {
-        excerpt.reader.clearTextSelection()
-      }
+    // excerpt card where it was dropped (./canvas/pdfIntegration.ts).
+    if (this.pdf.dropExcerpt(e, at, () => this.nodeIdAtPointer(e) !== null)) {
       return
     }
     // Two drags arrive here and they carry different things. One comes from
@@ -2103,7 +2016,7 @@ export class WhiteboardCanvas {
     const target = asElement(e.target)
     // The panel covers the right of the viewport; a pointer on it is not on
     // the board behind it, whatever the overview tier's geometry says.
-    if (this.readerPanel?.contains(target)) {
+    if (this.pdf.panelContains(target)) {
       this.setHoveredNode(null)
       return
     }
@@ -3040,7 +2953,7 @@ export class WhiteboardCanvas {
         this.toggleSelection(interaction.nodeId)
       } else {
         this.setSelection([interaction.nodeId])
-        this.followPdfLinkAt(interaction.nodeId, e)
+        this.pdf.followPdfLinkAt(interaction.nodeId, e)
       }
       return
     }
@@ -3268,14 +3181,10 @@ export class WhiteboardCanvas {
     // While a PDF reader is the thing being read, its annotation edits are
     // what Mod+Z takes back first; the board's own history comes after.
     const undo = run(() => {
-      const store = this.activeReader()?.getAnnotationStore()
-      if (store?.canUndo()) store.undo()
-      else this.undo()
+      if (!this.pdf.undoAnnotation()) this.undo()
     })
     const redo = run(() => {
-      const store = this.activeReader()?.getAnnotationStore()
-      if (store?.canRedo()) store.redo()
-      else this.redo()
+      if (!this.pdf.redoAnnotation()) this.redo()
     })
     // Obsidian Canvas's camera keys. Zoom-to-selection declines (falls
     // through to Obsidian) when nothing is selected, same as Canvas.
@@ -3459,7 +3368,7 @@ export class WhiteboardCanvas {
     if (previous !== null) this.cardGeneration.syncChips(previous)
     if (next !== null) this.cardGeneration.syncChips(next)
     // A focused PDF card is a reader Mod+F can search.
-    this.syncReaderKeymap()
+    this.pdf.syncReaderKeymap()
   }
 
   private setEdgeSelection(ids: readonly EdgeId[]): void {
@@ -3521,7 +3430,7 @@ export class WhiteboardCanvas {
           // page number) is that field's, not a request to delete the card.
           if (this.isTypingIntoField()) return false
           // A PDF annotation being acted on is what the key deletes.
-          if (this.annotationController?.deleteActive()) return true
+          if (this.pdf.deleteActiveAnnotation()) return true
           this.deleteSelection()
           return true
         },
@@ -3531,7 +3440,7 @@ export class WhiteboardCanvas {
         key: 'Delete',
         handler: () => {
           if (this.isTypingIntoField()) return false
-          if (this.annotationController?.deleteActive()) return true
+          if (this.pdf.deleteActiveAnnotation()) return true
           this.deleteSelection()
           return true
         },
@@ -3566,16 +3475,11 @@ export class WhiteboardCanvas {
    * both are this one chain and it does not matter which runs.
    */
   private onEscape(): boolean {
-    if (this.annotationController?.dismiss()) return true
+    if (this.pdf.dismissAnnotation()) return true
     // A field inside a card or the panel (a page or search box) handles its
     // own Escape.
     if (this.isTypingIntoField()) return false
-    const reader = this.activeReader()
-    if (reader?.isAreaMode()) {
-      reader.setAreaMode(false)
-      return true
-    }
-    if (this.closeReaderSearchForEscape()) return true
+    if (this.pdf.escapeReader()) return true
     if (this.selectedIds.size === 0 && this.selectedEdgeIds.size === 0) {
       return false
     }
@@ -3585,30 +3489,6 @@ export class WhiteboardCanvas {
     }
     this.clearSelection()
     return true
-  }
-
-  /**
-   * The PDF reader being read: the one the annotation toolbar is acting
-   * for, else the panel's when focus is in it, else the entered card's.
-   */
-  private activeReader(): PdfReader | null {
-    const acting = this.annotationController?.reader
-    if (acting) return acting
-    const active = this.context.getDocument().activeElement
-    if (this.readerPanel?.contains(active)) {
-      return this.readerPanel.getReader()
-    }
-    if (this.enteredNodeId !== null) {
-      return this.cardRenderer.getRuntime(this.enteredNodeId)?.pdfReader ?? null
-    }
-    return null
-  }
-
-  private requireAnnotationController(): AnnotationController {
-    if (!this.annotationController) {
-      throw new Error('Whiteboard view is not built')
-    }
-    return this.annotationController
   }
 
   private popSelectionKeymapScope(): void {
@@ -5048,334 +4928,6 @@ export class WhiteboardCanvas {
     this.enteredNodeId = null
   }
 
-  // -----------------------------------------------------------------------
-  // Reading panel. One PDF card at a time is read in a column beside the
-  // board (./pdf/readerPanel.ts) — a second reader over the card's file.
-  //
-  // Position flows both ways without bouncing: the panel's reader reports
-  // every move and the card's reader follows it silently (`setPosition`
-  // reports nothing back), and the card's reader is followed only while it is
-  // the focused card — the only state in which someone can be scrolling it.
-  // A card reader built or rebuilt meanwhile opens where the panel is
-  // (`pdfStartPosition`), so its first report is the panel's own position.
-  //
-  // The node's `startPage` is where the position persists: written on a
-  // short timer while the panel is read, on close, and folded into every save
-  // (`getViewData`).
-  //
-  // The board makes room rather than being covered: its viewport's right edge
-  // moves in by the panel's width, and everything measured against the
-  // viewport — the camera's zoom floor, virtualization, the toolbar's clamp,
-  // the overview canvas — is re-measured through `onResize`. Hit-testing reads
-  // the viewport's own client rect, whose left edge never moves.
-  // -----------------------------------------------------------------------
-
-  /** "Export PDF with annotations", for a PDF card's menu and the panel's. */
-  private exportAnnotatedPdfItem(path: string): YoloModuleHostMenuItemV1 {
-    return {
-      title: this.t('menu.exportAnnotatedPdf'),
-      icon: 'file-output',
-      onSelect: () =>
-        exportAnnotatedPdf(this.host, this.annotationStores, path),
-    }
-  }
-
-  /** Opens the panel on a PDF card, or moves it there from another card. */
-  private openReaderPanel(id: NodeId): void {
-    const node = this.nodesById.get(id)
-    if (!node || !isPdfNode(node) || !this.rootEl) return
-    if (this.readerPanelNodeId !== null && this.readerPanelNodeId !== id) {
-      this.commitReaderPanelPosition()
-    }
-    const position = this.cardRenderer.getPdfPosition(id) ?? node.startPage
-    if (!this.readerPanel) {
-      const rootEl = this.rootEl
-      this.readerPanel = new ReaderPanel({
-        pdf: this.host.pdf,
-        parent: rootEl,
-        t: (key) => this.t(key),
-        width: this.readerPanelPrefs.getWidth(READER_PANEL_DEFAULT_WIDTH),
-        maxWidth: () => rootEl.clientWidth - READER_PANEL_MIN_BOARD_WIDTH,
-        onResize: (width, done) => {
-          this.layoutForReaderPanel()
-          if (done) this.readerPanelPrefs.setWidth(width)
-        },
-        onClose: () => this.closeReaderPanel(true),
-        onMenu: (event, path) =>
-          this.host.ui.showMenu(event, [this.exportAnnotatedPdfItem(path)]),
-        onPositionChange: (next) => this.onReaderPanelPosition(next),
-        openAnnotations: (path) => this.annotationStores.acquire(path),
-        annotationEvents: this.requireAnnotationController().events,
-        reportError: (stage, error) => this.reportError(stage, error),
-      })
-    }
-    this.readerPanelNodeId = id
-    this.readerPanel.show(
-      node.file,
-      basenameWithoutExtension(node.file),
-      position,
-    )
-    this.layoutForReaderPanel()
-    this.syncReaderKeymap()
-  }
-
-  /** Closes the panel, writing where it was to its card unless the board it
-   * belongs to is going away (`commit` false). */
-  private closeReaderPanel(commit: boolean): void {
-    if (!this.readerPanel) return
-    if (commit) this.commitReaderPanelPosition()
-    this.clearReaderPanelCommitTimer()
-    this.readerPanel.destroy()
-    this.readerPanel = null
-    this.readerPanelNodeId = null
-    this.layoutForReaderPanel()
-    this.syncReaderKeymap()
-  }
-
-  /** Gives the board the width the panel does not take. */
-  private layoutForReaderPanel(): void {
-    if (!this.viewportEl) return
-    this.viewportEl.setCssProps({
-      right: this.readerPanel ? `${this.readerPanel.width}px` : '',
-    })
-    this.onResize()
-  }
-
-  /** Keeps the panel pointed at a card that still exists and still is the
-   * PDF it was — and at its new path, when the file was renamed. */
-  private syncReaderPanelWithBoard(): void {
-    const id = this.readerPanelNodeId
-    const panel = this.readerPanel
-    if (id === null || !panel) return
-    const node = this.nodesById.get(id)
-    if (!node || !isPdfNode(node)) {
-      this.closeReaderPanel(false)
-      return
-    }
-    if (node.file !== panel.path) {
-      panel.show(
-        node.file,
-        basenameWithoutExtension(node.file),
-        panel.getPosition() ?? node.startPage,
-      )
-    }
-  }
-
-  /** The panel moved: the card's reader follows, and the node hears soon. */
-  private onReaderPanelPosition(position: number): void {
-    const id = this.readerPanelNodeId
-    if (id === null) return
-    this.cardRenderer.getRuntime(id)?.pdfReader?.setPosition(position)
-    this.scheduleReaderPanelCommit()
-  }
-
-  /** A card's reader moved. Only the focused card is one someone can be
-   * scrolling; any other report is a reader settling where it was put. */
-  private onCardPdfPosition(id: NodeId, position: number): void {
-    if (id !== this.readerPanelNodeId || id !== this.focusedNodeId) return
-    this.readerPanel?.setPosition(position)
-    this.scheduleReaderPanelCommit()
-  }
-
-  /** Where a PDF card's reader should open: the panel's place when the panel
-   * is reading that card, which is newer than the node's. */
-  private pdfStartPosition(id: NodeId): number | undefined {
-    if (id === this.readerPanelNodeId) {
-      const position = this.readerPanel?.getPosition()
-      if (position !== null && position !== undefined) return position
-    }
-    const node = this.nodesById.get(id)
-    return node?.type === 'file' ? node.startPage : undefined
-  }
-
-  private scheduleReaderPanelCommit(): void {
-    if (this.readerPanelCommitTimer !== null) return
-    this.readerPanelCommitTimer = this.context.getWindow().setTimeout(() => {
-      this.readerPanelCommitTimer = null
-      this.commitReaderPanelPosition()
-    }, READER_PANEL_COMMIT_MS)
-  }
-
-  private clearReaderPanelCommitTimer(): void {
-    if (this.readerPanelCommitTimer === null) return
-    this.context.getWindow().clearTimeout(this.readerPanelCommitTimer)
-    this.readerPanelCommitTimer = null
-  }
-
-  /** Written like `commitReadingWindow`: straight to the board, not a step
-   * anyone would undo. */
-  private commitReaderPanelPosition(): void {
-    this.clearReaderPanelCommitTimer()
-    const id = this.readerPanelNodeId
-    const position = this.readerPanel?.getPosition() ?? null
-    if (id === null || position === null || this.parseFailed) return
-    this.commitWithoutHistory(boardWithPageWindow(this.board, id, position))
-  }
-
-  /** The PDF card a reader shows: the panel's card, or the card whose body
-   * the reader is. */
-  private pdfNodeForReader(reader: PdfReader): NodeId | null {
-    if (this.readerPanel?.getReader() === reader) return this.readerPanelNodeId
-    for (const node of this.board.nodes) {
-      if (this.cardRenderer.getRuntime(node.id)?.pdfReader === reader) {
-        return node.id
-      }
-    }
-    return null
-  }
-
-  /** An excerpt card lands like any card made on the board: one undoable
-   * step, mounted now so it is there to be seen. */
-  private addExcerptCard(node: TextNode): void {
-    this.applyBoardChange(addNode(this.board, node))
-    this.recomputeVisibility()
-    this.drainQueues()
-  }
-
-  /**
-   * A click on a card that landed on a link to a place in a PDF on this
-   * board (`[[x.pdf#page=N&selection=…]]`, an excerpt's citation) reads it
-   * there: the reading panel opens on that PDF's card at the page, and the
-   * text the link names is marked (PdfReader's `revealLocation`).
-   *
-   * A card's rendered content takes no pointer events (style.css's content
-   * mask), so which link was clicked is found by geometry. Only these links
-   * are taken: a link to a PDF that has no card here, or to anything else,
-   * is left as it was — a card's links are followed where Obsidian follows
-   * them, in its editor.
-   */
-  private followPdfLinkAt(id: NodeId, e: MouseEvent): void {
-    const runtime = this.cardRenderer.getRuntime(id)
-    const body = runtime?.bodyEl
-    if (!runtime || !body || this.parseFailed) return
-    const link = internalLinkAtPoint(body, e.clientX, e.clientY)
-    const linktext = link?.getAttribute('data-href') ?? ''
-    const parsed = parsePdfLink(linktext)
-    if (!parsed) return
-    let file: YoloModuleHostVaultEntryV1 | null = null
-    try {
-      file = this.host.vault.resolveLink(
-        parsed.linkpath,
-        runtime.contentSourcePath ?? this.sourcePathForBoard(),
-      )
-    } catch (error) {
-      this.reportError('resolve pdf link', error)
-      return
-    }
-    if (!file) return
-    const target = this.pdfCardFor(file.path, id)
-    if (target === null) return
-    this.openReaderPanel(target)
-    this.readerPanel
-      ?.getReader()
-      ?.revealLocation(parsed.target.page, parsed.target.selection)
-  }
-
-  /** The card to read a PDF in: the one the panel is already on, else the
-   * nearest to `near`. */
-  private pdfCardFor(path: string, near: NodeId): NodeId | null {
-    const cards = this.board.nodes.filter(
-      (node): node is FileNode => isPdfNode(node) && node.file === path,
-    )
-    if (cards.length === 0) return null
-    const current = cards.find((node) => node.id === this.readerPanelNodeId)
-    if (current) return current.id
-    const from = this.nodesById.get(near)
-    if (!from) return cards[0].id
-    const centre = (node: BoardNode) => ({
-      x: node.x + node.w / 2,
-      y: node.y + node.h / 2,
-    })
-    const origin = centre(from)
-    let best = cards[0]
-    let bestDistance = Number.POSITIVE_INFINITY
-    for (const card of cards) {
-      const c = centre(card)
-      const distance = Math.hypot(c.x - origin.x, c.y - origin.y)
-      if (distance < bestDistance) {
-        best = card
-        bestDistance = distance
-      }
-    }
-    return best.id
-  }
-
-  /** The focused card, when it is a PDF card. */
-  private focusedPdfNodeId(): NodeId | null {
-    const id = this.focusedNodeId
-    if (id === null) return null
-    const node = this.nodesById.get(id)
-    return node && isPdfNode(node) ? id : null
-  }
-
-  /**
-   * Binds Mod+F while there is a reader to search — the panel, or a focused
-   * PDF card — and only then. A binding on the view's scope that declines
-   * still ends the key's journey there (Obsidian's `Scope.handleKey` returns
-   * on the first binding for a key), so one left armed all the time would
-   * swallow the user's own Mod+F hotkey on every board.
-   */
-  private syncReaderKeymap(): void {
-    const wanted = this.readerPanel !== null || this.focusedPdfNodeId() !== null
-    if (wanted && !this.readerKeymapDisposer) {
-      this.readerKeymapDisposer = this.context.registerKeymap([
-        {
-          modifiers: ['Mod'],
-          key: 'F',
-          handler: () => this.openReaderSearch(),
-        },
-        { modifiers: [], key: 'Escape', handler: () => this.onEscape() },
-      ])
-    } else if (!wanted && this.readerKeymapDisposer) {
-      this.readerKeymapDisposer()
-      this.readerKeymapDisposer = null
-    }
-  }
-
-  /**
-   * Mod+F: searches the reader being read. That is the panel when focus is
-   * in it (a press anywhere in the panel gives it focus) or when no PDF card
-   * is focused; otherwise the focused card's reader.
-   */
-  private openReaderSearch(): boolean {
-    const active = this.context.getDocument().activeElement
-    const panel = this.readerPanel
-    const cardId = this.focusedPdfNodeId()
-    const cardEl =
-      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.el
-    // Typing somewhere else — a label, a prompt — is not reading.
-    if (
-      this.isTypingIntoField() &&
-      !panel?.contains(active) &&
-      !(active && cardEl?.contains(active))
-    ) {
-      return false
-    }
-    if (panel && (panel.contains(active) || cardId === null)) {
-      panel.openSearch()
-      return true
-    }
-    const reader =
-      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.pdfReader
-    if (!reader) return false
-    reader.openSearch()
-    return true
-  }
-
-  /** Escape's first layer: closes the search of the reader being read. */
-  private closeReaderSearchForEscape(): boolean {
-    const active = this.context.getDocument().activeElement
-    if (this.readerPanel?.contains(active)) {
-      return this.readerPanel.closeSearch()
-    }
-    const cardId = this.focusedPdfNodeId()
-    const reader =
-      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.pdfReader
-    if (!reader?.isSearchOpen()) return false
-    reader.closeSearch()
-    return true
-  }
-
   // ---- rung one: generating into a card ----------------------------------
   //
   // The two halves of handing a card's body to `./canvas/cardGeneration.ts`
@@ -5731,7 +5283,7 @@ export class WhiteboardCanvas {
     this.overviewLayer?.markDirty()
     // And the one place the panel can learn its card was deleted, undone
     // away, or pointed at another file.
-    this.syncReaderPanelWithBoard()
+    this.pdf.syncWithBoard()
   }
 
   // ---------------------------------------------------------------------
@@ -5865,34 +5417,6 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
-}
-
-/** The rendered internal link under a point, if any. Asked of each link's
- * own line boxes, so a link wrapped across two lines is hit on either. */
-function internalLinkAtPoint(
-  root: HTMLElement,
-  x: number,
-  y: number,
-): HTMLElement | null {
-  for (const link of Array.from(
-    root.querySelectorAll<HTMLElement>('a.internal-link'),
-  )) {
-    for (const rect of Array.from(link.getClientRects())) {
-      if (
-        x >= rect.left &&
-        x <= rect.right &&
-        y >= rect.top &&
-        y <= rect.bottom
-      )
-        return link
-    }
-  }
-  return null
-}
-
-/** A file card showing a PDF — the cards the reading panel can open. */
-function isPdfNode(node: BoardNode): node is FileNode {
-  return node.type === 'file' && fileNodeKind(node.file) === 'pdf'
 }
 
 /**
