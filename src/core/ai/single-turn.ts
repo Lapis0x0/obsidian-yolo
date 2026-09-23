@@ -667,23 +667,17 @@ function mergeProviderMetadata(
   prev: ProviderMetadata | undefined,
   next: ProviderMetadata,
 ): ProviderMetadata {
+  // Gemini streams its native parts piece by piece, so they accumulate.
+  // Every other entry is re-sent whole (search receipts as calls complete, a
+  // provider's native reply once at the end), so the later value supersedes.
+  const geminiParts = [
+    ...(prev?.gemini?.parts ?? []),
+    ...(next.gemini?.parts ?? []),
+  ]
   return {
-    gemini:
-      prev?.gemini || next.gemini
-        ? {
-            parts: [
-              ...(prev?.gemini?.parts ?? []),
-              ...(next.gemini?.parts ?? []),
-            ],
-          }
-        : undefined,
-    // Providers re-send the full list as calls complete, so the later value
-    // supersedes rather than appends.
-    ...((next.hostedWebSearch ?? prev?.hostedWebSearch)
-      ? {
-          hostedWebSearch: next.hostedWebSearch ?? prev?.hostedWebSearch,
-        }
-      : {}),
+    ...prev,
+    ...next,
+    ...(geminiParts.length > 0 ? { gemini: { parts: geminiParts } } : {}),
   }
 }
 

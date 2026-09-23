@@ -186,6 +186,48 @@ describe('executeSingleTurn', () => {
     )
   })
 
+  // Search receipts stream first; a provider's native reply arrives once at
+  // the end. Both must survive to the turn result.
+  it('keeps every provider metadata entry across stream chunks', async () => {
+    const receipt = { id: 'search-1', results: [] }
+    const native = { output: [{ type: 'reasoning', encrypted_content: 'enc' }] }
+    const chunk = (
+      delta: LLMResponseStreaming['choices'][number]['delta'],
+    ): LLMResponseStreaming => ({
+      id: 'stream-1',
+      model: TEST_MODEL.model,
+      object: 'chat.completion.chunk',
+      choices: [{ finish_reason: null, delta }],
+    })
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        chunk({
+          content: 'hi',
+          providerMetadata: { hostedWebSearch: [receipt] },
+        }),
+        chunk({
+          providerMetadata: {
+            openaiResponses: native,
+            hostedWebSearch: [receipt],
+          },
+        }),
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'incremental',
+    })
+
+    expect(result.providerMetadata).toEqual({
+      hostedWebSearch: [receipt],
+      openaiResponses: native,
+    })
+  })
+
   it('uses streamed write tool calls without forcing non-stream refresh', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(
