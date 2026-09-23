@@ -136,6 +136,7 @@ import { createWhiteboardTranslation } from '../i18n'
 import { CameraController } from './canvas/cameraController'
 import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
+import type { CanvasCore } from './canvas/core'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfExcerpts } from './canvas/pdfExcerpts'
@@ -724,13 +725,50 @@ export class WhiteboardCanvas {
   private annotationController: AnnotationController | null = null
   private pdfExcerpts!: PdfExcerpts
 
+  /** What every controller reads and commits through (./canvas/core.ts).
+   * Closures over this canvas, so each read is live. */
+  private readonly core: CanvasCore
+
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly host: YoloModuleHostApiV1,
     private readonly readerPanelPrefs: ReaderPanelPrefs,
     private readonly annotationStores: AnnotationStores,
     private readonly annotationPrefs: AnnotationPrefs,
-  ) {}
+  ) {
+    this.core = {
+      context: this.context,
+      host: this.host,
+      getBoard: () => this.board,
+      getNode: (id) => this.nodesById.get(id),
+      getEdge: (id) => this.boardEdgesById.get(id),
+      getCardNodes: () => this.cardNodes,
+      nextNodeId: (board) => this.nextNodeId(board),
+      nextEdgeId: () => this.nextEdgeId(),
+      isParseFailed: () => this.parseFailed,
+      canEdit: () => this.canEdit,
+      canCreate: () => this.canCreate,
+      isOverview: () => this.overview,
+      applyBoardChange: (next, historyKey) =>
+        this.applyBoardChange(next, historyKey),
+      commitWithoutHistory: (next) => this.commitWithoutHistory(next),
+      getSelectedIds: () => this.selectedIds,
+      getSelectedEdgeIds: () => this.selectedEdgeIds,
+      getFocusedNodeId: () => this.focusedNodeId,
+      setSelection: (ids) => this.setSelection(ids),
+      setEdgeSelection: (ids) => this.setEdgeSelection(ids),
+      clearSelection: () => this.clearSelection(),
+      getView: () => this.cameraController.view,
+      worldViewportRect: (buffer) => this.worldViewportRect(buffer),
+      worldPointFromEvent: (e) => this.worldPointFromEvent(e),
+      getRuntime: (id) => this.cardRenderer.getRuntime(id),
+      recomputeVisibility: () => this.recomputeVisibility(),
+      drainQueues: () => this.drainQueues(),
+      getSourcePath: () => this.sourcePathForBoard(),
+      t: (key, fallback) => this.t(key, fallback),
+      reportError: (stage, error) => this.reportError(stage, error),
+    }
+  }
 
   // -----------------------------------------------------------------------
   // YoloModuleFileViewInstanceV1 surface (src/index.tsx wires these 1:1).
@@ -1050,10 +1088,10 @@ export class WhiteboardCanvas {
     // DOM at every tier, the resize handles, the snap guides, and an
     // in-flight connection's curve. See ./canvas/overviewLayer.ts.
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
-      getView: () => this.cameraController.view,
-      getCardNodes: () => this.cardNodes,
+      getView: this.core.getView,
+      getCardNodes: this.core.getCardNodes,
       getEdges: () => this.board.edges,
-      getNode: (id) => this.nodesById.get(id),
+      getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.renamingEdgeId,
@@ -1097,7 +1135,7 @@ export class WhiteboardCanvas {
       // why they are handed over separately — see the same method.
       [edgesSvg, edgeLabels],
       {
-        isParseFailed: () => this.parseFailed,
+        isParseFailed: this.core.isParseFailed,
         isEditingWheelTarget: (target) =>
           this.editing !== null &&
           this.nodeIdFromEventTarget(target) === this.editing.nodeId,
@@ -1145,7 +1183,7 @@ export class WhiteboardCanvas {
       edgeLabels,
       this.arrowMarkerId,
       {
-        getNode: (id) => this.nodesById.get(id),
+        getNode: this.core.getNode,
         cancelActiveEdgeRename: () => {
           if (this.renaming?.kind === 'edge') this.endRename(false)
         },
@@ -1153,13 +1191,13 @@ export class WhiteboardCanvas {
         onLabelKeyDown: (id, event) =>
           this.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.endRename(true, { kind: 'edge', id }),
-        t: (key, fallback) => this.t(key, fallback),
+        t: this.core.t,
       },
     )
     this.cardGeneration = new CardGeneration(this.host, {
-      getBoard: () => this.board,
-      getNode: (id) => this.nodesById.get(id),
-      getSourcePath: () => this.sourcePathForBoard(),
+      getBoard: this.core.getBoard,
+      getNode: this.core.getNode,
+      getSourcePath: this.core.getSourcePath,
       getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
       isAvailable: () => this.canCreate,
       isFocused: (id) => this.focusedNodeId === id,
@@ -1168,12 +1206,12 @@ export class WhiteboardCanvas {
       beginGeneration: (id) => this.beginCardGeneration(id),
       endGeneration: (id, text, options) =>
         this.endCardGeneration(id, text, options),
-      reportError: (stage, error) => this.reportError(stage, error),
+      reportError: this.core.reportError,
       notice: (message) => this.host.ui.notice(message),
-      t: (key, fallback) => this.t(key, fallback),
+      t: this.core.t,
     })
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
-      getNode: (id) => this.nodesById.get(id),
+      getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
       isEditing: (id) => this.editing?.nodeId === id,
@@ -1197,7 +1235,7 @@ export class WhiteboardCanvas {
       },
       getMountedCount: () => this.engine.mounted.size,
       purgeNode: (id) => this.purgeNodeRuntime(id),
-      getSourcePath: () => this.sourcePathForBoard(),
+      getSourcePath: this.core.getSourcePath,
       getViewScale: () => this.cameraController.view.scale,
       getPdfStartPosition: (id) => this.pdfStartPosition(id),
       openAnnotations: (path) => this.annotationStores.acquire(path),
@@ -1205,8 +1243,8 @@ export class WhiteboardCanvas {
       onPdfPositionChange: (id, position) =>
         this.onCardPdfPosition(id, position),
       pdfPageLabel: this.pdfPageLabel,
-      reportError: (stage, error) => this.reportError(stage, error),
-      t: (key, fallback) => this.t(key, fallback),
+      reportError: this.core.reportError,
+      t: this.core.t,
     })
     // A PDF card draws its pages for the zoom they are seen at, so it has to
     // hear about every zoom — and redraws once one holds still (the reader's
@@ -1218,23 +1256,23 @@ export class WhiteboardCanvas {
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
     this.toolbarController = new ToolbarController(this.context, viewport, {
-      isParseFailed: () => this.parseFailed,
-      canEdit: () => this.canEdit,
-      isOverview: () => this.overview,
-      getBoard: () => this.board,
-      getSelectedIds: () => this.selectedIds,
-      getSelectedEdgeIds: () => this.selectedEdgeIds,
-      getEdge: (id) => this.boardEdgesById.get(id),
+      isParseFailed: this.core.isParseFailed,
+      canEdit: this.core.canEdit,
+      isOverview: this.core.isOverview,
+      getBoard: this.core.getBoard,
+      getSelectedIds: this.core.getSelectedIds,
+      getSelectedEdgeIds: this.core.getSelectedEdgeIds,
+      getEdge: this.core.getEdge,
       isEditableNode: (node) => this.isEditableNode(node),
       isPdfNode: (node) => isPdfNode(node),
       openReader: (id) => this.openReaderPanel(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
-      getView: () => this.cameraController.view,
+      getView: this.core.getView,
       getViewportSize: () => ({
         width: this.viewportEl.clientWidth,
         height: this.viewportEl.clientHeight,
       }),
-      t: (key, fallback) => this.t(key, fallback),
+      t: this.core.t,
       deleteNodes: (ids) => this.deleteNodes(ids),
       deleteEdges: (ids) => this.deleteEdges(ids),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
@@ -1252,8 +1290,8 @@ export class WhiteboardCanvas {
     // panel as well as the cards. Built after the board's toolbar, so the two
     // never compete for the same layer.
     this.pdfExcerpts = new PdfExcerpts(this.host, {
-      getBoard: () => this.board,
-      canCreate: () => this.canCreate,
+      getBoard: this.core.getBoard,
+      canCreate: this.core.canCreate,
       pdfNodeForReader: (reader) => this.pdfNodeForReader(reader),
       nextNodeId: (board) => this.nextNodeId(board),
       addCard: (node) => this.addExcerptCard(node),
@@ -1271,24 +1309,24 @@ export class WhiteboardCanvas {
           rect.y + rect.h <= view.bottom
         )
       },
-      getSourcePath: () => this.sourcePathForBoard(),
-      t: (key) => this.t(key),
-      reportError: (stage, error) => this.reportError(stage, error),
+      getSourcePath: this.core.getSourcePath,
+      t: this.core.t,
+      reportError: this.core.reportError,
     })
     this.annotationController?.destroy()
     this.annotationController = new AnnotationController({
       parent: root,
       host: this.host,
       prefs: this.annotationPrefs,
-      t: (key) => this.t(key),
-      getSourcePath: () => this.sourcePathForBoard(),
+      t: this.core.t,
+      getSourcePath: this.core.getSourcePath,
       registerKeymap: (bindings) => this.context.registerKeymap(bindings),
       excerpts: {
         addText: (reader, excerpt) => this.pdfExcerpts.addText(reader, excerpt),
         addArea: (reader, page, rect) =>
           this.pdfExcerpts.addArea(reader, page, rect),
       },
-      reportError: (stage, error) => this.reportError(stage, error),
+      reportError: this.core.reportError,
     })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
@@ -3067,6 +3105,13 @@ export class WhiteboardCanvas {
         : page !== null
           ? boardWithPageWindow(this.board, id, page)
           : this.board
+    this.commitWithoutHistory(next)
+  }
+
+  /** The write path for board state that is not a step anyone would undo
+   * (where a card is being read): written and saved, never recorded — the
+   * same deal the camera has. */
+  private commitWithoutHistory(next: Board): void {
     if (next === this.board) return
     this.board = next
     this.syncBoardIndex()
@@ -4710,14 +4755,15 @@ export class WhiteboardCanvas {
     this.syncGroupLabelScale()
   }
 
-  /** The buffered viewport in world coordinates — what decides which cards are
-   * mounted and which edges are drawn. */
-  private worldViewportRect(): WorldRect {
+  /** The viewport in world coordinates, grown by `buffer` screen pixels —
+   * by default the virtualization buffer, which is what decides which cards
+   * are mounted and which edges are drawn. */
+  private worldViewportRect(buffer = VIEWPORT_BUFFER_PX): WorldRect {
     return computeWorldViewportRect(
       this.viewportEl.clientWidth,
       this.viewportEl.clientHeight,
       this.cameraController.view,
-      VIEWPORT_BUFFER_PX,
+      buffer,
     )
   }
 
@@ -5163,11 +5209,7 @@ export class WhiteboardCanvas {
     const id = this.readerPanelNodeId
     const position = this.readerPanel?.getPosition() ?? null
     if (id === null || position === null || this.parseFailed) return
-    const next = boardWithPageWindow(this.board, id, position)
-    if (next === this.board) return
-    this.board = next
-    this.syncBoardIndex()
-    this.context.requestSave()
+    this.commitWithoutHistory(boardWithPageWindow(this.board, id, position))
   }
 
   /** The PDF card a reader shows: the panel's card, or the card whose body
