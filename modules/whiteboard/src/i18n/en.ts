@@ -40,6 +40,7 @@ export const en = {
     distributeVertical: 'Distribute vertically',
     tidy: 'Tidy up',
     openReader: 'Open in reader',
+    exportAnnotatedPdf: 'Export PDF with annotations',
   },
   // The creation bar along the bottom of the canvas.
   controls: {
@@ -110,6 +111,8 @@ export const en = {
       'Imported {imported} Canvas file(s); {failed} could not be read.',
     importNoneFound: 'No Canvas files found in this vault.',
     invalidUrl: 'Only http and https addresses can be added.',
+    exportNoAnnotations: 'This PDF has no annotations to export.',
+    exportedAnnotatedPdf: 'Exported with annotations to {path}',
   },
   cardAi: {
     hint: 'Type, or ask AI: ',
@@ -148,6 +151,7 @@ export const en = {
     searchClose: 'Close find (Esc)',
     searchNoResults: 'No results',
     closePanel: 'Close reader',
+    panelMenu: 'More options',
     areaMode: 'Frame an area',
     linkAlias: '{name}, p.{page}',
     excerpt: {
@@ -187,5 +191,7 @@ export const en = {
     createNoteFailed: 'Could not create the note.',
     dropFailed: 'Could not add the dropped file to this whiteboard.',
     importFailed: 'Could not import this Canvas file.',
+    exportAnnotatedPdfFailed:
+      'Could not export the PDF with its annotations. It may be encrypted or damaged.',
   },
 }

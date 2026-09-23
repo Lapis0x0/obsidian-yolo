@@ -34,6 +34,8 @@ export type ReaderPanelOptions = Readonly<{
    * (`done`), with the width the panel now has. */
   onResize: (width: number, done: boolean) => void
   onClose: () => void
+  /** The header's menu button was pressed while reading `path`. */
+  onMenu: (event: MouseEvent, path: string) => void
   onPositionChange: (position: number) => void
   /** The annotations of a PDF, for the panel's reader to hold. */
   openAnnotations: (path: string) => AnnotationLease
@@ -93,6 +95,16 @@ export class ReaderPanel {
         'search',
         options.t('pdf.search'),
         () => this.openSearch(),
+      ),
+      createReaderIconButton(
+        doc,
+        BUTTON_CLASS,
+        'ellipsis',
+        options.t('pdf.panelMenu'),
+        (event) => {
+          const path = this.reader?.path
+          if (path) options.onMenu(event, path)
+        },
       ),
       createReaderIconButton(
         doc,

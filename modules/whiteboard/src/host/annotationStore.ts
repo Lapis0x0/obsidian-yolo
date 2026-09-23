@@ -101,6 +101,11 @@ export class AnnotationStore {
     return this.loaded && !this.locked && !this.closed
   }
 
+  /** The file has been read (or found absent) at least once. */
+  get isLoaded(): boolean {
+    return this.loaded
+  }
+
   getAll(): readonly PdfAnnotation[] {
     return this.list
   }
@@ -397,6 +402,19 @@ export class AnnotationStores {
         void held.store.flush()
       },
     })
+  }
+
+  /**
+   * The annotations of `pdfPath` as they stand now: a live store's, edits
+   * not yet written included, or else what its annotation file holds (as far
+   * as it can be read — a later version's file too). Empty when it has none.
+   */
+  async read(pdfPath: string): Promise<readonly PdfAnnotation[]> {
+    const live = this.stores.get(pdfPath)?.store
+    if (live?.isLoaded) return live.getAll()
+    const path = annotationFilePath(pdfPath)
+    if (this.host.vault.getEntry(path) === null) return []
+    return parseAnnotationFile(await this.host.vault.readText(path)).annotations
   }
 
   dispose(): void {

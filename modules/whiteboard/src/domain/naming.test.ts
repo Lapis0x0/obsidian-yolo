@@ -3,6 +3,7 @@ import {
   cardNoteContent,
   fileNodeKind,
   folderPathOf,
+  generateAnnotatedPdfFileName,
   generateBoardFileName,
   generateCardNoteFileName,
   generateDroppedHtmlFileName,
@@ -187,6 +188,20 @@ describe('generateCardNoteFileName', () => {
         new Set(['Untitled.md', 'Untitled 1.md']),
       ),
     ).toBe('Untitled 2.md')
+  })
+})
+
+describe('generateAnnotatedPdfFileName', () => {
+  it('names the copy beside the original, never over a taken name', () => {
+    expect(generateAnnotatedPdfFileName('Paper', new Set(['Paper.pdf']))).toBe(
+      'Paper (annotated).pdf',
+    )
+    expect(
+      generateAnnotatedPdfFileName(
+        '论文',
+        new Set(['论文.pdf', '论文 (annotated).pdf']),
+      ),
+    ).toBe('论文 (annotated) 1.pdf')
   })
 })
 

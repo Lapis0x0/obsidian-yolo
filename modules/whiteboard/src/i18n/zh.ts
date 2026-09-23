@@ -37,6 +37,7 @@ export const zh = {
     distributeVertical: '垂直等距分布',
     tidy: '整理',
     openReader: '展开阅读',
+    exportAnnotatedPdf: '导出带注释的 PDF',
   },
   controls: {
     zoomIn: '放大',
@@ -103,6 +104,8 @@ export const zh = {
     importedAll: '已导入 {imported} 个 Canvas 文件，{failed} 个无法读取。',
     importNoneFound: '库中没有找到 Canvas 文件。',
     invalidUrl: '只能添加 http 和 https 地址。',
+    exportNoAnnotations: '这个 PDF 还没有标注，无需导出。',
+    exportedAnnotatedPdf: '已导出带注释的 PDF：{path}',
   },
   cardAi: {
     hint: '输入内容，或交给 AI：',
@@ -140,6 +143,7 @@ export const zh = {
     searchClose: '关闭查找（Esc）',
     searchNoResults: '无结果',
     closePanel: '关闭阅读面板',
+    panelMenu: '更多选项',
     areaMode: '框选区域',
     linkAlias: '{name}, p.{page}',
     excerpt: {
@@ -177,5 +181,6 @@ export const zh = {
     createNoteFailed: '新建笔记失败。',
     dropFailed: '无法把拖入的文件加到白板上。',
     importFailed: '无法导入这个 Canvas 文件。',
+    exportAnnotatedPdfFailed: '无法导出带注释的 PDF，文件可能已加密或损坏。',
   },
 }

@@ -128,6 +128,7 @@ import {
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
 import { resolveCardContext } from '../host/cardContext'
+import { exportAnnotatedPdf } from '../host/exportAnnotatedPdf'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
@@ -1731,11 +1732,14 @@ export class WhiteboardCanvas {
     const items: YoloModuleHostMenuItemV1[] = []
 
     if (single && isPdfNode(single)) {
-      items.push({
-        title: this.t('menu.openReader'),
-        icon: 'book-open',
-        onSelect: () => this.openReaderPanel(single.id),
-      })
+      items.push(
+        {
+          title: this.t('menu.openReader'),
+          icon: 'book-open',
+          onSelect: () => this.openReaderPanel(single.id),
+        },
+        this.exportAnnotatedPdfItem(single.file),
+      )
     }
     if (this.canEdit && single?.type === 'text') {
       items.push({
@@ -5020,6 +5024,16 @@ export class WhiteboardCanvas {
   // the viewport's own client rect, whose left edge never moves.
   // -----------------------------------------------------------------------
 
+  /** "Export PDF with annotations", for a PDF card's menu and the panel's. */
+  private exportAnnotatedPdfItem(path: string): YoloModuleHostMenuItemV1 {
+    return {
+      title: this.t('menu.exportAnnotatedPdf'),
+      icon: 'file-output',
+      onSelect: () =>
+        exportAnnotatedPdf(this.host, this.annotationStores, path),
+    }
+  }
+
   /** Opens the panel on a PDF card, or moves it there from another card. */
   private openReaderPanel(id: NodeId): void {
     const node = this.nodesById.get(id)
@@ -5041,6 +5055,8 @@ export class WhiteboardCanvas {
           if (done) this.readerPanelPrefs.setWidth(width)
         },
         onClose: () => this.closeReaderPanel(true),
+        onMenu: (event, path) =>
+          this.host.ui.showMenu(event, [this.exportAnnotatedPdfItem(path)]),
         onPositionChange: (next) => this.onReaderPanelPosition(next),
         openAnnotations: (path) => this.annotationStores.acquire(path),
         annotationEvents: this.requireAnnotationController().events,

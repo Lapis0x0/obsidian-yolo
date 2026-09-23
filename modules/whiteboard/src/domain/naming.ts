@@ -149,6 +149,24 @@ export function generateBoardFileName(
 }
 
 /**
+ * File name for the copy of a PDF its annotations are exported into, beside
+ * the original: `Paper (annotated).pdf`, then `Paper (annotated) 1.pdf`… —
+ * never the original's name, and never one already taken. The suffix is not
+ * translated: a file name outlives the locale it was made in, and ASCII
+ * travels through every sync service and file system intact.
+ */
+export function generateAnnotatedPdfFileName(
+  pdfBaseName: string,
+  existingNames: ReadonlySet<string>,
+): string {
+  return generateUniqueFileName(
+    `${pdfBaseName} (annotated)`,
+    '.pdf',
+    existingNames,
+  )
+}
+
+/**
  * File name for the note a text card becomes. `baseName` comes from
  * `cardNoteContent` below; the same numeric-suffix conflict rule as
  * whiteboards applies.

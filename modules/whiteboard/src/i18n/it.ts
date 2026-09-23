@@ -38,6 +38,7 @@ export const it = {
     distributeVertical: 'Distribuisci verticalmente',
     tidy: 'Riordina',
     openReader: 'Apri nel lettore',
+    exportAnnotatedPdf: 'Esporta PDF con annotazioni',
   },
   controls: {
     zoomIn: 'Ingrandisci',
@@ -105,6 +106,8 @@ export const it = {
       'Importati {imported} file Canvas; {failed} non sono stati letti.',
     importNoneFound: 'Nessun file Canvas trovato in questo vault.',
     invalidUrl: 'Si possono aggiungere solo indirizzi http e https.',
+    exportNoAnnotations: 'Questo PDF non ha annotazioni da esportare.',
+    exportedAnnotatedPdf: 'Esportato con le annotazioni in {path}',
   },
   cardAi: {
     hint: "Scrivi, oppure chiedi all'AI: ",
@@ -144,6 +147,7 @@ export const it = {
     searchClose: 'Chiudi ricerca (Esc)',
     searchNoResults: 'Nessun risultato',
     closePanel: 'Chiudi il lettore',
+    panelMenu: 'Altre opzioni',
     areaMode: "Seleziona un'area",
     linkAlias: '{name}, p.{page}',
     excerpt: {
@@ -183,5 +187,7 @@ export const it = {
     createNoteFailed: 'Impossibile creare la nota.',
     dropFailed: 'Impossibile aggiungere alla lavagna il file trascinato.',
     importFailed: 'Impossibile importare questo file Canvas.',
+    exportAnnotatedPdfFailed:
+      'Impossibile esportare il PDF con le annotazioni. Potrebbe essere protetto o danneggiato.',
   },
 }

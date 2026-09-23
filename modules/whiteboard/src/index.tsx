@@ -15,6 +15,7 @@ import { AnnotationPrefs } from './host/annotationPrefs'
 import { AnnotationStores } from './host/annotationStore'
 import { registerWhiteboardAgentTools } from './host/boardTools'
 import { createWhiteboard } from './host/createWhiteboard'
+import { exportAnnotatedPdf } from './host/exportAnnotatedPdf'
 import {
   importAllCanvasFiles,
   importCanvasFileAndOpen,
@@ -121,6 +122,21 @@ yolo.registerModule({
       icon: WHITEBOARD_ICON,
       appliesTo: 'folder',
       onSelect: (entry) => createWhiteboard(host, entry.path),
+    })
+
+    // A PDF's annotations written into a copy of it, from anywhere the PDF
+    // is offered as a file: the file explorer, and the "more options" menu of
+    // Obsidian's own PDF tab. The same entry is on a PDF card's context menu
+    // and the reading panel's header menu. There is no command for it: a
+    // command carries no target (the Host API has no active-file surface).
+    host.workspace.registerFileMenuAction({
+      id: 'whiteboard-export-annotated-pdf',
+      title: createWhiteboardLocalizedText('menu.exportAnnotatedPdf'),
+      icon: 'file-output',
+      appliesTo: 'file',
+      extensions: ['pdf'],
+      onSelect: (entry) =>
+        exportAnnotatedPdf(host, annotationStores, entry.path),
     })
 
     // `.canvas` import: one-way, never registers a view

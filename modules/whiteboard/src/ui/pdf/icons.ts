@@ -10,12 +10,18 @@ export type ReaderIconName =
   | 'chevron-down'
   | 'x'
   | 'square-dashed'
+  | 'ellipsis'
 
 const ICONS: Readonly<Record<ReaderIconName, readonly string[]>> = {
   search: ['M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0', 'm21 21-4.3-4.3'],
   'chevron-up': ['m18 15-6-6-6 6'],
   'chevron-down': ['m6 9 6 6 6-6'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
+  ellipsis: [
+    'M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+    'M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+    'M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+  ],
   'square-dashed': [
     'M5 3a2 2 0 0 0-2 2',
     'M19 3a2 2 0 0 1 2 2',
@@ -62,7 +68,7 @@ export function createReaderIconButton(
   className: string,
   icon: ReaderIconName,
   label: string,
-  onClick: () => void,
+  onClick: (event: MouseEvent) => void,
 ): HTMLButtonElement {
   const button = doc.createElement('button')
   button.type = 'button'
@@ -71,7 +77,7 @@ export function createReaderIconButton(
   button.appendChild(createReaderIcon(doc, icon))
   button.addEventListener('click', (event) => {
     event.preventDefault()
-    onClick()
+    onClick(event)
   })
   return button
 }
