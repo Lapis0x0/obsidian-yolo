@@ -3,6 +3,7 @@ import { KimiMessageAdapter } from './kimiMessageAdapter'
 import { MistralMessageAdapter } from './mistralMessageAdapter'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { PerplexityMessageAdapter } from './perplexityMessageAdapter'
+import { ReasoningContentMessageAdapter } from './reasoningContentMessageAdapter'
 
 /**
  * Detects DeepSeek-compatible gateways by base URL. DeepSeek's thinking mode
@@ -68,6 +69,34 @@ export const isPerplexityBaseUrl = (baseUrl: string | undefined): boolean => {
   }
 }
 
+const REASONING_CONTENT_DOMAINS = [
+  'bigmodel.cn', // GLM
+  'z.ai', // GLM
+  'dashscope.aliyuncs.com', // Qwen
+  'dashscope-intl.aliyuncs.com', // Qwen
+  'siliconflow.cn',
+  'siliconflow.com',
+]
+
+/**
+ * Detects gateways that take reasoning back as `reasoning_content` on
+ * assistant messages, so reasoning stays continuous across tool calls.
+ */
+export const isReasoningContentBaseUrl = (
+  baseUrl: string | undefined,
+): boolean => {
+  if (!baseUrl) return false
+  let host: string
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return REASONING_CONTENT_DOMAINS.some(
+    (domain) => host === domain || host.endsWith(`.${domain}`),
+  )
+}
+
 /**
  * Resolves the appropriate MessageAdapter based on the base URL. Used by
  * `OpenAICompatibleProvider` when no explicit adapter is passed via the
@@ -82,5 +111,7 @@ export const resolveAdapterForBaseUrl = (
   if (isMoonshotBaseUrl(baseUrl)) return new KimiMessageAdapter()
   if (isMistralBaseUrl(baseUrl)) return new MistralMessageAdapter()
   if (isPerplexityBaseUrl(baseUrl)) return new PerplexityMessageAdapter()
+  if (isReasoningContentBaseUrl(baseUrl))
+    return new ReasoningContentMessageAdapter()
   return new OpenAIMessageAdapter()
 }

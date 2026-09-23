@@ -18,6 +18,7 @@ import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
 import { LLMAPIKeyNotSetException } from './exception'
+import { ReasoningContentMessageAdapter } from './reasoningContentMessageAdapter'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
@@ -28,10 +29,9 @@ import {
 } from './requestTransport'
 import { createTransportClients } from './transportClients'
 import { applyXiaomimimoCapabilities } from './xiaomimimoCapabilities'
-import { XiaomimimoMessageAdapter } from './xiaomimimoMessageAdapter'
 
 export class XiaomimimoProvider extends BaseLLMProvider<LLMProvider> {
-  private adapter: XiaomimimoMessageAdapter
+  private adapter: ReasoningContentMessageAdapter
   private browserClient: OpenAI
   private obsidianClient: OpenAI
   private nodeClient: OpenAI
@@ -57,7 +57,7 @@ export class XiaomimimoProvider extends BaseLLMProvider<LLMProvider> {
     },
   ) {
     super(provider)
-    this.adapter = new XiaomimimoMessageAdapter()
+    this.adapter = new ReasoningContentMessageAdapter()
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({

@@ -3,6 +3,7 @@ import {
   isMistralBaseUrl,
   isMoonshotBaseUrl,
   isPerplexityBaseUrl,
+  isReasoningContentBaseUrl,
   resolveAdapterForBaseUrl,
 } from './baseUrlDetection'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
@@ -10,6 +11,7 @@ import { KimiMessageAdapter } from './kimiMessageAdapter'
 import { MistralMessageAdapter } from './mistralMessageAdapter'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { PerplexityMessageAdapter } from './perplexityMessageAdapter'
+import { ReasoningContentMessageAdapter } from './reasoningContentMessageAdapter'
 
 describe('isDeepSeekBaseUrl', () => {
   it('returns true for api.deepseek.com', () => {
@@ -152,5 +154,39 @@ describe('resolveAdapterForBaseUrl', () => {
     expect(resolveAdapterForBaseUrl(undefined)).toBeInstanceOf(
       OpenAIMessageAdapter,
     )
+  })
+})
+
+describe('isReasoningContentBaseUrl', () => {
+  it('matches GLM, Qwen, and SiliconFlow hosts', () => {
+    expect(
+      isReasoningContentBaseUrl('https://open.bigmodel.cn/api/paas/v4'),
+    ).toBe(true)
+    expect(isReasoningContentBaseUrl('https://api.z.ai/api/paas/v4')).toBe(true)
+    expect(
+      isReasoningContentBaseUrl(
+        'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      ),
+    ).toBe(true)
+    expect(
+      isReasoningContentBaseUrl(
+        'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      ),
+    ).toBe(true)
+    expect(isReasoningContentBaseUrl('https://api.siliconflow.cn/v1')).toBe(
+      true,
+    )
+  })
+
+  it('does not match lookalike or unrelated hosts', () => {
+    expect(isReasoningContentBaseUrl('https://notz.ai/v1')).toBe(false)
+    expect(isReasoningContentBaseUrl('https://api.openai.com/v1')).toBe(false)
+    expect(isReasoningContentBaseUrl(undefined)).toBe(false)
+  })
+
+  it('resolves the reasoning_content adapter for them', () => {
+    expect(
+      resolveAdapterForBaseUrl('https://open.bigmodel.cn/api/paas/v4'),
+    ).toBeInstanceOf(ReasoningContentMessageAdapter)
   })
 })
