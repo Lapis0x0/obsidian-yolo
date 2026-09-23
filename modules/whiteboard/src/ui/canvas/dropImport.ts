@@ -387,7 +387,7 @@ export class DropImport {
     e.preventDefault()
     const at = this.core.worldPointFromEvent(e)
     // Text selected in one of this view's PDF readers, dragged out: an
-    // excerpt card where it was dropped (./canvas/pdfIntegration.ts).
+    // excerpt card where it was dropped (./pdfIntegration.ts).
     if (
       this.deps.dropExcerpt(e, at, () => this.deps.nodeIdAtPointer(e) !== null)
     ) {

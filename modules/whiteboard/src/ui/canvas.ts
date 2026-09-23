@@ -111,7 +111,6 @@ import {
 } from '../domain/virtualization'
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
-import { resolveCardContext } from '../host/cardContext'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
@@ -122,6 +121,7 @@ import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
 import { EdgeLayer } from './canvas/edgeLayer'
+import { EditingController } from './canvas/editingController'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
@@ -131,7 +131,6 @@ import {
   ARRANGE_ANIMATION_EASING,
   ARRANGE_ANIMATION_MS,
   CARD_BODY_LIVE_CLASS,
-  CARD_ENTERED_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   CONNECT_SNAP_WORLD_PX,
@@ -141,7 +140,6 @@ import {
   EDGE_HIT_CLASS,
   EDGE_HIT_STROKE_WORLD_PX,
   EDGE_LABEL_CLASS,
-  EDIT_PERSIST_THROTTLE_MS,
   FRAME_ON_TIME_MS,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
@@ -208,18 +206,11 @@ const WORLD_CLASS = 'yolo-whiteboard-world'
  * rather than the world's whole subtree (see CameraController's
  * applyZoomScale for what the other choice costs). */
 const WORLD_OVERVIEW_CLASS = 'yolo-whiteboard-world-overview'
-/** On the world layer while an edge label is being typed in the overview
- * tier — see `syncEdgeRenameChrome`. */
-const WORLD_EDGE_RENAME_CLASS = 'yolo-whiteboard-world-edge-rename'
 const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
-const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
-/** On a card whose body is being written into by rung one
- * (./canvas/cardGeneration.ts). */
-const CARD_GENERATING_CLASS = 'yolo-whiteboard-card-generating'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -230,7 +221,6 @@ const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
 const EDGE_PREVIEW_CLASS = 'yolo-whiteboard-edge-preview'
-const EDITOR_HOST_CLASS = 'yolo-whiteboard-editor-host'
 const ERROR_CLASS = 'yolo-whiteboard-error'
 const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
 const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
@@ -239,18 +229,6 @@ const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
 
 // `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
 // type), which owns the mounted-card map it describes.
-
-type EditingState = {
-  readonly nodeId: NodeId
-  readonly editor: YoloModuleHostMarkdownEditorV1
-  readonly scopeDisposer: () => void
-  /** Identifies this editing session to the history, so its many commits
-   * (throttled writes plus the final flush) fold into one undo step. */
-  readonly historyKey: string
-  /** Pending throttled write of what is currently in the editor; see
-   * `scheduleEditPersist`. */
-  persistTimer: number | null
-}
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -398,17 +376,6 @@ type Interaction =
   | ConnectInteraction
   | CreateInteraction
 
-/** Which label a rename is acting on. The two kinds are typed the same way
- * (in place, on the element itself) and differ only in where the text is
- * read from and written back to. */
-type LabelTarget =
-  | Readonly<{ kind: 'group'; id: NodeId }>
-  | Readonly<{ kind: 'edge'; id: EdgeId }>
-
-function sameLabelTarget(a: LabelTarget, b: LabelTarget): boolean {
-  return a.kind === b.kind && a.id === b.id
-}
-
 /**
  * One instance per open leaf (and re-created on popout window migration —
  * see the `dispose()`/constructor doc comments). Implements the DOM/camera/
@@ -460,7 +427,6 @@ export class WhiteboardCanvas {
   private panCaptureEl!: HTMLElement
   /** Space is held on this board: a left press pans, like a middle press. */
   private spacePanArmed = false
-  private editSessionCounter = 0
 
   /** Camera (pan/zoom) state and its glide animation. Constructed once in
    * `ensureDom` (see ./canvas/cameraController.ts's own doc comment). Gesture
@@ -483,7 +449,6 @@ export class WhiteboardCanvas {
    */
   private pressedTarget: EventTarget | null = null
   private interaction: Interaction | null = null
-  private editing: EditingState | null = null
 
   // Selection: UI state, not board data — never serialized. A
   // non-empty selection pushes a keymap scope (Delete/Backspace/Escape);
@@ -513,17 +478,6 @@ export class WhiteboardCanvas {
    * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
-  /**
-   * The card the pointer has been let into, or null.
-   *
-   * Only ever the focused card — entering is asked for on a selected card and
-   * `applyFocusedNode` drops it the moment focus moves on — but it is its own
-   * field rather than a flag on the focus, because that is the whole
-   * distinction: a card can be selected without its content being reachable,
-   * which is what keeps a selected web card draggable. See
-   * `enterLiveContent` and CARD_ENTERED_CLASS.
-   */
-  private enteredNodeId: NodeId | null = null
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
@@ -535,17 +489,15 @@ export class WhiteboardCanvas {
   /** Constructed once in `ensureDom`, once the viewport element exists (see
    * ./canvas/toolbarController.ts's own doc comment). */
   private toolbarController!: ToolbarController
-  /** The label being typed in place, if any — see `beginRename`. It holds
-   * off the selection's keymap scope for as long as it has the caret. */
-  private renaming: LabelTarget | null = null
 
-  // Creation surfaces: the bottom bar, and the panel that
-  // asks which file or what URL before a card can be made.
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
   /** Card creation, drops and the right-click menus
    * (./canvas/dropImport.ts). Built in `ensureDom`. */
   private dropImport!: DropImport
+  /** What is being typed: a card's editor, a label, live content
+   * (./canvas/editingController.ts). Built in `ensureDom`. */
+  private editing!: EditingController
 
   // Resize: one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
@@ -727,7 +679,7 @@ export class WhiteboardCanvas {
     const result = parseBoard(data)
     // Before `teardownAllCards`, whose own commit path would land the edit on
     // the board this method is about to replace. See the doc comment.
-    this.endEditForIncomingBoard()
+    this.editing.endEditForIncomingBoard()
     this.teardownAllCards()
 
     if (!result.ok) {
@@ -807,11 +759,7 @@ export class WhiteboardCanvas {
       }
     }
     board = this.pdf.foldPanelPosition(board)
-    if (this.editing) {
-      const liveText = this.editing.editor.getValue()
-      const action = planNodeCommit(board, this.editing.nodeId, liveText)
-      if (action.kind === 'updateBoard') board = action.board
-    }
+    board = this.editing.foldLiveEdit(board)
     // A generation in flight holds its text in the DOM and nowhere else until
     // it settles — the same race the live editor above is folded in for.
     for (const [id, text] of this.cardGeneration.pendingTexts()) {
@@ -853,7 +801,7 @@ export class WhiteboardCanvas {
    * from silently discarding typed text.
    */
   dispose(): void {
-    this.forceCommitActiveEdit()
+    this.editing.forceCommitActiveEdit()
     const win = this.context.getWindow()
     if (this.rafId !== null) {
       win.cancelAnimationFrame(this.rafId)
@@ -875,7 +823,7 @@ export class WhiteboardCanvas {
     this.viewKeymapDisposer = null
     this.pdf.destroy()
 
-    this.endRename(true)
+    this.editing.endRename(true)
     this.dropImport.destroy()
     this.canvasControls?.destroy()
     this.canvasControls = null
@@ -1012,7 +960,7 @@ export class WhiteboardCanvas {
       getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
-      getRenamingEdgeId: () => this.renamingEdgeId,
+      getRenamingEdgeId: () => this.editing.renamingEdgeId,
       getLiveRects: () => this.liveNodeRects,
       pdfPageLabel: this.pdfPageLabel,
     })
@@ -1055,8 +1003,7 @@ export class WhiteboardCanvas {
       {
         isParseFailed: this.core.isParseFailed,
         isEditingWheelTarget: (target) =>
-          this.editing !== null &&
-          this.nodeIdFromEventTarget(target) === this.editing.nodeId,
+          this.editing.isEditing(this.nodeIdFromEventTarget(target)),
         scrollFocusedCardBy: (target, deltaX, deltaY) =>
           this.focusedNodeId !== null &&
           this.nodeIdFromEventTarget(target) === this.focusedNodeId &&
@@ -1092,7 +1039,7 @@ export class WhiteboardCanvas {
         // its layer is back in the drawing (`syncEdgeRenameChrome`) and has
         // to keep its counter-scale current like any other chrome.
         isOverviewActive: () =>
-          this.overviewChromeHidden && this.renamingEdgeId === null,
+          this.overviewChromeHidden && this.editing.renamingEdgeId === null,
       },
     )
     this.edgeLayer = new EdgeLayer(
@@ -1103,12 +1050,14 @@ export class WhiteboardCanvas {
       {
         getNode: this.core.getNode,
         cancelActiveEdgeRename: () => {
-          if (this.renaming?.kind === 'edge') this.endRename(false)
+          if (this.editing.renamingEdgeId !== null) {
+            this.editing.endRename(false)
+          }
         },
-        getRenamingEdgeId: () => this.renamingEdgeId,
+        getRenamingEdgeId: () => this.editing.renamingEdgeId,
         onLabelKeyDown: (id, event) =>
-          this.handleLabelKeyDown({ kind: 'edge', id }, event),
-        onLabelBlur: (id) => this.endRename(true, { kind: 'edge', id }),
+          this.editing.handleLabelKeyDown({ kind: 'edge', id }, event),
+        onLabelBlur: (id) => this.editing.endRename(true, { kind: 'edge', id }),
         t: this.core.t,
       },
     )
@@ -1119,11 +1068,10 @@ export class WhiteboardCanvas {
       getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
       isAvailable: () => this.canCreate,
       isFocused: (id) => this.focusedNodeId === id,
-      editingText: (id) =>
-        this.editing?.nodeId === id ? this.editing.editor.getValue() : null,
-      beginGeneration: (id) => this.beginCardGeneration(id),
+      editingText: (id) => this.editing.editingText(id),
+      beginGeneration: (id) => this.editing.beginCardGeneration(id),
       endGeneration: (id, text, options) =>
-        this.endCardGeneration(id, text, options),
+        this.editing.endCardGeneration(id, text, options),
       reportError: this.core.reportError,
       notice: (message) => this.host.ui.notice(message),
       t: this.core.t,
@@ -1132,12 +1080,13 @@ export class WhiteboardCanvas {
       getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
-      isEditing: (id) => this.editing?.nodeId === id,
+      isEditing: (id) => this.editing.isEditing(id),
       isGenerating: (id) => this.cardGeneration.isGenerating(id),
-      isRenamingGroup: (id) => this.isRenaming({ kind: 'group', id }),
+      isRenamingGroup: (id) => this.editing.isRenaming({ kind: 'group', id }),
       onGroupLabelKeyDown: (id, event) =>
-        this.handleLabelKeyDown({ kind: 'group', id }, event),
-      onGroupLabelBlur: (id) => this.endRename(true, { kind: 'group', id }),
+        this.editing.handleLabelKeyDown({ kind: 'group', id }, event),
+      onGroupLabelBlur: (id) =>
+        this.editing.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
       onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
       canBuildContent: () => this.canBuildContent,
@@ -1160,6 +1109,32 @@ export class WhiteboardCanvas {
       reportError: this.core.reportError,
       t: this.core.t,
     })
+    this.editing = new EditingController({
+      core: this.core,
+      cards: this.cardRenderer,
+      edges: this.edgeLayer,
+      worldEl: world,
+      pin: (id) => {
+        this.pinnedIds.add(id)
+      },
+      unpin: (id) => {
+        this.pinnedIds.delete(id)
+      },
+      syncChips: (id) => this.cardGeneration.syncChips(id),
+      writeReadingWindow: (id, line) => {
+        const board = this.boardWithSnappedWindow(this.board, id, line)
+        if (board === this.board) return
+        this.board = board
+        this.syncBoardIndex()
+      },
+      subscribeViewChange: (listener) =>
+        this.cameraController.subscribeViewChange(listener),
+      isOverviewChromeHidden: () => this.overviewChromeHidden,
+      flushOverviewChromeZoomScale: () =>
+        this.cameraController.flushOverviewChromeZoomScale(),
+      closePopover: () => this.toolbarController.closePopover(),
+      onRenameChange: () => this.syncSelectionKeymapScope(),
+    })
     // A PDF card draws its pages for the zoom they are seen at, so it has to
     // hear about every zoom — and redraws once one holds still (the reader's
     // own settle). Same lifetime as the camera and the renderer, so nothing
@@ -1177,7 +1152,7 @@ export class WhiteboardCanvas {
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
-      isEditableNode: (node) => this.isEditableNode(node),
+      isEditableNode: (node) => this.editing.isEditableNode(node),
       isPdfNode: (node) => isPdfNode(node),
       openReader: (id) => this.pdf.openReaderPanel(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
@@ -1191,8 +1166,8 @@ export class WhiteboardCanvas {
       deleteEdges: (ids) => this.deleteEdges(ids),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       createGroupFromSelection: () => this.createGroupFromSelection(),
-      editCard: (id) => this.editCard(id),
-      beginRename: (target) => this.beginRename(target),
+      editCard: (id) => this.editing.editCard(id),
+      beginRename: (target) => this.editing.beginRename(target),
       applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
       applyColorToEdge: (edgeId, color) => this.applyColorToEdge(edgeId, color),
       setEdgeEnds: (edgeId, direction) => this.setEdgeEnds(edgeId, direction),
@@ -1208,7 +1183,7 @@ export class WhiteboardCanvas {
       annotationStores: this.annotationStores,
       annotationPrefs: this.annotationPrefs,
       getPdfPosition: (id) => this.cardRenderer.getPdfPosition(id),
-      getEnteredNodeId: () => this.enteredNodeId,
+      getEnteredNodeId: () => this.editing.getEnteredNodeId(),
       onResize: () => this.onResize(),
       runEscape: () => this.onEscape(),
       isTypingIntoField: () => this.isTypingIntoField(),
@@ -1222,10 +1197,8 @@ export class WhiteboardCanvas {
       nodeIdAtPointer: (e) => this.nodeIdAtPointer(e),
       beginCreateDrag: (e, size, create) =>
         this.beginCreateDrag(e, size, create),
-      enterEditMode: (id) => this.enterEditMode(id),
-      commitEditOn: (id) => {
-        if (this.editing?.nodeId === id) this.editing.editor.blur()
-      },
+      enterEditMode: (id) => this.editing.enterEditMode(id),
+      commitEditOn: (id) => this.editing.blurEditor([id]),
       purgeNodeRuntime: (id) => this.purgeNodeRuntime(id),
       isExcerptDrag: (e) => this.pdf.isExcerptDrag(e),
       dropExcerpt: (e, at, isOverCard) =>
@@ -1236,7 +1209,7 @@ export class WhiteboardCanvas {
       tidySelection: () => this.tidySelection(),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
-      beginRename: (target) => this.beginRename(target),
+      beginRename: (target) => this.editing.beginRename(target),
       deleteNodes: (ids) => this.deleteNodes(ids),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       resetCamera: () => this.cameraController.resetCamera(),
@@ -1245,7 +1218,7 @@ export class WhiteboardCanvas {
     // reason. The buttons act on the board, so an open card edit is ended
     // first — the same as clicking anywhere else on the board would.
     const onBoard = (action: () => void) => () => {
-      this.forceCommitActiveEdit()
+      this.editing.forceCommitActiveEdit()
       action()
     }
     this.canvasControls = new CanvasControls(
@@ -1443,8 +1416,8 @@ export class WhiteboardCanvas {
       // don't intercept. A group whose label is being renamed owns it for the
       // same reason: that label is the only part of a group a press can
       // reach, and while it holds the caret a press in it places the caret.
-      if (this.editing?.nodeId === nodeId) return
-      if (this.isRenaming({ kind: 'group', id: nodeId })) return
+      if (this.editing.isEditing(nodeId)) return
+      if (this.editing.isRenaming({ kind: 'group', id: nodeId })) return
       // Same rule for a body the content mask has been lifted from: a press
       // that reached a media element or an embedded page belongs to it, and
       // the pointer capture below would take the rest of the gesture away
@@ -1474,7 +1447,7 @@ export class WhiteboardCanvas {
     if (edgeId !== null) {
       // Its label is being typed: a press in it places the caret, the same
       // rule a group being renamed follows above.
-      if (this.isRenaming({ kind: 'edge', id: edgeId })) return
+      if (this.editing.isRenaming({ kind: 'edge', id: edgeId })) return
       if (this.startEdgeReattach(edgeId, e)) return
     }
 
@@ -1507,14 +1480,14 @@ export class WhiteboardCanvas {
     // element, wiring its label's `dblclick` straight to `focusLabel`.
     const groupId = this.groupLabelIdFromEventTarget(target)
     if (groupId !== null) {
-      this.beginRename({ kind: 'group', id: groupId })
+      this.editing.beginRename({ kind: 'group', id: groupId })
       return
     }
     // An edge carries its label on the line, so the line is where one asks
     // for it — the same gesture the toolbar's "label" button performs.
     const edgeId = this.edgeIdFromEventTarget(target)
     if (edgeId !== null) {
-      this.beginRename({ kind: 'edge', id: edgeId })
+      this.editing.beginRename({ kind: 'edge', id: edgeId })
       return
     }
     const world = this.worldPointFromEvent(e)
@@ -1528,7 +1501,7 @@ export class WhiteboardCanvas {
     if (nodeId !== null) {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
-      if (this.editing?.nodeId === nodeId) return
+      if (this.editing.isEditing(nodeId)) return
       // A card being generated into has its text in the DOM and its body
       // under the stream; asking to type in it is asking to stop. The
       // editor opens on what has arrived, from `endCardGeneration`.
@@ -1536,7 +1509,7 @@ export class WhiteboardCanvas {
         this.cardGeneration.stop(nodeId, { edit: true })
         return
       }
-      this.editCard(nodeId)
+      this.editing.editCard(nodeId)
       return
     }
     // Creating is what a double-click on *nothing* means, so it needs the
@@ -1554,7 +1527,7 @@ export class WhiteboardCanvas {
     const nodeId = this.nodeIdAtPointer(e)
     // The card being edited owns its own context menu (CM6's, with the text
     // actions that belong to an editor).
-    if (nodeId !== null && this.editing?.nodeId === nodeId) return
+    if (nodeId !== null && this.editing.isEditing(nodeId)) return
     e.preventDefault()
 
     if (nodeId === null) {
@@ -2374,7 +2347,7 @@ export class WhiteboardCanvas {
     if (created) {
       this.recomputeVisibility()
       this.drainQueues()
-      this.enterEditMode(created.nodeId)
+      this.editing.enterEditMode(created.nodeId)
     }
   }
 
@@ -2803,7 +2776,7 @@ export class WhiteboardCanvas {
     // `this.board`. Committing first is what keeps the agent's edit from
     // being computed against — and then written over — what the user is in
     // the middle of typing.
-    this.forceCommitActiveEdit()
+    this.editing.forceCommitActiveEdit()
     const [next, value] = edit(this.board)
     if (next && next !== this.board) {
       this.history.push(next)
@@ -2819,7 +2792,7 @@ export class WhiteboardCanvas {
   private registerViewKeymap(): void {
     // A key typed into a field — a PDF reader's page or search box — is the
     // field's: Mod+Z undoes the typing, Shift+1 types "!".
-    const busy = () => this.editing !== null || this.isTypingIntoField()
+    const busy = () => this.editing.isActive() || this.isTypingIntoField()
     const run = (action: () => void) => () => {
       if (busy()) return false
       action()
@@ -2984,8 +2957,9 @@ export class WhiteboardCanvas {
     // selected: picking another card, or none, takes it back out. Done here
     // rather than at each call site because this is the one place focus
     // changes, and "entered" is only ever a state of the focused card.
-    if (this.enteredNodeId !== null && this.enteredNodeId !== next) {
-      this.exitLiveContent()
+    const entered = this.editing.getEnteredNodeId()
+    if (entered !== null && entered !== next) {
+      this.editing.exitLiveContent()
     }
     const previous = this.focusedNodeId
     if (previous !== null) {
@@ -3031,10 +3005,8 @@ export class WhiteboardCanvas {
     this.overviewLayer?.markDirty()
     this.syncSelectionKeymapScope()
     // A label being typed belongs to the edge that was selected when it
-    // opened; deselecting that edge ends the session (committing, the same as
-    // a blur would).
-    const typed = this.renaming
-    if (typed?.kind === 'edge' && !next.has(typed.id)) this.endRename(true)
+    // opened; deselecting that edge ends the session.
+    this.editing.onEdgeSelectionChange(next)
     this.toolbarController.refreshToolbar()
   }
 
@@ -3058,7 +3030,7 @@ export class WhiteboardCanvas {
       // Backspace/Delete/Escape belong to that field, not to the selection
       // behind it — the same rule that keeps the card editor and the selection
       // scope from ever being armed at once.
-      this.renaming === null &&
+      !this.editing.isRenamingAny() &&
       !this.dropImport.isPromptOpen()
     if (hasSelection && !this.selectionScopeDisposer) {
       this.pushSelectionKeymapScope()
@@ -3099,7 +3071,7 @@ export class WhiteboardCanvas {
           if (this.isTypingIntoField()) return false
           if (this.selectedIds.size !== 1) return false
           const id = this.selectedIds.values().next().value
-          return id !== undefined && this.editCard(id)
+          return id !== undefined && this.editing.editCard(id)
         },
       },
       {
@@ -3130,8 +3102,8 @@ export class WhiteboardCanvas {
     if (this.selectedIds.size === 0 && this.selectedEdgeIds.size === 0) {
       return false
     }
-    if (this.enteredNodeId !== null) {
-      this.exitLiveContent()
+    if (this.editing.getEnteredNodeId() !== null) {
+      this.editing.exitLiveContent()
       return true
     }
     this.clearSelection()
@@ -3199,194 +3171,6 @@ export class WhiteboardCanvas {
     )
   }
 
-  // -- labels (edge, group) -----------------------------------------------
-  // A group's label and an edge's are both HTML in the world layer, and both
-  // are typed where they already are: the element takes the caret itself
-  // (`contenteditable`) rather than having a field floated over it. This is
-  // Obsidian Canvas's arrangement for both, and the only one under which the
-  // text keeps the size, weight and position it had a moment ago — a
-  // screen-space field standing in for world-scaled text can match it at one
-  // zoom level and no other, which is what both of these used to do.
-  //
-  // One session for the two, because there is now only one mechanism. What
-  // differs is which element holds the text, what the text is committed to,
-  // and what an emptied label means: a group keeps its label element (it is
-  // the group's only handle), an edge's goes away with its text.
-
-  private beginRename(target: LabelTarget): void {
-    if (!this.canEdit || !this.renameSubjectExists(target)) return
-    if (this.isRenaming(target)) return
-    this.endRename(true)
-    // Whatever the viewport last said about this edge, it is about to hold a
-    // caret — and a culled edge's label is `display: none`.
-    if (target.kind === 'edge') this.edgeLayer.revealEdge(target.id)
-    const el =
-      this.labelEl(target) ??
-      (target.kind === 'edge'
-        ? this.edgeLayer.attachEdgeLabel(target.id)
-        : null)
-    if (!el) return
-    this.toolbarController.closePopover()
-    this.renaming = target
-    // `plaintext-only` rather than plain `contenteditable` so a paste arrives
-    // as the text it looked like rather than as markup a label cannot hold.
-    el.setAttribute('contenteditable', 'plaintext-only')
-    // Before the focus: in the overview tier this element is out of the
-    // document, and a hidden element cannot take the caret.
-    this.syncEdgeRenameChrome()
-    el.focus()
-    // Selected rather than left with a caret where the click landed: renaming
-    // usually replaces the name. Obsidian Canvas selects it too.
-    const range = el.ownerDocument.createRange()
-    range.selectNodeContents(el)
-    const selection = this.context.getWindow().getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    this.syncSelectionKeymapScope()
-  }
-
-  /** Ends a rename: committing writes what was typed, cancelling puts back
-   * what the board still holds. Either way the label goes back to being a
-   * label. `target` defaults to whichever one is being typed, so a caller
-   * that only means "whatever is in flight" (a lock, a teardown) can say
-   * that; naming one that is not being typed is a no-op. */
-  private endRename(
-    commit: boolean,
-    target: LabelTarget | null = this.renaming,
-  ): void {
-    if (!target || !this.isRenaming(target)) return
-    this.renaming = null
-    const el = this.labelEl(target)
-    if (el) {
-      el.removeAttribute('contenteditable')
-      el.blur()
-      if (commit) this.commitLabel(target, el.textContent ?? '')
-      else this.restoreLabel(target, el)
-    }
-    this.syncEdgeRenameChrome()
-    this.syncSelectionKeymapScope()
-  }
-
-  private handleLabelKeyDown(target: LabelTarget, e: KeyboardEvent): void {
-    if (!this.isRenaming(target)) return
-    // `isComposing` so the Enter that accepts an IME candidate is the IME's,
-    // not ours — Obsidian Canvas guards its own label the same way.
-    if (e.isComposing) return
-    if (e.key !== 'Enter' && e.key !== 'Escape') return
-    e.preventDefault()
-    // Neither key means anything else while a name is being typed: Escape in
-    // particular must not travel on to whatever Obsidian would close with it.
-    e.stopPropagation()
-    this.endRename(e.key === 'Enter', target)
-  }
-
-  private isRenaming(target: LabelTarget): boolean {
-    return this.renaming !== null && sameLabelTarget(this.renaming, target)
-  }
-
-  /** Whether an edge label is being typed right now — the one label the
-   * overview canvas leaves to the DOM, since a canvas holds no caret. */
-  private get renamingEdgeId(): EdgeId | null {
-    return this.renaming?.kind === 'edge' ? this.renaming.id : null
-  }
-
-  /**
-   * Puts the label being typed back in the drawing for the length of the
-   * rename, in the tier that has taken every label out of it.
-   *
-   * Naming a relation is what this zoom is for (see style.css's
-   * `.yolo-whiteboard-edge-label` on why a label is sized the way it is), so
-   * declining the rename here was not an option, and neither was drawing it:
-   * the caret lives in the element. The class the stylesheet reads brings the
-   * layer back and hides every label but the editable one, which costs a
-   * style recalculation over the board's labels — paid once, at the start of a
-   * deliberate action the user is about to spend seconds on.
-   */
-  private syncEdgeRenameChrome(): void {
-    const wanted = this.renamingEdgeId !== null && this.overviewChromeHidden
-    if (this.worldEl.classList.contains(WORLD_EDGE_RENAME_CLASS) === wanted) {
-      return
-    }
-    // The layer is about to be seen; it must not be seen at the counter-scale
-    // it wore whenever the tier began (CameraController's applyZoomScale).
-    if (wanted) this.cameraController.flushOverviewChromeZoomScale()
-    this.worldEl.classList.toggle(WORLD_EDGE_RENAME_CLASS, wanted)
-  }
-
-  /** False once the thing being named has left the board, which is what makes
-   * calling any of this on a stale target safe. */
-  private renameSubjectExists(target: LabelTarget): boolean {
-    return target.kind === 'group'
-      ? this.nodesById.get(target.id)?.type === 'group'
-      : this.boardEdgesById.has(target.id)
-  }
-
-  private labelEl(target: LabelTarget): HTMLElement | null {
-    if (target.kind === 'edge') {
-      return this.edgeLayer.getLabelEl(target.id)
-    }
-    return (
-      this.cardRenderer
-        .getRuntime(target.id)
-        ?.el?.querySelector<HTMLElement>(`.${GROUP_LABEL_CLASS}`) ?? null
-    )
-  }
-
-  /** Puts back what the board still holds, after a cancelled rename. An
-   * edge that had no label to begin with loses the element it was given. */
-  private restoreLabel(target: LabelTarget, el: HTMLElement): void {
-    const stored =
-      target.kind === 'group'
-        ? this.groupLabelText(target.id)
-        : (this.boardEdgesById.get(target.id)?.label ?? '')
-    if (target.kind === 'edge' && stored.length === 0) {
-      this.edgeLayer.detachEdgeLabel(target.id)
-      return
-    }
-    el.textContent = stored
-  }
-
-  private commitLabel(target: LabelTarget, value: string): void {
-    if (target.kind === 'group') this.commitGroupLabel(target.id, value)
-    else this.commitEdgeLabel(target.id, value)
-  }
-
-  private groupLabelText(nodeId: NodeId): string {
-    const group = this.nodesById.get(nodeId)
-    return group?.type === 'group' ? (group.label ?? '') : ''
-  }
-
-  /** An empty group label removes the attribute rather than storing `""` —
-   * the same rule an edge label follows. The element stays either way: it is
-   * the group's only handle. */
-  private commitGroupLabel(nodeId: NodeId, value: string): void {
-    if (!this.canEdit) return
-    const group = this.nodesById.get(nodeId)
-    if (!group || group.type !== 'group') return
-    const label = value.trim().length > 0 ? value : undefined
-    const el = this.labelEl({ kind: 'group', id: nodeId })
-    if (el) el.textContent = label ?? ''
-    const board = updateNode(this.board, nodeId, { label })
-    if (board === this.board) return
-    this.applyBoardChange(board)
-  }
-
-  /** An empty label removes the attribute rather than storing `""` — an edge
-   * with a blank label and one with no label are the same edge, and neither
-   * carries an element on its curve. */
-  private commitEdgeLabel(edgeId: EdgeId, value: string): void {
-    if (!this.canEdit || !this.boardEdgesById.has(edgeId)) return
-    const label = value.trim().length > 0 ? value : undefined
-    if (label === undefined) this.edgeLayer.detachEdgeLabel(edgeId)
-    else {
-      const el = this.edgeLayer.attachEdgeLabel(edgeId)
-      if (el) el.textContent = label
-    }
-    const board = updateEdge(this.board, edgeId, { label })
-    if (board === this.board) return
-    this.applyBoardChange(board)
-  }
-
   /** World point an edge's chrome hangs from: the midpoint of its curve, the
    * same anchor its label already uses (domain/edges.ts's `EdgeGeometry`). */
   private edgeAnchorPoint(edgeId: EdgeId | undefined): ScreenPoint | null {
@@ -3429,11 +3213,9 @@ export class WhiteboardCanvas {
 
   private deleteNodes(ids: readonly NodeId[]): void {
     if (!this.canEdit || ids.length === 0) return
-    if (this.editing && ids.includes(this.editing.nodeId)) {
-      // Commit through the one blur path before the card stops existing,
-      // rather than leaving an editor mounted on a deleted card.
-      this.editing.editor.blur()
-    }
+    // Commit through the one blur path before the card stops existing,
+    // rather than leaving an editor mounted on a deleted card.
+    this.editing.blurEditor(ids)
     let board = this.board
     for (const id of ids) {
       if (board.nodes.some((node) => node.id === id))
@@ -3733,11 +3515,6 @@ export class WhiteboardCanvas {
     return mintEdgeId(this.board)
   }
 
-  private nextEditSessionId(): number {
-    this.editSessionCounter += 1
-    return this.editSessionCounter
-  }
-
   private worldPointFromEvent(e: MouseEvent): ScreenPoint {
     return screenToWorld(
       this.cameraController.view,
@@ -3791,7 +3568,7 @@ export class WhiteboardCanvas {
     this.cardGeneration.stop(id)
     // The node is going away, so there is nothing left to rename and nothing
     // to write what was typed to; drop the session rather than commit it.
-    this.endRename(false, { kind: 'group', id })
+    this.editing.endRename(false, { kind: 'group', id })
     // The runtime-map half of this teardown is cardRenderer's own state; see
     // its `destroyRuntime` doc comment for why the operation is still one
     // call from every caller but this one's point of view (`evictParkedCard`
@@ -3936,7 +3713,7 @@ export class WhiteboardCanvas {
       this.overviewLingering = true
       this.cardRenderer.unfreezeParkedCapacity()
     }
-    this.syncEdgeRenameChrome()
+    this.editing.syncEdgeRenameChrome()
     this.toolbarController.refreshToolbar()
     this.dropImport.refreshCardMenu()
   }
@@ -3970,7 +3747,7 @@ export class WhiteboardCanvas {
     this.cameraController.flushOverviewChromeZoomScale()
     this.worldEl.classList.remove(WORLD_OVERVIEW_CLASS)
     this.overviewLayer?.setActive(false)
-    this.syncEdgeRenameChrome()
+    this.editing.syncEdgeRenameChrome()
   }
 
   /**
@@ -4039,7 +3816,7 @@ export class WhiteboardCanvas {
     const runtime = this.cardRenderer.getRuntime(id)
     if (!runtime?.el || !runtime.bodyEl) return
     // Entered edit mode after being queued: the editor owns the body now.
-    if (this.editing?.nodeId === id) return
+    if (this.editing.isEditing(id)) return
     void this.cardRenderer.renderCardPreview(id)
   }
 
@@ -4087,401 +3864,11 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Edit lifecycle: click -> live CM6 editor; blur (native, or a
-  // programmatic `.blur()` from Escape / a card switch / teardown) -> the
-  // single `finishEdit` commit path. Never write back from anywhere else —
-  // this is what keeps blur and Escape from double-committing.
-  // -----------------------------------------------------------------------
-
-  /**
-   * Whether this node has text a card can edit: a text node always, a file
-   * node only while it points at markdown. A group has no text surface, and
-   * neither does a web card, a PDF or a media file.
-   */
-  private isEditableNode(node: BoardNode): boolean {
-    return (
-      node.type === 'text' ||
-      (node.type === 'file' && isMarkdownPath(node.file))
-    )
-  }
-
-  /**
-   * Opens a card: into its editor when it has text, into its content when
-   * that content is live. False when the card is neither, so a key binding
-   * can decline instead of silently swallowing the keystroke.
-   *
-   * One gesture, two destinations, because there is one idea: "I mean what is
-   * in this card, not the card". A markdown card answers it with a caret; a
-   * web, HTML or media card answers it by letting the pointer through to the
-   * page or the transport. Which of the two a card gives is a property of the
-   * card, not a second command for the user to know about.
-   */
-  private editCard(id: NodeId): boolean {
-    const node = this.nodesById.get(id)
-    if (!node) return false
-    if (!this.isEditableNode(node)) return this.enterLiveContent(id)
-    this.enterEditMode(id)
-    return true
-  }
-
-  /**
-   * Lets the pointer into a card's live content.
-   *
-   * This is the whole reason the content mask is not lifted by selection.
-   * A live body that a pointer can reach is a body the card can no longer be
-   * dragged by — the press lands in the page, and `onPointerDown` bails
-   * (`isLiveContentTarget`) rather than steal it. Hanging that on selection
-   * meant that selecting a web card, the one thing you do before moving it,
-   * was also the thing that stopped you moving it. Obsidian Canvas lifts its
-   * blocker on focus and pays exactly this price; every canvas that embeds
-   * live content and stayed usable — Figma, tldraw, Miro — asks for the
-   * enter separately instead, and so do we.
-   *
-   * The card keeps its selection: entering is about the pointer, not about
-   * what the toolbar or a delete key is aimed at. Edit mode is the other way
-   * round (a card being edited is never also selected) because there a
-   * keystroke has to belong to one of them.
-   */
-  private enterLiveContent(id: NodeId): boolean {
-    // A degraded card has no body to enter, the same reason edit mode
-    // declines there.
-    if (this.parseFailed || this.overview) return false
-    if (!this.cardRenderer.hasLiveContent(id)) return false
-    if (this.enteredNodeId === id) return true
-    this.exitLiveContent()
-    const el = this.cardRenderer.getRuntime(id)?.el
-    if (!el) return false
-    el.classList.add(CARD_ENTERED_CLASS)
-    this.enteredNodeId = id
-    return true
-  }
-
-  /** Takes the pointer back out of a card's live content, if it was in one. */
-  private exitLiveContent(): void {
-    if (this.enteredNodeId === null) return
-    this.cardRenderer
-      .getRuntime(this.enteredNodeId)
-      ?.el?.classList.remove(CARD_ENTERED_CLASS)
-    this.enteredNodeId = null
-  }
-
-  // ---- rung one: generating into a card ----------------------------------
-  //
-  // The two halves of handing a card's body to `./canvas/cardGeneration.ts`
-  // and taking it back. Deliberately shaped like `enterEditMode`/`finishEdit`:
-  // a generation and an edit are the same claim on the same element, they pin
-  // the card the same way, and they commit through the same
-  // `commitCardText`, so nothing downstream has to know which of the two
-  // wrote a card.
-
-  private beginCardGeneration(id: NodeId): HTMLElement | null {
-    if (!this.canCreate) return null
-    const node = this.nodesById.get(id)
-    if (!node || node.type !== 'text') return null
-    const runtime = this.cardRenderer.getRuntime(id)
-    if (!runtime?.bodyEl) return null
-    // A card cannot be edited and generated into at once; the blur commits
-    // whatever was typed through the one path that writes it.
-    if (this.editing?.nodeId === id) this.editing.editor.blur()
-    this.cardRenderer.destroyCardContent(runtime)
-    runtime.bodyEl.replaceChildren()
-    runtime.el?.classList.add(CARD_GENERATING_CLASS)
-    this.pinnedIds.add(id)
-    return runtime.bodyEl
-  }
-
-  private endCardGeneration(
-    id: NodeId,
-    text: string,
-    { edit }: { edit: boolean },
-  ): void {
-    const runtime = this.cardRenderer.getRuntime(id)
-    runtime?.el?.classList.remove(CARD_GENERATING_CLASS)
-    runtime?.bodyEl?.replaceChildren()
-    this.pinnedIds.delete(id)
-    // One history step for the whole run: everything that streamed lands
-    // on the board at once, and Cmd+Z takes the card back to empty.
-    if (text !== '') {
-      this.commitCardText(id, text, `card-ai-${this.nextEditSessionId()}`)
-    }
-    void this.cardRenderer.renderCardPreview(id)
-    if (edit) this.enterEditMode(id)
-  }
-
-  private enterEditMode(id: NodeId): void {
-    // Degraded cards render as a title block with the body hidden, so
-    // an editor mounted now would be invisible; zooming back in is the way
-    // to edit.
-    if (!this.canCreate) return
-    const node = this.nodesById.get(id)
-    if (!node || !this.isEditableNode(node)) return
-    const runtime = this.cardRenderer.getRuntime(id)
-    if (!runtime?.bodyEl || runtime.missingFile) return
-    // A file card's initial content is read asynchronously on mount
-    // (renderCardPreview); if the user clicks to edit before that first
-    // read resolves, there's no known draft to seed the editor with yet —
-    // entering edit mode anyway would risk a blur immediately after
-    // overwriting the file with empty text.
-    if (node.type === 'file' && runtime.noteText === null) return
-
-    if (this.editing) {
-      if (this.editing.nodeId === id) return
-      // Force a real DOM blur on the previously-active editor so it commits
-      // through the exact same path before this one takes over.
-      this.editing.editor.blur()
-    }
-    // A card being edited is never also selected (see `selectedIds`). Cleared
-    // after the blur above, which selects the card it just left. Keeping the
-    // two apart is what stops the selection's own bindings from stealing
-    // Enter and Escape from the editor — the keys they mean most.
-    this.clearSelection()
-
-    // Where the editor opens, read before anything below has touched the card.
-    //
-    // Asked of the reading surface the editor is about to go over, and only of
-    // the node when there is none — a card edited straight out of a clipped
-    // render has no finer position to offer. What the node carries is snapped
-    // to a block start, because a clipped card cannot begin mid block; the
-    // surface the user is looking at is not, and opening the editor on the
-    // node's number would step the card back to the top of whatever block the
-    // reader's top edge was inside.
-    //
-    // The node is re-read here rather than taken from `node` above: clearing
-    // the selection is what commits where the card was being read, and a board
-    // is structurally shared — that commit leaves a *new* node object behind,
-    // so the one this method opened with still carries the window before this
-    // reading.
-    const current = this.nodesById.get(id)
-    const nodeLine =
-      current && (current.type === 'text' || current.type === 'file')
-        ? (current.startLine ?? 0)
-        : 0
-    const startLine = this.cardRenderer.getContentScrollLine(id) ?? nodeLine
-
-    const initialText =
-      node.type === 'text' ? node.text : (runtime.noteText ?? '')
-    // The reading surface stays where it is, holding the card's scroll
-    // position, and the class below takes it out of the way (style.css). Only
-    // a body holding something an editor cannot sit over — a placeholder, an
-    // image, a web frame — is cleared first.
-    if (runtime.contentView === null) {
-      this.cardRenderer.destroyCardContent(runtime)
-      runtime.bodyEl.replaceChildren()
-    }
-    runtime.el?.classList.add(CARD_EDITING_CLASS)
-    runtime.bodyEl.classList.add(EDITOR_HOST_CLASS)
-    this.pinnedIds.add(id)
-
-    const editor = this.host.ui.createMarkdownEditor({
-      container: runtime.bodyEl,
-      value: initialText,
-      // What `[[links]]` in this card resolve against, and where an attachment
-      // pasted into it is filed. A note card is its own document; a text card
-      // lives inside the board file, so "here" is the board.
-      sourcePath: node.type === 'file' ? node.file : this.sourcePathForBoard(),
-      onChange: () => {
-        this.scheduleEditPersist(id)
-        // An empty card keeps its chips while its editor is open, and loses
-        // them at the first character (./canvas/cardGeneration.ts). Typing is
-        // the only thing that changes that answer while the editor holds the
-        // card's text, so this is where it is re-asked — no second state to
-        // keep in step.
-        this.cardGeneration.syncChips(id)
-      },
-      onBlur: (text) => this.finishEdit(id, text),
-      // Rung two of the board's AI ladder: the host's Quick
-      // Ask, opened by the trigger inside the card's own editor.
-      quickAsk: {
-        // Resolved per request, against the board as it is at that moment —
-        // an Agent-mode turn that just rewrote the board must be described by
-        // the board it produced, not by the one this editor opened over. The
-        // same assembly rung one generates from (host/cardContext.ts), so the
-        // two rungs cannot come to describe a card differently; only the
-        // prompt wrapped around it differs.
-        getContext: () =>
-          resolveCardContext(
-            this.host,
-            this.board,
-            id,
-            this.sourcePathForBoard(),
-          ),
-        // A board pans and zooms by transform and fires no scroll event, so
-        // the panel has no other way to learn the card moved out from under
-        // it.
-        subscribeAnchorMove: (onMove) =>
-          this.cameraController.subscribeViewChange(onMove),
-      },
-    })
-    const scopeDisposer = this.context.registerKeymap([
-      {
-        modifiers: [],
-        key: 'Escape',
-        handler: () => {
-          editor.blur()
-          return true
-        },
-      },
-    ])
-    this.editing = {
-      nodeId: id,
-      editor,
-      scopeDisposer,
-      historyKey: `edit-${this.nextEditSessionId()}`,
-      persistTimer: null,
-    }
-    editor.focus()
-    // Open where the card was being read. Both surfaces speak the same
-    // fractional source line, so nothing is mapped between them; what is left
-    // is how the two lay a block out, which is bounded by that block and
-    // measured, not estimated (obsidianMarkdownEditor.ts's `openAtLine`).
-    if (startLine > 0) editor.openAtLine(startLine)
-    // A card opened while still empty keeps its chips beside the caret: the
-    // main way one gets made — dragging an arrow into empty space — opens the
-    // editor on the spot, and chips that waited for it to close would never
-    // be seen there. Appended after the editor, which the body now holds.
-    this.cardGeneration.syncChips(id)
-  }
-
-  /**
-   * Persists in-progress edits without waiting for the user to leave the card.
-   *
-   * Blur alone used to be the only write point, which meant everything typed
-   * since the card was opened was held in the editor and nowhere else — a
-   * crash mid-edit lost it. Throttled rather than per-keystroke because the
-   * board's own save is debounced downstream anyway, and a note card's write
-   * is a real file write.
-   */
-  private scheduleEditPersist(id: NodeId): void {
-    const editing = this.editing
-    if (!editing || editing.nodeId !== id) return
-    // Leading edge already scheduled: the timer reads the editor when it
-    // fires, so it always writes the latest text and never needs restarting.
-    if (editing.persistTimer !== null) return
-    const win = this.context.getWindow()
-    editing.persistTimer = win.setTimeout(() => {
-      editing.persistTimer = null
-      if (this.editing !== editing) return
-      this.commitCardText(id, editing.editor.getValue(), editing.historyKey)
-    }, EDIT_PERSIST_THROTTLE_MS)
-  }
-
-  /** Writes a card's text to wherever that card's content lives — the note
-   * file for a note card, the board for a text card. */
-  private commitCardText(id: NodeId, text: string, historyKey?: string): void {
-    const action = planNodeCommit(this.board, id, text)
-    switch (action.kind) {
-      case 'writeNoteFile': {
-        const runtime = this.cardRenderer.getRuntime(id)
-        if (runtime) runtime.noteText = action.markdown
-        void this.host.vault
-          .writeText(action.file, action.markdown)
-          .catch((error: unknown) => this.reportError('writeText', error))
-        break
-      }
-      case 'updateBoard':
-        this.applyBoardChange(action.board, historyKey)
-        break
-      case 'noop':
-        break
-    }
-  }
-
-  private finishEdit(id: NodeId, text: string): void {
-    const editing = this.editing
-    if (!editing || editing.nodeId !== id) return // stale callback: already exited some other way
-    this.editing = null
-    if (editing.persistTimer !== null) {
-      this.context.getWindow().clearTimeout(editing.persistTimer)
-    }
-    editing.scopeDisposer()
-
-    // Where the editor was left is where the card is now — the other half of
-    // `enterEditMode`, and the same shape as Obsidian's own embed leaving edit
-    // mode: read once, carried across once, unconditionally. Read before
-    // `destroy()`, which is what makes the editor unable to answer.
-    const line = editing.editor.getScrollLine()
-    const board = this.boardWithSnappedWindow(this.board, id, line)
-    if (board !== this.board) {
-      this.board = board
-      this.syncBoardIndex()
-    }
-    editing.editor.destroy()
-    this.pinnedIds.delete(id)
-
-    const runtime = this.cardRenderer.getRuntime(id)
-    runtime?.el?.classList.remove(CARD_EDITING_CLASS)
-    runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
-
-    // Final flush: the throttled writes may have left the last keystrokes
-    // unpersisted, and a no-op commit costs nothing. Still under the
-    // session's history key — the whole session is one step to undo.
-    this.commitCardText(id, text, editing.historyKey)
-    void this.cardRenderer.renderCardPreview(id)
-    // The reading surface comes out of hiding where the editor left off.
-    runtime?.contentView?.scrollToLine(line)
-    // Leaving the editor lands on the card, not on nothing: Escape steps
-    // out to the selected card and only a second Escape clears it. A blur
-    // caused by pressing somewhere else is overwritten by whatever that
-    // press selects, a moment later in the same gesture.
-    if (this.nodesById.has(id)) this.setSelection([id])
-  }
-
-  /** Commits the active edit (if any) through the single `finishEdit` path
-   * by forcing a real blur — used by every non-interactive teardown
-   * (`dispose`, `setViewData`, `clear`) so none of them need their own
-   * write-back logic. */
-  private forceCommitActiveEdit(): void {
-    if (!this.editing) return
-    this.editing.editor.blur()
-  }
-
-  /**
-   * Ends the active edit for a board that is about to be replaced wholesale
-   * (`setViewData`) — the file was rewritten from outside, or a different one
-   * is being loaded into this leaf.
-   *
-   * A note card's text is still written: it belongs to that *file*, and the
-   * note is owed those keystrokes whether or not a card pointing at it
-   * survives the incoming board.
-   *
-   * A text card's is dropped, because there is nowhere left to put it. The
-   * ordinary commit path would `applyBoardChange` it onto `this.board` — the
-   * board `setViewData` discards two statements later, which takes the
-   * history entry with it and leaves a queued `requestSave` that goes on to
-   * persist the *replacing* board. The edit is lost either way; committing it
-   * only adds the corruption. (This is the "外部改写 board 后卡片消失" bug,
-   * which needed the rare editing-while-rewritten window to reproduce — a
-   * window the agent whiteboard tools make ordinary.)
-   */
-  private endEditForIncomingBoard(): void {
-    const editing = this.editing
-    if (!editing) return
-    // Nulled first, so the blur that `destroy()` fires reaches `finishEdit`
-    // as a stale callback and takes its early return instead of committing.
-    this.editing = null
-    if (editing.persistTimer !== null) {
-      this.context.getWindow().clearTimeout(editing.persistTimer)
-    }
-    editing.scopeDisposer()
-    const action = planNodeCommit(
-      this.board,
-      editing.nodeId,
-      editing.editor.getValue(),
-    )
-    if (action.kind === 'writeNoteFile') {
-      void this.host.vault
-        .writeText(action.file, action.markdown)
-        .catch((error: unknown) => this.reportError('writeText', error))
-    }
-    editing.editor.destroy()
-  }
-
-  // -----------------------------------------------------------------------
   // Teardown / error state
   // -----------------------------------------------------------------------
 
   private teardownAllCards(): void {
-    this.forceCommitActiveEdit()
+    this.editing.forceCommitActiveEdit()
     // Every card is about to be destroyed, and a run's text belongs to the
     // board that is going away — committing it here would land it on the one
     // arriving (the reason `endEditForIncomingBoard` exists). What streamed is
@@ -4499,7 +3886,7 @@ export class WhiteboardCanvas {
     this.focusedNodeId = null
     // Dropped rather than exited: every card element is about to go, so there
     // is no class left to take off one.
-    this.enteredNodeId = null
+    this.editing.forgetEntered()
     this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
     this.contentSyncQueue.clear()
@@ -4580,7 +3967,7 @@ export class WhiteboardCanvas {
     if (this.parseFailed) return
     for (const [id, node] of this.nodesById) {
       if (node.type !== 'file' || node.file !== path) continue
-      if (this.editing?.nodeId === id) continue
+      if (this.editing.isEditing(id)) continue
       const runtime = this.cardRenderer.getRuntime(id)
       if (!runtime?.el) continue // not currently mounted
       if (isMarkdownPath(node.file)) {
@@ -4608,7 +3995,7 @@ export class WhiteboardCanvas {
     // The card may have unmounted, been superseded, or entered edit mode
     // while the read above was in flight.
     if (this.cardRenderer.getRuntime(id) !== runtime) return
-    if (this.editing?.nodeId === id) return
+    if (this.editing.isEditing(id)) return
     if (runtime.noteText === text) return // no real change — short-circuit
     runtime.noteText = text
     runtime.missingFile = false
