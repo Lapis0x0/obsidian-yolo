@@ -23,7 +23,7 @@ import { getTextArg } from '../tool-args'
 // protocol shape — it stays unconditional; whether the tool is currently
 // offered is `isAvailable`'s job (see below).
 export function buildBashToolDescription(): string {
-  return `A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate \`fs_read\` tool — this shell has no read command. To search by meaning, call the separate \`vault_search\` tool; grep and find work here for literal matches. Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate \`fs_edit\` or \`fs_write\` tool instead.`
+  return `A sandboxed virtual shell over the vault, mounted at /vault (the default cwd); nothing outside /vault exists. grep and find match literally. mkdir, mv, and rm run here. There is no command that prints or writes file contents — use the file tools for that.`
 }
 
 const BASH_MCP_TOOL: Omit<McpTool, 'name'> = {
