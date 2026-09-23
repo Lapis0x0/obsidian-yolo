@@ -46,6 +46,10 @@ import {
 } from './anthropicPromptCache'
 import { BaseLLMProvider } from './base'
 import {
+  claudeAcceptsSamplingParams,
+  resolveClaudeReasoningRequest,
+} from './claudeReasoning'
+import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
 } from './exception'
@@ -178,18 +182,55 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
   /**
-   * max_tokens must cover thinking tokens too. For bounded levels (low through max)
-   * add the budget from REASONING_META on top of DEFAULT_MAX_TOKENS so visible output isn't truncated.
+   * `max_tokens` plus the `thinking` / `output_config` fields for `level`.
+   * `max_tokens` must cover thinking too, so the reasoning budget is added
+   * on top of the default reply size. A Claude model gets its generation's
+   * shape (`resolveClaudeReasoningRequest`); a non-Claude model behind an
+   * Anthropic-compatible endpoint keeps the adaptive shape it always had.
    */
-  private static resolveMaxTokens(
-    requested: number | undefined,
+  private static buildReasoningFields(
+    modelId: string,
     level: ReturnType<typeof resolveRequestReasoningLevel>,
-  ): number {
-    if (typeof requested === 'number') return requested
-    if (level && level !== 'off' && level !== 'auto') {
-      return AnthropicProvider.DEFAULT_MAX_TOKENS + REASONING_META[level].budget
+    requestedMaxTokens: number | undefined,
+  ): Record<string, unknown> & { max_tokens: number } {
+    if (level === undefined) {
+      return {
+        max_tokens: requestedMaxTokens ?? AnthropicProvider.DEFAULT_MAX_TOKENS,
+      }
     }
-    return AnthropicProvider.DEFAULT_MAX_TOKENS
+
+    const claude = resolveClaudeReasoningRequest(modelId, level)
+    if (claude) {
+      // `budget_tokens` must stay below `max_tokens`, so a budget is always
+      // added on top, even to a caller-chosen reply size.
+      const maxTokens =
+        claude.thinking?.type === 'enabled'
+          ? (requestedMaxTokens ?? AnthropicProvider.DEFAULT_MAX_TOKENS) +
+            claude.thinkingTokens
+          : (requestedMaxTokens ??
+            AnthropicProvider.DEFAULT_MAX_TOKENS + claude.thinkingTokens)
+      return {
+        max_tokens: maxTokens,
+        ...(claude.thinking ? { thinking: claude.thinking } : {}),
+        ...(claude.effort ? { output_config: { effort: claude.effort } } : {}),
+      }
+    }
+
+    const maxTokens =
+      requestedMaxTokens ??
+      (level !== 'off' && level !== 'auto'
+        ? AnthropicProvider.DEFAULT_MAX_TOKENS + REASONING_META[level].budget
+        : AnthropicProvider.DEFAULT_MAX_TOKENS)
+    if (level === 'off') {
+      return { max_tokens: maxTokens, thinking: { type: 'disabled' } }
+    }
+    return {
+      max_tokens: maxTokens,
+      thinking: { type: 'adaptive', display: 'summarized' },
+      ...(level !== 'auto'
+        ? { output_config: { effort: REASONING_META[level].effort } }
+        : {}),
+    }
   }
 
   constructor(
@@ -301,34 +342,14 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
-        max_tokens: AnthropicProvider.resolveMaxTokens(
-          request.max_tokens,
+        ...AnthropicProvider.buildReasoningFields(
+          request.model,
           level,
+          request.max_tokens,
         ),
-        temperature: request.temperature,
-        top_p: request.top_p,
-      }
-
-      if (level !== undefined) {
-        switch (level) {
-          case 'off':
-            payloadBase.thinking = { type: 'disabled' }
-            break
-          case 'auto':
-            payloadBase.thinking = {
-              type: 'adaptive',
-              display: 'summarized',
-            } as unknown as MessageCreateParamsNonStreaming['thinking']
-            break
-          default:
-            payloadBase.thinking = {
-              type: 'adaptive',
-              display: 'summarized',
-            } as unknown as MessageCreateParamsNonStreaming['thinking']
-            payloadBase.output_config = {
-              effort: REASONING_META[level].effort,
-            }
-        }
+        ...(claudeAcceptsSamplingParams(request.model)
+          ? { temperature: request.temperature, top_p: request.top_p }
+          : {}),
       }
 
       const payload = this.applyCustomModelParameters<
@@ -428,35 +449,15 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
-        max_tokens: AnthropicProvider.resolveMaxTokens(
-          request.max_tokens,
+        ...AnthropicProvider.buildReasoningFields(
+          request.model,
           level,
+          request.max_tokens,
         ),
-        temperature: request.temperature,
-        top_p: request.top_p,
+        ...(claudeAcceptsSamplingParams(request.model)
+          ? { temperature: request.temperature, top_p: request.top_p }
+          : {}),
         stream: true,
-      }
-
-      if (level !== undefined) {
-        switch (level) {
-          case 'off':
-            payloadBase.thinking = { type: 'disabled' }
-            break
-          case 'auto':
-            payloadBase.thinking = {
-              type: 'adaptive',
-              display: 'summarized',
-            } as unknown as MessageCreateParamsStreaming['thinking']
-            break
-          default:
-            payloadBase.thinking = {
-              type: 'adaptive',
-              display: 'summarized',
-            } as unknown as MessageCreateParamsStreaming['thinking']
-            payloadBase.output_config = {
-              effort: REASONING_META[level].effort,
-            }
-        }
       }
 
       const payload = this.applyCustomModelParameters<
