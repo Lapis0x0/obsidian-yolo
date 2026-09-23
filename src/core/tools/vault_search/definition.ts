@@ -25,7 +25,9 @@ import {
 const MAX_RESULTS_CAP = 300
 
 const VAULT_SEARCH_DESCRIPTION =
-  'Semantic vector search over the vault, when a RAG knowledge base is configured.'
+  'Search the vault by meaning and keywords together; returns the most relevant files with matching snippets. ' +
+  'Without a usable knowledge base it falls back to literal keyword matching on the query’s space-separated words — ' +
+  '`effectiveMode` and `fallbackReason` in the result say when this happened; retry with short, distinctive keywords.'
 
 /**
  * @param knowledgeBases When given, the `knowledgeBase` argument lists the
