@@ -89,6 +89,9 @@ export type ProviderExecutedToolCall = {
   resultText?: string
 }
 
+/** One output item of a Responses API reply, kept as the API returned it. */
+export type ResponsesReplayItem = { type: string } & Record<string, unknown>
+
 /** One content block of a Claude reply, kept as the API returned it. */
 export type AnthropicReplayBlock = { type: string } & Record<string, unknown>
 
@@ -102,6 +105,13 @@ export type ProviderMetadata = {
    */
   anthropic?: {
     content: AnthropicReplayBlock[]
+  }
+  /**
+   * A Responses API reply's output items as returned — reasoning items keep
+   * the encrypted reasoning that is sent back with the next request.
+   */
+  openaiResponses?: {
+    output: ResponsesReplayItem[]
   }
   hostedWebSearch?: HostedWebSearchCall[]
 }
