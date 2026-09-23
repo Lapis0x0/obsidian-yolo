@@ -361,6 +361,7 @@ export class ModuleRuntime {
             config: capabilityActivation.capabilities.config,
             i18n: capabilityActivation.capabilities.i18n,
             paths: capabilityActivation.capabilities.paths,
+            pdf: capabilityActivation.capabilities.pdf,
             privateStorage: capabilityActivation.capabilities.privateStorage,
             settings: capabilityActivation.capabilities.settings,
             ui: capabilityActivation.capabilities.ui,

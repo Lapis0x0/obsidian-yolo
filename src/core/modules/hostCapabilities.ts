@@ -33,6 +33,10 @@ import {
   type ModulePathsCapabilityProviderV1,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
+import {
+  type ModulePdfCapabilityProviderV1,
+  UNAVAILABLE_MODULE_PDF_CAPABILITY_PROVIDER,
+} from './modulePdf'
 import type {
   ModulePrivateStorageCapabilityProviderV1,
   ModulePrivateStorageScopeV1,
@@ -179,6 +183,7 @@ type CoreModuleHostCapabilityProviderOptions = {
   config?: ModuleConfigCapabilityProviderV1
   i18n?: ModuleI18nCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
+  pdf?: ModulePdfCapabilityProviderV1
   privateStorage?: ModulePrivateStorageCapabilityProviderV1
   settings?: ModuleSettingsCapabilityProviderV1
   ui?: ModuleUiCapabilityProviderV1
@@ -199,6 +204,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly now: () => number
   private readonly i18n: ModuleI18nCapabilityProviderV1
   private readonly paths: ModulePathsCapabilityProviderV1
+  private readonly pdf: ModulePdfCapabilityProviderV1
   private readonly privateStorage: ModulePrivateStorageCapabilityProviderV1
   private readonly settings: ModuleSettingsCapabilityProviderV1
   private readonly ui: ModuleUiCapabilityProviderV1
@@ -217,6 +223,7 @@ export class CoreModuleHostCapabilityProvider
     config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
     i18n = new ModuleI18nCapabilityProvider(),
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
+    pdf = UNAVAILABLE_MODULE_PDF_CAPABILITY_PROVIDER,
     privateStorage = UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
     settings = UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
     ui = UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
@@ -237,6 +244,7 @@ export class CoreModuleHostCapabilityProvider
     this.config = config
     this.i18n = i18n
     this.paths = paths
+    this.pdf = pdf
     this.privateStorage = privateStorage
     this.settings = settings
     this.ui = ui
@@ -263,6 +271,7 @@ export class CoreModuleHostCapabilityProvider
     const config = this.config.create(moduleId, lifecycle)
     const i18n = this.i18n.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
+    const pdf = this.pdf.create(moduleId, lifecycle)
     const privateStorage = this.privateStorage.create(moduleId, lifecycle)
     const settings = this.settings.create(moduleId, lifecycle)
     const ui = this.ui.create(moduleId, lifecycle)
@@ -277,6 +286,7 @@ export class CoreModuleHostCapabilityProvider
         config: config.api,
         i18n: i18n.api,
         paths: paths.api,
+        pdf: pdf.api,
         privateStorage: privateStorage.api,
         settings: settings.api,
         ui: ui.api,
@@ -295,6 +305,7 @@ export class CoreModuleHostCapabilityProvider
         background.activate()
         chat.activate()
         paths.activate()
+        pdf.activate()
         privateStorage.activate()
         settings.activate()
         ui.activate()

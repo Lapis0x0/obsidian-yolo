@@ -22,6 +22,15 @@ import type {
   YoloModuleMarkdownEditorV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
+  YoloModulePdfDocumentV1,
+  YoloModulePdfPageV1,
+  YoloModulePdfPointV1,
+  YoloModulePdfRectV1,
+  YoloModulePdfSelectionTupleV1,
+  YoloModulePdfTaskV1,
+  YoloModulePdfTextLayerV1,
+  YoloModulePdfTextSelectionV1,
+  YoloModulePdfV1,
   YoloModuleRuntimeRegistration,
   YoloModuleFileTextRendererV1,
   YoloModuleToolSetV1,
@@ -30,7 +39,7 @@ import type {
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration
-  type YoloModuleHostApiVersion = '1.9.0'
+  type YoloModuleHostApiVersion = '1.10.0'
   type YoloModuleHostApiV1 = YoloHostApiV1
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
   type YoloModuleHostChatModeV1 = YoloModuleChatModeV1
@@ -50,6 +59,15 @@ declare global {
   type YoloModuleHostMarkdownEditorOptionsV1 = YoloModuleMarkdownEditorOptionsV1
   type YoloModuleHostMenuItemV1 = YoloModuleMenuItemV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
+  type YoloModuleHostPdfV1 = YoloModulePdfV1
+  type YoloModuleHostPdfDocumentV1 = YoloModulePdfDocumentV1
+  type YoloModuleHostPdfPageV1 = YoloModulePdfPageV1
+  type YoloModuleHostPdfPointV1 = YoloModulePdfPointV1
+  type YoloModuleHostPdfRectV1 = YoloModulePdfRectV1
+  type YoloModuleHostPdfSelectionTupleV1 = YoloModulePdfSelectionTupleV1
+  type YoloModuleHostPdfTaskV1<T> = YoloModulePdfTaskV1<T>
+  type YoloModuleHostPdfTextLayerV1 = YoloModulePdfTextLayerV1
+  type YoloModuleHostPdfTextSelectionV1 = YoloModulePdfTextSelectionV1
   type YoloModuleHostToolSetV1 = YoloModuleToolSetV1
   type YoloModuleHostFileTextRendererV1 = YoloModuleFileTextRendererV1
   type YoloModuleHostSettingsContributionV1 = YoloModuleSettingsContributionV1

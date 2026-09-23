@@ -796,6 +796,146 @@ export type YoloModuleVaultV1 = {
   ): ModuleDisposer
 }
 
+/** `[x, y]`: PDF user space (points, y up) or viewport CSS pixels (y down). */
+export type YoloModulePdfPointV1 = readonly [x: number, y: number]
+
+/** Two opposite corners in PDF user space, in any order. */
+export type YoloModulePdfRectV1 = readonly [
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+]
+
+export type YoloModulePdfTaskV1<T> = Readonly<{
+  /** Rejects with an `AbortError` `DOMException` once cancelled. */
+  promise: Promise<T>
+  cancel(): void
+}>
+
+/**
+ * The `a,b,c,d` of Obsidian's native `[[x.pdf#page=N&selection=a,b,c,d]]`
+ * link: start span index, offset in it, end span index, (exclusive) offset in
+ * it — spans being the page's text-layer spans, numbered by their `data-idx`.
+ * A tuple produced by `describeRange` resolves back to the same text through
+ * `createRange`; a tuple written by Obsidian's own viewer names the same text
+ * as long as both pdf.js versions split the page into the same items.
+ */
+export type YoloModulePdfSelectionTupleV1 = readonly [
+  startIndex: number,
+  startOffset: number,
+  endIndex: number,
+  endOffset: number,
+]
+
+export type YoloModulePdfTextSelectionV1 = Readonly<{
+  pageNumber: number
+  /** The selected text, `\n` at the page's line breaks, Unicode-normalized. */
+  text: string
+  /**
+   * One quadrilateral per visual line, 8 numbers each — top-left, top-right,
+   * bottom-left, bottom-right as seen on screen — in PDF user space, the
+   * order PDF Highlight annotations use.
+   */
+  quadPoints: readonly number[]
+  tuple: YoloModulePdfSelectionTupleV1
+}>
+
+export type YoloModulePdfTextLayerV1 = Readonly<{
+  pageNumber: number
+  /**
+   * The part of `range` (usually the window selection's range) that lies in
+   * this layer, or null when none does. A selection across several pages is
+   * described one layer at a time.
+   */
+  describeRange(range: Range): YoloModulePdfTextSelectionV1 | null
+  /**
+   * The DOM range a tuple names in this layer — to select it, scroll to it,
+   * or feed it to `describeRange` for its quad points — or null when it names
+   * no text here.
+   */
+  createRange(tuple: YoloModulePdfSelectionTupleV1): Range | null
+  /** Re-lays the spans out for a new scale without refetching page text. */
+  setScale(scale: number): void
+  /** Cancels a pending build and empties the container. */
+  destroy(): void
+}>
+
+/**
+ * One page. `scale` is CSS pixels per PDF unit everywhere, and a page drawn
+ * with `render`, a text layer built with `renderTextLayer`, and the point
+ * conversions all agree whenever they are given the same scale.
+ */
+export type YoloModulePdfPageV1 = Readonly<{
+  pageNumber: number
+  /** Size at scale 1, the page's own rotation applied. */
+  width: number
+  height: number
+  rotation: 0 | 90 | 180 | 270
+  /**
+   * Draws the page into `canvas`. Only the backing store is sized — to
+   * `width * scale * pixelRatio`, the ratio defaulting to the
+   * `devicePixelRatio` of the canvas's own window and lowered when the
+   * canvas would be too large (the ratio used is returned); the canvas's CSS
+   * size stays with the caller. The canvas keeps its previous picture until
+   * the new one is complete, and a later render into the same canvas cancels
+   * an earlier one still running.
+   */
+  render(
+    options: Readonly<{
+      canvas: HTMLCanvasElement
+      scale: number
+      pixelRatio?: number
+    }>,
+  ): YoloModulePdfTaskV1<Readonly<{ pixelRatio: number }>>
+  /**
+   * Builds the selectable text layer into `container`, which is emptied
+   * first and should sit over the drawn page at the same CSS size. The host
+   * styles it (the `yolo-pdf-text-layer` class it adds).
+   */
+  renderTextLayer(
+    options: Readonly<{ container: HTMLElement; scale: number }>,
+  ): YoloModulePdfTaskV1<YoloModulePdfTextLayerV1>
+  /** PNG bytes of `rect` rendered at `scale` (one pixel per CSS pixel). */
+  renderRegion(
+    rect: YoloModulePdfRectV1,
+    options: Readonly<{ scale: number }>,
+  ): Promise<ArrayBuffer>
+  toViewportPoint(
+    point: YoloModulePdfPointV1,
+    scale: number,
+  ): YoloModulePdfPointV1
+  toPdfPoint(point: YoloModulePdfPointV1, scale: number): YoloModulePdfPointV1
+}>
+
+export type YoloModulePdfDocumentV1 = Readonly<{
+  path: string
+  pageCount: number
+  getPage(pageNumber: number): Promise<YoloModulePdfPageV1>
+  /**
+   * True once the file at `path` was modified, renamed or deleted, or the PDF
+   * engine was turned off. A stale document still answers for the bytes it
+   * was opened from (unless the engine was turned off); `open` the path
+   * again for the current file.
+   */
+  isStale(): boolean
+  /** Called once, when the document becomes stale. */
+  subscribe(listener: () => void): ModuleDisposer
+  /** Idempotent; also done for every open document when the module unloads. */
+  release(): void
+}>
+
+export type YoloModulePdfV1 = Readonly<{
+  /**
+   * Opens the PDF at a vault path. Every call returns its own handle, to be
+   * released; handles to the same unchanged file share one parsed document.
+   * Rejects when the file cannot be read or parsed, or the PDF engine runtime
+   * component is disabled or failed to install (it is installed on demand, so
+   * the first open may wait for a download).
+   */
+  open(filePath: string): Promise<YoloModulePdfDocumentV1>
+}>
+
 export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
   assets: YoloModuleAssetsV1
@@ -804,6 +944,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   config: ModuleConfigV1
   i18n: YoloModuleI18nV1
   paths: YoloModulePathsV1
+  pdf: YoloModulePdfV1
   privateStorage: ModulePrivateStorageV1
   settings: YoloModuleSettingsV1
   ui: YoloModuleUiV1

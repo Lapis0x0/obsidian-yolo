@@ -33,6 +33,9 @@ setRuntimeComponentAcquirerForTests(
 
 function createPdfApi(): PdfEngineComponentApi {
   return {
+    async openDocument() {
+      throw new Error('PDF document test double is not configured')
+    },
     async extractPages(bytes, options) {
       const pdf = await openPdf(bytes)
       const pages: { page: number; text: string }[] = []

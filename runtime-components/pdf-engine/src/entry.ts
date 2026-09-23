@@ -3,6 +3,10 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import binaryData from 'virtual:pdfjs-binary-data'
 import workerSource from 'virtual:pdfjs-worker-script'
 
+import type { PdfEngineDocument } from '../../../src/core/runtime-components/contracts'
+
+import { createPdfDocument } from './document'
+
 type PdfTextItem = {
   str: string
   transform: number[]
@@ -130,8 +134,27 @@ globalThis.__yolo_register_runtime_component__({
     const assertActive = (): void => {
       if (disposed) throw new Error('PDF engine is disposed')
     }
+    const openDocuments = new Set<PdfEngineDocument>()
 
     return Object.freeze({
+      async openDocument(bytes: Uint8Array) {
+        assertActive()
+        const opened = await createPdfDocument(openDocument(bytes))
+        const tracked: PdfEngineDocument = Object.freeze({
+          ...opened,
+          destroy: () => {
+            openDocuments.delete(tracked)
+            return opened.destroy()
+          },
+        })
+        openDocuments.add(tracked)
+        if (disposed) {
+          await tracked.destroy()
+          throw new Error('PDF engine is disposed')
+        }
+        return tracked
+      },
+
       async extractPages(
         bytes: Uint8Array,
         options: { maxPages: number; signal?: AbortSignal },
@@ -317,6 +340,7 @@ globalThis.__yolo_register_runtime_component__({
       dispose(): void {
         if (disposed) return
         disposed = true
+        for (const document of openDocuments) void document.destroy()
         URL.revokeObjectURL(workerUrl)
       },
     })

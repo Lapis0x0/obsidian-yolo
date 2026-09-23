@@ -92,6 +92,7 @@ import {
   ModuleFileTextRendererRegistry,
   ModuleIntentStore,
   ModuleLoader,
+  ModulePdfCapabilityProvider,
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
   ModuleRuntimeReservation,
@@ -266,6 +267,7 @@ import { isUntitledConversationTitle } from './utils/chat/conversationTitle'
 import { stableStringify } from './utils/json/stableStringify'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
+import { PdfDocumentCache } from './utils/pdf/pdfDocumentCache'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 import { YOLO_ICON_ID, YOLO_ICON_SVG } from './yoloIcon'
 
@@ -347,6 +349,7 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
   private runtimeComponentService: RuntimeComponentService | null = null
+  private pdfDocumentCache: PdfDocumentCache | null = null
   private localEmbeddingModelManager: LocalEmbeddingModelManager | null = null
   private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
@@ -2786,6 +2789,8 @@ export default class YoloPlugin extends Plugin {
     this.ragCoordinator?.cleanup()
     this.ragCoordinator = null
 
+    void this.pdfDocumentCache?.closeAll()
+    this.pdfDocumentCache = null
     setRuntimeComponentService(null)
     this.runtimeComponentService?.stop()
     this.runtimeComponentService = null
@@ -4283,6 +4288,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           },
         }),
         vault: new ObsidianModuleVaultCapabilityProvider(this.app),
+        pdf: new ModulePdfCapabilityProvider(() => this.getPdfDocumentCache()),
       }),
     )
     const runtimeReservation = new ModuleRuntimeReservation({ runtime })
@@ -4580,6 +4586,42 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
     this.runtimeComponentService = service
     setRuntimeComponentService(service)
+
+    const pdfDocuments = new PdfDocumentCache({
+      readFile: async (path) => {
+        const file = this.app.vault.getFileByPath(path)
+        if (!file) throw new Error(`PDF file not found: ${path}`)
+        return new Uint8Array(await this.app.vault.readBinary(file))
+      },
+      acquireEngine: () => service.acquire('pdf-engine'),
+      reportError: (error) => {
+        console.error('[YOLO] PDF document cache error', error)
+      },
+    })
+    this.pdfDocumentCache = pdfDocuments
+    // Open documents hold engine leases; turning the engine off must close
+    // them rather than wait for every reader to let go.
+    service.registerQuiesceParticipant('pdf-engine', () =>
+      pdfDocuments.closeAll(),
+    )
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => pdfDocuments.invalidate(file.path)),
+    )
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => pdfDocuments.invalidate(file.path)),
+    )
+    this.registerEvent(
+      this.app.vault.on('rename', (_file, oldPath) =>
+        pdfDocuments.invalidate(oldPath),
+      ),
+    )
+  }
+
+  getPdfDocumentCache(): PdfDocumentCache {
+    if (!this.pdfDocumentCache) {
+      throw new Error('[YOLO] PDF documents are unavailable')
+    }
+    return this.pdfDocumentCache
   }
 
   private initializeLocalEmbedding(): void {

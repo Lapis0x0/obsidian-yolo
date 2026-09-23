@@ -49,4 +49,5 @@
 @import './editor/tab-completion.css';
 
 @import './pdf-screenshot.css';
+@import './pdf/text-layer.css';
 @import './config-transfer.css';

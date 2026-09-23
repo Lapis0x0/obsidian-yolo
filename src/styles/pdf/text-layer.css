@@ -1,0 +1,96 @@
+/*
+ * Text layer built by the pdf-engine runtime component (`renderTextLayer`,
+ * reached by modules through the Host API's `pdf` facade).
+ *
+ * This is the part of pdf.js's `pdf_viewer.css` that pdf.js 6's `TextLayer`
+ * depends on for correct geometry: the layer is sized, and every span's font
+ * size and horizontal stretch computed, from `--total-scale-factor` and
+ * `--min-font-size`, which the engine sets on the container. Without these
+ * rules the spans drift away from the rendered glyphs and selection lands on
+ * the wrong text. It lives on the host because the host hands out the DOM it
+ * styles; a runtime component ships no CSS, and a module reusing the facade
+ * must not have to copy geometry rules to get a correct layer.
+ *
+ * pdf.js creates the spans without classes: text spans carry `data-idx`,
+ * `markedContent` grouping spans do not, and line ends are `<br>`.
+ */
+
+.yolo-pdf-text-layer {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: transparent;
+  z-index: 0;
+}
+
+.yolo-pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.yolo-pdf-text-layer span[data-idx] {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+
+.yolo-pdf-text-layer span:not([data-idx]) {
+  display: contents;
+}
+
+.yolo-pdf-text-layer ::selection {
+  background: var(--text-selection);
+  color: transparent;
+}
+
+.yolo-pdf-text-layer br::selection {
+  background: transparent;
+}
+
+.yolo-pdf-text-layer[data-main-rotation='90'] {
+  transform: rotate(90deg) translateY(-100%);
+}
+
+.yolo-pdf-text-layer[data-main-rotation='180'] {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+
+.yolo-pdf-text-layer[data-main-rotation='270'] {
+  transform: rotate(270deg) translateX(-100%);
+}
+
+.yolo-pdf-text-layer__end {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.yolo-pdf-text-layer--selecting .yolo-pdf-text-layer__end {
+  top: 0;
+}

@@ -136,6 +136,7 @@ export {
   type ModulePathsCapabilityActivationV1,
   type ModulePathsCapabilityProviderV1,
 } from './modulePaths'
+export { ModulePdfCapabilityProvider } from './modulePdf'
 export {
   ModulePrivateStorageCapabilityProvider,
   ModulePrivateStorageVerificationError,

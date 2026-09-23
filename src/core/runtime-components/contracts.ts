@@ -15,7 +15,108 @@ export type PdfSliceErrorKind =
   | 'too-many-pages'
   | 'too-large'
 
+/** `[x, y]`. PDF user space (y up) or viewport CSS pixels (y down). */
+export type PdfPoint = readonly [x: number, y: number]
+
+/** Two opposite corners in PDF user space, in any order. */
+export type PdfRect = readonly [x1: number, y1: number, x2: number, y2: number]
+
+/**
+ * Obsidian's native `#page=N&selection=a,b,c,d` tuple: `a`/`c` are the start
+ * and end text-layer span indices (`data-idx`, the span's index among the
+ * page's text content items), `b`/`d` the character offsets within those
+ * spans; `d` is exclusive.
+ */
+export type PdfTextSelectionTuple = readonly [
+  startIndex: number,
+  startOffset: number,
+  endIndex: number,
+  endOffset: number,
+]
+
+export type PdfTextSelection = Readonly<{
+  pageNumber: number
+  /** The selected text, `\n` at the page's line breaks, Unicode-normalized. */
+  text: string
+  /**
+   * One quadrilateral per visual line, 8 numbers each — top-left, top-right,
+   * bottom-left, bottom-right as seen on screen — in PDF user space (the
+   * order PDF Highlight annotations use).
+   */
+  quadPoints: readonly number[]
+  tuple: PdfTextSelectionTuple
+}>
+
+export type PdfTask<T> = Readonly<{
+  /** Rejects with an `AbortError` `DOMException` once cancelled. */
+  promise: Promise<T>
+  cancel(): void
+}>
+
+export type PdfTextLayer = Readonly<{
+  pageNumber: number
+  /**
+   * The part of `range` inside this layer, or null when none of it is.
+   * A selection spanning pages is described one layer at a time.
+   */
+  describeRange(range: Range): PdfTextSelection | null
+  /** The DOM range a tuple names in this layer, or null when it names none. */
+  createRange(tuple: PdfTextSelectionTuple): Range | null
+  /** Re-lays the existing spans out for a new scale without refetching text. */
+  setScale(scale: number): void
+  /** Cancels a pending build and empties the container. */
+  destroy(): void
+}>
+
+export type PdfEnginePage = Readonly<{
+  pageNumber: number
+  /** Viewport size at scale 1 (PDF units, page rotation applied). */
+  width: number
+  height: number
+  rotation: 0 | 90 | 180 | 270
+  /**
+   * Renders the page at `scale` CSS pixels per PDF unit. The canvas backing
+   * store is sized to `scale * pixelRatio` (pixel ratio defaults to the
+   * canvas window's `devicePixelRatio`, and is lowered if the canvas would
+   * be too large; the effective ratio is returned); CSS sizing stays with
+   * the caller. The canvas is only touched once rendering succeeds, so it
+   * keeps its previous picture while a re-render is pending or cancelled.
+   * A new render into the same canvas cancels the previous one.
+   */
+  render(
+    options: Readonly<{
+      canvas: HTMLCanvasElement
+      scale: number
+      pixelRatio?: number
+    }>,
+  ): PdfTask<Readonly<{ pixelRatio: number }>>
+  /**
+   * Builds the page's selectable text layer into `container` (emptied
+   * first), sized and positioned for `scale` exactly as `render` draws it;
+   * the container is expected to sit over the rendered page at the same
+   * CSS size. Spans carry `data-idx` in Obsidian's native numbering.
+   */
+  renderTextLayer(
+    options: Readonly<{ container: HTMLElement; scale: number }>,
+  ): PdfTask<PdfTextLayer>
+  /** PNG bytes of `rect` (PDF user space) rendered at `scale`. */
+  renderRegion(
+    rect: PdfRect,
+    options: Readonly<{ scale: number }>,
+  ): Promise<ArrayBuffer>
+  toViewportPoint(point: PdfPoint, scale: number): PdfPoint
+  toPdfPoint(point: PdfPoint, scale: number): PdfPoint
+}>
+
+export type PdfEngineDocument = Readonly<{
+  pageCount: number
+  getPage(pageNumber: number): Promise<PdfEnginePage>
+  destroy(): Promise<void>
+}>
+
 export type PdfEngineComponentApi = Readonly<{
+  /** A long-lived document for interactive use; the caller destroys it. */
+  openDocument(bytes: Uint8Array): Promise<PdfEngineDocument>
   extractPages(
     bytes: Uint8Array,
     options: { maxPages: number; signal?: AbortSignal },
@@ -46,6 +147,7 @@ export type PdfEngineComponentApi = Readonly<{
     actualStart: number
     actualEnd: number
   }>
+  /** Also destroys every document still open. */
   dispose(): void
 }>
 
