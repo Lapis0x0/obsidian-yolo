@@ -28,6 +28,18 @@ const TEXT_LAYER_CLASS = 'yolo-pdf-text-layer'
 const TEXT_LAYER_SELECTING_CLASS = 'yolo-pdf-text-layer--selecting'
 const TEXT_LAYER_END_CLASS = 'yolo-pdf-text-layer__end'
 
+/**
+ * The document pdf.js registers a PDF's embedded fonts (and the SVG filters
+ * some drawings use) in: the `ownerDocument` every document is opened with.
+ * A canvas resolves font names and `url(#filter)` references against its own
+ * document, so pages are always drawn on a canvas that belongs to this one and
+ * only the finished picture is copied into the caller's canvas. That is what
+ * lets one cached document serve readers in any window — a popout's canvas
+ * drawn into directly would find none of the fonts and show blank glyphs — and
+ * lets a reader whose view moves to another window keep drawing correctly.
+ */
+export const RENDER_DOCUMENT: Document = globalThis.document
+
 /** The task currently drawing into a canvas / building into a container. */
 const activeRenders = new WeakMap<HTMLCanvasElement, { cancel(): void }>()
 const activeTextLayers = new WeakMap<HTMLElement, PdfTextLayer>()
@@ -102,8 +114,10 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
         pixelRatio ?? canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1,
       )
       // Drawn off to the side so the caller's canvas keeps its old picture
-      // until the new one is complete (and forever, if this is cancelled).
-      const scratch = canvas.ownerDocument.createElement('canvas')
+      // until the new one is complete (and forever, if this is cancelled), and
+      // in the document the fonts live in (RENDER_DOCUMENT), whichever window
+      // the caller's canvas is in.
+      const scratch = RENDER_DOCUMENT.createElement('canvas')
       scratch.width = Math.max(1, Math.floor(viewport.width * ratio))
       scratch.height = Math.max(1, Math.floor(viewport.height * ratio))
       const renderTask = proxy.render({
@@ -151,7 +165,7 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
         throw new RangeError('PDF region is empty at this scale')
       }
       const ratio = capPixelRatio(width, height, 1, MAX_CANVAS_PIXELS)
-      const canvas = globalThis.document.createElement('canvas')
+      const canvas = RENDER_DOCUMENT.createElement('canvas')
       try {
         canvas.width = Math.max(1, Math.round(width * ratio))
         canvas.height = Math.max(1, Math.round(height * ratio))

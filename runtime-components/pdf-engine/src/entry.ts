@@ -5,7 +5,7 @@ import workerSource from 'virtual:pdfjs-worker-script'
 
 import type { PdfEngineDocument } from '../../../src/core/runtime-components/contracts'
 
-import { createPdfDocument } from './document'
+import { RENDER_DOCUMENT, createPdfDocument } from './document'
 
 type PdfTextItem = {
   str: string
@@ -112,6 +112,9 @@ function decodeBase64(encoded: string): Uint8Array {
 function openDocument(bytes: Uint8Array) {
   return pdfjs.getDocument({
     data: bytes.slice(),
+    // Said explicitly because drawing depends on it: fonts are registered
+    // here, and pages are drawn on canvases of this document.
+    ownerDocument: RENDER_DOCUMENT,
     useWorkerFetch: false,
     BinaryDataFactory: InlineBinaryDataFactory,
   })
@@ -245,7 +248,7 @@ globalThis.__yolo_register_runtime_component__({
             const page = await document.getPage(pageNumber)
             try {
               const viewport = page.getViewport({ scale: RENDER_SCALE })
-              const canvas = documentGlobal().createElement('canvas')
+              const canvas = RENDER_DOCUMENT.createElement('canvas')
               try {
                 canvas.width = viewport.width
                 canvas.height = viewport.height
@@ -346,7 +349,3 @@ globalThis.__yolo_register_runtime_component__({
     })
   },
 })
-
-function documentGlobal(): Document {
-  return globalThis.document
-}

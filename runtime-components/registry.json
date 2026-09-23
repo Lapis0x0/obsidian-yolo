@@ -50,8 +50,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.pdfEngine.description",
       "impactKey": "settings.modules.runtimeComponents.pdfEngine.impact",
       "entry": "runtime-components/pdf-engine/dist/entry.js",
-      "byteSize": 2837245,
-      "sha256": "ab3acaf488b8ac81c217a9579bfb54f1a07a568b604265e6893ae7c0dc6655e9"
+      "byteSize": 2837212,
+      "sha256": "f9f976ab2ad1fec0ad504b43dd2a29f953dff6df17412f3baf82a135ce424815"
     },
     {
       "id": "tokenizer",
