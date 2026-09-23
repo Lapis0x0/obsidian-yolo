@@ -16,6 +16,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import { listChatGPTOAuthModels } from '../../../core/llm/chatgptOAuthModelCatalog'
 import { listClaudeSdkModels } from '../../../core/llm/claude-sdk/modelCatalog'
+import { claudeAcceptsSamplingParams } from '../../../core/llm/claudeReasoning'
 import {
   collectModelIdentifiers,
   extractModelIdentifier,
@@ -1591,6 +1592,13 @@ function AddChatModelModalComponent({
       <ModelRequestParametersDisclosure
         enabledCount={enabledRequestParameterCount}
         onClear={clearRequestParameterOverrides}
+        note={
+          (selectedProvider?.apiType === 'anthropic' ||
+            selectedProvider?.apiType === 'amazon-bedrock') &&
+          !claudeAcceptsSamplingParams(formData.model)
+            ? t('settings.models.samplingNotSentForModel')
+            : undefined
+        }
       >
         <div className="yolo-agent-model-controls">
           <div

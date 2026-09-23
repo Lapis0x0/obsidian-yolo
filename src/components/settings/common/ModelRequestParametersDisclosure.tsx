@@ -7,12 +7,15 @@ type ModelRequestParametersDisclosureProps = {
   children: ReactNode
   enabledCount: number
   onClear: () => void
+  /** Shown above the controls, e.g. a parameter this model will not receive. */
+  note?: string
 }
 
 export function ModelRequestParametersDisclosure({
   children,
   enabledCount,
   onClear,
+  note,
 }: ModelRequestParametersDisclosureProps) {
   const { t } = useLanguage()
 
@@ -54,6 +57,9 @@ export function ModelRequestParametersDisclosure({
               {t('settings.models.clearRequestParameterOverrides')}
             </button>
           </div>
+        )}
+        {note && (
+          <div className="yolo-agent-model-request-parameters-desc">{note}</div>
         )}
         {children}
       </div>

@@ -1106,6 +1106,8 @@ export const zh: TranslationKeys = {
       maxOutputTokens: '最大输出 token',
       requestParameters: '请求参数',
       requestParametersDesc: '通常无需调整；未启用的字段使用 Provider 默认值。',
+      samplingNotSentForModel:
+        '该模型不接受 Temperature 和 Top P，请求中不会发送。',
       requestParametersEnabledCount: '已启用 {count} 项请求参数',
       clearRequestParameterOverrides: '清除覆盖',
       additionalParameters: '其他参数',

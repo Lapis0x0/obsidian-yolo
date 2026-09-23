@@ -911,6 +911,7 @@ export type TranslationKeys = {
       maxOutputTokens?: string
       requestParameters?: string
       requestParametersDesc?: string
+      samplingNotSentForModel?: string
       requestParametersEnabledCount?: string
       clearRequestParameterOverrides?: string
       additionalParameters?: string

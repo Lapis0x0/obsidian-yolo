@@ -1191,6 +1191,8 @@ export const en: TranslationKeys = {
       requestParameters: 'Request parameters',
       requestParametersDesc:
         'Usually no adjustment is needed. Fields left disabled use the provider defaults.',
+      samplingNotSentForModel:
+        'This model does not accept Temperature or Top P, so they are not sent.',
       requestParametersEnabledCount: '{count} request parameters enabled',
       clearRequestParameterOverrides: 'Clear overrides',
       additionalParameters: 'Other parameters',

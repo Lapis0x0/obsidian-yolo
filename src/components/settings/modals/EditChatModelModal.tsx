@@ -3,6 +3,7 @@ import { App, Notice } from 'obsidian'
 import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { claudeAcceptsSamplingParams } from '../../../core/llm/claudeReasoning'
 import type YoloPlugin from '../../../main'
 import { ChatModel, ChatModelModality } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
@@ -1002,6 +1003,13 @@ function EditChatModelModalComponent({
       <ModelRequestParametersDisclosure
         enabledCount={enabledRequestParameterCount}
         onClear={clearRequestParameterOverrides}
+        note={
+          (selectedProvider?.apiType === 'anthropic' ||
+            selectedProvider?.apiType === 'amazon-bedrock') &&
+          !claudeAcceptsSamplingParams(formData.model)
+            ? t('settings.models.samplingNotSentForModel')
+            : undefined
+        }
       >
         <div className="yolo-agent-model-controls">
           <div
