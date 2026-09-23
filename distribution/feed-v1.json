@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 38,
+  "revision": 39,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9.5",
+    "version": "1.6.9.6",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.5",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.6",
     "releaseNotes": {
-      "en": "## 1.6.9.5 Model Search 🔍\n\n- Added search and filtering to the model list.\n- Updated some capabilities required by the Whiteboard module.",
-      "zh": "## 1.6.9.5 模型搜索 🔍\n\n- 模型列表支持搜索与过滤。\n- 更新了部分白板模块所需的能力。"
+      "en": "## 1.6.9.6 Faster Startup ⚡\n\n- Improved plugin startup/loading performance and reduced the distributed plugin size (about 40%).\n- Redesigned how context and chain-of-thought content are passed along, improving cache hit rates.\n- Refined prompt design to reduce conflicting, inaccurate, or unnecessary constraints.\n- Fixed provider cards becoming unclickable after being expanded on mobile.\n- Fixed a bug where the \"prune tool call results\" tool removed the entire tool message.\n- Fixed a bug where reading a whiteboard file in Max mode wrongly returned the raw JSON content.",
+      "zh": "## 1.6.9.6 启动提速 ⚡\n\n- 优化插件启动/加载性能，缩小分发插件体积（约 40%）\n- 优化上下文与思维链内容传递机制设计，提高缓存命中效率\n- 优化相关提示词设计，减少冲突/不符合实际情况/不必要的约束\n- 修复移动端 Provider 卡片展开之后无法点击的问题\n- 修复「剪裁工具调用结果」Tool 会移除掉整条工具消息的 bug\n- 修复 max 模式下读取白板文件会错误返回原始 json 内容的 bug"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9.5/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/main.js",
-        "byteSize": 9575700,
-        "sha256": "01256d79fb7a2cd3efe87566484cb32cac70c4ce49fd32e1441eae03e93350f9"
+        "mirrorPath": "core/1.6.9.6/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.6/main.js",
+        "byteSize": 5764632,
+        "sha256": "1887c541c86e9ebfa5a9d46ece1b0b191b30feeb2aade648904eab34034e208d"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9.5/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/manifest.json",
+        "mirrorPath": "core/1.6.9.6/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.6/manifest.json",
         "byteSize": 413,
-        "sha256": "c852050710bfc3808635bf0efa3ef06605f4210410c2c07ba96ed6bf088b5f39"
+        "sha256": "358746f27bf9559ea285609b00b1a71f6a176153ddf053052a2ef33fed9d4156"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9.5/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/styles.css",
-        "byteSize": 688155,
-        "sha256": "189cba3c3191b543b12b4fe4c7b26c285fd35deef97a694961a75c74aad58d38"
+        "mirrorPath": "core/1.6.9.6/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.6/styles.css",
+        "byteSize": 496108,
+        "sha256": "b64a93a73b3e4d76ea2f4a52c552c42a25ba81e3107639859ee61efe6075abcb"
       }
     }
   },
