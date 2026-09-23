@@ -4,8 +4,8 @@ import { summarizeShellCommand } from '../shell-command-summary'
 /**
  * Chat-surface summary for `terminal_command` — ported verbatim from the
  * `toolName === 'terminal_command'` branch of `ToolMessage.tsx`'s private
- * `getLocalToolSummaryText` (pre-D8). Wired into `TOOL_RENDERERS` as this
- * tool's `summary` field (phase2-migration.md D8).
+ * `getLocalToolSummaryText`. Wired into `TOOL_RENDERERS` as this tool's
+ * `summary` field.
  *
  * `labels` only carries the three session-follow-up strings this tool needs
  * — a structural subset of `ToolMessage.tsx`'s `ToolLabels`, not an import

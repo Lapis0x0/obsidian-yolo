@@ -4,8 +4,7 @@
 // pointer/wheel event wiring and calls these functions to compute the next
 // `CanvasView`, matching the algorithm ported from the S2/S3 spikes (`git
 // show spike/s2-editor-lifecycle:src/features/whiteboard-spike/fileView.ts`
-// setupInteraction()'s wheel handler and pointer-drag math) per
-// docs/plans/08-25-yolo-whiteboard/p1-design.md §3.
+// setupInteraction()'s wheel handler and pointer-drag math).
 //
 // `CanvasView` (`{tx, ty, scale}`, screen-space camera transform) is
 // virtualization.ts's existing type; `Camera` (`{x, y, scale}`, the

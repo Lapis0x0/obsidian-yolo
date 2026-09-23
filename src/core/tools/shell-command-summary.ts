@@ -4,7 +4,7 @@ import { truncateText } from './chat-summary-support'
  * Shell-command summarizer shared by `bash` and `terminal_command` — the
  * only two tools whose chat-surface summary is "a short, readable form of
  * the command line". Ported verbatim from the private implementation of the
- * same name in `ToolMessage.tsx` (pre-D8); see that file's git history for
+ * same name in `ToolMessage.tsx`; see that file's git history for
  * the original single-copy version this was split out of.
  */
 

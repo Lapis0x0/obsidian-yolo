@@ -1,4 +1,4 @@
-// The four things an empty card offers to do (master.md §5, Q16).
+// The four things an empty card offers to do.
 //
 // Fixed and built in, on purpose. A card's chips are the lowest-cost AI entry
 // on the board — one click, no typing — and what makes that worth having is
@@ -77,7 +77,7 @@ export function cardInstructions(
 
 /**
  * The whole system prompt for a card generation — it *replaces* the host's
- * default one (master.md §5, W0), so the role, the output contract and the
+ * default one, so the role, the output contract and the
  * tool's place in it all have to be stated here.
  */
 export function cardGenerationSystemPrompt(locale: string): string {

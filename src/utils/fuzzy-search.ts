@@ -192,8 +192,7 @@ export function fuzzySearch(
    * enabled/disabled while the app is open) rather than something fixed at
    * module-init time. So the registry-aware caller
    * (`LexicalContentEditable.tsx`, which has `usePlugin()`) passes its
-   * current snapshot in per call instead (docs/plans/09-03-whiteboard-agent-tools/master.md
-   * D3).
+   * current snapshot in per call instead.
    */
   extraSearchableExtensions?: Iterable<string>,
 ): SearchableMentionable[] {

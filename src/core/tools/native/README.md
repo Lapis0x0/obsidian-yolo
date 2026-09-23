@@ -5,8 +5,7 @@ Obsidian abstraction: any path, any extension, hidden directories, and
 locations outside the vault. Desktop-only, and exposed only to the Max chat
 mode.
 
-The directory is **grouping, not identity** — see
-`docs/plans/09-05-yolo-max/master.md` §6. What a tool is available in is
+The directory is **grouping, not identity**: what a tool is available in is
 declared by its owning capability's `chatModes` field
 (`src/core/tools/capabilities/native-files.ts`), never by where its file
 lives; `capabilities/` remains the single registration point, exactly as it is

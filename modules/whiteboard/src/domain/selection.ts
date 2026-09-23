@@ -1,14 +1,13 @@
 // Pure marquee-selection math: normalizing a drag gesture's two corner
 // points into a world-space rectangle, and hit-testing board nodes against
-// it (docs/plans/08-25-yolo-whiteboard/p1-design.md §3's "框选"). The canvas
-// UI (src/ui/canvas.ts) owns the actual overlay div and the screen->world
-// conversion (via ./camera's `screenToWorld`) — this module only ever sees
-// plain world-space points/rects, keeping it DOM-free like every other
-// domain/ module.
+// it ("框选"). The canvas UI (src/ui/canvas.ts) owns the actual overlay div
+// and the screen->world conversion (via ./camera's `screenToWorld`) — this
+// module only ever sees plain world-space points/rects, keeping it DOM-free
+// like every other domain/ module.
 //
 // Selection itself (which ids are currently selected) is UI state, not board
-// data (p1-design §7#3 doesn't mention it, and it has no `.yoloboard`
-// representation) — this module never touches `Board`, only plain rects.
+// data (it has no `.yoloboard` representation) — this module never touches
+// `Board`, only plain rects.
 
 import type { ScreenPoint } from './camera'
 import type { VirtualCardRect, WorldRect } from './virtualization'

@@ -1,4 +1,4 @@
-// Rung one of the board's AI ladder (master.md §5): an empty text card offers
+// Rung one of the board's AI ladder: an empty text card offers
 // a few one-click instructions, and clicking one streams a single agent turn
 // straight into that card.
 //
@@ -24,14 +24,14 @@
 //     arrives. Nothing is written to the board while it streams: the card is
 //     pinned, the renderer is told to leave it alone, and the accumulated text
 //     lands in one `applyBoardChange` when the run settles, so Cmd+Z undoes a
-//     generation in one step (Q20).
+//     generation in one step.
 //
-// Stopping keeps what has arrived (Q12), and so does double-clicking into the
-// card mid-run (Q35) — the editor and the stream share the card's body, so
+// Stopping keeps what has arrived, and so does double-clicking into the card
+// mid-run — the editor and the stream share the card's body, so
 // asking to type in it is asking to stop.
 //
 // The run itself is deliberately small: `host.agent.stream` with a system
-// prompt that *replaces* the host's default one (W0), the card's context as
+// prompt that *replaces* the host's default one, the card's context as
 // the prompt (domain/cardContext.ts), and exactly one run-scoped read-only
 // tool. No writes, no board tools, no follow-up turn.
 
@@ -104,7 +104,7 @@ type Generation = {
   text: string
   /** True once the run has been handed back — every path is idempotent. */
   settled: boolean
-  /** Set by a stop that means "let me type in this card instead" (Q35). */
+  /** Set by a stop that means "let me type in this card instead". */
   edit: boolean
 }
 
@@ -193,8 +193,7 @@ export class CardGeneration {
     if (this.generations.has(id)) return false
     const node = this.callbacks.getNode(id)
     // A file card is never "empty" in this sense: its content lives in a note,
-    // and an empty note is a note to write in, not a card to generate into
-    // (Q20).
+    // and an empty note is a note to write in, not a card to generate into.
     if (node?.type !== 'text') return false
     // Only the card the user is on offers them: the lone selected card, or
     // the one being edited (editing clears the selection, so it has to be
@@ -315,7 +314,7 @@ export class CardGeneration {
   }
 
   /**
-   * The run's only tool (Q9): one card, read-only. `read_board` is not given —
+   * The run's only tool: one card, read-only. `read_board` is not given —
    * the board's summary is already in the prompt — and nothing that writes is,
    * so the run has nothing to ask approval for.
    */
@@ -411,7 +410,7 @@ export class CardGeneration {
     }
     generation.text = next
     // The status line has said everything it has to say once the card is
-    // writing itself (Q11); the stop button stays.
+    // writing itself; the stop button stays.
     generation.labelEl.textContent = ''
   }
 

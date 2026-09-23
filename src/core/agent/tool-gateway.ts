@@ -270,10 +270,9 @@ export class AgentToolGateway {
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
   /**
-   * Per-capability enabled/approval state for built-in tools (D9,
-   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Sibling to
-   * `toolPreferences`, which since that migration only carries remote MCP
-   * tool state — every call below that resolves a *built-in* tool's approval
+   * Per-capability enabled/approval state for built-in tools. Sibling to
+   * `toolPreferences`, which since the `80_to_81` migration only carries
+   * remote MCP tool state — every call below that resolves a *built-in* tool's approval
    * mode or enablement must pass both.
    */
   private readonly builtinCapabilityPreferences?: Record<
@@ -303,7 +302,7 @@ export class AgentToolGateway {
   private readonly capabilityOverrides?: ChatModeCapabilityOverrides
   /**
    * Where the vault is and what `~` means, for the outside-the-vault
-   * approval (master.md §4 Q7/Q10). Present only for a mode that enforces
+   * approval. Present only for a mode that enforces
    * that boundary (Max); absent everywhere else, which is what keeps Agent's
    * long-standing terminal behavior unchanged.
    */
@@ -337,7 +336,7 @@ export class AgentToolGateway {
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
-    // Post-D9, `allowedToolNames` is always already a fully-expanded list of
+    // `allowedToolNames` is always already a fully-expanded list of
     // real tool FQNs (see `tool-selection.ts`'s `selectAllowedTools` for the
     // same reasoning) — no virtual group name expansion needed here.
     this.allowedToolNames = options?.allowedToolNames
@@ -670,10 +669,10 @@ export class AgentToolGateway {
    *     through the mode's capability tier keep normal approval resolution;
    *     `bashReadOnly` is written for every bash-identity call in such a run.
    *   - `allowAlwaysAllow`: the mode's override of the owning capability's
-   *     `approval.allowAlwaysAllow` declaration (master.md §4 Q8 — Max opens
-   *     "always allow" on the terminal).
+   *     `approval.allowAlwaysAllow` declaration (Max opens "always allow" on
+   *     the terminal).
    *   - `outsideVaultPath`: the resolved absolute path this call reaches
-   *     outside the vault (master.md §4 Q7/Q10).
+   *     outside the vault.
    */
   private attachChatModeSnapshot(request: ToolCallRequest): ToolCallRequest {
     const requiresApproval = this.moduleToolApprovalPolicies?.get(request.name)
@@ -945,7 +944,7 @@ export class AgentToolGateway {
     }
 
     // Reaching outside the vault is its own permission, asked once and then
-    // held for the whole conversation (master.md §4 Q7). It sits after the
+    // held for the whole conversation. It sits after the
     // unconditional blocked-prefix rejection above and before every approval
     // tier below, because it is a question about *where* the call lands, not
     // about how much the user trusts the tool: `full_access` on native_files
@@ -1844,7 +1843,7 @@ export class AgentToolGateway {
       // its capability's `defaultEnabled` instead of the grant it just
       // passed, because `isAssistantToolEnabled` routes recognized built-in
       // short names through `builtinCapabilityPreferences` and ignores
-      // `enabledToolNames` entirely (D9). That silently rejects every call
+      // `enabledToolNames` entirely. That silently rejects every call
       // to an enabled-but-default-off capability (`js_sandbox`, both
       // context tools, `subagent_delegation`) in Ask / Quick Ask, while
       // `selectAllowedTools` still advertises it to the model.

@@ -323,8 +323,7 @@ export type YoloModuleToolSetCategoryV1 = 'vault' | 'context' | 'external'
  * than a handful of schemas.
  *
  * No approval knob: a module tool set's safety comes from being undoable, not
- * from a confirmation on every call (docs/plans/09-03-whiteboard-agent-tools
- * Q13). Tools whose every call must be confirmed belong to a chat mode, whose
+ * from a confirmation on every call. Tools whose every call must be confirmed belong to a chat mode, whose
  * `requiresApproval` is unconditional.
  */
 export type YoloModuleToolSetV1 = Readonly<{

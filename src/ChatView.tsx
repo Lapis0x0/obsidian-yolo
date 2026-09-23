@@ -35,7 +35,7 @@ import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
-  // Task-1 (issue #567): Obsidian's `leaf.updateHeader()` only refreshes the
+  // issue #567: Obsidian's `leaf.updateHeader()` only refreshes the
   // tab-strip label, never the pane-top `.view-header-title` element — that
   // element only gets its initial text once, at leaf-open time. Runtime
   // instances expose it as an undocumented `titleEl: HTMLElement` property
@@ -404,7 +404,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * issue #567 Step 2. Opens the history dropdown — used by the "Open chat
+   * issue #567. Opens the history dropdown — used by the "Open chat
    * history" command (`main.ts`) so it's reachable via the command palette,
    * a bound keyboard shortcut, or Commander. The in-content History button
    * (`ChatHeader`) keeps its own direct click handler; this is a second
@@ -416,7 +416,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * issue #567 Step 2. Whether the active conversation can currently be
+   * issue #567. Whether the active conversation can currently be
    * exported to the vault — persisted conversation + active runtime
    * supports vault export. Backs the "Export current conversation to vault"
    * command's `checkCallback` gate in `main.ts`. Reads
@@ -429,7 +429,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * issue #567 Step 2. Exports the active conversation to the vault. Callers
+   * issue #567. Exports the active conversation to the vault. Callers
    * must gate on `canExportCurrentConversation()` first (see the command's
    * `checkCallback`); mirrors the in-content export button's behavior.
    */
@@ -489,7 +489,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * PDF multi-quote annotation.
    * "Existing leaf" path — see `chatViewNavigator.addPdfQuoteToChat`. Returns
    * the annotation number chat assigned so the caller can render it on the
    * PDF-side bubble; `undefined` only if the chat React tree isn't mounted
@@ -503,7 +503,7 @@ export class ChatView extends ItemView {
 
   /**
    * The one deps channel the PDF-side bubble editor uses to patch or remove
-   * its mentionable's comment (architecture decision B, see `ChatRef.updatePdfQuoteMention`).
+   * its mentionable's comment (see `ChatRef.updatePdfQuoteMention`).
    */
   updatePdfQuoteMention(
     highlightId: string,
@@ -955,7 +955,7 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * issue #567 Step 2. Adds a conversation-management group to the pane's
+   * issue #567. Adds a conversation-management group to the pane's
    * native "···" menu: rename / pin-toggle / export / delete. All four act
    * on the active conversation and are disabled when it isn't persisted yet
    * (a brand-new, not-yet-saved chat has nothing to rename/pin/export/

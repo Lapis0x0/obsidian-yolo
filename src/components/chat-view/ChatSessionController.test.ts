@@ -614,7 +614,7 @@ describe('ChatSessionController', () => {
   })
 })
 
-describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', () => {
+describe('ChatSessionController — submit/abortRun/compactContext/retry', () => {
   afterEach(() => {
     jest.clearAllMocks()
   })
@@ -1017,7 +1017,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       })
 
       // A re-entrant call while the continuation is still in flight is guarded
-      // (mirrors the pre-C2 `assistantContinuationPendingRef`).
+      // (mirrors the former `assistantContinuationPendingRef`).
       const pending = controller.continueAssistantError('assistant-1')
       expect(pending).toEqual({ kind: 'pending' })
       expect(runConversation).toHaveBeenCalledTimes(1)

@@ -6,14 +6,14 @@ import type {
 /**
  * Literal-preserving constructors for tool and capability definitions.
  *
- * HARD CONSTRAINT (master.md §6 "字面量保持" / phase1-skeleton.md D1):
+ * HARD CONSTRAINT ("字面量保持"):
  * every tool/capability definition MUST be built through `defineTool` /
  * `defineCapability` below. Writing `const x: BuiltinToolDefinition = {...}`
  * instead is FORBIDDEN — an explicit type annotation widens `name`/`id` to
  * plain `string`, which silently degrades `BuiltinToolName` /
  * `BuiltinCapabilityId` (registry.ts) to `string` and defeats every
  * completeness check (duplicate-name assertions, the two exhaustive wiring
- * tables in D4) this whole project exists to add. If you find yourself
+ * tables) this whole project exists to add. If you find yourself
  * reaching for a type annotation here, stop — use these instead.
  */
 

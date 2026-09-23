@@ -1,7 +1,7 @@
 // Shared "create a new whiteboard" flow behind both creation entries
-// (docs/plans/08-25-yolo-whiteboard/p1-design.md §5: command + folder
-// context menu). The command creates at the vault root (`folderPath`
-// `''`); the folder menu action creates inside the right-clicked folder.
+// (command + folder context menu). The command creates at the vault root
+// (`folderPath` `''`); the folder menu action creates inside the
+// right-clicked folder.
 // Both funnel through this one function so naming, conflict resolution,
 // and open-after-create behavior can never drift between the two entry
 // points (src/index.tsx wires both to this).

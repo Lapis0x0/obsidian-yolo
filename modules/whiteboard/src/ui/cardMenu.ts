@@ -1,5 +1,4 @@
-// The bottom-centre creation bar (P3 batch 3, interaction surface ③) —
-// Obsidian Canvas's `.canvas-card-menu`.
+// The bottom-centre creation bar — Obsidian Canvas's `.canvas-card-menu`.
 //
 // Every button is both a click and a handle to drag a card off, which is
 // Canvas's arrangement (`dragTempNode`) and for its reason: the bar is where
@@ -15,8 +14,8 @@
 //
 // Our bar carries a fourth button Canvas's does not: the web card. Canvas
 // offers "add website" only from its creation menu, but for us this is the one
-// card type with no other way to be created at all — batch 2 shipped web cards
-// with an import path and no new-card path.
+// card type with no other way to be created at all — web cards shipped with
+// an import path and no new-card path.
 //
 // This class is a renderer, like ui/selectionToolbar.ts: it knows how to draw
 // a row of buttons and raise their presses, and nothing about boards.
@@ -110,8 +109,8 @@ export class CardMenu {
 
   /**
    * Takes the bar off screen while the board cannot accept a new card: zoomed
-   * out past the point where a card's content is built at all (D8 — a card
-   * created there would be an empty rectangle with no editor, which is why
+   * out past the point where a card's content is built at all (a card created
+   * there would be an empty rectangle with no editor, which is why
    * `createTextCardAt` already declines).
    */
   setAvailable(available: boolean): void {

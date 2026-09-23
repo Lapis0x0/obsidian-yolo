@@ -56,8 +56,7 @@ export function AssistantSelector({
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const isControlled = typeof currentAssistantId === 'string'
 
-  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md
-  // D1b): same registry `useSyncExternalStore` pattern as `Chat.tsx`'s
+  // Module tool sets: same registry `useSyncExternalStore` pattern as `Chat.tsx`'s
   // module chat mode subscription, reduced to what
   // `countEnabledVisibleAssistantTools` needs so this selector's per-agent
   // tool count matches what the agent editor and chat runtime resolve.

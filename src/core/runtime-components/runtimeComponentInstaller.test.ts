@@ -404,7 +404,7 @@ describe('RuntimeComponentInstaller', () => {
       { id: 'yolo', dir: 'config/plugins/yolo' },
       'config',
     )
-    // Simulate a pre-P0 install on disk: the target dir + entry.js already
+    // Simulate an older install on disk: the target dir + entry.js already
     // exist (correct bytes), but there is no `assets/` subdirectory at all
     // — as if this component had no assets when it was first installed.
     adapter.folders.add(store.targetDir(descriptor))

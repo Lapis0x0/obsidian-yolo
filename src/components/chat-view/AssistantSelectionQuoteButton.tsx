@@ -641,8 +641,7 @@ export default function AssistantSelectionQuoteButton({
 
   const handleCreateQuote = useCallback(() => {
     if (!selectionOverlay) return
-    // Shared pool with PDF-quote blocks — see selection-mentionables.ts and
-    // docs/plans/2026-08-16-pdf-annotation-quotes.md architecture decision A.
+    // Shared pool with PDF-quote blocks — see selection-mentionables.ts.
     const annotationNumber = getMaxAssistantQuoteNumber(quotes) + 1
     const draft: ActiveDraft = {
       id: uuidv4(),

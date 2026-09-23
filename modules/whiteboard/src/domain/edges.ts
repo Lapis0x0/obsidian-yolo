@@ -1,10 +1,9 @@
 // Pure geometry for `.yoloboard` edge rendering: anchor-side auto-selection
 // and cubic-bezier control-point construction for the single SVG overlay the
-// canvas draws all edges into (docs/plans/08-25-yolo-whiteboard/p1-design.md
-// §1.1, §3, §7#3 — "贝塞尔曲线...控制点沿锚定边法线方向外推（Hepta/Canvas
-// 手感）"). Only imports from ./fileFormat and ./virtualization, both already
-// dependency-free domain modules — the module-boundary check requires every
-// domain/ import to stay inside domain/
+// canvas draws all edges into ("贝塞尔曲线...控制点沿锚定边法线方向外推
+// （Hepta/Canvas 手感）"). Only imports from ./fileFormat and
+// ./virtualization, both already dependency-free domain modules — the
+// module-boundary check requires every domain/ import to stay inside domain/
 // (scripts/check-whiteboard-module-boundary.test.mjs).
 //
 // Connection points are derived from board data (card x/y/w/h), never
@@ -40,7 +39,7 @@ export type EdgeGeometry = Readonly<{
 
 /** How far a control point is pushed out along its anchor side's outward
  * normal, as a fraction of the straight-line distance between the two
- * anchor points (p1-design: "外推距离与两卡距离正相关"). */
+ * anchor points ("外推距离与两卡距离正相关"). */
 export const EDGE_CONTROL_FACTOR = 0.5
 
 /** Upper bound on that extrapolation distance ("设上限"), so two far-apart
@@ -85,7 +84,7 @@ export function anchorPoint(card: VirtualCardRect, side: NodeSide): Point {
 
 /**
  * Picks the pair of sides an edge should anchor to when the file omits
- * `fromSide`/`toSide` (p1-design §1.1: "省略 = 按两卡相对位置自动选").
+ * `fromSide`/`toSide` ("省略 = 按两卡相对位置自动选").
  * Compares the two cards' centers and anchors along whichever axis has the
  * larger separation — a card mostly to the right anchors right->left, one
  * mostly below anchors bottom->top, and so on.
@@ -173,9 +172,8 @@ export function computeEdgeGeometry(
 // The DOM tiers do not need this — every edge carries a fat transparent stroke
 // under it and the browser answers — but the overview tier has no edge
 // elements at all: the canvas draws them, and a canvas is not a pointer target
-// (ui/canvas/overviewLayer.ts). Selecting an edge is promised at every zoom
-// (p4-perf-overview §二's capability table), so down there the same question is
-// answered here instead.
+// (ui/canvas/overviewLayer.ts). Selecting an edge is promised at every zoom,
+// so down there the same question is answered here instead.
 
 /** How many segments the curve is measured as. Twenty is well past the point
  * where the polyline and the curve differ by anything a pointer can express:

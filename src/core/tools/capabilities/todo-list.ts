@@ -4,9 +4,8 @@ import { todoWriteDefinition } from '../todo_write/definition'
 // label/description copied from the `todo_write` entry in
 // `builtinToolUiMeta.ts`; category from `BUILTIN_TOOL_CATEGORY_MAP`
 // (`'context'`). The i18n keys are unchanged from the existing locale
-// entries (master.md §5). `id: 'todo_list'` is a new capability id
-// (decision 16) for this 1:1 tool (decision 14: single-tool capabilities are
-// still explicit, no exceptions).
+// entries. `id: 'todo_list'` is a new capability id for this 1:1 tool
+// (single-tool capabilities are still explicit, no exceptions).
 //
 // defaultEnabled/approval cross-checked against the pre-refactor sources:
 // `todo_write` is NOT in `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES` ->

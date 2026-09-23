@@ -22,7 +22,7 @@ Guidelines:
  * the whole section pipeline (see `RequestContextBuilder`), so anything the
  * parent's mode has to state about the environment — Max's cwd, platform,
  * shell and tool discipline — has to be appended here or the child never
- * learns it (docs/plans/09-05-yolo-max/master.md §4 Q11). Ask and Agent
+ * learns it. Ask and Agent
  * produce no such section and the prompt is unchanged for them.
  */
 export const buildSubagentSystemPrompt = (
@@ -42,7 +42,7 @@ export const buildSubagentSystemPrompt = (
  * Tools that merely require approval (`js_eval` with high-risk caps, `fs_edit`
  * in review mode, etc.) are NOT blocked here — their approval requests are
  * routed to the parent conversation's UI (the SubagentCard renders an inline
- * approval block). See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+ * approval block).
  */
 export const SUBAGENT_BLOCKED_TOOL_SHORT_NAMES: readonly string[] = [
   DELEGATE_SUBAGENT_TOOL_SHORT_NAME,

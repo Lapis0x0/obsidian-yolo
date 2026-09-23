@@ -1,8 +1,8 @@
 // Generic tool-argument parsing and result-formatting helpers shared by more
 // than one built-in tool definition. Kept here — not inside any single tool's
-// directory — because each of these has multiple consumers (see
-// phase2-migration.md D6 "注意": "谁用它谁收留" only moves a helper into a
-// tool's own directory when that tool is its *only* consumer).
+// directory — because each of these has multiple consumers ("谁用它谁收留"
+// only moves a helper into a tool's own directory when that tool is its
+// *only* consumer).
 
 export const asErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {

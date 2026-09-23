@@ -40,7 +40,7 @@ export const en = {
     distributeVertical: 'Distribute vertically',
     tidy: 'Tidy up',
   },
-  // The creation bar along the bottom of the canvas (P3 batch 3, surface 3).
+  // The creation bar along the bottom of the canvas.
   controls: {
     zoomIn: 'Zoom in',
     resetZoom: 'Reset zoom',
@@ -66,7 +66,7 @@ export const en = {
     createNote: 'Create note "{name}"',
     noMedia: 'This vault has no images, audio or video.',
   },
-  // Floating toolbar over the current selection (P3 batch 3).
+  // Floating toolbar over the current selection.
   toolbar: {
     color: 'Set colour',
     edit: 'Edit',

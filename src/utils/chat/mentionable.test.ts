@@ -167,10 +167,8 @@ describe('getMentionableKey – block with pageNumber', () => {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // getMentionableKey – annotationNumber makes keys distinct (PDF multi-quote
-// annotation, docs/plans/2026-08-16-pdf-annotation-quotes.md). Two PDF
-// annotations that select the same repeated substring on the same page
-// otherwise collide on identical file/line/page/contentHash — see bug 3 of
-// that plan's review.
+// annotation). Two PDF annotations that select the same repeated substring on
+// the same page otherwise collide on identical file/line/page/contentHash.
 // ──────────────────────────────────────────────────────────────────────────────
 
 describe('getMentionableKey – block with annotationNumber', () => {

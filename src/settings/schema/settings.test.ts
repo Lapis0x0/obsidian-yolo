@@ -541,9 +541,8 @@ describe('parseYoloSettings', () => {
   })
 
   it('keeps yolo-local embedding models even though no matching provider record exists', () => {
-    // `yolo-local` (docs/plans/08-22-local-embedding/00-plan.md §3.5) is a
-    // reserved providerId for on-device embedding models — it deliberately
-    // never has a `settings.providers` entry. Regression test for a bug
+    // `yolo-local` is a reserved providerId for on-device embedding models —
+    // it deliberately never has a `settings.providers` entry. Regression test for a bug
     // where `normalizeYoloSettingsReferences` treated that as "orphaned" and
     // silently deleted the model on every settings save.
     const result = parseYoloSettings({

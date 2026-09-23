@@ -86,7 +86,7 @@ export type ChatHeaderProps = {
     cliSession?: ChatConversationCliSession
   } | null>
   /**
-   * issue #567 Step 2：删除会话后的清理（CLI overlay 移除）+ 会话切换逻辑
+   * issue #567：删除会话后的清理（CLI overlay 移除）+ 会话切换逻辑
    * 下沉到 Chat.tsx 单一实现，供本组件与 `ChatRef.deleteCurrentConversation`
    * 共用，取代原先直接内联在 `onDelete` 里的那段逻辑。
    */

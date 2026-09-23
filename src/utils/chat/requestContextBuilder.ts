@@ -219,8 +219,7 @@ type RequestContextBuilderOptions = {
    * `fs_read` receives it via `ToolContext`). Used by the @mention `full`
    * mode's file inlining (`buildFullMentionedFilesPrompt`) so a claimed
    * extension like `.yoloboard` renders to its summary instead of dumping raw
-   * bytes into the prompt (docs/plans/09-03-whiteboard-agent-tools/master.md
-   * D3 / Q7). Omitted in tests and other callers that don't wire up modules —
+   * bytes into the prompt. Omitted in tests and other callers that don't wire up modules —
    * behaves exactly like "nothing claimed this extension".
    */
   resolveModuleFileTextRenderer?: (
@@ -2587,10 +2586,9 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
           }
           const ext = file.extension?.toLowerCase() ?? ''
           let rawContent: string
-          // Module-owned formats (D3 of
-          // docs/plans/09-03-whiteboard-agent-tools/master.md): same
-          // dispatch fs_read uses (see that tool's `resolveModuleFileTextRenderer`
-          // branch) — a claimed extension renders to its model-facing summary
+          // Module-owned formats: same dispatch fs_read uses (see that tool's
+          // `resolveModuleFileTextRenderer` branch) — a claimed extension
+          // renders to its model-facing summary
           // instead of the @mention `full` mode dumping raw bytes into the
           // prompt. `undefined` (module not installed/active, or nothing ever
           // registered the extension) falls through exactly as before.

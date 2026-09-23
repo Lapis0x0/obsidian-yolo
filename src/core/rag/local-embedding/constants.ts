@@ -9,7 +9,7 @@
  * a matching entry in `settings.providers` — local embedding models are not
  * "a provider" in the LLMProvider sense (no API key/base URL to configure),
  * they're a RAG-only capability backed by the `embedding-engine` runtime
- * component. See docs/plans/08-22-local-embedding/00-plan.md §3.5.
+ * component.
  */
 export const LOCAL_EMBEDDING_PROVIDER_ID = 'yolo-local'
 
@@ -18,6 +18,6 @@ export const DEFAULT_LOCAL_EMBEDDING_ENDPOINT = 'https://huggingface.co'
 
 /**
  * Preset mirror endpoint offered alongside the default in the endpoint
- * picker (P3 UI) for users who can't reach huggingface.co directly.
+ * picker for users who can't reach huggingface.co directly.
  */
 export const HF_MIRROR_LOCAL_EMBEDDING_ENDPOINT = 'https://hf-mirror.com'

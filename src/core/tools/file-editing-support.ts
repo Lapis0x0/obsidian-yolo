@@ -14,16 +14,14 @@ import type { LocalToolCallResultMetadata } from './types'
 
 /**
  * Helpers shared by both `file_editing` tools (`fs_edit`, `fs_write`) — not
- * a single-tool concern, so (per phase2-migration.md D6 "注意": "谁用它谁
- * 收留") this lives alongside the capability rather than inside either
+ * a single-tool concern, so ("谁用它谁收留") this lives alongside the capability rather than inside either
  * tool's own directory, mirroring the precedent set by
  * `memory-tool-support.ts` for the three memory tools.
  *
  * Ported verbatim from `core/mcp/localFileTools.ts` (pre-migration).
  * `localFileTools.ts`'s still-live `case 'fs_edit'` / `case 'fs_write'`
  * switch branches import these back from here rather than the reverse — see
- * that file's import block and
- * docs/plans/2026-08-15-tool-registry/master.md D6a.
+ * that file's import block.
  */
 
 /**
@@ -145,12 +143,11 @@ export async function maybeWithInternalWrite<T>(
  * Chat-surface summary shared by both `file_editing` tools — `fs_edit` and
  * `fs_write` render the same "which path" summary. Ported verbatim from the
  * `toolName === 'fs_edit'` / `toolName === 'fs_write'` branches of
- * `ToolMessage.tsx`'s private `getLocalToolSummaryText` (pre-D8). Wired into
- * `TOOL_RENDERERS` as each tool's own `summary` field
- * (phase2-migration.md D8) — retired write-action tool names (fs_delete,
- * fs_create_dir, and their even older aliases) used to share this same
- * branch but are deliberately NOT wired to it anymore (master.md decision
- * 10): they have no registry entry, so they fall through to the generic
+ * `ToolMessage.tsx`'s private `getLocalToolSummaryText`. Wired into
+ * `TOOL_RENDERERS` as each tool's own `summary` field — retired write-action
+ * tool names (fs_delete, fs_create_dir, and their even older aliases) used to
+ * share this same branch but are deliberately NOT wired to it anymore: they
+ * have no registry entry, so they fall through to the generic
  * "no summary" rendering instead.
  */
 export const getFileEditingPathChatSummary = ({

@@ -109,7 +109,7 @@ export type EmbeddingWorkerResponse =
 
 /**
  * The fixed file set a "standard" Transformers.js text-embedding ONNX export
- * carries (HF repos following the Xenova/onnx-community convention). P2's
+ * carries (HF repos following the Xenova/onnx-community convention). The
  * catalog (`src/core/rag/local-embedding/catalog.ts`) must publish exactly
  * these names in each entry's `files` list for `loadModelFile` to satisfy
  * them. `config.json` / `tokenizer.json` are always required; the ONNX

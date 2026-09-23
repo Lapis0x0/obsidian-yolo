@@ -37,7 +37,7 @@ describe('cardInstructions', () => {
 })
 
 describe('cardGenerationSystemPrompt', () => {
-  // It replaces the host's default system prompt outright (master.md §5), so
+  // It replaces the host's default system prompt outright, so
   // an empty one would silently restore the assistant persona and the
   // built-in tool documentation this run must not have.
   it('is never empty and names the locale it was built for', () => {

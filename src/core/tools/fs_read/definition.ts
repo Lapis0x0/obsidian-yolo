@@ -76,12 +76,12 @@ import {
 // `modality` field — that one is dynamic (see `getMcpTool` below).
 //
 // Built lazily inside a function, NOT as a module-level `const`. This
-// originally guarded against a real bug: an earlier version of the D6
+// originally guarded against a real bug: an earlier version of the
 // delegation bridge created a cycle back through `localFileTools.ts`, and a
 // module-level `const` referencing `MAX_BATCH_READ_FILES` at import time
 // could observe that binding before its defining module had finished
 // initializing, silently baking `undefined` into the schema text. That
-// specific cycle no longer exists (D6a fix — `MAX_BATCH_READ_FILES` now
+// specific cycle no longer exists (`MAX_BATCH_READ_FILES` now
 // comes from the sibling `./schema-helpers` module, not `localFileTools.ts`),
 // but deferring the read to call time has no downside and guards against the
 // same class of module-init-order hazard should another cycle appear later,
@@ -148,7 +148,7 @@ export const fsReadDefinition = defineTool({
   // entirely for text-only models, `['text', 'pdf']` for PDF-capable models,
   // `['text', 'image']` for vision-capable (non-PDF) models. This is the
   // reason `BuiltinToolDefinition.getMcpTool` is typed as `(ctx) => ...`
-  // rather than a constant (master.md §3.3).
+  // rather than a constant.
   getMcpTool: (ctx) => {
     const modalitySchema = buildFsReadModalitySchema(ctx.chatModelModalities)
     return {
@@ -172,11 +172,11 @@ export const fsReadDefinition = defineTool({
   // (`src/core/mcp/localFileTools.ts`, pre-migration), minus the abort check
   // / workspace-scope / YOLO-data-root guards on the *top-level path
   // parameter* and the outer try/catch — those are dispatcher
-  // responsibilities (master.md §3.4). The rest of this function's own
+  // responsibilities. The rest of this function's own
   // per-resolved-path checks (YOLO-data-root re-check after wikilink
   // resolution, workspace-scope re-check after wikilink resolution) are
-  // deliberately NOT dispatcher responsibilities and stay here — see
-  // master.md §5's "解析级检查" carve-out: wikilink targets are not literal
+  // deliberately NOT dispatcher responsibilities and stay here (the
+  // "解析级检查" carve-out): wikilink targets are not literal
   // path strings until resolved inside this function, so
   // `enforceBuiltinToolSecurityBoundary`'s raw-argument scan structurally
   // cannot see them. Duplicating those two checks here is not "the tool
@@ -449,7 +449,7 @@ export const fsReadDefinition = defineTool({
       // rather than relying solely on the dispatcher's top-level raw-string
       // scan (`enforceBuiltinToolSecurityBoundary`): a wikilink target's
       // resolved `file.path` may never have appeared as a literal string in
-      // `args` (master.md §5's "解析级检查"), so this is the only place that
+      // `args` ("解析级检查"), so this is the only place that
       // scan can happen. Applies uniformly to exact-match and
       // wikilink-resolved entries; files inside an allowed skill package
       // keep the same exemption they had under `findPathOutsideScope`'s
@@ -1062,8 +1062,7 @@ export const fsReadDefinition = defineTool({
         continue
       }
 
-      // Module-owned formats (D3 of docs/plans/09-03-whiteboard-agent-tools/
-      // master.md): a module can claim an extension and supply the text form
+      // Module-owned formats: a module can claim an extension and supply the text form
       // a model should see for it — e.g. `.yoloboard` renders to a board
       // summary instead of raw coordinate JSON. `null` means nothing claimed
       // this extension (module not installed/active, or no module ever

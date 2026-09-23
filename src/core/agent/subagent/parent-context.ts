@@ -37,8 +37,7 @@ export type SubagentParentContext = {
   bypassToolApproval?: boolean
   /**
    * The parent's running mode, and everything about it a child has to run
-   * under too (master.md §4 Q11: a subagent inherits Max's tool set *and* its
-   * trust tier). `allowedToolNames` alone is not enough — it says which tools
+   * under too (a subagent inherits Max's tool set *and* its trust tier). `allowedToolNames` alone is not enough — it says which tools
    * exist, not that the mode grants `terminal` past a global switch, not
    * where the vault boundary is, and not what the environment looks like.
    */

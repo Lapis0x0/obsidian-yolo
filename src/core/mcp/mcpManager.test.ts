@@ -100,7 +100,6 @@ describe('McpManager mobile built-in tool behavior', () => {
   })
 
   it('disabling the file_editing capability hides all of its member tools', async () => {
-    // D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9):
     // `builtinCapabilityOptions` is keyed by capability id, one entry per
     // capability — no more separate group-key-plus-member-keys aggregation.
     const manager = createManager(jest.fn(), {
@@ -115,10 +114,9 @@ describe('McpManager mobile built-in tool behavior', () => {
     expect(toolNames).not.toContain('yolo_local__fs_write')
   })
 
-  // D6b (docs/plans/2026-08-15-tool-registry/phase2-migration.md): proves
-  // `fs_read`'s dynamic `modality` schema field — the one thing that forced
-  // `BuiltinToolDefinition.getMcpTool` to be a function instead of a
-  // constant (master.md §3.3) — actually reaches the model through the real
+  // Proves `fs_read`'s dynamic `modality` schema field — the one thing that
+  // forced `BuiltinToolDefinition.getMcpTool` to be a function instead of a
+  // constant — actually reaches the model through the real
   // production call site (`McpManager.listAvailableTools` ->
   // `getLocalFileTools({ chatModelModalities })`,
   // `core/agent/llm-turn-executor.ts`'s own call passes
@@ -289,10 +287,10 @@ describe('McpManager connected tool catalog', () => {
   })
 })
 
-// YOLO Max's mode-level capability grant (docs/plans/09-05-yolo-max/master.md
-// §4 Q8). The point of the exercise: the global switch gates *both* the model's
-// tool list and execution, so a mode that promises a terminal has to lift both
-// or the model is offered a tool that then refuses to run.
+// YOLO Max's mode-level capability grant. The point of the exercise: the
+// global switch gates *both* the model's tool list and execution, so a mode
+// that promises a terminal has to lift both or the model is offered a tool
+// that then refuses to run.
 describe('McpManager per-run capability grant', () => {
   const originalIsDesktop = Platform.isDesktop
   const MAX_OVERRIDES = new Map([
@@ -409,7 +407,7 @@ describe('McpManager per-run capability grant', () => {
   })
 })
 
-// The vault-boundary permission (master.md §4 Q7) lives in the same
+// The vault-boundary permission lives in the same
 // per-conversation allowance set as every "always allow", addressed by an
 // explicit key instead of being derived from a tool name plus arguments.
 describe('McpManager execution allowances', () => {

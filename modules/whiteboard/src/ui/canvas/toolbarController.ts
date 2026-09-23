@@ -1,9 +1,8 @@
-// The floating selection toolbar for the `.yoloboard` canvas
-// (docs/plans/08-25-yolo-whiteboard/p1-design.md §3, P3 batch 3 surfaces
-// ①/②). Split out of `../canvas.ts` structurally (no behavior change): that
-// file remains the single state owner (board data, selection, degrade/lock
-// state) and keeps to itself every command whose whole body is one board
-// change plus one DOM call (`applyColorToNodes`, `applyColorToEdge`,
+// The floating selection toolbar for the `.yoloboard` canvas. Split out of
+// `../canvas.ts` structurally (no behavior change): that file remains the
+// single state owner (board data, selection, degrade/lock state) and keeps
+// to itself every command whose whole body is one board change plus one DOM
+// call (`applyColorToNodes`, `applyColorToEdge`,
 // `setEdgeEnds` — see those methods' own doc comments); this class owns the
 // `SelectionToolbar` instance itself, decides *what* it shows and *where* it
 // sits, and reaches every board-mutating command it offers through the narrow

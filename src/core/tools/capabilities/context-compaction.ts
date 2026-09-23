@@ -4,9 +4,9 @@ import { defineCapability } from '../define'
 // label/description copied from the `context_compact` entry in
 // `builtinToolUiMeta.ts`; category from `BUILTIN_TOOL_CATEGORY_MAP`
 // (`'context'`). The i18n keys are unchanged from the existing locale entries
-// (master.md §5: don't rename existing locale keys). `id: 'context_compaction'`
-// is a new capability id (decision 16). Kept as its own capability rather
-// than merged with `context_pruning` per decision 20.
+// (existing locale keys are never renamed). `id: 'context_compaction'` is a
+// new capability id. Kept as its own capability rather than merged with
+// `context_pruning`.
 //
 // defaultEnabled/approval cross-checked the same way as `context_pruning`:
 // `context_compact` is in `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES` ->

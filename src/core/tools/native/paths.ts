@@ -5,15 +5,13 @@ import { getTextArg } from '../tool-args'
 
 // The path contract shared by every tool in this directory: how a
 // model-supplied path is described, how it is resolved, and where the vault
-// boundary is (docs/plans/09-05-yolo-max/master.md Q3/Q7, §6; p1-design.md §3).
-// One contract, not one copy per tool.
+// boundary is. One contract, not one copy per tool.
 //
 // Distinct from `workspaceScope.ts` on purpose: that module reasons about
 // *vault-relative* paths (`isPathAllowedByScope` is a vault-relative prefix
 // match) and structurally cannot answer "is this absolute path inside the
 // vault at all" — the question every native tool has, because its paths are
-// real filesystem paths that may point anywhere on the machine
-// (facts-for-design.md §4).
+// real filesystem paths that may point anywhere on the machine.
 
 /**
  * The vault's real directory on disk. Throws on any adapter that isn't the
@@ -33,8 +31,8 @@ export function getVaultBasePath(app: App): string {
 
 /**
  * The one session-level permission that covers reaching outside the vault,
- * whichever tool does the reaching (master.md §4 Q7: the thing the user is
- * asked about is the boundary, not the tool). Granted through
+ * whichever tool does the reaching (the thing the user is asked about is the
+ * boundary, not the tool). Granted through
  * `McpManager.grantExecutionAllowance` and checked with
  * `isExecutionAllowanceGranted`, so it lives in the same per-conversation
  * allowance set as every "always allow" decision.

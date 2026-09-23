@@ -40,7 +40,7 @@ export type LiteSkillDocument = {
  * `moduleChatModeId` (the full running mode id, `module:<moduleId>:<id>`) is
  * set, the mode's own declared skills join the candidate set: user/global
  * skills are selected first, then the mode's skills fill in any names the
- * user/global bucket didn't already claim (§4.8 — scope is chosen before the
+ * user/global bucket didn't already claim (scope is chosen before the
  * same-name pass, never a global by-name flatten across modes).
  */
 export type LiteSkillScope = Readonly<{
@@ -421,8 +421,8 @@ const buildModuleSkillRecords = async (
 /**
  * Merges module-mode skill records into a user/global candidate set. The
  * user/global bucket is selected first and always wins ties — a module skill
- * only fills in names the vault/builtin bucket left unclaimed (§4.8: scope
- * is chosen before the same-name pass; the user can always override a
+ * only fills in names the vault/builtin bucket left unclaimed (scope is
+ * chosen before the same-name pass; the user can always override a
  * same-named module skill).
  */
 const mergeModuleSkillRecords = (

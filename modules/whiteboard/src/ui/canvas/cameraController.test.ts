@@ -1,6 +1,6 @@
 // The camera's "I moved" notification, which is what a screen-space follower
-// that is not the toolbar hangs off (master.md §6.3: the Quick Ask panel
-// anchored to an open card editor). Covered here rather than through the
+// that is not the toolbar hangs off (the Quick Ask panel anchored to an open
+// card editor). Covered here rather than through the
 // canvas because the contract is the camera's: every transform write, once
 // each, and nothing after the disposer runs.
 

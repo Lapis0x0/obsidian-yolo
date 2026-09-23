@@ -14,13 +14,10 @@ type TranslateFn = (key: string, fallback?: string) => string
 
 /**
  * Context a capability's settings launcher needs to open its modal. Kept
- * minimal to what `openSubagentSettings` actually used at D3/D4. D6 batch 5/6
- * add the three remaining `hasSettings: true` capabilities
- * (js_sandbox/terminal/web_access) — only `openWebSearchSettings` needs the
- * added `plugin` field (`WebSearchSettingsModal` takes `(app, plugin)`, the
- * one dedicated-settings modal that isn't `(app, { title, value, onChange })`
- * shaped); the other two ignore it, matching this type's original
- * "additive, non-breaking extension" note.
+ * minimal: only `openWebSearchSettings` needs the `plugin` field
+ * (`WebSearchSettingsModal` takes `(app, plugin)`, the one dedicated-settings
+ * modal that isn't `(app, { title, value, onChange })` shaped); the other
+ * launchers ignore it.
  */
 export type CapabilitySettingsLauncherContext = {
   app: App
@@ -33,8 +30,7 @@ export type CapabilitySettingsLauncherContext = {
 export type SettingsLauncher = (ctx: CapabilitySettingsLauncherContext) => void
 
 // Reads/writes `settings.mcp.builtinCapabilityOptions.subagent_delegation` —
-// the capability-id key as of the `80_to_81` settings migration (D9,
-// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Was keyed by
+// the capability-id key as of the `80_to_81` settings migration. Was keyed by
 // the old short tool name `delegate_subagent` before that migration landed.
 const openSubagentSettings: SettingsLauncher = ({
   app,
@@ -66,7 +62,7 @@ const openSubagentSettings: SettingsLauncher = ({
 // Ported verbatim from the `tool.id === JS_SANDBOX_TOOL_NAME` branch of
 // `AgentToolsModal.tsx`'s settings-button `onClick`. Still reads/writes
 // `settings.jsSandbox` directly — this launcher's persistence key is
-// unaffected by the capability-id migration (D9), since `jsSandbox` was
+// unaffected by the capability-id migration, since `jsSandbox` was
 // never a `builtinToolOptions` entry.
 const openJsSandboxSettings: SettingsLauncher = ({
   app,
@@ -86,8 +82,7 @@ const openJsSandboxSettings: SettingsLauncher = ({
 }
 
 // Reads/writes `settings.mcp.builtinCapabilityOptions.terminal` — the
-// capability-id key as of the `80_to_81` settings migration (D9,
-// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Was keyed by
+// capability-id key as of the `80_to_81` settings migration. Was keyed by
 // the old short tool name `terminal_command` before that migration landed.
 const openTerminalSettings: SettingsLauncher = ({
   app,
@@ -122,9 +117,9 @@ const openTerminalSettings: SettingsLauncher = ({
 
 // Ported verbatim from the unconditional `new WebSearchSettingsModal(app,
 // plugin).open()` fallback at the bottom of `AgentToolsModal.tsx`'s
-// settings-button `onClick` `if` chain (master.md §1.4c — that fallback is
-// the exact silent-misroute bug this table exists to make impossible; this
-// is now an explicit entry, not a default). `WebSearchSettingsModal` is the
+// settings-button `onClick` `if` chain. That fallback is the exact
+// silent-misroute bug this table exists to make impossible; this is now an
+// explicit entry, not a default. `WebSearchSettingsModal` is the
 // one dedicated-settings modal shaped `(app, plugin)` rather than
 // `(app, { title, value, onChange })`, hence the `plugin` field on
 // `CapabilitySettingsLauncherContext`.
@@ -136,12 +131,12 @@ const openWebSearchSettings: SettingsLauncher = ({ app, plugin }) => {
 }
 
 /**
- * The exhaustive settings-entry wiring table (master.md §3.6 / D4).
+ * The exhaustive settings-entry wiring table.
  *
  * `satisfies Record<BuiltinCapabilityId, SettingsLauncher | null>` — not
  * `Partial` — so a capability with no launcher wired here is a compile
- * error, not a silent fallback. This directly rules out the bug documented
- * in master.md §1.4c: `AgentToolsModal.tsx:290-365`'s settings button
+ * error, not a silent fallback. This directly rules out the `hasSettings`
+ * fallback bug: `AgentToolsModal.tsx:290-365`'s settings button
  * currently falls through, when none of its three `if`s match, to an
  * unconditional `new WebSearchSettingsModal(...)` — any capability that
  * declares `hasSettings: true` and forgets a branch there silently opens the

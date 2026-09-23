@@ -4,10 +4,10 @@ import { defineCapability } from '../define'
 // label/description copied from the `context_prune_tool_results` entry in
 // `builtinToolUiMeta.ts`; category from `BUILTIN_TOOL_CATEGORY_MAP`
 // (`'context'`). The i18n keys are unchanged from the existing locale entries
-// (master.md §5: don't rename existing locale keys). `id: 'context_pruning'`
-// is a new capability id (decision 16). Kept as its own capability rather
-// than merged with `context_compaction` per decision 20 — the user explicitly
-// rejected combining the two context tools.
+// (existing locale keys are never renamed). `id: 'context_pruning'` is a new
+// capability id. Kept as its own capability rather than merged with
+// `context_compaction` — the user explicitly rejected combining the two
+// context tools.
 //
 // defaultEnabled/approval cross-checked against the pre-refactor sources:
 // `tool-preferences.ts`'s `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES`

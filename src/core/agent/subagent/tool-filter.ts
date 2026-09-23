@@ -8,8 +8,7 @@ const blockedSet = new Set(SUBAGENT_BLOCKED_TOOL_NAMES)
  *
  * The deny-list is static (baseline only): see `SUBAGENT_BLOCKED_TOOL_NAMES`.
  * Tools that require approval are no longer filtered here — their approval
- * requests route to the parent conversation's SubagentCard (see
- * `docs/plans/2026-06-18-subagent-tool-approval-routing.md`).
+ * requests route to the parent conversation's SubagentCard.
  */
 export function filterAllowedToolsForSubagent(
   parentAllowedToolNames: string[] | undefined,

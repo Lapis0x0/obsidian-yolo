@@ -76,10 +76,9 @@ const TERMINAL_COMMAND_MCP_TOOL: Omit<McpTool, 'name'> = {
 }
 
 // Single consumer (this tool) — moved here rather than left as a shared
-// import, per phase2-migration.md D6 "注意" ("只被一个工具用的跟着走"). Ported
-// verbatim from the private `getOptionalBooleanArg` in
-// `src/core/mcp/localFileTools.ts`, which `bash` (not yet migrated, D6 batch
-// 7) does not use — it had exactly two call sites, both in this tool's own
+// import ("只被一个工具用的跟着走"). Ported verbatim from the private
+// `getOptionalBooleanArg` in `src/core/mcp/localFileTools.ts`, which `bash`
+// does not use — it had exactly two call sites, both in this tool's own
 // `case TERMINAL_COMMAND_TOOL_NAME` branch.
 const getOptionalBooleanArg = (
   args: Record<string, unknown>,
@@ -99,19 +98,19 @@ export const terminalCommandDefinition = defineTool({
   name: 'terminal_command',
   summaryAction: 'terminal',
   getMcpTool: () => TERMINAL_COMMAND_MCP_TOOL,
-  // Platform gate — the ONE deliberate behavior change in this batch
-  // (master.md §3.1b, approved 2026-08-15): previously `terminal_command` was
+  // Platform gate — the ONE deliberate behavior change in this migration
+  // (approved 2026-08-15): previously `terminal_command` was
   // handed to the model on every platform and only failed at execution time
   // (`core/agent/bash/index.ts`'s `runBash` throws off-desktop). This keeps
   // it off the mobile candidate list entirely rather than advertising a tool
   // call that is guaranteed to fail. `bash/index.ts`'s execution-time throw
   // is NOT removed — it stays as defense-in-depth for any call path that
   // reaches `execute` below without going through catalog filtering first
-  // (master.md §3.4's "upstream filtering doesn't retire downstream
-  // fallbacks" principle). This gate must not be copied to `js_eval` — that
+  // (the "upstream filtering doesn't retire downstream fallbacks"
+  // principle). This gate must not be copied to `js_eval` — that
   // tool has no platform restriction today (see its own definition.ts).
   isAvailable: () => Platform.isDesktop,
-  // Only the *explicit* cwd, never the command text (master.md §4 Q10): a
+  // Only the *explicit* cwd, never the command text: a
   // shell line is not a path expression, and pretending to parse one would
   // trade a boundary the user can reason about for a guess.
   filesystemPathArg: 'cwd',
@@ -124,7 +123,7 @@ export const terminalCommandDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts`), minus the abort
   // check / workspace-scope / YOLO-data-root guards and the outer try/catch
   // that normalizes thrown errors to an Error-status result — those are
-  // dispatcher responsibilities (master.md §3.4), not tool semantics.
+  // dispatcher responsibilities, not tool semantics.
   execute: async (args, ctx) => {
     const { app, conversationId, conversationMessages, toolCallId, signal } =
       ctx

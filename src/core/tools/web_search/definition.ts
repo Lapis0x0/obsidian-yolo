@@ -36,7 +36,7 @@ export const webSearchDefinition = defineTool({
   getMcpTool: () => WEB_SEARCH_MCP_TOOL,
   // Provider-readiness gate, ported verbatim from `isLocalToolEnabled`
   // (`src/core/mcp/mcpManager.ts`) — the one pre-existing genuine
-  // `isAvailable` use case (master.md §3.1b: "provider 维度——现成，纯搬运").
+  // `isAvailable` use case ("provider 维度——现成，纯搬运").
   // `web_scrape` deliberately has NO such gate: it falls back to the generic
   // static-HTML scraper when no provider is configured (see
   // `web_scrape/definition.ts`'s doc comment).
@@ -51,7 +51,7 @@ export const webSearchDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts`), minus the abort
   // check / workspace-scope / YOLO-data-root guards and the outer try/catch
   // that normalizes thrown errors to an Error-status result — those are
-  // dispatcher responsibilities (master.md §3.4), not tool semantics.
+  // dispatcher responsibilities, not tool semantics.
   execute: async (args, ctx) => {
     const { settings, signal } = ctx
     if (!settings) {

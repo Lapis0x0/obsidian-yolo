@@ -3,8 +3,6 @@
 // mode-scoped ones. The two files are deliberately shaped the same way (Map +
 // frozen snapshot + `subscribe`, consumed by `McpCoordinator` and replayed as
 // in-process MCP tool servers); what differs is only the scope of the result.
-//
-// See docs/plans/09-03-whiteboard-agent-tools/master.md D1.
 
 import type { BuiltinToolCategory } from '../tools/types'
 
@@ -148,8 +146,7 @@ export class ModuleToolSetRegistry implements ModuleToolSetContributionSinkV1 {
  * (`core/agent/tool-preferences.ts`) needs: the in-process server name each
  * set is served under and the short tool names it exposes. Shared by every
  * call site that threads a tool set snapshot into enablement/count
- * computations (docs/plans/09-03-whiteboard-agent-tools/master.md D1b) so
- * none of them hand-write the same `serverName`/`toolNames` projection.
+ * computations so none of them hand-write the same `serverName`/`toolNames` projection.
  *
  * Drops `unavailable` sets: their tools are not actually registered as an
  * in-process MCP server (see `McpCoordinator`), so counting them as enabled

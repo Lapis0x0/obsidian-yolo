@@ -117,8 +117,7 @@ type AgentToolView = {
    * The owning built-in capability's id, for rows built from
    * `buildBuiltinCapabilityRows` (undefined for MCP server tool rows, which
    * have no capability). Used to look up this row's approval
-   * `allowedModes` (D7, phase2-migration.md D7 item 8) instead of a
-   * hardcoded two-option literal.
+   * `allowedModes` instead of a hardcoded two-option literal.
    */
   capabilityId?: BuiltinCapabilityId
 }
@@ -304,7 +303,7 @@ function toDraftAgent(assistant: Assistant): Assistant {
   }
 }
 
-// Remote MCP tools only, post-D9: built-in tool state no longer lives in
+// Remote MCP tools only: built-in tool state no longer lives in
 // `toolPreferences` at all (see `updateDraftBuiltinCapabilityPreferences`
 // below for the built-in counterpart).
 function updateDraftToolPreferences(
@@ -362,8 +361,7 @@ export function AgentsSectionContent({
   const { settings, setSettings } = useSettings()
   const { t, language } = useLanguage()
 
-  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md
-  // D1b): same registry `useSyncExternalStore` pattern used elsewhere
+  // Module tool sets: same registry `useSyncExternalStore` pattern used elsewhere
   // (`Chat.tsx`'s module chat mode subscription, `useChatStreamManager.ts`).
   // The full snapshot (not just the reduced enablement projection) is kept
   // too — the "库内操作" tool-group rows below need each set's own label,
@@ -839,8 +837,7 @@ export function AgentsSectionContent({
         tools: AgentToolView[]
         /**
          * A capability group — the host's own rows and any module-contributed
-         * ones (docs/plans/09-03-whiteboard-agent-tools/master.md D1b, Q16),
-         * which sit in the same group as the host capabilities of their
+         * ones, which sit in the same group as the host capabilities of their
          * category. False only for a user-configured MCP server, which is the
          * one thing here that folds and carries per-server controls.
          */
@@ -853,7 +850,7 @@ export function AgentsSectionContent({
     // availability, unlike the global settings pages' `getLocalFileTools()`;
     // see `builtinCapabilityRows.ts`'s doc comment on that asymmetry).
     // Populated only when built-in tools are included at all, matching the
-    // pre-D7 early-return.
+    // former early-return.
     const builtinToolNamesPresent = new Set<string>()
 
     availableTools.forEach((tool) => {
@@ -923,7 +920,7 @@ export function AgentsSectionContent({
         group.tools.push({
           // Only used as a React list key — any present member's own FQN is
           // fine, there is no group-vs-single-tool distinction to preserve
-          // post-D9 (decision 12: no virtual tool names anywhere).
+          // (no virtual tool names anywhere).
           fullName: getToolName(localFsServerName, presentMembers[0]),
           toggleTargets: presentMembers.map((name) =>
             getToolName(localFsServerName, name),
@@ -936,7 +933,7 @@ export function AgentsSectionContent({
       }
     }
 
-    // Module tool sets (Q16): one capability row inside their own category's
+    // Module tool sets: one capability row inside their own category's
     // group, which is what a module contributes — a capability, sitting beside
     // the host's own, differing only in where it came from. They used to be a
     // group apiece, which put them through the MCP branch below (collapsed,
@@ -1285,8 +1282,7 @@ export function AgentsSectionContent({
     ],
     [t],
   )
-  // D7 (phase2-migration.md D7 item 8): every built-in row's approval
-  // dropdown offers exactly its own capability's `approval.allowedModes`.
+  // Every built-in row's approval dropdown offers exactly its own capability's `approval.allowedModes`.
   // This replaces both the hardcoded two-item literal that all non-bash rows
   // used to share and the separate bash-only three-item memo — `vault_shell`
   // is no longer a special case in this file, it is simply the one
@@ -1296,7 +1292,7 @@ export function AgentsSectionContent({
   //
   // Display order stays require -> dangerous -> full rather than following
   // each capability's own `allowedModes` declaration order, since reordering
-  // the dropdown is not an approved visible change (master.md §5).
+  // the dropdown is not an approved visible change.
   const capabilityApprovalOptionsById = useMemo(() => {
     const labelFor = (mode: AssistantToolApprovalMode): string => {
       switch (mode) {
@@ -2004,7 +2000,7 @@ export function AgentsSectionContent({
                             // Only a capability that allows `dangerous_only`
                             // can display it — today that is `vault_shell`
                             // alone, but this reads the declaration rather
-                            // than naming bash (phase2-migration.md D7 item 8).
+                            // than naming bash.
                             const allowsDangerousOnly = approvalOptions.some(
                               (option) => option.value === 'dangerous_only',
                             )
@@ -2046,8 +2042,8 @@ export function AgentsSectionContent({
                                       so a row without one has no tier to show:
                                       an MCP server tool (governed per server),
                                       and a module tool set, which has no
-                                      approval layer at all (Q13 — safety rides
-                                      on its writes going through undo). */}
+                                      approval layer at all (safety rides on
+                                      its writes going through undo). */}
                                   {tool.capabilityId && selected && (
                                     <>
                                       <div className="yolo-agent-tool-select">

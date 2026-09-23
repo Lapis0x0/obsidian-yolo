@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-deprecated -- `ClientSideConnection` is the SDK's stable single-class
    client-side facade; the newer `client()`/context-builder API adds session-management helpers this host doesn't
-   need, since orchestration already lives in `AcpCliRuntime`. See phase1-acp-hermes.md's SDK-adoption decision. */
+   need, since orchestration already lives in `AcpCliRuntime`. */
 import type {
   AgentCapabilities,
   Client,

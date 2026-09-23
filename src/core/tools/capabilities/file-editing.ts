@@ -5,9 +5,9 @@ import { fsWriteDefinition } from '../fs_write/definition'
 // label/description copied from the `fs_edit_ops` group entry in
 // `builtinToolUiMeta.ts` (`FILE_EDIT_GROUP_TOOL_NAME`'s label/desc) and
 // `BUILTIN_TOOL_CATEGORY_MAP[FILE_EDIT_GROUP_TOOL_NAME]` (`'vault'`). The
-// i18n keys are unchanged from the existing locale entries (master.md §5).
-// `id: 'file_editing'` is a new capability id (decision 16), independent of
-// the old `fs_edit_ops` group-name string.
+// i18n keys are unchanged from the existing locale entries.
+// `id: 'file_editing'` is a new capability id, independent of the old
+// `fs_edit_ops` group-name string.
 //
 // defaultEnabled cross-checked against the pre-refactor sources: neither
 // `fs_edit` nor `fs_write` is in `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES`
@@ -18,8 +18,7 @@ import { fsWriteDefinition } from '../fs_write/definition'
 // hardcodes `hasSettings: false` -> hasSettings: false.
 //
 // approval.defaultMode is the ONE deliberate behavior change in this whole
-// migration (master.md §1.4 / §3.1 / decision 17, confirmed by the user
-// 2026-08-15): the pre-refactor sources disagree with each other —
+// migration (confirmed by the user 2026-08-15): the pre-refactor sources disagree with each other —
 // `fs_edit` itself is absent from `REQUIRE_APPROVAL_LOCAL_TOOLS` (falls
 // through to `full_access`) while `fs_write` and the `fs_edit_ops` group
 // name are both present (`require_approval`) — and the settings page has
@@ -44,8 +43,8 @@ export const fileEditingCapability = defineCapability({
   category: 'vault',
   // Ask mode's promise is "do not change my vault", so writes are out; Max
   // does not get these either, because it writes through `native_files`
-  // instead (master.md Q5 — the vault-backed and native file toolsets are two
-  // identities, never granted together).
+  // instead (the vault-backed and native file toolsets are two identities,
+  // never granted together).
   chatModes: ['agent'],
   defaultEnabled: true,
   approval: {

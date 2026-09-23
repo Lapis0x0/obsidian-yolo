@@ -6,8 +6,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * v81 -> v82: knowledge bases become independent (multi-vector-store)
  * entities instead of one implicit "the vault" index scoped by
- * `ragOptions.includePatterns`/`excludePatterns`/`excludeYoloBaseDir`
- * (docs/plans/08-23-knowledge-bases/00-plan.md). Those three fields, plus
+ * `ragOptions.includePatterns`/`excludePatterns`/`excludeYoloBaseDir`.
+ * Those three fields, plus
  * the long-dead `continuationOptions.knowledgeBaseFolders`, are dropped.
  *
  * Deliberately does NOT synthesize a default `knowledgeBases` entry from the

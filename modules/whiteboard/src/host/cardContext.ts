@@ -1,4 +1,4 @@
-// The vault half of a card's context (master.md §4): read what the pure
+// The vault half of a card's context: read what the pure
 // assembly in `domain/cardContext.ts` needs, then build it.
 //
 // The async boundary sits exactly here. Reading files is the only thing about
@@ -6,7 +6,7 @@
 // thing that awaits — everything downstream of `resolveCardContextNotes` is
 // synchronous and can be re-run against a board that has since changed
 // without touching the vault again. That is what a synchronous consumer
-// (Quick Ask's `getContext`, W4) is meant to hold: the notes, resolved once,
+// (Quick Ask's `getContext`) is meant to hold: the notes, resolved once,
 // and `buildCardContext` called on demand.
 //
 // Two reads per note in the worst case (a clipped preview for the summary,
@@ -45,7 +45,7 @@ export async function resolveCardContextNotes(
 }
 
 /**
- * One card in full, as `read_card` returns it (master.md §5): the card's own
+ * One card in full, as `read_card` returns it: the card's own
  * text, a note card's whole note, and a group's members one after another —
  * asking for a group is asking for what is in it.
  *

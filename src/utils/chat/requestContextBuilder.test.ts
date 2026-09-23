@@ -904,8 +904,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain('```notes/empty.md\n\n```')
   })
 
-  // D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: the @mention
-  // `full` mode dispatches a claimed extension to the module's renderer
+  // The @mention `full` mode dispatches a claimed extension to the module's renderer
   // instead of inlining raw bytes — same dispatch fs_read uses, threaded in
   // here as `resolveModuleFileTextRenderer`.
   it('renders a claimed extension through the module renderer in full mode instead of raw content', async () => {
@@ -3243,7 +3242,7 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
   })
 })
 
-describe('RequestContextBuilder module chat mode skill scope (D6)', () => {
+describe('RequestContextBuilder module chat mode skill scope', () => {
   function makeApp() {
     return {
       metadataCache: { getFileCache: jest.fn(() => null) },

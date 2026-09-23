@@ -1,7 +1,6 @@
 // The `.yoloboard` file view's canvas: camera pan/zoom, viewport
 // virtualization, and the note/text card static-preview <-> live-editor
-// lifecycle (docs/plans/08-25-yolo-whiteboard/p1-design.md §3). Ported from
-// the S2/S3 spikes' `WhiteboardFileView` (`git show
+// lifecycle. Ported from the S2/S3 spikes' `WhiteboardFileView` (`git show
 // spike/s2-editor-lifecycle:src/features/whiteboard-spike/fileView.ts`) and
 // translated from direct Obsidian API calls (`TextFileView`,
 // `MarkdownRenderer`, `app.keymap`) to the Host API surface a module is
@@ -9,8 +8,8 @@
 // and `YoloModuleHostFileViewContextV1`, both declared globally by
 // `modules/host-sdk.d.ts`.
 //
-// Deliberately DOM-heavy and imperative rather than React (p1-design's task
-// brief: "画布主体建议直接 DOM 命令式实现（spike 同款，性能路径更可控）") — a
+// Deliberately DOM-heavy and imperative rather than React ("画布主体建议直接
+// DOM 命令式实现（spike 同款，性能路径更可控）") — a
 // rAF loop driving virtualization mount/unmount at a few hundred cards a
 // frame is not a good fit for a vdom diff.
 //
@@ -447,15 +446,15 @@ export class WhiteboardCanvas {
   private nodesById = new Map<NodeId, BoardNode>()
   /**
    * Every node that is not a group, in board order — the population a card
-   * gesture acts on. Groups live in the same `nodes` array (p3-canvas-parity
-   * D5) but sit *behind* the cards, so a hit test that walked the whole array
+   * gesture acts on. Groups live in the same `nodes` array but sit *behind*
+   * the cards, so a hit test that walked the whole array
    * would let a group swallow a double-click meant for the empty space inside
    * it. Derived in `syncBoardIndex`, never stored.
    */
   private cardNodes: readonly BoardNode[] = []
   /**
-   * The other half of the same split. Groups keep their DOM at every zoom
-   * (P4-D2), so the two populations answer to different viewport rects in the
+   * The other half of the same split. Groups keep their DOM at every zoom,
+   * so the two populations answer to different viewport rects in the
    * overview tier and have to be handed to the virtualization engine
    * separately — see `recomputeVisibility`.
    */
@@ -512,7 +511,7 @@ export class WhiteboardCanvas {
   private interaction: Interaction | null = null
   private editing: EditingState | null = null
 
-  // Selection (W3-A): UI state, not board data — never serialized. A
+  // Selection: UI state, not board data — never serialized. A
   // non-empty selection pushes a keymap scope (Delete/Backspace/Escape);
   // editing a card always clears the selection first (see enterEditMode),
   // so the two states never overlap and their keymap scopes never compete
@@ -554,7 +553,7 @@ export class WhiteboardCanvas {
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
-  // Selection toolbar (P3 batch 3, surfaces ①/②): one instance per view,
+  // Selection toolbar: one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
   // selection's geometry moves. It lives in the viewport (screen-space) layer,
   // so it keeps a constant size at every zoom — see ./canvas/toolbarController.ts,
@@ -566,7 +565,7 @@ export class WhiteboardCanvas {
    * off the selection's keymap scope for as long as it has the caret. */
   private renaming: LabelTarget | null = null
 
-  // Creation surfaces (P3 batch 3 wave B): the bottom bar, and the panel that
+  // Creation surfaces: the bottom bar, and the panel that
   // asks which file or what URL before a card can be made.
   private cardMenu: CardMenu | null = null
   /** A note card that opens its editor as soon as its note has been read —
@@ -577,7 +576,7 @@ export class WhiteboardCanvas {
   private canvasControls: CanvasControls | null = null
   private prompt: PromptOverlay | null = null
 
-  // Resize (W3-C): one shared handle layer for the whole board, parked over
+  // Resize: one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
   // card — at a few hundred mounted cards that would be thousands of nodes
   // that only ever matter for one of them. Obsidian Canvas's own
@@ -588,7 +587,7 @@ export class WhiteboardCanvas {
    * as last applied, which is what a press on a handle resizes. */
   private layerNodeId: NodeId | null = null
 
-  // Edges (W3-A): a single SVG overlay drawn into the world layer, redrawn
+  // Edges: a single SVG overlay drawn into the world layer, redrawn
   // wholesale on structural change (rebuildEdgesSvg) and per-path on card
   // position change (redrawEdgesForNodes) — see ./canvas/edgeLayer.ts, which
   // owns the SVG's child elements and the incidence index, and its own doc
@@ -598,7 +597,7 @@ export class WhiteboardCanvas {
   /** Drawn only while a drag or a resize is lining something up. */
   private snapGuideLayer: SnapGuideLayer | null = null
   /**
-   * The overview tier's renderer (P4-1). Built in `ensureDom`; null before
+   * The overview tier's renderer. Built in `ensureDom`; null before
    * that, which `clear()` can reach.
    */
   private overviewLayer: OverviewLayer | null = null
@@ -653,7 +652,7 @@ export class WhiteboardCanvas {
   private lastRawData = ''
   private parseFailed = false
 
-  // Content-freshness (W3-B): a vault-wide `modify` subscription, live for
+  // Content-freshness: a vault-wide `modify` subscription, live for
   // the leaf's whole lifetime (set up once in ensureDom, released in
   // dispose) — a note card's backing file can change from outside this
   // whiteboard (another leaf, another app) and the mounted card should pick
@@ -702,12 +701,10 @@ export class WhiteboardCanvas {
   /**
    * TextFileView-style contract: must be idempotent and safe to call
    * repeatedly (host doc: "May run before the DOM is visible and
-   * repeatedly (external modify); must be idempotent"). M1 doesn't
-   * implement a smooth incremental refresh on external modify (out of
-   * scope per p1-design §6 M1 — "modify 重渲染" ships in a later
-   * milestone), so both `clear=true` and `clear=false` do the same full
-   * rebuild from the freshly parsed board; the `clear` flag itself carries
-   * no distinct meaning yet.
+   * repeatedly (external modify); must be idempotent"). This doesn't
+   * implement a smooth incremental refresh on external modify, so both
+   * `clear=true` and `clear=false` do the same full rebuild from the freshly
+   * parsed board; the `clear` flag itself carries no distinct meaning yet.
    */
   setViewData(data: string, _clear: boolean): void {
     this.ensureDom()
@@ -769,8 +766,8 @@ export class WhiteboardCanvas {
    *    and closing a board never takes focus off one;
    *  - the active card's live editor text, via the same `planNodeCommit`
    *    decision the actual commit path uses, without performing its write
-   *    side effects (a note card's live text isn't part of the board at all
-   *    — p1-design §1.2 — so there is nothing to fold in for that case; only
+   *    side effects (a note card's live text isn't part of the board at all,
+   *    so there is nothing to fold in for that case; only
    *    a text card's `updateBoard` outcome affects serialization here).
    */
   getViewData(): string {
@@ -988,7 +985,7 @@ export class WhiteboardCanvas {
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
-    // DOM at every tier (P4-D2), the resize handles, the snap guides, and an
+    // DOM at every tier, the resize handles, the snap guides, and an
     // in-flight connection's curve. See ./canvas/overviewLayer.ts.
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: () => this.cameraController.view,
@@ -1296,7 +1293,7 @@ export class WhiteboardCanvas {
     this.viewportEl.addEventListener('drop', this.onDrop)
   }
 
-  /** Content-freshness (p1-design §1.2): scoped to the whole vault ('' —
+  /** Content-freshness: scoped to the whole vault ('' —
    * see moduleVault.ts's `doesPathAffectScope`) because a note card's
    * backing file can live anywhere; `handleBackingFileModified` does the
    * actual per-card filtering. Set up once per leaf lifetime alongside the
@@ -1310,9 +1307,9 @@ export class WhiteboardCanvas {
 
   /**
    * Warms up the host's markdown rendering pipeline once per view instance
-   * (p1-design §3: "视图打开时用不可见卡预热渲染管线（S2 首卡 335ms 冷启
-   * 动）") — renders into an off-screen (not `display:none`, so layout/
-   * measurement work isn't skipped) element.
+   * ("视图打开时用不可见卡预热渲染管线（首卡冷启动实测约 335ms）") — renders
+   * into an off-screen (not `display:none`, so layout/measurement work isn't
+   * skipped) element.
    *
    * Through the same renderer the cards use, so what is warmed is what they
    * will actually run: the markdown parse pipeline and its worker included.
@@ -1491,7 +1488,7 @@ export class WhiteboardCanvas {
       // what is already open.
       if (this.editing?.nodeId === nodeId) return
       // A card being generated into has its text in the DOM and its body
-      // under the stream; asking to type in it is asking to stop (Q35). The
+      // under the stream; asking to type in it is asking to stop. The
       // editor opens on what has arrived, from `endCardGeneration`.
       if (this.cardGeneration.isGenerating(nodeId)) {
         this.cardGeneration.stop(nodeId, { edit: true })
@@ -1914,8 +1911,8 @@ export class WhiteboardCanvas {
    * In the DOM tiers that is the element under it. In the overview tier the
    * cards have no elements, so the same question is asked of the board data
    * the canvas drew from — a point-in-rectangle test per card, linear over the
-   * board (p4-perf-overview §三: no spatial index; a pass over a few thousand
-   * rectangles is not what costs anything here). Groups keep their DOM at
+   * board (no spatial index; a pass over a few thousand rectangles is not
+   * what costs anything here). Groups keep their DOM at
    * every tier, so they keep answering the first way.
    */
   private nodeIdAtPointer(e: MouseEvent): NodeId | null {
@@ -2101,12 +2098,10 @@ export class WhiteboardCanvas {
   // in the *viewport* layer (a sibling of the scaled/panned world layer),
   // so it's drawn in plain screen coordinates and never needs to account
   // for the camera transform itself — only its two corner points get
-  // converted to world space, once, at pointerup (p1-design's W3-A task
-  // brief allows either a live per-move highlight or a single hit-test at
-  // release; this takes the latter, cheaper option — repainting a
-  // dashed-rectangle overlay already gives the user drag feedback, and
-  // hit-testing every card on every pointermove has no payoff for M1's
-  // board sizes).
+  // converted to world space, once, at pointerup (rather than a live
+  // per-move highlight — repainting a dashed-rectangle overlay already gives
+  // the user drag feedback, and hit-testing every card on every pointermove
+  // has no payoff).
   // -----------------------------------------------------------------------
 
   private startMarquee(e: PointerEvent): void {
@@ -2196,7 +2191,7 @@ export class WhiteboardCanvas {
   // Card press: click-to-select vs. drag-to-move, disambiguated by
   // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) selects
   // the card; editing is a second, deliberate step — double-click, or Enter
-  // on the selection (W3-E, matching Obsidian Canvas). Selecting first is
+  // on the selection (matching Obsidian Canvas). Selecting first is
   // what makes a single click safe: the card can then be dragged, deleted,
   // resized or wired up without a caret landing in it and an editor
   // mounting on every glance. A brand-new card is the exception and opens
@@ -2210,7 +2205,7 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   // -----------------------------------------------------------------------
-  // Resize (W3-C): eight handles on one shared layer that follows the
+  // Resize: eight handles on one shared layer that follows the
   // pointer's card. A press on a handle is ambiguous exactly the way a press
   // on a card is — the handles straddle the border, so their inner half
   // overlaps the card, and a click there that never moves must still open
@@ -2373,9 +2368,9 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Connections (W3-D): drag a card's connection point to another card to
-  // wire them up, or drag an existing edge's endpoint to re-wire it
-  // (p1-design §3: "锚定边默认按两卡相对位置自动选，拖动连线端点可手动改").
+  // Connections: drag a card's connection point to another card to wire
+  // them up, or drag an existing edge's endpoint to re-wire it
+  // ("锚定边默认按两卡相对位置自动选，拖动连线端点可手动改").
   //
   // Both ends are written explicitly on an edge made this way. The format
   // allows omitting a side (= re-picked from relative position at render
@@ -2783,7 +2778,7 @@ export class WhiteboardCanvas {
    * else. Read off the event, so it can be pressed and released mid-drag.
    */
   private snappingWanted(e: PointerEvent): boolean {
-    // Off below the overview threshold (P4-D1). Alignment is an offer measured
+    // Off below the overview threshold. Alignment is an offer measured
     // in screen pixels, and down there the tolerance covers a screenful of
     // board: the card would jump to a neighbour the user cannot see, and the
     // guide drawn for it would be a line across the whole viewport.
@@ -2870,7 +2865,7 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Board mutation and history (W3-E).
+  // Board mutation and history.
   //
   // Every content change goes through `applyBoardChange`: it is what keeps
   // "changed the board", "recorded a step", and "asked the host to save" from
@@ -2988,10 +2983,9 @@ export class WhiteboardCanvas {
   //   - The view is where the newest board is. Its saves are debounced, so
   //     for up to two seconds after a drag the file is stale; an edit
   //     computed from the file would silently undo that drag.
-  //   - Cmd+Z gets the user back to before the agent touched anything
-  //     (docs/plans/09-03-whiteboard-agent-tools D5), because the change
-  //     lands as a history step like any other edit rather than as a file
-  //     rewrite that resets the history.
+  //   - Cmd+Z gets the user back to before the agent touched anything,
+  //     because the change lands as a history step like any other edit
+  //     rather than as a file rewrite that resets the history.
   //
   // The path is the identity: a canvas is asked which board it is showing
   // rather than registered under a path, so a rename needs no bookkeeping.
@@ -3128,7 +3122,7 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Selection (W3-A). `selectedIds` is UI state only — never touches
+  // Selection. `selectedIds` is UI state only — never touches
   // `board` or triggers requestSave by itself. Pushes/pops a keymap scope
   // exactly when the selection transitions to/from empty, so
   // Delete/Backspace/Escape are only ever intercepted while there's
@@ -3312,7 +3306,7 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Selection toolbar (P3 batch 3, surfaces ①/②): the `SelectionToolbar`
+  // Selection toolbar: the `SelectionToolbar`
   // instance, its model-building, and its placement are
   // ./canvas/toolbarController.ts's job (split out structurally — see that
   // file's own doc comment). What stays here is every command whose whole
@@ -3622,7 +3616,7 @@ export class WhiteboardCanvas {
   //
   // Double-click and the canvas context menu both create a *text* card: it
   // is pure board data, so the cheapest gesture on the canvas carries no
-  // side effect outside the file. "Card as note" (p1-design §1.2) is
+  // side effect outside the file. "Card as note" is
   // reached deliberately, through `convertCardToNote` — the user decides
   // when a card earns a file, rather than every stray double-click leaving
   // an empty note in the vault.
@@ -4035,7 +4029,7 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Groups, alignment and distribution (P3 batch 3 wave B, features 3 and 5).
+  // Groups, alignment and distribution.
   //
   // The geometry is in domain/ (groups.ts, arrange.ts) and unit-tested there;
   // what is left here is turning a selection into rectangles, handing them
@@ -4281,8 +4275,8 @@ export class WhiteboardCanvas {
   /**
    * The board's own folder — where a converted card's note is written.
    *
-   * Deliberately not a `<board name> Cards/` subfolder (p1-design §1.2's
-   * original rule): a folder named after the board has to be renamed and
+   * Deliberately not a `<board name> Cards/` subfolder (the original rule):
+   * a folder named after the board has to be renamed and
    * moved whenever the board is, and until it is, one board's cards sit in
    * two different folders. Writing beside the board needs no such rule and
    * cannot drift. A board at the vault root returns '', which every vault
@@ -4425,14 +4419,14 @@ export class WhiteboardCanvas {
     this.updateOverviewState()
     if (this.overview) {
       // Two populations, one engine: groups keep their DOM at every tier
-      // (P4-D2) and are asked the ordinary question, cards are asked one they
+      // and are asked the ordinary question, cards are asked one they
       // cannot answer yes to.
       this.engine.recompute(this.groupNodes, rect, this.pinnedIds)
       this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
     } else {
       this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
     }
-    // Edges answer to the same viewport, on the same tick (P4-2) — see
+    // Edges answer to the same viewport, on the same tick — see
     // edgeLayer.ts's `updateVisibility`. Not in the overview tier: there the
     // edge DOM is out of the document altogether and the canvas is drawing
     // them, so which of them the viewport covers is not a question worth
@@ -4457,7 +4451,7 @@ export class WhiteboardCanvas {
 
   /**
    * Flips the rendering tier at this method's ~70ms throttle
-   * (recomputeVisibility's caller), not per frame — p1-design §3's
+   * (recomputeVisibility's caller), not per frame —
    * "阈值切换时机放在相机 settle 或节流点，不逐帧判断切换". This throttle point
    * (rather than only the longer 300ms camera-settle debounce) keeps a
    * deliberate zoom-out gesture feeling responsive.
@@ -4469,7 +4463,7 @@ export class WhiteboardCanvas {
    * the snap guides — and gets a class so the stylesheet can take the edge DOM
    * out of the document, which the canvas is now drawing too.
    *
-   * The parking pool is frozen for the length of the tier (P4-D5). Entering it
+   * The parking pool is frozen for the length of the tier. Entering it
    * unmounts every card, which the pool's ordinary rule reads as "nothing is
    * mounted, so nothing should be parked" and answers by destroying exactly
    * the cards the user is about to zoom back into. Zooming out to find a
@@ -4661,8 +4655,7 @@ export class WhiteboardCanvas {
   // Edit lifecycle: click -> live CM6 editor; blur (native, or a
   // programmatic `.blur()` from Escape / a card switch / teardown) -> the
   // single `finishEdit` commit path. Never write back from anywhere else —
-  // this is what keeps blur and Escape from double-committing
-  // (p1-design §3).
+  // this is what keeps blur and Escape from double-committing.
   // -----------------------------------------------------------------------
 
   /**
@@ -4715,7 +4708,7 @@ export class WhiteboardCanvas {
    * keystroke has to belong to one of them.
    */
   private enterLiveContent(id: NodeId): boolean {
-    // A degraded card has no body to enter (D8), the same reason edit mode
+    // A degraded card has no body to enter, the same reason edit mode
     // declines there.
     if (this.parseFailed || this.overview) return false
     if (!this.cardRenderer.hasLiveContent(id)) return false
@@ -4771,7 +4764,7 @@ export class WhiteboardCanvas {
     runtime?.el?.classList.remove(CARD_GENERATING_CLASS)
     runtime?.bodyEl?.replaceChildren()
     this.pinnedIds.delete(id)
-    // One history step for the whole run (Q20): everything that streamed lands
+    // One history step for the whole run: everything that streamed lands
     // on the board at once, and Cmd+Z takes the card back to empty.
     if (text !== '') {
       this.commitCardText(id, text, `card-ai-${this.nextEditSessionId()}`)
@@ -4781,7 +4774,7 @@ export class WhiteboardCanvas {
   }
 
   private enterEditMode(id: NodeId): void {
-    // Degraded cards render as a title block with the body hidden (D8), so
+    // Degraded cards render as a title block with the body hidden, so
     // an editor mounted now would be invisible; zooming back in is the way
     // to edit.
     if (!this.canCreate) return
@@ -4861,7 +4854,7 @@ export class WhiteboardCanvas {
         this.cardGeneration.syncChips(id)
       },
       onBlur: (text) => this.finishEdit(id, text),
-      // Rung two of the board's AI ladder (master.md §6.3): the host's Quick
+      // Rung two of the board's AI ladder: the host's Quick
       // Ask, opened by the trigger inside the card's own editor.
       quickAsk: {
         // Resolved per request, against the board as it is at that moment —
@@ -5021,10 +5014,9 @@ export class WhiteboardCanvas {
    * board `setViewData` discards two statements later, which takes the
    * history entry with it and leaves a queued `requestSave` that goes on to
    * persist the *replacing* board. The edit is lost either way; committing it
-   * only adds the corruption. (This is the "外部改写 board 后卡片消失" report
-   * in the whiteboard plan's T6 ③, which needed the rare
-   * editing-while-rewritten window to reproduce — a window the agent
-   * whiteboard tools make ordinary, docs/plans/09-03-whiteboard-agent-tools.)
+   * only adds the corruption. (This is the "外部改写 board 后卡片消失" bug,
+   * which needed the rare editing-while-rewritten window to reproduce — a
+   * window the agent whiteboard tools make ordinary.)
    */
   private endEditForIncomingBoard(): void {
     const editing = this.editing
@@ -5094,7 +5086,7 @@ export class WhiteboardCanvas {
   }
 
   // ---------------------------------------------------------------------
-  // Self-heal (p1-design §1.2, "自愈层"): run once per setViewData, right
+  // Self-heal ("自愈层"): run once per setViewData, right
   // after a board finishes parsing. Only markdown file nodes are covered —
   // relocating any other file type has no vault API to enumerate candidates
   // the way `listMarkdownFiles()` does for notes (out of scope; the actual
@@ -5134,7 +5126,7 @@ export class WhiteboardCanvas {
   }
 
   // ---------------------------------------------------------------------
-  // Content-freshness (p1-design §1.2, "内容时效"): a mounted note card's
+  // Content-freshness ("内容时效"): a mounted note card's
   // static preview reflects an external edit to its backing file without
   // requiring the whole `.yoloboard` to reload. Two guards keep this from
   // fighting the edit lifecycle:

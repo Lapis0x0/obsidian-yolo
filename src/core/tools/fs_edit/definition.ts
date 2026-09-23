@@ -80,16 +80,15 @@ export const fsEditDefinition = defineTool({
   // (`src/core/mcp/localFileTools.ts`, pre-migration), minus the abort check
   // / workspace-scope / YOLO-data-root guards on the *top-level path
   // parameter* and the outer try/catch — those are dispatcher
-  // responsibilities (master.md §3.4). `fs_edit` has no per-resolved-path
+  // responsibilities. `fs_edit` has no per-resolved-path
   // checks of its own (unlike `fs_read`'s wikilink case) — `path` is a
   // literal argument throughout, so the dispatcher's raw-argument scan is
-  // sufficient and nothing extra needs to happen here (master.md §5).
+  // sufficient and nothing extra needs to happen here.
   //
   // `openApplyReview` / `requireReview` now come from `ToolContext` rather
   // than being destructured `callLocalFileTool` parameters — the only
   // change from the pre-migration body. `waitForFsEditReview`'s own timing
-  // and semantics (imported from `./schema-helpers`) are untouched
-  // (phase2-migration.md D6 批 4).
+  // and semantics (imported from `./schema-helpers`) are untouched.
   execute: async (args, ctx) => {
     const {
       app,

@@ -41,8 +41,7 @@ const TODO_WRITE_MCP_TOOL: Omit<McpTool, 'name'> = {
 // Ported verbatim from `executeTodoWrite` (`src/core/mcp/localFileTools.ts`,
 // formerly the standalone helper backing `case 'todo_write'`) — moved here
 // rather than left as a shared import because it has exactly one caller
-// (master.md §7 / phase2-migration.md D6 "注意": helpers with a single
-// consumer follow that tool). Unlike every other ported `execute`, this one
+// (helpers with a single consumer follow that tool). Unlike every other ported `execute`, this one
 // returns Error-status results directly instead of throwing — that is
 // `executeTodoWrite`'s original, pre-existing behavior (not a change made
 // during this port) and is preserved verbatim so `executeBuiltinTool`'s

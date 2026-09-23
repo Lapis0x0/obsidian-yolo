@@ -3,15 +3,14 @@ import { asStringArray } from '../chat-summary-support'
 /**
  * Chat-surface summary for `fs_read` — ported verbatim from the
  * `toolName === 'fs_read'` branch of `ToolMessage.tsx`'s private
- * `getLocalToolSummaryText` (pre-D8). Wired into `TOOL_RENDERERS` as this
- * tool's `summary` field (phase2-migration.md D8).
+ * `getLocalToolSummaryText`. Wired into `TOOL_RENDERERS` as this tool's
+ * `summary` field.
  *
  * Note this is only the base "which paths" summary — `getHeadlineDisplayInfo`
  * (`ToolMessage.tsx`) layers response-dependent enrichment on top (read-mode
  * suffix, or the skill-name override) that a pure `args -> string` function
  * structurally cannot express, since it needs the tool *response*, not just
- * its arguments. That enrichment stays in `ToolMessage.tsx`, untouched by
- * D8 — see phase2-migration.md D8's scope note.
+ * its arguments. That enrichment stays in `ToolMessage.tsx`.
  */
 const FS_READ_VISIBLE_PATH_LIMIT_BEFORE_OMISSION = 4
 

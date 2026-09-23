@@ -1,9 +1,9 @@
 // Card mount/unmount, the hidden card pool, and per-card content rendering
-// for the `.yoloboard` canvas (docs/plans/08-25-yolo-whiteboard/p1-design.md
-// §3). Split out of `../canvas.ts` structurally (no behavior change): that
-// file remains the single state owner (board data, selection, editing) and
-// this class owns only the DOM/runtime side of a mounted card, reached
-// through the narrow `CardRendererCallbacks` it is constructed with.
+// for the `.yoloboard` canvas. Split out of `../canvas.ts` structurally (no
+// behavior change): that file remains the single state owner (board data,
+// selection, editing) and this class owns only the DOM/runtime side of a
+// mounted card, reached through the narrow `CardRendererCallbacks` it is
+// constructed with.
 //
 // `WhiteboardCanvas` is the only importer; this module must never import it
 // back (single-direction dependency between the canvas and its
@@ -83,8 +83,7 @@ const WEB_FRAME_SANDBOX =
   'allow-forms allow-presentation allow-same-origin allow-scripts allow-modals'
 
 /**
- * How many *web* cards may keep a live page while parked off screen
- * (p3-canvas-parity §六's D13 scope revision).
+ * How many *web* cards may keep a live page while parked off screen.
  *
  * An `<iframe>` removed from the document tree loses its browsing context, and
  * re-inserting it reloads the page from the top — every scroll position, form
@@ -135,7 +134,7 @@ export type NodeRuntime = {
   webFrameUrl: string | null
   missingFile: boolean
   /** Last known content for a *note* card (its backing file's text), cached
-   * because note-card content never lives in `board` (p1-design §1.2) — this
+   * because note-card content never lives in `board` — this
    * is the only place it's available to seed the live editor. Unused for
    * text/pdf cards. */
   noteText: string | null
@@ -304,7 +303,7 @@ export class CardRenderer {
     el.style.width = `${node.w}px`
     el.style.height = `${node.h}px`
     el.dataset.nodeId = id
-    // JSON Canvas's `color` (p3-canvas-parity D5): a preset or a hex, both
+    // JSON Canvas's `color`: a preset or a hex, both
     // resolved to the one custom property style.css paints from.
     applyColorToElement(el, node.color)
     // Re-apply selection state — a selected node can unmount (scrolled
@@ -313,8 +312,7 @@ export class CardRenderer {
     if (this.callbacks.isFocused(id)) el.classList.add(CARD_FOCUSED_CLASS)
 
     // A group is a labelled frame behind the cards, not a card: it has no
-    // body, no content view and no title block (p3-canvas-parity D5, and
-    // batch 3 for the membership interactions). Everything else a node gets
+    // body, no content view and no title block. Everything else a node gets
     // here — selection, dragging, resizing, edges — it gets for free, because
     // it goes through the same runtime as a card.
     if (node.type === 'group') {
@@ -402,8 +400,8 @@ export class CardRenderer {
     // between mounting and its content build. Which of the two is laid out is
     // the stylesheet's answer to whether the body is empty; nothing here
     // toggles it. Computed once from card data at mount time; card
-    // title-affecting fields (file/markdown) never change post-mount in M1,
-    // only position does.
+    // title-affecting fields (file/markdown) never change post-mount, only
+    // position does.
     const titleBlock = doc.createElement('div')
     titleBlock.className = CARD_TITLE_BLOCK_CLASS
     titleBlock.textContent = nodeTitleText(node)
@@ -451,11 +449,11 @@ export class CardRenderer {
     //     behind it — ~2ms for a five-line card but ~25ms for a 160-line one
     //     (2026-08-31 baseline), and a pan that pushes a card off one edge
     //     very often brings it back moments later: half the mounts in one
-    //     measured pan were cards that had just left. This is D13's verdict,
-    //     taken on that measurement.
+    //     measured pan were cards that had just left. Parking them was decided
+    //     on that measurement.
     //
-    // Everything else — media (its "off-screen stops playing" is deliberate,
-    // p3-canvas-parity §六), placeholders, groups — is torn down here, because
+    // Everything else — media (its "off-screen stops playing" is deliberate),
+    // placeholders, groups — is torn down here, because
     // rebuilding it costs nothing worth keeping DOM for.
     if (
       runtime.webFrameUrl !== null ||
@@ -473,7 +471,7 @@ export class CardRenderer {
   }
 
   // -----------------------------------------------------------------------
-  // Hidden card pool (p3-canvas-parity §六, and D13's verdict).
+  // Hidden card pool.
   //
   // Obsidian Canvas parks an off-screen node by detaching its content element
   // and keeping the instance in a cache. We park the whole card in place
@@ -483,12 +481,12 @@ export class CardRenderer {
   // detached frame loses its browsing context).
   //
   // Parking in place is also what keeps a pool from needing an invalidation
-  // story of its own — the thing D13 was right to be wary of. A parked card
-  // is still a card: it keeps its runtime entry, its element and its place in
-  // `runtimeByNodeId`, so every path that updates a mounted card (an external
-  // edit through `handleBackingFileModified`, an undo through
-  // `applyHistoryBoard`, a delete through `purgeNodeRuntime`) reaches it
-  // unchanged. There is no second copy of anything to go stale.
+  // story of its own. A parked card is still a card: it keeps its runtime
+  // entry, its element and its place in `runtimeByNodeId`, so every path that
+  // updates a mounted card (an external edit through
+  // `handleBackingFileModified`, an undo through `applyHistoryBoard`, a
+  // delete through `purgeNodeRuntime`) reaches it unchanged. There is no
+  // second copy of anything to go stale.
   // -----------------------------------------------------------------------
 
   private parkCard(id: NodeId, runtime: NodeRuntime): void {
@@ -572,7 +570,7 @@ export class CardRenderer {
 
   /**
    * Pins the pool's capacity at what the board is holding right now, for as
-   * long as the overview tier lasts (P4-D5).
+   * long as the overview tier lasts.
    *
    * Entering that tier unmounts every card at once, which the ordinary rule
    * would read as "the mounted set is empty, so the pool should be too" and
@@ -817,7 +815,7 @@ export class CardRenderer {
 
   /**
    * Puts markdown on a card through the one content path both card types
-   * share (p3-canvas-parity D2/D11): a one-pass render of as much of the
+   * share: a one-pass render of as much of the
    * source as the card can show (`cardMarkdownWindow`).
    *
    * The prefix is the whole design. A card clips and does not scroll, so it
@@ -837,7 +835,7 @@ export class CardRenderer {
    * a view's *behaviour* — an internal link renders but nothing wires its
    * click or its hover preview — which costs a card nothing: everything inside
    * a card that is not being edited is unhittable by design (style.css's
-   * content mask, D7).
+   * content mask).
    *
    * This is the one expensive thing the canvas does per card, and so the one
    * place besides the drain that asks whether this frame may build. It has to
@@ -1037,7 +1035,7 @@ export class CardRenderer {
    * put inside the body (PREVIEW_VIEW_CLASS) — so this reads the same way for
    * the focused card's windowed view and for anything else that ends up
    * asking. Written rather than delegated to the browser because a card's
-   * content is deliberately unhittable (style.css's content mask, D7): the
+   * content is deliberately unhittable (style.css's content mask): the
    * wheel never reaches the scroller on its own.
    *
    * False only when there is nothing to scroll at all, which is what hands the
@@ -1092,7 +1090,7 @@ export class CardRenderer {
   }
 
   /** What a file card shows while its file type has no card of its own — a
-   * PDF (M2), anything else. Named after the file so the card still says
+   * PDF, anything else. Named after the file so the card still says
    * which one it is. */
   private renderUnsupportedFilePlaceholder(
     runtime: NodeRuntime,
@@ -1111,7 +1109,7 @@ export class CardRenderer {
    * Puts a vault image, audio or video file on a card, pointing the element at
    * the same `app://` resource URL Obsidian's own embeds use
    * (`vault.getResourceUrl`) so it streams and seeks exactly as it does in a
-   * note (p3-canvas-parity D1).
+   * note.
    *
    * The element fills the card and keeps its aspect ratio without cropping
    * (style.css's `.yolo-whiteboard-card-media`). Obsidian Canvas instead
@@ -1119,7 +1117,7 @@ export class CardRenderer {
    * and writes that back to the file — a load-time geometry mutation we
    * deliberately do not copy: our cards mount and unmount with the viewport,
    * so it would rewrite the board on every pan. Aspect-locked geometry belongs
-   * with the resize interactions (P3 batch 3).
+   * with the resize interactions.
    *
    * Audio and video get a `releaseContent`: taking a media element out of the
    * DOM neither pauses it nor stops it streaming, so an off-screen card would

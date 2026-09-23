@@ -60,7 +60,7 @@ function useLatestRef<T>(value: T) {
 /**
  * `handleRuntimeChange` 的运行时切换编排与 CLI 编排 hook（在本 hook 之后
  * 才调用）纠缠——这部分不是「偏好」的所有权问题，是 hooks 顺序本身的
- * 依赖倒置，架构治理第三步分期 B 的范围之外（见设计文档约束 6）。继续用
+ * 依赖倒置。继续用
  * 与 `useChatInputController.lateStateRef` 相同的惯例经 late ref 注入，
  * 但只承载 CLI 编排相关的量——偏好七件套已经改由
  * `ConversationPreferencesController` 直接持有,不再需要 late 绑定。
@@ -690,7 +690,7 @@ export function useChatRuntimePreferences({
     switchConversation: preferencesController.switchConversation,
 
     // controller 实例本身：供 useChatInputController 直接注入（跨渲染稳定，
-    // 不需要 late ref）——见架构治理第三步分期 C1，消灭事件处理器中的偏好
+    // 不需要 late ref），消灭事件处理器中的偏好
     // 残留 late 绑定。
     preferencesController,
 

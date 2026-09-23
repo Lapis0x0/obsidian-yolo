@@ -1,6 +1,6 @@
 // Pins the chat-surface header summary text for every active built-in
-// tools (docs/plans/2026-08-15-tool-registry/phase2-migration.md D8). Each
-// expected value below was read directly off the pre-D8 `if` chain in
+// tools. Each expected value below was read directly off the former `if`
+// chain in
 // `ToolMessage.tsx`'s private `getLocalToolSummaryText` before it was
 // replaced by a `TOOL_RENDERERS` lookup — this file is the regression net
 // for that rewrite: it must keep passing with the exact same strings.

@@ -3,9 +3,8 @@ import { jsEvalDefinition } from '../js_eval/definition'
 
 // label/description copied from the `js_eval` entry in `builtinToolUiMeta.ts`;
 // category from `BUILTIN_TOOL_CATEGORY_MAP` (`'external'`). The i18n keys are
-// unchanged from the existing locale entries (master.md §5). `id:
-// 'js_sandbox'` is a new capability id (decision 16) for this 1:1 tool
-// (decision 14).
+// unchanged from the existing locale entries. `id: 'js_sandbox'` is a new
+// capability id for this 1:1 tool.
 //
 // defaultEnabled/approval cross-checked against the pre-refactor sources:
 // `JS_SANDBOX_TOOL_NAME` ('js_eval') IS in
@@ -31,7 +30,7 @@ export const jsSandboxCapability = defineCapability({
       'Run JavaScript in an isolated sandbox for precise computation, batch statistics, and data processing; grant retrieval, vault read-only, and network capabilities individually.',
   },
   category: 'external',
-  // Hidden in Max (master.md Q11): a mode that can run real commands and
+  // Hidden in Max: a mode that can run real commands and
   // write real files has no use for an isolated JS sandbox, and offering both
   // only makes the model pick the weaker one.
   chatModes: ['agent'],

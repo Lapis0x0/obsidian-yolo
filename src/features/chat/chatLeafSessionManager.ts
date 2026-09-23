@@ -24,8 +24,7 @@ export type PendingChatOpenPayload = {
   imageToAdd?: MentionableImage
   placement?: ChatLeafPlacement
   /**
-   * PDF multi-quote annotation "new leaf" path (docs/plans/2026-08-16-pdf-
-   * annotation-quotes.md, architecture decision A). Distinct from
+   * PDF multi-quote annotation "new leaf" path. Distinct from
    * `selectedBlock`: this one gets a chat-assigned `annotationNumber` and
    * empty `comment` on insertion (see `ChatView.applyDeferredPayload` /
    * `ChatRef.addPdfQuoteToChat`), instead of being seeded verbatim.

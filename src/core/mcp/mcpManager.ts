@@ -172,8 +172,8 @@ export class McpManager {
   /**
    * Two independent gates, applied in sequence: persisted user enablement
    * (below), then, for tools already migrated into the registry, that
-   * tool's own `isAvailable(ctx)` (master.md §3.1b / decision 18 —
-   * environment availability is separate from user authorization).
+   * tool's own `isAvailable(ctx)` (environment availability is separate from
+   * user authorization).
    *
    * `capabilityForceEnabled` is the running chat mode's grant for *this* tool
    * (see `ChatModeCapabilityOverride.forceEnabled`). It can lift the persisted
@@ -207,8 +207,7 @@ export class McpManager {
   }
 
   /**
-   * As of the `80_to_81` settings migration (D9,
-   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
+   * As of the `80_to_81` settings migration,
    * `settings.mcp.builtinCapabilityOptions` is keyed by capability id — one
    * entry per capability, no more group-key-plus-members aggregation. This
    * collapses what used to be three special-cased group checks
@@ -226,7 +225,7 @@ export class McpManager {
     if (!capability) {
       // Unknown/retired local short name (e.g. a pre-v79 `fs_list`) — no
       // capability owns it, so there is nothing to disable. Matches the
-      // pre-D9 fallthrough (`directDisabled` undefined => enabled).
+      // pre-`80_to_81` fallthrough (`directDisabled` undefined => enabled).
       return true
     }
     return !(
@@ -350,8 +349,7 @@ export class McpManager {
    * reaches this through `ToolContext` on every builtin-tool call; the
    * @mention `full` path in `requestContextBuilder.ts` needs the identical
    * lookup outside of a tool call, so it's exposed here as well rather than
-   * threading a second, separate DI path down to the same registry
-   * (docs/plans/09-03-whiteboard-agent-tools/master.md D3).
+   * threading a second, separate DI path down to the same registry.
    */
   public resolveModuleFileTextRenderer(
     extension: string,
@@ -1185,7 +1183,7 @@ export class McpManager {
      * Permissions this same approval also grants, beyond the call's own tool
      * and argument-derived keys — today only the vault-boundary key, so that
      * one "always allow" on a call reaching outside the vault covers every
-     * tool that can reach outside it (master.md §4 Q7).
+     * tool that can reach outside it.
      */
     extraAllowanceKeys?: readonly string[],
   ): void {
@@ -1381,7 +1379,7 @@ export class McpManager {
         //
         // `localFileTools.ts` must never import the *dispatcher*. It does
         // read the registry (its `getLocalFileTools()` catalog is built from
-        // `getMcpTool` projections since D6b), and each tool's
+        // `getMcpTool` projections), and each tool's
         // `definition.ts` imports shared helpers back out of it — so an
         // import of `dispatcher.ts` there would close a module-init cycle
         // through every definition. That cycle already broke `fs_read`'s

@@ -1,6 +1,5 @@
 // What a board looks like to a model — the text `fs_read` returns for a
-// `.yoloboard` and the text an @mention injects, in place of the file itself
-// (docs/plans/09-03-whiteboard-agent-tools/master.md D3, Q12).
+// `.yoloboard` and the text an @mention injects, in place of the file itself.
 //
 // The raw file is a JSON Canvas superset: `extra` bags, `fromEnd`/`toEnd`,
 // `version`, `camera`, and one object per node. A 300-card board is hundreds

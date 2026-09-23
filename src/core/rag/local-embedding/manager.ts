@@ -45,14 +45,15 @@ type DownloadJob = Readonly<{
 /**
  * Owns local embedding model weights on disk: download (resumable,
  * SHA-256-verified), removal, and an in-memory installed/downloading/failed
- * state machine — see docs/plans/08-22-local-embedding/00-plan.md §3.4.
+ * state machine.
  * Knows nothing about inference; `LocalEmbeddingClient` (`client.ts`) is the
  * only consumer of `readModelFile`.
  *
  * Desktop-only. Every disk/network method throws immediately on mobile;
  * `main.ts` should still construct one instance for the getter contract
- * (`access.ts`) to have something to return, since P3's UI needs to display
- * "unavailable on this platform" rather than treat the feature as absent.
+ * (`access.ts`) to have something to return, since the settings UI needs to
+ * display "unavailable on this platform" rather than treat the feature as
+ * absent.
  */
 export class LocalEmbeddingModelManager {
   private readonly adapter: DataAdapter

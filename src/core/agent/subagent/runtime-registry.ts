@@ -13,8 +13,6 @@ import type { NativeAgentRuntime } from '../native-runtime'
  *   3. The service first checks this registry by `toolCallId`; if a match is
  *      found, the approval action targets the subagent's runtime directly —
  *      bypassing the parent-conversation continuation path.
- *
- * See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
  */
 export type SubagentRuntimeEntry = {
   taskId: string

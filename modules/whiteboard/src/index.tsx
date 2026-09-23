@@ -1,7 +1,6 @@
 // Module entry point for YOLO Whiteboard.
 //
-// M1 canvas milestone (docs/plans/08-25-yolo-whiteboard/p1-design.md):
-// registers the `.yoloboard` file view via the Host API's
+// Registers the `.yoloboard` file view via the Host API's
 // `registerFileView` (added in host API 1.8.0; the declared floor is 1.9.0,
 // where `vault.getResourceUrl` — what a media card points an <img>/<audio>/
 // <video> at — first exists). All the actual camera/virtualization/card-lifecycle
@@ -61,16 +60,15 @@ yolo.registerModule({
     })
 
     // The agent's view of a board: `fs_read` renders it as a summary, and
-    // `edit_board` / `create_board` are how it writes one
-    // (docs/plans/09-03-whiteboard-agent-tools/master.md D2, D3).
+    // `edit_board` / `create_board` are how it writes one.
     registerWhiteboardAgentTools(host, openBoards)
 
-    // Event-layer reference resilience (p1-design §1.2): keeps every
+    // Event-layer reference resilience: keeps every
     // `.yoloboard` file's card references correct across renames/moves for
     // as long as the module is active, independent of any open leaf.
     host.lifecycle.add(registerWhiteboardRenameRewriter(host))
 
-    // Creation entries (p1-design §5): command and ribbon create at the vault
+    // Creation entries: command and ribbon create at the vault
     // root; the folder context menu action creates inside the target folder.
     // The ribbon is a creation entry rather than an "open" one because a board
     // is a file — there is no home surface for it to open.
@@ -95,7 +93,7 @@ yolo.registerModule({
       onSelect: (entry) => createWhiteboard(host, entry.path),
     })
 
-    // `.canvas` import (p3-canvas-parity D4): one-way, never registers a view
+    // `.canvas` import: one-way, never registers a view
     // for `.canvas` and never writes one. Two entries because they answer two
     // different questions — "bring this canvas across" (right-click one) and
     // "bring my canvases across" (the migration a command can express, since

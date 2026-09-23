@@ -257,8 +257,7 @@ export function QuickAskPanel({
   const { createOrUpdateConversationImmediately, generateConversationTitle } =
     useChatHistory()
 
-  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md D1b):
-  // same registry `useSyncExternalStore` pattern used by the chat mode
+  // Module tool sets: same registry `useSyncExternalStore` pattern used by the chat mode
   // registry in `useChatStreamManager.ts`, reduced to what
   // `getEnabledAssistantToolNames` needs so Quick Ask resolves the same
   // enabled tool set the sidebar chat does.

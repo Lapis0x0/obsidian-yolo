@@ -13,8 +13,7 @@ import type { YoloSettings } from '../../../settings/schema/setting.types'
  * Shared row model for the settings-page built-in-capability list. Replaces
  * the three near-identical hand-written group-row constructions that used to
  * live in `AgentToolsModal.tsx`, `AgentSection.tsx`, and
- * `AgentsSectionContent.tsx` (docs/plans/2026-08-15-tool-registry/master.md
- * §3.7 / phase2-migration.md D7 — "同时消除基线 §五.3"). All three now
+ * `AgentsSectionContent.tsx`. All three now
  * consume `buildBuiltinCapabilityRows` instead of separately reading
  * `getBuiltinToolUiMeta` / `getBuiltinToolCategory` / the three group-name
  * constants and re-deriving each capability's member tool list by hand.
@@ -25,9 +24,8 @@ export type CapabilityRow = {
   description: string
   /**
    * Global enablement, read straight off
-   * `settings.mcp.builtinCapabilityOptions[capability.id].disabled` (D9,
-   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9 — this map is
-   * keyed by capability id as of the `80_to_81` migration, one entry per
+   * `settings.mcp.builtinCapabilityOptions[capability.id].disabled` (this
+   * map is keyed by capability id as of the `80_to_81` migration, one entry per
    * capability, no more group-key-plus-members aggregation needed). Per-
    * assistant enablement is a separate concern
    * (`AgentsSectionContent.tsx` reads it from the draft assistant's own
@@ -47,8 +45,8 @@ export type TranslateFn = (keyPath: string, fallback?: string) => string
  * order, see that file's doc comment). Does not filter by runtime
  * availability (platform, provider config, the `bash-engine` component,
  * ...) — capability authorization is a distinct concern from tool
- * availability (master.md decision 18); callers that need to replicate the
- * pre-D7 `getLocalFileTools()`-derived visibility (today only `bash`'s
+ * availability; callers that need to replicate the former
+ * `getLocalFileTools()`-derived visibility (today only `bash`'s
  * `bash-engine` gate ever hides a row) filter the returned rows themselves.
  */
 export function buildBuiltinCapabilityRows({
@@ -90,7 +88,7 @@ export type CapabilityCategoryGroup = {
 /**
  * Buckets rows by category in `BUILTIN_TOOL_CATEGORY_ORDER`, preserving each
  * bucket's incoming relative order (i.e. `CAPABILITIES` registration order).
- * Drops empty categories, matching the pre-D7
+ * Drops empty categories, matching the former
  * `.filter((group) => group.tools.length > 0)` behavior.
  */
 export function groupCapabilityRowsByCategory(

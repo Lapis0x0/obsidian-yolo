@@ -55,8 +55,7 @@ export const contextPruneToolResultsDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts:2295` pre-migration),
   // minus the abort check / workspace-scope / YOLO-data-root guards and the
   // outer try/catch that normalizes thrown errors to an Error-status result —
-  // those are dispatcher responsibilities (master.md §3.4), not tool
-  // semantics. A thrown Error here is expected to propagate to
+  // those are dispatcher responsibilities, not tool semantics. A thrown Error here is expected to propagate to
   // `executeBuiltinTool`, which converts it the same way the old outer catch
   // did.
   execute: async (args, ctx) => {

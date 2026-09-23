@@ -1,9 +1,9 @@
 // Pure path reading and filename generation: what a vault path *means* to the
 // board (is it a note, is it a canvas, which kind of card does it render as —
 // `fileNodeKind`), and the names the whiteboard gives what it creates in the
-// vault: the `.yoloboard` files themselves (command + folder context menu,
-// docs/plans/08-25-yolo-whiteboard/p1-design.md §5) and the notes a text
-// card is converted into (§1.2, which puts them in `<board name> Cards/`).
+// vault: the `.yoloboard` files themselves (command + folder context menu)
+// and the notes a text card is converted into (which go in
+// `<board name> Cards/`).
 // Both kinds share one conflict rule, defined here once, so the call sites
 // can never drift on what "already taken" means.
 
@@ -17,7 +17,7 @@ const ILLEGAL_FILE_NAME_CHARS = /[\\/:*?"<>|#^[\]]/g
 
 /**
  * Whether a file node's path points at a note. The board's one markdown
- * rendering path (p3-canvas-parity D2/D11) is reached through this test, and
+ * rendering path is reached through this test, and
  * so is "can this card be edited" — a JSON Canvas `file` node holds any
  * vault file, and only the markdown ones have text a card can show or edit.
  */
@@ -38,8 +38,7 @@ export function isCanvasPath(path: string): boolean {
  * The three media lists are exactly the extensions Obsidian itself registers
  * image/audio/video views for (read off `app.viewRegistry.typeByExtension` in
  * a running 1.13 instance) — behaviour alignment starts with agreeing on what
- * counts as an image (p3-canvas-parity D1). `unsupported` covers everything
- * left, PDF included (its card is M2).
+ * counts as an image. `unsupported` covers everything left, PDF included.
  *
  * `html` is ours rather than Obsidian's: Obsidian registers no view for it at
  * all, so a `.html` file in a vault is inert. On a board it is a page, shown

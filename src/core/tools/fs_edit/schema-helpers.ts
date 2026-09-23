@@ -13,13 +13,11 @@ import {
 import { getTextArg } from '../tool-args'
 
 /**
- * `fs_edit`-exclusive helpers (single tool consumer, so — per
- * phase2-migration.md D6 "注意": "谁用它谁收留" — they live in this tool's
- * own directory rather than a shared module). Ported verbatim from
+ * `fs_edit`-exclusive helpers (single tool consumer, so — "谁用它谁收留" —
+ * they live in this tool's own directory rather than a shared module). Ported verbatim from
  * `core/mcp/localFileTools.ts` (pre-migration). `localFileTools.ts`'s
  * still-live `case 'fs_edit'` switch branch imports these back from here
- * rather than the reverse — see that file's import block and
- * docs/plans/2026-08-15-tool-registry/master.md D6a.
+ * rather than the reverse — see that file's import block.
  */
 
 // fs_edit 读全文做替换的绝对内存防御上限。`MAX_FILE_SIZE_BYTES`（`../tool-args.ts`）

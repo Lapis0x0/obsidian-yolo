@@ -13,8 +13,6 @@
 // So the table gets one more source: a module registers "I own this
 // extension, here is its text form". Registration is the whole contract; the
 // host owns reading the bytes, the size limits, and where the result is used.
-//
-// See docs/plans/09-03-whiteboard-agent-tools/master.md D3.
 
 import type { ModuleDisposer, YoloModuleFileTextRendererV1 } from './types'
 

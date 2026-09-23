@@ -1,5 +1,5 @@
-// The floating toolbar that appears over the current selection (P3 batch 3's
-// interaction surface ①/②), and the colour popover it opens.
+// The floating toolbar that appears over the current selection, and the
+// colour popover it opens.
 //
 // Modelled on Obsidian Canvas's `.canvas-menu`, measured in a running
 // Obsidian: a row of `clickable-icon` buttons in a screen-space container that

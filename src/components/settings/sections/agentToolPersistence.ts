@@ -11,8 +11,7 @@ import type { McpTool } from '../../../types/mcp.types'
  * off the model-facing catalog meant a capability whose tools were
  * temporarily unavailable (today only `bash`, when the `bash-engine` runtime
  * component is disabled) had its saved per-assistant preference silently
- * pruned on the next save — i.e. runtime availability rewriting user config,
- * which master.md decision 18 forbids.
+ * pruned on the next save — i.e. runtime availability rewriting user config.
  */
 function getKnownBuiltinToolNames(): Set<string> {
   return new Set(

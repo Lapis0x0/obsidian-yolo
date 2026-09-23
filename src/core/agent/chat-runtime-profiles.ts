@@ -40,9 +40,9 @@ type AssistantRuntimeOptions = Pick<
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
 /**
- * Max's standard trust tier, stated once (docs/plans/09-05-yolo-max/master.md
- * §4 Q8). These are facts about *Max*, not about the two capabilities, which
- * is why they live here rather than as per-mode fields on each capability:
+ * Max's standard trust tier, stated once. These are facts about *Max*, not
+ * about the two capabilities, which is why they live here rather than as
+ * per-mode fields on each capability:
  * "Max is a real filesystem and a real terminal" is the mode's definition, and
  * a mode that promises a terminal cannot be silently emptied by a switch the
  * user flipped for Agent.

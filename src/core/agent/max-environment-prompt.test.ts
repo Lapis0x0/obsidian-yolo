@@ -43,7 +43,7 @@ describe('buildMaxEnvironmentPrompt', () => {
     // Read before edit — edit_file requires an exact unique match.
     expect(prompt).toContain('Read a file before you edit it')
     // Out-of-vault reach pauses for approval, and that approval can be held
-    // for the rest of the chat (S2b: `AgentToolGateway`'s boundary gate plus
+    // for the rest of the chat (`AgentToolGateway`'s boundary gate plus
     // `OUTSIDE_VAULT_ALLOWANCE_KEY`). "may pause" rather than "does", because
     // full trust skips every approval.
     expect(prompt).toContain("may pause for the user's approval")

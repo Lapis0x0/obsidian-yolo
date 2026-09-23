@@ -44,7 +44,7 @@ describe('subagent tool-filter', () => {
     // Tools that merely require approval (js_eval with caps, fs_edit in
     // review mode, etc.) are intentionally NOT in the deny-list. Their
     // approval requests bubble up to the SubagentCard's inline approval
-    // block. See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+    // block.
     const jsEval = getToolName(getLocalFileToolServerName(), 'js_eval')
     expect(isSubagentBlockedToolName(jsEval)).toBe(false)
     expect(filterAllowedToolsForSubagent([fsEdit, jsEval])).toEqual([

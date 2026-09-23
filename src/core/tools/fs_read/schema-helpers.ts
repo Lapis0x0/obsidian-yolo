@@ -16,7 +16,7 @@ import { getOptionalBoundedIntegerArg } from '../tool-args'
 
 // fs_read-exclusive schema/parsing helpers, types, and limits. Everything in
 // this file has exactly one consumer — `fs_read` — so it lives in that
-// tool's own directory (phase2-migration.md D6 "注意").
+// tool's own directory.
 
 export const MAX_BATCH_READ_FILES = 20
 export const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024

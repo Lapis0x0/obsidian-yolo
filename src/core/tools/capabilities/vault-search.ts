@@ -2,8 +2,7 @@ import { defineCapability } from '../define'
 import { vaultSearchDefinition } from '../vault_search/definition'
 
 /**
- * Semantic vault retrieval as a first-class capability
- * (docs/plans/09-10-vault-search/plan.md).
+ * Semantic vault retrieval as a first-class capability.
  *
  * It used to exist only as attachments to other capabilities — the virtual
  * shell's custom `search` subcommand and `js_eval`'s `$db.search` — which

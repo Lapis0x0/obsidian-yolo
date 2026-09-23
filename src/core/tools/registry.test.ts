@@ -92,7 +92,7 @@ describe('registry queries', () => {
   // `McpManager.callTool` gates its local-tool branch on
   // `isBuiltinToolName` (`core/mcp/mcpManager.ts`), so this guard returning
   // `true` is what actually makes a registered tool reachable at runtime.
-  it('type-guards the D6 batch 1-3 tool names (context_prune_tool_results, context_compact, todo_write, ask_user_question, fs_read)', () => {
+  it('type-guards the tool names (context_prune_tool_results, context_compact, todo_write, ask_user_question, fs_read)', () => {
     expect(isBuiltinToolName('context_prune_tool_results')).toBe(true)
     expect(isBuiltinToolName('context_compact')).toBe(true)
     expect(isBuiltinToolName('todo_write')).toBe(true)
@@ -100,12 +100,11 @@ describe('registry queries', () => {
     expect(isBuiltinToolName('fs_read')).toBe(true)
   })
 
-  // D6 batch 4 (file_editing). Combined with
-  // fs-edit-fs-write-equivalence.test.ts (which proves `executeBuiltinTool`
-  // itself produces the same result as the old switch case for both
-  // tools, including the approval path), this closes the same loop D6
-  // batches 1-3 closed: registered -> reached -> correct.
-  it('finds the file_editing capability by id, with its approval default flipped to require_approval (master.md decision 17)', () => {
+  // file_editing. Combined with fs-edit-fs-write-equivalence.test.ts (which
+  // proves `executeBuiltinTool` itself produces the same result as the old
+  // switch case for both tools, including the approval path), this closes
+  // the same loop as above: registered -> reached -> correct.
+  it('finds the file_editing capability by id, with its approval default flipped to require_approval', () => {
     const capability = getCapability('file_editing')
     expect(capability?.id).toBe('file_editing')
     expect(capability?.tools.map((tool) => tool.name)).toEqual([
@@ -120,18 +119,18 @@ describe('registry queries', () => {
     expect(getCapabilityForTool('fs_write')?.id).toBe('file_editing')
   })
 
-  it('type-guards the D6 batch 4 tool names (fs_edit, fs_write)', () => {
+  it('type-guards the tool names (fs_edit, fs_write)', () => {
     expect(isBuiltinToolName('fs_edit')).toBe(true)
     expect(isBuiltinToolName('fs_write')).toBe(true)
     expect(isBuiltinCapabilityId('file_editing')).toBe(true)
   })
 
-  // D6 batch 5 (web_access). Combined with web-access-equivalence.test.ts
+  // web_access. Combined with web-access-equivalence.test.ts
   // (which proves `executeBuiltinTool` itself produces the same result as
   // the old switch case for both tools, including the `isAvailable`
   // provider-readiness gate), this closes the same loop earlier batches
   // closed: registered -> reached -> correct.
-  it('finds the web_access capability by id, with its dedicated settings entry (master.md §1.4c)', () => {
+  it('finds the web_access capability by id, with its dedicated settings entry', () => {
     const capability = getCapability('web_access')
     expect(capability?.id).toBe('web_access')
     expect(capability?.tools.map((tool) => tool.name)).toEqual([
@@ -146,17 +145,17 @@ describe('registry queries', () => {
     expect(getCapabilityForTool('web_scrape')?.id).toBe('web_access')
   })
 
-  it('type-guards the D6 batch 5 tool names (web_search, web_scrape)', () => {
+  it('type-guards the tool names (web_search, web_scrape)', () => {
     expect(isBuiltinToolName('web_search')).toBe(true)
     expect(isBuiltinToolName('web_scrape')).toBe(true)
     expect(isBuiltinCapabilityId('web_access')).toBe(true)
   })
 
-  // D6 batch 6 (js_sandbox, terminal). Combined with
+  // js_sandbox and terminal. Combined with
   // js-eval-terminal-equivalence.test.ts (which proves `executeBuiltinTool`
   // itself produces the same result as the old switch case for both tools,
   // including `terminal_command`'s `isAvailable` platform gate — the one
-  // deliberate behavior change in this batch), this closes the same loop
+  // deliberate behavior change), this closes the same loop
   // earlier batches closed: registered -> reached -> correct.
   it('finds js_sandbox and terminal, each with their own dedicated settings entry', () => {
     const jsSandbox = getCapability('js_sandbox')
@@ -168,7 +167,7 @@ describe('registry queries', () => {
       'terminal_command',
     ])
     expect(terminal?.hasSettings).toBe(true)
-    // master.md §3.1: terminal is one of two capabilities (with vault_shell)
+    // terminal is one of two capabilities (with vault_shell)
     // that forbid "always allow for this conversation".
     expect(terminal?.approval.allowAlwaysAllow).toBe(false)
   })
@@ -178,14 +177,14 @@ describe('registry queries', () => {
     expect(getCapabilityForTool('terminal_command')?.id).toBe('terminal')
   })
 
-  it('type-guards the D6 batch 6 tool names (js_eval, terminal_command)', () => {
+  it('type-guards the tool names (js_eval, terminal_command)', () => {
     expect(isBuiltinToolName('js_eval')).toBe(true)
     expect(isBuiltinToolName('terminal_command')).toBe(true)
     expect(isBuiltinCapabilityId('js_sandbox')).toBe(true)
     expect(isBuiltinCapabilityId('terminal')).toBe(true)
   })
 
-  // D6 batch 7 (vault_shell) — the last D6 batch. Combined with
+  // vault_shell. Combined with
   // bash-equivalence.test.ts (which proves `executeBuiltinTool` itself
   // produces the same result as the old `case BASH_TOOL_NAME` switch branch,
   // including all three approval tiers and the `dangerous_only` interception
@@ -207,7 +206,7 @@ describe('registry queries', () => {
     expect(getCapabilityForTool('bash')?.id).toBe('vault_shell')
   })
 
-  it('type-guards the D6 batch 7 tool name (bash)', () => {
+  it('type-guards the tool names (bash)', () => {
     expect(isBuiltinToolName('bash')).toBe(true)
     expect(isBuiltinCapabilityId('vault_shell')).toBe(true)
   })
@@ -215,8 +214,8 @@ describe('registry queries', () => {
 
 describe('chat mode visibility', () => {
   /**
-   * docs/plans/09-05-yolo-max/master.md §6's declaration table, written out in
-   * full. Each capability carries its own `chatModes`, so this is the one
+   * The per-mode capability declaration table, written out in full. Each
+   * capability carries its own `chatModes`, so this is the one
    * place the whole table is visible at once — and the regression that makes
    * a change to any single capability's visibility a deliberate act. It is
    * also why no per-mode block list exists anywhere else in the codebase.
@@ -260,7 +259,7 @@ describe('chat mode visibility', () => {
   }
 
   it.each(['ask', 'agent', 'max'] as const)(
-    'exposes exactly the master.md §6 capability set in %s mode',
+    'exposes exactly the declared capability set in %s mode',
     (mode) => {
       expect(
         listCapabilities()
@@ -297,7 +296,7 @@ describe('chat mode visibility', () => {
     )
   })
 
-  it('keeps the vault-backed and native file toolsets in disjoint modes (master.md Q5)', () => {
+  it('keeps the vault-backed and native file toolsets in disjoint modes', () => {
     const vaultFileTools = [
       'yolo_local__fs_read',
       'yolo_local__fs_edit',

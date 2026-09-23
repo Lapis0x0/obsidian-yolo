@@ -279,7 +279,7 @@ describe('LocalEmbeddingModelManager', () => {
     // download() alone drives multiple setState calls (downloading ->
     // verifying -> ready); every one of them must be a distinct Map
     // reference, not the same Map mutated in place, or `useSyncExternalStore`
-    // subscribers in the P3 UI never re-render.
+    // subscribers in the settings UI never re-render.
     expect(snapshots.length).toBeGreaterThan(1)
     expect(new Set(snapshots).size).toBe(snapshots.length)
   })

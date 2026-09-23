@@ -201,7 +201,7 @@ export function navigateContextMenu(
 }
 
 /**
- * issue #567 Step 3（追加需求）：ctx-menu 越界钳制的纯计算，从
+ * issue #567（追加需求）：ctx-menu 越界钳制的纯计算，从
  * useLayoutEffect 里抽出来单独测。基准是视口（viewport），不是母弹层的
  * contentRect——菜单已经 Portal 到 <body>（见 ChatListDropdown 组件里
  * createPortal 调用旁的注释），母弹层多窄都不该反过来钳住菜单，只需不超出
@@ -233,7 +233,7 @@ export function clampContextMenuPosition(params: {
 }
 
 /**
- * issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
+ * issue #567：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
  * scope 的 ArrowUp/ArrowDown 绑定使用。到底/到顶不回绕（clamp，不取模），
  * currentIndex 传 -1 表示还没有高亮项，从第一条开始移动。
  */
@@ -250,12 +250,12 @@ export function computeNextHighlightedIndex(
 }
 
 /**
- * issue #567 Step 5：快捷键 → 动作的判定，纯函数。搜索框 onKeyDown 用它
+ * issue #567：快捷键 → 动作的判定，纯函数。搜索框 onKeyDown 用它
  * 判断「这是不是已经交给 panel scope 的键」：是则放行给 keymap，不是则
  * stopPropagation，避免打字漏到宿主热键。真正执行动作的是
  * `registerChatListPanelKeys`，不再走 React 事件。
  *
- * 键位取舍（审计结论,详见计划文档 Step 5 实施备忘）：
+ * 键位取舍（审计结论）：
  * - 置顶用 Mod+Shift+S（Star 助记），前两版都被推翻：最初的 Mod+P 是
  *   Obsidian「打开命令面板」默认全局热键；第二版 Mod+Shift+P 在用户系统上
  *   被 macOS 级全局快捷键吞掉（window 捕获层探针实测：修饰键 keydown 到达、
@@ -307,7 +307,7 @@ export function resolveChatListSearchKeyboardAction(
 }
 
 /**
- * issue #567 Step 5：高亮行删除的两步确认判定，从原先 ChatListItem 内部的
+ * issue #567：高亮行删除的两步确认判定，从原先 ChatListItem 内部的
  * useDeleteConfirmation 抽出来的纯逻辑。键盘删除快捷键（Mod+Backspace）和
  * 行内删除按钮现在必须共用同一份确认状态——不允许出现两套确认态各自数「这是
  * 第几下」，否则键盘按一下、鼠标再点一下会互相看不见对方的进度。状态本身也
@@ -322,7 +322,7 @@ export function resolveChatListDeleteConfirmation(
 }
 
 /**
- * issue #567 Step 4：标题从尾部截断改为中间截断，保住末尾若干个字符——分支
+ * issue #567：标题从尾部截断改为中间截断，保住末尾若干个字符——分支
  * 会话常见的 "xxx (copy)" 后缀原先被尾部 ellipsis 吃掉，副本和原件在列表里
  * 分辨不出来。TITLE_TAIL_LENGTH 取 12：常见后缀 " (copy)" 是 7 个字符，留出
  * 几个字符余量避免贴边。按 code point（而非 UTF-16 code unit）切，避免劈裂
@@ -554,7 +554,7 @@ function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
 }
 
 /**
- * issue #567 Step 5：仿 Obsidian 快速切换器 prompt-instructions 的键位图例，
+ * issue #567：仿 Obsidian 快速切换器 prompt-instructions 的键位图例，
  * 静态展示、不参与列表的 content-visibility 按需渲染（渲染在 <ul> 外）。
  * 桌面端专属——`Platform.isMobile` 下没有物理键盘，图例没有意义（这里刻意用
  * isMobile 而非组件其余处用的 isMobileApp：图例要跟着「有没有键盘」的布局
@@ -655,7 +655,7 @@ const ChatListItem = memo(function ChatListItem({
   canRetryTitle: boolean
   canExport: boolean
   isRetrying: boolean
-  /** issue #567 Step 5：确认态提升到 ChatListDropdown，键盘删除快捷键和行内
+  /** issue #567：确认态提升到 ChatListDropdown，键盘删除快捷键和行内
    *  删除按钮共用同一份状态（见 resolveChatListDeleteConfirmation）。 */
   isConfirmingDelete: boolean
   onMouseEnter: (conversationId: string) => void
@@ -853,7 +853,7 @@ const ChatListItem = memo(function ChatListItem({
         }
         // 行内删除按钮常驻显示（不再依赖「更多」展开态），指针移出条目即视作
         // 「移出一段时间」的复位条件之一，另一半是超时自动复位——两者现在都在
-        // ChatListDropdown 的 onMouseLeave 里完成（issue #567 Step 5：确认态
+        // ChatListDropdown 的 onMouseLeave 里完成（issue #567：确认态
         // 提升到父组件后，行内不再持有自己的确认状态，见 resolveChatListDeleteConfirmation
         // 旁的注释）。
         onMouseLeave(conversationId)
@@ -889,7 +889,7 @@ const ChatListItem = memo(function ChatListItem({
           }`}
         >
           <div className="yolo-chat-list-dropdown-item-title-group">
-            {/* issue #567 Step 4：中间截断保住尾部（如分支会话的 " (copy)"
+            {/* issue #567：中间截断保住尾部（如分支会话的 " (copy)"
                 后缀），省略号两侧像素级贴合——原理与结构见
                 useMiddleTruncatedTitle。ghost 承载完整标题、不可见，负责撑出
                 容器宽度；display 绝对定位铺在同一盒子上，放测量拼好的
@@ -953,7 +953,7 @@ const ChatListItem = memo(function ChatListItem({
         className={`yolo-chat-list-dropdown-item-actions${
           isMoreMenuOpen ? ' is-more-open' : ''
         }`}
-        // issue #567 Step 4：选中会话是靠 motion.li 的 onMouseDown 触发的
+        // issue #567：选中会话是靠 motion.li 的 onMouseDown 触发的
         // （见下方 onMouseDown 与它旁边的注释），不是 onClick——mousedown 比
         // click 先完成一整轮事件派发，下面每个操作按钮身上的 stopPropagation
         // 都只挂在 onClick 上，拦不住这条路径；li 自己虽然也用
@@ -1019,8 +1019,8 @@ const ChatListItem = memo(function ChatListItem({
                 <Star />
               </button>
             ) : null}
-            {/* issue #567 Step 3：删除从 ⋯ 菜单/更多展开组移回常驻行内图标（改名 /
-                置顶 / 删除 / ⋯），不再需要先展开才能删。issue #567 Step 5：两步
+            {/* issue #567：删除从 ⋯ 菜单/更多展开组移回常驻行内图标（改名 /
+                置顶 / 删除 / ⋯），不再需要先展开才能删。issue #567：两步
                 确认状态提升到了 ChatListDropdown（onRequestDelete），行内点击
                 和 Mod+Backspace 键盘快捷键走同一份状态机
                 （resolveChatListDeleteConfirmation），不会各自以为自己是
@@ -1176,7 +1176,7 @@ export function ChatListDropdown({
   onRetryTitle: (conversationId: string) => void | Promise<void>
   onExportConversation: (conversationId: string) => void | Promise<void>
   /**
-   * issue #567 Step 2：外部（`ChatView` 的 view-header action / 命令 /
+   * issue #567：外部（`ChatView` 的 view-header action / 命令 /
    * ⋯ 窗格菜单）需要以编程方式打开这个弹层，但它的 `open` 状态完全是本组件
    * 内部 `useState`（见 `handleOpenChange`）。没有引入受控 prop 或
    * `forwardRef`（会让 `ChatListDropdown.test.tsx` 直接函数调用组件的既有
@@ -1252,7 +1252,7 @@ export function ChatListDropdown({
     top: number
     left: number
   } | null>(null)
-  // issue #567 Step 5：删除的两步确认状态从 ChatListItem 提升上来（键盘快捷键
+  // issue #567：删除的两步确认状态从 ChatListItem 提升上来（键盘快捷键
   // 和行内按钮共用，见 resolveChatListDeleteConfirmation 旁的注释）。只有一行
   // 能同时处于待确认态，用单个 nullable id 而不是 Set——语义上与 editingId/
   // activeMenuId 是同一类「互斥的单行瞬时态」。
@@ -1313,7 +1313,7 @@ export function ChatListDropdown({
     [onDelete],
   )
 
-  // issue #567 Step 5：删除两步确认的复位（超时/移出行/切换 tab/关闭弹层都
+  // issue #567：删除两步确认的复位（超时/移出行/切换 tab/关闭弹层都
   // 走这一个函数），对应旧 useDeleteConfirmation 里的 reset。
   const resetDeleteConfirmationState = useCallback(() => {
     if (deleteConfirmTimerRef.current !== null) {
@@ -1529,7 +1529,7 @@ export function ChatListDropdown({
     }
   }, [openHandleRef, handleOpenChange])
 
-  // issue #567 Step 3（追加需求）：菜单不再钳在母弹层（历史弹层本身很窄）
+  // issue #567（追加需求）：菜单不再钳在母弹层（历史弹层本身很窄）
   // 范围内，只需不超出视口。母弹层的 .yolo-popover-surface 有 overflow:hidden
   // （src/styles/popover/surface.css，所有权归该文件），菜单若继续渲染在弹层
   // DOM 内部会被物理裁剪——所以菜单改为 Portal 到 <body>（见下面 JSX 里的
@@ -1631,7 +1631,7 @@ export function ChatListDropdown({
         setMoreMenuConversationId((prev) =>
           prev === conversationId ? null : prev,
         )
-        // issue #567 Step 5：指针移出这一行是待确认态的复位条件之一（另一半是
+        // issue #567：指针移出这一行是待确认态的复位条件之一（另一半是
         // 超时），确认态提升到父组件后挪到这里——只复位「正好是这一行」的确认，
         // 不影响别的行（旧的行内 useDeleteConfirmation 天然只管自己，这里用 id
         // 比对复刻同样的效果）。
@@ -1648,7 +1648,7 @@ export function ChatListDropdown({
             console.error('Failed to select conversation', error)
           })
       },
-      // issue #567 Step 5：两步确认——沿用 resolveChatListDeleteConfirmation
+      // issue #567：两步确认——沿用 resolveChatListDeleteConfirmation
       // 的判定，行内删除按钮和 Mod+Backspace 键盘快捷键都走这一个入口，共用
       // 同一份 confirmingDeleteId，不会各自以为自己是「第一下」。
       onRequestDelete: (conversationId: string) => {
@@ -1737,7 +1737,7 @@ export function ChatListDropdown({
         )
           .then(() => {
             setEditingId(null)
-            // issue #567 Step 5：提交改名后把焦点送回搜索框，键盘链路（↑↓/
+            // issue #567：提交改名后把焦点送回搜索框，键盘链路（↑↓/
             // Enter/快捷键）不因为改名而在 <body> 上断掉——与 Esc 取消改名
             // 走的是同一个「焦点回搜索框」终点。
             searchInputRef.current?.focus({ preventScroll: true })
@@ -2139,7 +2139,7 @@ export function ChatListDropdown({
         className="yolo-chat-list-dropdown-content"
         sideOffset={8}
         onEscapeKeyDown={handlePopoverEscapeKeyDown}
-        // issue #567 Step 3（追加需求）：ctx-menu 现在 createPortal 到
+        // issue #567（追加需求）：ctx-menu 现在 createPortal 到
         // <body>，DOM 上不再是这个 Popover.Content 的后代。Radix 的
         // outside-interaction 探测（pointerdown-outside / focus-outside，见
         // usePointerDownOutside / useFocusOutside）按 DOM 包含关系判断，会把
@@ -2398,7 +2398,7 @@ export function ChatListDropdown({
         {!Platform.isMobile ? <ChatListKeyboardLegend /> : null}
         {activeMenuChat && menuPosition
           ? createPortal(
-              // issue #567 Step 3（追加需求）：Portal 到 <body>，逃出母弹层
+              // issue #567（追加需求）：Portal 到 <body>，逃出母弹层
               // .yolo-popover-surface 的 overflow:hidden 裁剪（所有权归
               // src/styles/popover/surface.css，本次未改那条规则）。定位坐标
               // 系见 openContextMenu / 下面 useLayoutEffect 顶部注释；

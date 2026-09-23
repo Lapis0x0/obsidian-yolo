@@ -1,8 +1,7 @@
-// Exercises `executeBuiltinTool`'s own responsibilities (master.md §3.4):
+// Exercises `executeBuiltinTool`'s own responsibilities:
 // abort short-circuit, the two `enforceBuiltinToolSecurityBoundary` checks
 // (./security-boundary.ts), unknown-tool-name handling, and normalizing a
-// thrown error into an Error-status result. Per phase2-migration.md D5,
-// these boundaries are verified through the dispatcher, not per tool — the
+// thrown error into an Error-status result. These boundaries are verified through the dispatcher, not per tool — the
 // security boundary must reject a call before registry lookup ever runs,
 // including for names that are not registered at all.
 
@@ -75,7 +74,7 @@ describe('executeBuiltinTool: workspace-scope second line of defense', () => {
     }
   })
 
-  // fs_write is registered as of D6 batch 4 (previously it fell through to
+  // fs_write is registered now (previously it fell through to
   // the "not yet migrated" unknown-tool error, which is what these two
   // tests used to assert on as an indirect proxy for "the boundary check
   // passed rather than blocking"). Now that it actually executes, a minimal

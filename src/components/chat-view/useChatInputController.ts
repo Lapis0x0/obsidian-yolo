@@ -99,8 +99,7 @@ function isUserMessageEffectivelyEmpty(
 }
 
 /**
- * 提交/中止/压缩收归 `ChatSessionController` 后（架构治理第三步分期
- * C2），剩余字段全部是**真正**在 hook 调用顺序上晚于本 hook 才产生的值——
+ * 提交/中止/压缩收归 `ChatSessionController` 后，剩余字段全部是**真正**在 hook 调用顺序上晚于本 hook 才产生的值——
  * CLI 编排（useCliRuntimeOrchestration）、选区高亮会话
  * （useChatHighlightSession）、运行态摘要（useChatStreamManager）。偏好/
  * 消息态/持久化/环境类字段已清零：`app`/`settings`/`t` 本 hook 直接调用
@@ -142,12 +141,12 @@ export type UseChatInputControllerParams = {
   /**
    * 会话级偏好七件套的唯一 owner——跨渲染稳定的 controller 实例（在
    * useChatRuntimePreferences 中构造，早于本 hook 调用），事件处理器直接
-   * 调用其命令 API，不再经 lateStateRef 读写。见架构治理第三步分期 C1。
+   * 调用其命令 API，不再经 lateStateRef 读写。
    */
   preferencesController: ConversationPreferencesController
   /**
    * 消息态八件套 + 提交/中止/压缩命令的唯一 owner——同样构造于本 hook 调用
-   * 之前，事件处理器直接调用其命令 API。见架构治理第三步分期 C2。
+   * 之前，事件处理器直接调用其命令 API。
    */
   sessionController: ChatSessionController
   currentConversationId: string
@@ -175,8 +174,7 @@ export type UseChatInputControllerParams = {
  *
  * 本 hook 必须在 useCliRuntimeOrchestration 之前调用——后者消费本 hook
  * 的 getLatestInputMessage/replaceInputMessage/inputDraftRevisionRef。
- * 提交/中止/压缩自身已收归 `sessionController`（架构治理第三步分期
- * C2）：`handleMainInputSubmit`/`handleMainInputAbort` 只做草稿采集 +
+ * 提交/中止/压缩自身已收归 `sessionController`：`handleMainInputSubmit`/`handleMainInputAbort` 只做草稿采集 +
  * 结果到 UI 反应（Notice/输入框重建）的翻译，控制器方法内部按依赖顺序
  * 普通函数调用，不受 hooks 顺序限制。剩余处理器（CLI 编排相关的
  * slash 命令分支等）仍需要 CLI 编排 hook 在本 hook 之后才产生的值,
@@ -500,10 +498,9 @@ export function useChatInputController({
   )
 
   /**
-   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * PDF multi-quote annotation.
    * Inserts a `block` mentionable that carries an `annotationNumber` — drawn
-   * from the same shared pool as assistant-quote annotations (architecture
-   * decision A) — plus an empty `comment` for the PDF-side bubble editor to
+   * from the same shared pool as assistant-quote annotations — plus an empty `comment` for the PDF-side bubble editor to
    * fill in. Returns the resolved number so the caller (ultimately
    * `pdfSelectionHighlightController`) can render "批注N" on the bubble
    * without ever assigning the number itself.
@@ -581,7 +578,7 @@ export function useChatInputController({
   /**
    * The one deps channel between the PDF-side bubble editor (rendered
    * imperatively by `pdfSelectionHighlightController`, not React) and chat
-   * mentionable state — architecture decision B. `patch: null` removes the
+   * mentionable state. `patch: null` removes the
    * mentionable (bubble right-click delete, or Esc on a still-new draft);
    * otherwise patches its `comment` on every keystroke, mirroring
    * `handleCommentChange` for assistant quotes.
@@ -1123,7 +1120,7 @@ export function useChatInputController({
   /**
    * Draft collection + result-to-UI translation only — the actual submit
    * orchestration (yolo gating, CLI turn submission) lives in
-   * `sessionController.submit()` (架构治理第三步分期 C2). Notice text and
+   * `sessionController.submit()`. Notice text and
    * the post-submit input-box rebuild are UI concerns and stay here.
    */
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
@@ -1180,7 +1177,7 @@ export function useChatInputController({
         case 'cli_unavailable':
         case 'cli_busy':
         case 'cli_submission_blocked':
-          // Mirrors the pre-C2 silent `return` — the composer stays as-is,
+          // Mirrors the original silent `return` — the composer stays as-is,
           // no Notice.
           return
         case 'cli_submitted':
@@ -1505,7 +1502,7 @@ export function useChatInputController({
       })
     }
     // 'yolo_aborted' / 'cli_unavailable' need no further UI reaction —
-    // mirrors the pre-C2 behavior exactly (the yolo path never showed a
+    // mirrors the original behavior exactly (the yolo path never showed a
     // Notice, and `cli_unavailable` mirrors the old `if (controller &&
     // coordinator)` guard falling through silently).
   }, [activeRuntimeId, sessionController, t])

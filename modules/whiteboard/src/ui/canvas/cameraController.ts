@@ -1,11 +1,11 @@
 // Camera state (pan/zoom) and its glide animation for the `.yoloboard`
-// canvas (docs/plans/08-25-yolo-whiteboard/p1-design.md §3). Split out of
-// `../canvas.ts` structurally (no behavior change): that file remains the
-// single state owner (board data, selection, interaction) and stays the one
-// place gesture dispatch (onPointerDown/Move/Up) lives; this class owns only
-// the camera's own state (`view`, the in-flight glide) and the DOM writes
-// that follow from it, reached through the narrow
-// `CameraControllerCallbacks` it is constructed with.
+// canvas. Split out of `../canvas.ts` structurally (no behavior change):
+// that file remains the single state owner (board data, selection,
+// interaction) and stays the one place gesture dispatch
+// (onPointerDown/Move/Up) lives; this class owns only the camera's own state
+// (`view`, the in-flight glide) and the DOM writes that follow from it,
+// reached through the narrow `CameraControllerCallbacks` it is constructed
+// with.
 //
 // `WhiteboardCanvas` is the only importer; this module must never import it
 // back (single-direction dependency between the canvas and its
@@ -146,7 +146,7 @@ export class CameraController {
    * position has no other way to learn it has to re-project itself. The
    * toolbar is re-positioned directly (`CameraControllerCallbacks`) because
    * the canvas always has one; this is for the things that come and go — a
-   * host Quick Ask panel anchored to an open card editor (master.md §6.3) —
+   * host Quick Ask panel anchored to an open card editor —
    * which subscribe while they exist and unsubscribe when they don't.
    */
   private readonly viewChangeListeners = new Set<() => void>()
@@ -238,7 +238,7 @@ export class CameraController {
     // to the board.
     //
     // Handled here rather than by letting the event through: a card's content
-    // is unhittable by design (style.css's content mask, D7), and lifting that
+    // is unhittable by design (style.css's content mask), and lifting that
     // to get the browser's scrolling would also hand back every link, checkbox
     // and callout fold the mask exists to cover. This scrolls the element
     // directly and leaves the mask absolute.

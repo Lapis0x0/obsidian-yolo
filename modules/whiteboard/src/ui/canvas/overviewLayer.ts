@@ -1,7 +1,6 @@
 // The overview tier's renderer for the `.yoloboard` canvas: one `<canvas>`
 // that draws every card and edge itself, replacing their DOM entirely below
-// OVERVIEW_SCALE_THRESHOLD (docs/plans/08-25-yolo-whiteboard/p4-perf-overview.md
-// §二/§三).
+// OVERVIEW_SCALE_THRESHOLD.
 //
 // Why a canvas at all, on a board whose whole rendering architecture is DOM:
 // the measured ceiling is not what a card *contains* but that it exists.
@@ -18,7 +17,7 @@
 // bitmap and force a re-raster on every zoom frame. Here it is redrawn instead
 // — which costs a pass over the board data per frame and nothing at rest.
 //
-// Groups deliberately stay in the DOM at every tier (P4-D2): there are a few
+// Groups deliberately stay in the DOM at every tier: there are a few
 // dozen of them, they are the most common thing to drag at this zoom, and
 // keeping them means dragging one needs no new code. That is also why the
 // canvas is inserted *before* the world layer: groups paint over it, as they
@@ -66,8 +65,8 @@ const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
  * The rest of the module never asks what colour anything is — every element
  * carries `--yolo-whiteboard-color` and the stylesheet paints from it. A canvas
  * cannot: it needs the value. Read once through `getComputedStyle` when the
- * tier is entered and cached for as long as it lasts (p4-perf-overview §三's
- * "勿逐帧读"); a theme change lands on the next entry.
+ * tier is entered and cached for as long as it lasts ("勿逐帧读"); a theme
+ * change lands on the next entry.
  *
  * The strings are kept as the browser gave them and handed straight back to
  * `fillStyle`, so any colour syntax a theme uses works. Where the stylesheet
@@ -95,7 +94,7 @@ type Palette = Readonly<{
  */
 export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
-  /** Every non-group node, in board order — groups keep their DOM (P4-D2). */
+  /** Every non-group node, in board order — groups keep their DOM. */
   getCardNodes: () => readonly BoardNode[]
   getEdges: () => readonly Edge[]
   getNode: (id: NodeId) => BoardNode | undefined
@@ -355,8 +354,8 @@ export class OverviewLayer {
   // -----------------------------------------------------------------------
   // Cards
   //
-  // Drawn as a DOM card with no content yet is (p4-perf-overview §二: the
-  // switch is direct, so the two tiers have to look the same): an opaque fill,
+  // Drawn as a DOM card with no content yet is (the switch is direct, so the
+  // two tiers have to look the same): an opaque fill,
   // a wash of the node's colour over it, a border, and — only where a card is
   // big enough on screen for the line to mean anything — its title block.
   //

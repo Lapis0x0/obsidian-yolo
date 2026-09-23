@@ -59,9 +59,8 @@ type ReadOnlyWidgetOptions = {
     assistantId?: string,
   ) => void | Promise<void>
   /**
-   * PDF-only "引用" button (docs/plans/2026-08-16-pdf-annotation-quotes.md
-   * item 6) — a control independent from `SelectionActionsMenu`, not one of
-   * its entries.
+   * PDF-only "引用" button — a control independent from
+   * `SelectionActionsMenu`, not one of its entries.
    */
   onQuoteAction?: () => void
 }
@@ -189,8 +188,7 @@ function SelectionChatWidgetBody({
   // Available on mobile too: the bubble and its editor only ever depended on
   // anchor geometry, never on the CSS Custom Highlight API, so mobile fully
   // supports them — only painting the selection color stays desktop-only via
-  // `shouldCreateSelectionHighlight`. See the 2026-08-16 addendum in
-  // docs/plans/2026-08-16-pdf-annotation-quotes.md.
+  // `shouldCreateSelectionHighlight`.
   const handleQuoteClick = onQuoteAction
     ? () => {
         onClose()

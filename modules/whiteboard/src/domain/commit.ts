@@ -2,8 +2,8 @@
 // actually do", factored out of the DOM-heavy canvas UI so the blur/Escape/
 // dispose commit paths (src/ui/canvas.ts) all route through one testable
 // choke point rather than each re-deriving "file node -> write the file,
-// text node -> updateNode" independently (docs/plans/08-25-yolo-whiteboard/
-// p1-design.md §1.2, §3: "Escape/blur 共用同一提交路径，不双写").
+// text node -> updateNode" independently ("Escape/blur 共用同一提交路径，
+// 不双写").
 //
 // A node with no editable text — a group, a link, or a file node pointing at
 // something that isn't markdown — is a no-op rather than a reachable case:

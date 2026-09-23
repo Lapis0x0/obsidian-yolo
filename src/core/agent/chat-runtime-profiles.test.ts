@@ -262,7 +262,7 @@ describe('resolveChatModeRuntime', () => {
   })
 
   // Per-mode visibility comes entirely from each capability's own
-  // `chatModes` (master.md §6); the table itself is locked by
+  // `chatModes`; the table itself is locked by
   // `core/tools/registry.test.ts`. These cases pin the *behavior* that
   // derivation has to produce at this layer.
   it('withholds every write/plan capability from ask mode', () => {
@@ -332,8 +332,8 @@ describe('resolveChatModeRuntime', () => {
     ])
   })
 
-  // YOLO Max (master.md Q2/Q5/Q8/Q11, p1-design.md §2). Max is the third
-  // built-in mode: same runtime shape as Agent, a different capability grant.
+  // YOLO Max is the third built-in mode: same runtime shape as Agent, a
+  // different capability grant.
   describe('max mode', () => {
     // Everything an assistant could have enabled, so the assertions below
     // measure what the *mode* grants rather than what the fixture happened to
@@ -377,7 +377,7 @@ describe('resolveChatModeRuntime', () => {
         'playwright__browser_click',
       ])
       // The vault-API file tools, the virtual bash, and js_eval are the four
-      // Max drops (Q5/Q11).
+      // Max drops.
       expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_read')
       expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_edit')
       expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_write')
@@ -500,7 +500,7 @@ describe('resolveChatModeRuntime', () => {
     })
 
     it('carries no environment prompt without an app to read the vault path from', () => {
-      // S2a call sites all pass `app`; omitting it is what the module-branch
+      // Real call sites all pass `app`; omitting it is what the module-branch
       // and policy tests here do, and it must not throw.
       expect(
         resolveChatModeRuntime({
@@ -535,7 +535,7 @@ describe('resolveChatModeRuntime', () => {
     })
   })
 
-  // YOLO Max S1/S1b (master.md §6, p1-design.md §2/§3): the `native_files`
+  // YOLO Max: the `native_files`
   // tools are enabled by default at the capability level, so they land in
   // `assistantEnabledToolNames` for every assistant. The only thing keeping
   // them out of Ask and Agent is `native_files`'s `chatModes: ['max']`.

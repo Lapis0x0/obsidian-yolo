@@ -43,7 +43,6 @@ function buildLocalEmbedding(
   releaseIdleSession: () => void | Promise<void>
 } {
   // `model` holds the catalog slug for local entries — see
-  // `docs/plans/08-22-local-embedding/00-plan.md` §3.5 and
   // `local-embedding/catalog.ts`'s `LocalEmbeddingCatalogEntry.id`.
   const catalogEntry = getLocalEmbeddingCatalogEntry(embeddingModel.model)
   if (!catalogEntry) {

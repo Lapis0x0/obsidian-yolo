@@ -15,8 +15,8 @@ import {
 // Ported verbatim from ToolMessage.tsx's private `extractSubagentArgs` /
 // `extractSyntheticLiveTaskOutput` helpers (small, delegate_subagent-only
 // pure functions with no reason to live anywhere else). The ToolMessage.tsx
-// copies are untouched this phase (replacing its `if` chain is D8); once
-// that lands, those copies collapse into these.
+// copies are untouched for now; once its `if` chain is replaced, those
+// copies collapse into these.
 const extractSubagentArgs = (
   rawArguments?: ToolCallRequest['arguments'],
 ): SubagentCardArgs | undefined => {
@@ -40,11 +40,11 @@ const extractSyntheticLiveTaskOutput = (
 
 /**
  * Mounts the shared `SubagentCard` (owned by `tool-cards/`, intentionally
- * NOT moved into `core/tools/` — see master.md §3.2 / phase1-skeleton.md D3:
+ * NOT moved into `core/tools/`:
  * it's a React component with its own hooks and sibling styling, and
  * dragging it into `core/tools/` would pull UI dependencies into core). This
  * file only adapts `ToolRendererProps` into `SubagentCard`'s existing prop
- * shape (D3 question 1's answer: those props — `toolCallId`, `response`,
+ * shape (those props — `toolCallId`, `response`,
  * `conversationId`, `args`, `subagentResult`, `initialStdout`/
  * `initialStderr`, `onAbort` — are all plain values or callbacks the caller
  * can hand in; nothing here needs message-tree/navigation state directly).

@@ -1,9 +1,8 @@
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { ChatModel } from '../../../types/chat-model.types'
 
-// Capability id as of the `80_to_81` settings migration (D9,
-// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9) — was the
-// short tool name `delegate_subagent` before that migration landed.
+// Capability id as of the `80_to_81` settings migration — was the short tool
+// name `delegate_subagent` before that migration landed.
 const SUBAGENT_DELEGATION_CAPABILITY_ID = 'subagent_delegation'
 
 export type ResolvedSubagentModelConfig = {

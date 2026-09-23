@@ -1528,7 +1528,6 @@ export class AgentSessionService {
   }): Promise<boolean> {
     // If this toolCallId belongs to a running subagent, route the approval
     // into that subagent's runtime instead of the parent conversation.
-    // See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
     const subagentEntry = subagentRuntimeRegistry.findByToolCallId(toolCallId)
     if (subagentEntry) {
       return this.approveSubagentToolCall(

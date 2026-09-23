@@ -113,9 +113,8 @@ function localEmbeddingTranslator(t: Translate) {
  * "model ready, `embedding-engine` component enabled, component status in
  * {ready, active, loading}" — anything else is a `LocalEmbeddingEngineIssue`
  * for `RAGSection`'s status bar to take over its one status line with
- * (instead of adding a second), per
- * docs/plans/08-22-local-embedding/00-plan.md §3.6. `null` whenever the
- * current model isn't local, or is local and healthy.
+ * (instead of adding a second). `null` whenever the current model isn't
+ * local, or is local and healthy.
  */
 export function useLocalEmbeddingEngineIssue(
   plugin: YoloPlugin,
@@ -285,8 +284,7 @@ type LocalEmbeddingShelfProps = {
  * The "本地" (on-device) embedding-model shelf inside the Knowledge Base
  * tab's embedding-model section — a curated download list with per-model
  * lifecycle (download / cancel / retry / delete / set-as-current), source
- * detail disclosure, and a shared endpoint picker. See
- * docs/plans/08-22-local-embedding/00-plan.md §3.6/§3.7. Deliberately not a
+ * detail disclosure, and a shared endpoint picker. Deliberately not a
  * normal Provider entry — local embedding models have no API key/base URL,
  * they're backed by the `embedding-engine` runtime component.
  */

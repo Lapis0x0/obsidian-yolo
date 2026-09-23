@@ -1,26 +1,23 @@
 // `.yoloboard` schema v1 — the single point that knows this file format.
-// See docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1 for the schema this
-// formalizes, and p3-canvas-parity.md D5 for why it is shaped the way it is.
 //
 // The format is a **superset of JSON Canvas 1.0** (https://jsoncanvas.org/
 // spec/1.0/). Every concept Canvas has, we spell the way Canvas spells it:
 //
 //   - one flat `nodes` array holding `text` / `file` / `link` / `group` nodes, rather
 //     than a `cards` array beside a separate `groups` collection — a group is
-//     a kind of node, not a second population (D5);
+//     a kind of node, not a second population;
 //   - `color` is a node (and edge) attribute, with Canvas's `canvasColor`
 //     values: the presets "1".."6", or a hex string;
 //   - edges name their ends `fromNode`/`toNode`, their anchors
 //     `fromSide`/`toSide`, and their arrowheads `fromEnd`/`toEnd`, with
 //     Canvas's defaults (no arrow at the source, an arrow at the target).
 //
-// Two deliberate deviations, both documented in the P3 report:
+// Two deliberate deviations:
 //   - geometry is `w`/`h`, not Canvas's `width`/`height` (an abbreviation, not
 //     a different concept; renaming would churn every geometry helper for no
 //     conceptual gain);
 //   - we add `version` and `camera` at the top level — the viewport state
-//     Canvas cannot hold is one of the reasons this is our own format
-//     (master.md's "存储格式" decision).
+//     Canvas cannot hold is one of the reasons this is our own format.
 //
 // Everything else Canvas defines but we do not yet render (`subpath` on file
 // nodes, `background`/`backgroundStyle` on groups) round-trips untouched
@@ -95,7 +92,7 @@ export type TextNode = BoardNodeBase &
  * JSON Canvas file node: a reference to a vault file. Markdown, image, audio
  * and video files each render as their own kind of card (domain/naming.ts's
  * `fileNodeKind`); every other extension renders as a placeholder until the
- * PDF card lands (M2). One node type rather than the old `note`/`pdf` pair,
+ * PDF card lands. One node type rather than the old `note`/`pdf` pair,
  * because "which file is this" is a path question, not a schema question —
  * and Canvas has always modelled it that way.
  */
@@ -121,8 +118,7 @@ export type LinkNode = BoardNodeBase &
 /**
  * JSON Canvas group node: a labelled frame behind the cards. Membership is
  * geometric (a node inside the frame is in the group) rather than stored, the
- * same way Canvas does it; the interactions that act on membership are P3
- * batch 3.
+ * same way Canvas does it.
  */
 export type GroupNode = BoardNodeBase &
   Readonly<{

@@ -318,8 +318,8 @@ describe('parseBoard / serializeBoard', () => {
       expect(result.ok).toBe(false)
     })
 
-    it('opens a pre-D5 board as empty, without destroying its old arrays', () => {
-      // No migration exists and none is planned (p3-canvas-parity D6). A
+    it('opens a board in the old pre-JSON-Canvas schema as empty, without destroying its old arrays', () => {
+      // No migration exists and none is planned. A
       // board written against the old `cards`/`groups` schema has no `nodes`,
       // so it comes up empty — but its old arrays are unknown top-level
       // fields, which means they round-trip in `extra` and a later save does

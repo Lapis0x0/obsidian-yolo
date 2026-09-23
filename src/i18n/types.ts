@@ -853,7 +853,7 @@ export type TranslationKeys = {
       fetchModelsFailed?: string
       embeddingModelsFirst?: string
       // local (on-device) embedding models — providerId `yolo-local`, no
-      // matching `settings.providers` entry (docs/plans/08-22-local-embedding)
+      // matching `settings.providers` entry
       localEmbeddingProviderLabel?: string
       // reasoning UI
       reasoningType?: string

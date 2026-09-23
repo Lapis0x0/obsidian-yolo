@@ -1,5 +1,5 @@
 /*
- * YOLO Whiteboard module styles (M1: canvas view — camera, cards, live
+ * YOLO Whiteboard module styles (canvas view — camera, cards, live
  * editor, error state). All classes use the yolo- prefix (Obsidian and
  * Style Constraints, CLAUDE.md); scoped further with whiteboard- to make the
  * module obvious. Animate only opacity/transform (CLAUDE.md), with durations
@@ -66,7 +66,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  /* A left-drag from empty canvas is marquee-select (W3-A), not pan — pan
+  /* A left-drag from empty canvas is marquee-select, not pan — pan
    * is middle-drag or Space+left-drag (anywhere) or Alt+left-drag from empty canvas, so the
    * base cursor no longer implies "grab to pan"; the grabbing cursor of an
    * actual pan comes from .yolo-whiteboard-pan-capture below. */
@@ -148,7 +148,7 @@
  * tile the raster threads have not finished — see
  * CameraController.markInteracting for the measurement. */
 
-/* The overview tier's canvas (P4-1). A sibling of the world layer, not a child
+/* The overview tier's canvas. A sibling of the world layer, not a child
  * of it: inside the world the camera's CSS scale would blur the bitmap and
  * force a re-raster on every zoom frame, so it is drawn in screen space and
  * redrawn per camera change instead (ui/canvas/overviewLayer.ts). It sits
@@ -302,7 +302,7 @@
     0 0 0 1px var(--yolo-whiteboard-color);
 }
 
-/* --- groups (p3-canvas-parity D5) -----------------------------------------
+/* --- groups ---------------------------------------------------------------
  * A group is a node like any other — same runtime, same selection, drag and
  * resize path (ui/canvas.ts's mountNode) — that draws a labelled frame
  * instead of a card body. What makes it a *frame* is entirely here: it sits
@@ -315,8 +315,8 @@
  * always carries a transform, so it is a stacking context and a negative
  * z-index cannot escape past it onto the dot grid.
  *
- * The membership behaviour (moving a group carries the nodes inside it,
- * dropping a node into one joins it) is P3 batch 3; nothing here implies it. */
+ * Membership (moving a group carries the nodes inside it, dropping a node
+ * into one joins it) is behaviour, not styling; nothing here implies it. */
 
 .yolo-whiteboard-group {
   position: absolute;
@@ -453,7 +453,7 @@
   cursor: grabbing;
 }
 
-/* --- resize handles (W3-C) ------------------------------------------------
+/* --- resize handles -------------------------------------------------------
  * One layer for the whole board, parked over the hovered card by
  * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
  * so it is in world coordinates like the cards — which is why every handle
@@ -534,7 +534,7 @@
   right: var(--yolo-whiteboard-resizer-offset);
 }
 
-/* Connection points (W3-D): one per side, nested inside that side's handle
+/* Connection points: one per side, nested inside that side's handle
  * and taking over its middle — the rest of the handle still resizes. The dot
  * is drawn by ::after so the hit area stays a full handle-sized square while
  * the visible circle can fade in and out; it appears on hovering the handle
@@ -634,14 +634,14 @@
   right: var(--yolo-whiteboard-resizer-offset);
 }
 
-/* --- drag (W3-A) ---------------------------------------------------------- */
+/* --- drag -------------------------------------------------------------- */
 
 .yolo-whiteboard-card.yolo-whiteboard-card-dragging {
   cursor: grabbing;
   will-change: transform;
   /* Bring the dragged card above its siblings while it's being moved —
    * cards otherwise stack in plain DOM/mount order (no general z-order
-   * model in M1). */
+   * model). */
   z-index: 1;
 }
 
@@ -754,7 +754,7 @@
   visibility: hidden;
 }
 
-/* Content mask (p3-canvas-parity D7). Until a card is opened for editing,
+/* Content mask. Until a card is opened for editing,
  * nothing inside it is reachable by a pointer: not a link, a checkbox, a
  * button, an embedded iframe, nor the preview's own scroller. On a board the
  * gestures that matter are select, drag, resize and connect, and every
@@ -764,11 +764,11 @@
  *
  * Obsidian Canvas does this with a blocker element over each node. This is
  * the same rule as a property rather than a node: it costs no DOM on a board
- * where card DOM weight is the thing being defended (p3-canvas-parity §1),
- * and it needs no listeners, so it cannot behave differently in a popout
- * window. Events land on the card element instead, which is exactly what the
- * canvas's own pointer dispatch already reads (cardIdFromEventTarget), so
- * drag, marquee, hover and the context menu keep the paths they had.
+ * where card DOM weight is the thing being defended, and it needs no
+ * listeners, so it cannot behave differently in a popout window. Events land
+ * on the card element instead, which is exactly what the canvas's own pointer
+ * dispatch already reads (cardIdFromEventTarget), so drag, marquee, hover and
+ * the context menu keep the paths they had.
  *
  * Wheel follows from the same rule: with the preview unhittable, a wheel over
  * a card targets the card, whose every ancestor up to the viewport clips
@@ -787,7 +787,7 @@
  * It applies only to bodies that have no other way in: media transport
  * controls and an embedded web page. A markdown card has an edit mode —
  * clicking into it is what "I mean the content, not the card" already means
- * there — so D7's mask stays absolute for it, and the misfire surface the
+ * there — so the mask stays absolute for it, and the misfire surface the
  * mask exists for (a link, a checkbox, a callout fold) stays covered. A video
  * that can never be played is not a card, it is a screenshot; that is what
  * earns the exemption here and nothing else does. An image body is
@@ -835,10 +835,10 @@
     0 0 0 4px color-mix(in srgb, var(--yolo-whiteboard-color) 25%, transparent);
 }
 
-/* --- media cards (P3 batch 2) ---------------------------------------------
+/* --- media cards ----------------------------------------------------------
  * The element is pointed at the same app:// resource URL Obsidian's own
  * embeds use (Host API `vault.getResourceUrl`), so what plays here is what
- * plays in a note (p3-canvas-parity D1).
+ * plays in a note.
  *
  * `object-fit: contain` over a filled box is the whole sizing rule: the media
  * scales up or down to the card and keeps its aspect ratio, with no crop and
@@ -1063,8 +1063,7 @@
 }
 
 /* --- rung one: an empty card's AI hint, and a card writing itself --------
- * (docs/plans/09-07-whiteboard-card-ai/master.md §5, and
- * ui/canvas/cardGeneration.ts for what builds them.)
+ * (See ui/canvas/cardGeneration.ts for what builds them.)
  *
  * The hint is the card's placeholder: one faint line exactly where the first
  * line of text goes (the same 6px 10px inset as the preview and the editor
@@ -1075,7 +1074,7 @@
  * empty render, and a line placed in flow under it would sit wherever that
  * render happened to end.
  *
- * The instruction words are the one exemption from the content mask (D7) a
+ * The instruction words are the one exemption from the content mask a
  * markdown card gets, and it is narrow on purpose: they are not content the
  * mask exists to cover — they only exist while the card has no content at
  * all. The container stays unhittable so the rest of the line is still card,
@@ -1207,7 +1206,7 @@ button.yolo-whiteboard-card-chip:hover {
   color: var(--text-normal);
 }
 
-/* --- edges (W3-A) ----------------------------------------------------------
+/* --- edges ----------------------------------------------------------------
  * One SVG overlay in the world layer draws every edge (ui/canvas.ts's
  * rebuildEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally
  * 1x1px element lets paths be drawn anywhere in world coordinates,
@@ -1296,8 +1295,8 @@ button.yolo-whiteboard-card-chip:hover {
   display: none;
 }
 
-/* An edge whose two endpoints are both far off screen (P4-2 —
- * ui/canvas/edgeLayer.ts's updateVisibility). Its own class rather than the
+/* An edge whose two endpoints are both far off screen
+ * (ui/canvas/edgeLayer.ts's updateVisibility). Its own class rather than the
  * one above: a connection drag owns that one for the length of a gesture, and
  * the two states have to be able to end independently.
  *
@@ -1443,7 +1442,7 @@ button.yolo-whiteboard-card-chip:hover {
   cursor: grabbing;
 }
 
-/* --- selection toolbar (P3 batch 3) --------------------------------------
+/* --- selection toolbar ----------------------------------------------------
  * Screen-space chrome over the canvas: the floating toolbar for the current
  * selection, its colour popover, and the inline field that types an edge
  * label. All of it lives in one overlay so a single `contains` check in
@@ -1656,7 +1655,7 @@ label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
   color: var(--text-muted);
 }
 
-/* --- creation bar (P3 batch 3, surface ③) ---------------------------------
+/* --- creation bar ---------------------------------------------------------
  * Obsidian Canvas's `.canvas-card-menu`: a raised pill of icon buttons pinned
  * to the bottom centre of the viewport. Screen-space chrome like the selection
  * toolbar, and in the same overlay so one `contains` check covers both. */
@@ -1739,7 +1738,7 @@ button.yolo-whiteboard-card-menu-button:active {
 }
 
 /* Hidden while the board cannot take a new card — zoomed out past the point
- * where a card's content is built at all (D8). `display: none` rather than a
+ * where a card's content is built at all. `display: none` rather than a
  * disabled state: a bar of four dead buttons is worse than no bar, and the
  * reason it is gone (the whole board is a field of title blocks) is visible
  * on the canvas itself. */
@@ -1972,7 +1971,7 @@ input.yolo-whiteboard-prompt-input:focus {
  * the card's boxes — the focused card's content view measures every section
  * it renders and caches the result, and `display: none` would collapse those
  * boxes and make the host re-measure the whole note on the way back, which
- * was measured as the dominant cost of a pan over long-note cards (D13). But
+ * was measured as the dominant cost of a pan over long-note cards. But
  * unlike `visibility: hidden`, which this used to be, it also takes the
  * subtree out of style, layout, paint, hit testing and the accessibility tree
  * for as long as the card is parked. `visibility` is inherited: flipping it

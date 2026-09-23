@@ -1,8 +1,7 @@
 // Line-window slicing for text tool results.
 //
 // Lifted out of `fs_read/schema-helpers.ts` when `read_file` (the native
-// `native_files` capability, docs/plans/09-05-yolo-max/p1-design.md §3)
-// became a second consumer: two tools that hand the model a windowed view of
+// `native_files` capability) became a second consumer: two tools that hand the model a windowed view of
 // a text file must produce the *same* window — same 1-based numbering, same
 // `N|line` prefix, same "is there more below" bookkeeping — or the model
 // learns two different reading protocols for the same job. Lives here rather

@@ -254,7 +254,7 @@ export type YoloChatSurfaceProps = {
   handleChatModeChange: ChatRuntimePreferences['handleChatModeChange']
   handleUserMessageSubmit: ChatDomainActions['handleUserMessageSubmit']
   handleRecoverPendingToolCall: ChatDomainActions['handleRecoverPendingToolCall']
-  // 架构治理第三步分期 C3：retry/continue/recover 收编进
+  // retry/continue/recover 收编进
   // ChatSessionController——类型不再从 useChatDomainActions 派生,直接写
   // 消费方（AssistantToolMessageGroupItem）期望的函数签名。
   handleRecoverAnswerUserQuestion: (payload: {

@@ -145,7 +145,7 @@ const findByRenderName = (tree: ReactElement, name: string) =>
     )
   })
 
-// issue #567 Step 4：点击误触治理的测试需要拿到行内每个操作按钮真正的
+// issue #567：点击误触治理的测试需要拿到行内每个操作按钮真正的
 // onClick/onMouseDown 处理函数（不能用 renderToStaticMarkup，那会丢掉函数）。
 // 把 row（ChatListDropdown 传给 ChatListItem 的 props）实际调用一次，拿到
 // ChatListItem 渲染出的真实元素树，再在树里按 className 找目标按钮。
@@ -267,7 +267,7 @@ describe('ChatListDropdown', () => {
     expect(html.match(/data-runtime-id=/g)).toHaveLength(3)
   })
 
-  // issue #567 Step 3：删除图标从「更多」展开组移回常驻行内图标，顺序为
+  // issue #567：删除图标从「更多」展开组移回常驻行内图标，顺序为
   // 改名 / 置顶 / 删除 / ⋯，不再需要先点「更多」才能看到删除。
   it('renders the delete icon inline between pin and more, always present (not gated by the more-menu toggle)', () => {
     const rows = historyRows(createTree([chat('yolo', 'Normal')]))
@@ -297,7 +297,7 @@ describe('ChatListDropdown', () => {
     expect(deleteButtonTag).not.toContain('tabindex')
   })
 
-  // issue #567 Step 4：点击误触治理。选中会话是靠 motion.li 的 onMouseDown
+  // issue #567：点击误触治理。选中会话是靠 motion.li 的 onMouseDown
   // 触发的（不是 onClick），所以每个操作图标点击不得冒泡到条目本身——断言的
   // 落点是「点完操作图标之后 onSelect 没被调过」，而不是检查某个内部布尔值。
   // 覆盖面对齐任务里点名的元素：改名铅笔 / 置顶星标 / 行内删除 / ⋯ 展开条
@@ -445,7 +445,7 @@ describe('ChatListDropdown', () => {
     })
   })
 
-  // issue #567 Step 4：标题中间截断——渲染层是 ghost/overlay 结构（原理见
+  // issue #567：标题中间截断——渲染层是 ghost/overlay 结构（原理见
   // useMiddleTruncatedTitle 注释）：ghost 承载完整标题撑宽度，display 放测量
   // 拼好的可见文本。SSR/未测量阶段 display 就是完整标题；截断字符串的选取
   // 逻辑在 computeMiddleTruncatedTitle 的专门单测里覆盖。
@@ -465,7 +465,7 @@ describe('ChatListDropdown', () => {
   // issue #567：快捷键改挂 Obsidian keymap scope 后，搜索框 onKeyDown 不再
   // dispatch 动作——只对「不是 scope 已注册的键」stopPropagation，避免打字
   // 漏到宿主热键。动作本身由 registerChatListPanelKeys 覆盖。
-  describe('keyboard navigation and shortcuts (issue #567 Step 5)', () => {
+  describe('keyboard navigation and shortcuts (issue #567)', () => {
     // 两步删除确认靠 window.setTimeout 做 3 秒自动复位；测试环境是 node（没有
     // window 全局），沿用上面「action icon clicks...」describe 里的同款
     // 最小 shim + fake timers 手法（原因见那里的注释）。
@@ -613,7 +613,7 @@ describe('handlePopoverEscapeKeyDown', () => {
   })
 })
 
-// issue #567 Step 3（追加需求）：菜单不再钳在母弹层范围内，只需不超出视口——
+// issue #567（追加需求）：菜单不再钳在母弹层范围内，只需不超出视口——
 // 母弹层可能很窄，越靠边缘的会话右键时菜单应该允许溢出母弹层但不能越过屏幕。
 // 钳制的纯计算见 ChatListDropdown.tsx 的 clampContextMenuPosition。
 describe('clampContextMenuPosition', () => {
@@ -679,7 +679,7 @@ describe('clampContextMenuPosition', () => {
   })
 })
 
-// issue #567 Step 4：弹层宽度不再钳在母容器（聊天侧边栏）宽度内，只受弹层所在
+// issue #567：弹层宽度不再钳在母容器（聊天侧边栏）宽度内，只受弹层所在
 // 窗口的视口宽度约束——窄侧边栏下弹层不该跟着变窄。这条走纯 CSS
 // （width: min(420px, calc(100vw - 24px))，见 popover.css
 // .yolo-chat-list-dropdown-content 的注释），不是可单测的 JS 纯函数：早先的
@@ -688,7 +688,7 @@ describe('clampContextMenuPosition', () => {
 // 实测不可靠，改成 CSS 表达式后就不存在这个时序问题——纯 CSS 值本身没有可测的
 // 分支逻辑，靠人工测试清单里的窄侧边栏/超窄窗口两项覆盖。
 
-// issue #567 Step 4：中间截断保住尾部——分支会话的 "xxx (copy)" 后缀原先被
+// issue #567：中间截断保住尾部——分支会话的 "xxx (copy)" 后缀原先被
 // 尾部 ellipsis 吃掉，副本和原件分不清。按 code point 切，CJK/emoji 不应被
 // 劈裂。
 describe('splitTitleForMiddleTruncation', () => {
@@ -736,7 +736,7 @@ describe('splitTitleForMiddleTruncation', () => {
   })
 })
 
-// issue #567 Step 4 追加：省略号两侧像素级贴合。text-overflow: ellipsis 只能
+// issue #567 追加：省略号两侧像素级贴合。text-overflow: ellipsis 只能
 // 整字截断，flex 盒子宽度与整字排布之间的余数会留在省略号和尾段之间形成
 // 可见缝隙；computeMiddleTruncatedTitle 改为自己拼「头…尾」单段字符串，余数
 // 自然落到标题末尾（不可见）。测量器注入，这里用「宽度 = code point 数」的
@@ -785,7 +785,7 @@ describe('computeMiddleTruncatedTitle', () => {
   })
 })
 
-// issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
+// issue #567：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
 // scope 的 ArrowUp/ArrowDown 绑定使用。到底/到顶不回绕。
 describe('computeNextHighlightedIndex', () => {
   it('moves down from the current index', () => {
@@ -816,9 +816,9 @@ describe('computeNextHighlightedIndex', () => {
   })
 })
 
-// issue #567 Step 5：搜索框键盘事件 → 动作的判定，纯函数。键位取舍（Mod+P
+// issue #567：搜索框键盘事件 → 动作的判定，纯函数。键位取舍（Mod+P
 // 与 Obsidian 命令面板冲突、换成 Mod+Shift+P）见 ChatListDropdown.tsx 里
-// resolveChatListSearchKeyboardAction 头注释与计划文档 Step 5 实施备忘。
+// resolveChatListSearchKeyboardAction 头注释。
 describe('resolveChatListSearchKeyboardAction', () => {
   it('resolves ArrowUp/ArrowDown to navigate actions', () => {
     expect(
@@ -929,7 +929,7 @@ describe('resolveChatListSearchKeyboardAction', () => {
   })
 })
 
-// issue #567 Step 5：删除两步确认的判定，从原先 ChatListItem 内部的
+// issue #567：删除两步确认的判定，从原先 ChatListItem 内部的
 // useDeleteConfirmation 提升为纯函数——键盘 Mod+Backspace 和行内删除按钮现在
 // 共用同一份状态，见 ChatListDropdown.tsx 里这个函数头注释。
 describe('resolveChatListDeleteConfirmation', () => {

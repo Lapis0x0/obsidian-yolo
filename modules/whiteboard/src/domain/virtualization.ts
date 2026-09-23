@@ -1,6 +1,5 @@
 // Pure-logic viewport virtualization engine, migrated from the S1/S2 spikes
-// (docs/plans/08-25-yolo-whiteboard/p1-design.md §3; algorithm ported
-// unchanged from `git show
+// (algorithm ported unchanged from `git show
 // spike/s2-editor-lifecycle:src/features/whiteboard-spike/virtualization.ts`
 // per that spike's "对正式实现的架构建议" #1 and #3):
 //   - input is {cards, viewportRect, pinnedIds}, output is a
@@ -11,7 +10,7 @@
 //     exempted from the unload decision via a generic `pinnedIds` set rather
 //     than a one-off drag special-case.
 //
-// Recompute throttling (~70ms per p1-design §3) and per-frame drain quotas
+// Recompute throttling (~70ms) and per-frame drain quotas
 // are *not* this module's job — those are host-loop concerns owned by the
 // (not-yet-built) canvas UI, which calls `recompute()` on a debounce and
 // `drain()` once per animation frame.

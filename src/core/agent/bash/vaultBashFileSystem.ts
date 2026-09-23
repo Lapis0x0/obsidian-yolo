@@ -32,8 +32,7 @@ const SCOPE_ERROR_PREFIX = 'EACCES: path is outside the allowed workspace scope'
  * out-of-scope path *arguments* before dispatch. The bash tool has no
  * discrete path arguments — `command` is an opaque shell string — so scope
  * has to be enforced at the filesystem boundary instead, exactly where
- * `rm`/`mv`/content writes already are (see CLAUDE.md's "fs 层 = 硬边界"
- * principle carried over from the plan). An include-list scope still needs
+ * `rm`/`mv`/content writes already are ("fs 层 = 硬边界"). An include-list scope still needs
  * its ancestor directories visible so `ls`/`find` can descend into them —
  * that carve-out is `isVisibleForTraversal` (workspaceScope.ts), used below
  * for `readdir`/`exists`; every other operation here means genuine

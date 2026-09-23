@@ -486,7 +486,7 @@
 }
 
 /* ================= embedding model shelf (API row + local group) =================
-   One bordered list, mirroring docs/plans/knowledge-base-settings-designs.html:
+   One bordered list:
    the API row stays a single dropdown line; the curated local models are
    browsable rows, each carrying its own download lifecycle; a footer row
    holds the download source and on-disk usage. */

@@ -3,8 +3,8 @@ import { truncateText } from '../chat-summary-support'
 /**
  * Chat-surface summary for `todo_write` — ported verbatim from the
  * `toolName === 'todo_write'` branch of `ToolMessage.tsx`'s private
- * `getLocalToolSummaryText` (pre-D8). Wired into `TOOL_RENDERERS` as this
- * tool's `summary` field (phase2-migration.md D8).
+ * `getLocalToolSummaryText`. Wired into `TOOL_RENDERERS` as this tool's
+ * `summary` field.
  *
  * `labels` only carries the four todo-list strings this tool needs — see
  * `terminal_command/chat-summary.ts`'s doc comment for why this is a

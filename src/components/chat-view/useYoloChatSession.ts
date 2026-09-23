@@ -95,7 +95,7 @@ export const serializeActiveBranchByUserMessageId = (
 
 export type UseYoloChatSessionParams = {
   /**
-   * 消息态八件套的唯一 owner——见架构治理第三步分期 C1。历史消息编辑/删除/
+   * 消息态八件套的唯一 owner。历史消息编辑/删除/
    * 分支命令直接调用其命令 API；`loadYoloConversation`/`handleNewChat`
    * 仍经下方各 setX props 写入（同一批函数，指向 controller 方法）。
    */
@@ -607,7 +607,7 @@ export function useYoloChatSession({
     [],
   )
 
-  // 消息态写入已收编进 ChatSessionController（架构治理第三步分期 C1）——
+  // 消息态写入已收编进 ChatSessionController——
   // 本函数只做 Notice/焦点/高亮释放等 UI 反应，翻译 controller 命令的
   // 类型化返回结果。
   const removeHistoricalUserMessage = useCallback(

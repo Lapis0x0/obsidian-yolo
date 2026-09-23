@@ -22,10 +22,9 @@
  *   3. clearById(id) / reconcileActiveIds(ids) / clearAll() — remove ranges
  *      and unsubscribe from eventBus.
  *
- * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md)
- * layers a numbered "批注N" bubble + comment editor on top of a 'pinned'
- * entry via `enableAnnotation`. This is command-line/DOM-imperative, not a
- * React portal (architecture decision — see the plan's item 7): the bubble
+ * PDF multi-quote annotation layers a numbered "批注N" bubble + comment
+ * editor on top of a 'pinned' entry via `enableAnnotation`. This is
+ * command-line/DOM-imperative, not a React portal: the bubble
  * is mounted as a plain child of the same `.page` element the highlight's
  * ranges live in, positioned with the exact same
  * `lastRange.getClientRects()` math `AssistantSelectionQuoteButton.
@@ -36,11 +35,11 @@
  * hook point that also repositions it.
  *
  * The bubble's only communication channel back to chat state is the
- * `PdfAnnotationCallbacks` passed into `enableAnnotation` — architecture
- * decision B: one `onCommentChange` / `onDelete` pair, no polling.
+ * `PdfAnnotationCallbacks` passed into `enableAnnotation`: one
+ * `onCommentChange` / `onDelete` pair, no polling.
  *
- * Anchor / paint / bubble are three independent layers (2026-08-16 addendum
- * to the plan, "锚点与涂色必须解耦"): `addHighlight` ALWAYS computes offsets,
+ * Anchor / paint / bubble are three independent layers ("锚点与涂色必须解耦"):
+ * `addHighlight` ALWAYS computes offsets,
  * builds ranges, and subscribes to `textlayerrendered` — an entry exists
  * whenever the anchor-layer geometry could be resolved, full stop. Painting
  * the range into the CSS Custom Highlight registry is a separate, optional
@@ -363,7 +362,7 @@ export class PdfSelectionHighlightController {
 
   /**
    * Layer a numbered "批注N" bubble + comment editor onto an existing
-   * 'pinned' entry (docs/plans/2026-08-16-pdf-annotation-quotes.md item 4).
+   * 'pinned' entry.
    * `id` must already have been registered via `addHighlight` — a no-op when
    * it hasn't. Since anchor and paint are decoupled (see the file header
    * comment), this is unaffected by whether the entry is actually painted:

@@ -4,8 +4,7 @@ import { defineCapability } from '../define'
 // label/description copied from the `ask_user_question` entry in
 // `builtinToolUiMeta.ts`; category from `BUILTIN_TOOL_CATEGORY_MAP`
 // (`'context'`). The i18n keys are unchanged from the existing locale
-// entries (master.md §5). `id: 'user_questions'` is a new capability id
-// (decision 16) for this 1:1 tool (decision 14).
+// entries. `id: 'user_questions'` is a new capability id for this 1:1 tool.
 //
 // defaultEnabled/approval cross-checked the same way as `todo_list`:
 // `ask_user_question` is NOT in `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES`

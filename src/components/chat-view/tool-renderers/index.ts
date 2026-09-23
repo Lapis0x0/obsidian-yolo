@@ -18,8 +18,7 @@ import { genericRenderer } from './generic'
 import type { ToolRenderer } from './types'
 
 /**
- * The exhaustive chat-rendering wiring table (master.md §3.6 / D4, populated
- * D8).
+ * The exhaustive chat-rendering wiring table.
  *
  * `satisfies Record<BuiltinToolName, ToolRenderer>` — not `Partial` — so
  * forgetting to wire up a newly registered tool is a compile error. Every
@@ -30,7 +29,7 @@ import type { ToolRenderer } from './types'
  *
  * `terminal_command` is the only `body`-kind entry (see
  * `core/tools/terminal_command/ui.tsx`); `delegate_subagent` is the only
- * `replace`-kind entry (D3); the four file-editing tools (`fs_edit`,
+ * `replace`-kind entry; the four file-editing tools (`fs_edit`,
  * `fs_write`, `edit_file`, `write_file`) share the one `content`-kind entry
  * (`core/tools/file-editing-ui.tsx`), which shows a diff of the change
  * instead of the arguments and result JSON. Every other tool is `generic` —
@@ -39,14 +38,14 @@ import type { ToolRenderer } from './types'
  *
  * Tools with no `summary` here (context_compact,
  * context_prune_tool_results, ask_user_question, delegate_subagent) had no
- * branch in the pre-D8 `if` chain either — their header shows only the
+ * branch in the former `if` chain either — their header shows only the
  * title, no summary text. `delegate_subagent` is a special case: its
  * header summary comes from `ToolMessage.tsx`'s own
  * `getDelegateSubagentSummary`, applied as a response-independent override
  * in `getHeadlineDisplayInfo` (unlike `fs_read`'s enrichment, this one
  * genuinely doesn't need the response — but it predates this table and
- * D8's scope note explicitly leaves `getHeadlineDisplayInfo`'s per-tool
- * overrides untouched, so it isn't wired here to avoid two competing
+ * `getHeadlineDisplayInfo`'s per-tool overrides were deliberately left
+ * untouched, so it isn't wired here to avoid two competing
  * sources of truth for the same value).
  */
 export const TOOL_RENDERERS = {
@@ -78,7 +77,7 @@ export const TOOL_RENDERERS = {
 /**
  * Safe by-name lookup for callers that only have a `string` (a remote MCP
  * tool name, or a retired built-in tool name still present in historical
- * conversation data — see master.md decision 10). Never index
+ * conversation data). Never index
  * `TOOL_RENDERERS` directly with an unchecked `string`.
  */
 export const getToolRenderer = (name: string): ToolRenderer =>

@@ -264,8 +264,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   }, [plugin])
 
   // Cheap per-kb stats/pending recompute: on mount, whenever the knowledge
-  // base list or its scopes change, and on a throttled vault-event timer —
-  // matches the plan's "Tab 挂载、每次运行结束、vault 文件事件节流 2s 后重算".
+  // base list or its scopes change, and on a throttled vault-event timer.
   // `onlyKbIds` recomputes just those bases and merges them in; omit it to
   // recompute every base and drop entries for bases that no longer exist.
   const refreshKbData = useCallback(
@@ -629,8 +628,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
   // The only scenario where local-embedding engine info surfaces in the
   // status bar: the currently selected model is local and can't actually
-  // run right now (not downloaded / component disabled / mobile). See
-  // docs/plans/08-22-local-embedding/00-plan.md §3.6.
+  // run right now (not downloaded / component disabled / mobile).
   const localEmbeddingIssue = useLocalEmbeddingEngineIssue(
     plugin,
     currentEmbeddingModel,
@@ -804,8 +802,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       {/* Status bar: main toggle + one-line status + primary actions. The
           local-embedding engine's health is not its own row — it only ever
           takes over this one status line, when the currently selected model
-          is local and can't actually run right now. See
-          docs/plans/08-22-local-embedding/00-plan.md §3.6. */}
+          is local and can't actually run right now. */}
       <div
         className={`yolo-kb-status-bar${isIndexing ? ' is-busy' : ''}${!isRagEnabled ? ' is-off' : ''}${isRagEnabled && localEmbeddingIssue ? ' is-warn' : ''}`}
       >
@@ -1330,8 +1327,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               stays on the Models tab. The "本地" group right after it is
               `LocalEmbeddingShelf`, a curated download list with its own
               per-model lifecycle; local embedding models are deliberately
-              not a normal Provider entry (no API key/base URL), see
-              docs/plans/08-22-local-embedding/00-plan.md §3.5-§3.7. */}
+              not a normal Provider entry (no API key/base URL). */}
         <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
           {t('settings.knowledgeBases.embeddingModelShelf', '嵌入模型')}
           <span className="yolo-kb-divider-label-faint">

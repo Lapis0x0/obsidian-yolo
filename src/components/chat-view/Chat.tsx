@@ -166,18 +166,16 @@ export type ChatRef = {
   syncSelectionToChat: (selectedBlock: MentionableBlockData) => void
   syncSelectionToInput: (selectedBlock: MentionableBlockData) => void
   /**
-   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * PDF multi-quote annotation.
    * Inserts `selectedBlock` as a numbered "批注N" mentionable and returns the
-   * assigned number — chat is the only side allowed to assign it (architecture
-   * decision A). Used by `ChatView.addPdfQuoteToChat` for the "existing leaf"
+   * assigned number — chat is the only side allowed to assign it. Used by `ChatView.addPdfQuoteToChat` for the "existing leaf"
    * path; the "new leaf" path instead seeds it via `PendingChatOpenPayload`
    * and reads the number back through `ChatView.consumeLastPdfQuoteAnnotationNumber`.
    */
   addPdfQuoteToChat: (selectedBlock: MentionableBlockData) => number
   /**
    * The single deps channel the PDF-side bubble editor uses to patch or
-   * remove its mentionable's comment (architecture decision B). `patch: null`
-   * removes the mentionable.
+   * remove its mentionable's comment. `patch: null` removes the mentionable.
    */
   updatePdfQuoteMention: (
     highlightId: string,
@@ -208,7 +206,7 @@ export type ChatRef = {
    */
   renameCurrentConversation: (title: string) => Promise<void>
   /**
-   * issue #567 Step 2. Exports the currently active conversation to the
+   * issue #567. Exports the currently active conversation to the
    * vault, mirroring the in-content export button's behavior — gated on the
    * active runtime's `supportsVaultExport` capability. `ChatView`'s view
    * header action also toggles its own visibility from the same capability
@@ -216,25 +214,25 @@ export type ChatRef = {
    */
   exportCurrentConversation: () => void
   /**
-   * issue #567 Step 2. Opens the history dropdown (`ChatListDropdown`)
+   * issue #567. Opens the history dropdown (`ChatListDropdown`)
    * anchored at its usual History button. No-ops if the dropdown isn't
    * currently mounted (e.g. composer view is active).
    */
   openChatHistory: () => void
   /**
-   * issue #567 Step 2. Snapshot of the active conversation's menu-relevant
+   * issue #567. Snapshot of the active conversation's menu-relevant
    * state, read by `ChatView.onPaneMenu` to decide which pane-menu items are
    * enabled/visible. Derived from state Chat.tsx already tracks — not a new
    * state source.
    */
   getCurrentConversationMenuState: () => ConversationMenuState
   /**
-   * issue #567 Step 2. Toggles the active conversation's pinned state.
+   * issue #567. Toggles the active conversation's pinned state.
    * No-ops when there is no active persisted conversation.
    */
   toggleCurrentConversationPinned: () => Promise<void>
   /**
-   * issue #567 Step 2. Deletes the active conversation, including CLI
+   * issue #567. Deletes the active conversation, including CLI
    * overlay cleanup and post-delete conversation switching — the same
    * shared implementation `ChatHeader`'s history dropdown uses. No-ops when
    * there is no active persisted conversation.
@@ -307,7 +305,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const quickAccessSnippetEntries = useSnippetEntries()
   const { t, language } = useLanguage()
 
-  // Module chat modes (Phase D): subscribed here so the mode selector, empty
+  // Module chat modes: subscribed here so the mode selector, empty
   // state, and assistant/YOLO visibility all react live to a module being
   // enabled/disabled — same registry `useSyncExternalStore` pattern as
   // `useChatStreamManager`/`useYoloChatSession`.
@@ -537,7 +535,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 消息态八件套（会话身份 + chatMessages/compactionState/
   // pendingCompactionAnchorMessageId/messageModelMap/messageReasoningMap/
   // assistantGroupBoundaryMessageIds/activeBranchByUserMessageId）的唯一
-  // owner——见架构治理第三步分期 C1。deps 经 getter 闭包注入,与
+  // owner。deps 经 getter 闭包注入,与
   // preferencesController 同款;构造一次,随 ChatView 实例存活。
   // useChatHistory() 的四个持久化函数经 chatManager（settings 变化时
   // 重建,见 useJsonManagers.ts）间接依赖 settings,并非跨渲染稳定引用——
@@ -550,7 +548,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
   const updateConversationTitleRef = useLatestRef(updateConversationTitle)
   const generateConversationTitleRef = useLatestRef(generateConversationTitle)
-  // C2 additions (提交/中止/压缩/重试收归 controller): two of the new deps
+  // 提交/中止/压缩/重试收归 controller: two of its deps
   // can only be assembled once hooks called *after* this point are ready
   // (useChatStreamManager's mutation/abort/compact, and the CLI orchestration
   // bag) — same "assign later, read through a getter" technique as
@@ -1006,11 +1004,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // ChatSessionController's `submit`/`abortRun` CLI branches read this bag
   // through `getCliSubmitContext()` — CLI orchestration state itself stays
-  // owned by useCliRuntimeOrchestration's React state until C3 (see the
-  // plan's C2 boundary rules); `null` whenever the active runtime is 'yolo'
-  // or that hook hasn't produced a ready controller/coordinator/scope yet,
-  // mirroring the pre-C2 `if (!controller || !coordinator || !scope) return`
-  // guard in `handleMainInputSubmit`.
+  // owned by useCliRuntimeOrchestration's React state; `null` whenever the
+  // active runtime is 'yolo' or that hook hasn't produced a ready
+  // controller/coordinator/scope yet, mirroring the original
+  // `if (!controller || !coordinator || !scope) return` guard in
+  // `handleMainInputSubmit`.
   cliSubmitContextRef.current =
     activeRuntimeId !== 'yolo' &&
     cliConversationController &&
@@ -1215,7 +1213,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     compaction: effectiveCompactionState,
   })
   const isCurrentConversationRunActive = currentConversationRunSummary.isActive
-  // Hydrate the C2 run-deps late ref every render — see its declaration for
+  // Hydrate the run-deps late ref every render — see its declaration for
   // why this can't be captured once at construction time.
   sessionRunLateDepsRef.current = {
     submitChatMutation,
@@ -1364,12 +1362,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     normalizeReasoningLevel,
   })
 
-  // issue #567 Step 2：history 弹层的「打开」能力提升给 ChatRef.openChatHistory
+  // issue #567：history 弹层的「打开」能力提升给 ChatRef.openChatHistory
   // 调用——见 ChatListDropdown 的 openHandleRef 文档注释，避免受控 prop / ref
   // 转发的更大改动。
   const historyDropdownOpenRef = useRef<(() => void) | null>(null)
 
-  // issue #567 Step 2：删除会话的清理（CLI overlay 移除）+ 后续会话切换逻辑，
+  // issue #567：删除会话的清理（CLI overlay 移除）+ 后续会话切换逻辑，
   // 从 ChatHeader 内联的 onDelete 下沉到这里，供 ChatHeader（任意历史条目）
   // 与 ChatRef.deleteCurrentConversation（当前会话，⋯ 窗格菜单走这条）共用。
   const deleteConversationWithCleanup = useCallback(
@@ -1409,8 +1407,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  // retry/continue/recover 收编进 ChatSessionController（架构治理第三步
-  // 分期 C3）——这里只做 Notice 翻译的薄包装，参考 handleMainInputSubmit
+  // retry/continue/recover 收编进 ChatSessionController——这里只做 Notice 翻译的薄包装，参考 handleMainInputSubmit
   // 在 useChatInputController.ts 里的既有模式。
   const handleAssistantMessageGroupRetry = useCallback(
     (messageIds: string[]) => {
@@ -1683,7 +1680,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 值：CLI 编排（useCliRuntimeOrchestration）、选区高亮会话
   // （useChatHighlightSession）、运行态摘要（useChatStreamManager）。提交/
   // 中止/压缩/编辑历史消息/mentionable 持久化等已收归
-  // `sessionController`（架构治理第三步分期 C2），不再经此对象读写——见
+  // `sessionController`，不再经此对象读写——见
   // `ChatInputLateState` 的类型文档。
   inputController.lateStateRef.current = {
     releaseHighlightIds,
@@ -1816,8 +1813,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     : undefined
   const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
   // Main-input display/config differences are looked up from the static
-  // capability table (see B1/B2 in the step-2 runtime-contract plan) rather
-  // than branched inline; only "which data source" ternaries stay here.
+  // capability table rather than branched inline; only "which data source" ternaries stay here.
   const mainInputCapabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
   const activeSurfaceEmpty = isCliRuntimeActive
     ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&

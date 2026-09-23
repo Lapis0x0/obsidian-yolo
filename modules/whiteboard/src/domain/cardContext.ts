@@ -1,6 +1,5 @@
 // What one card knows about where it lives — the text handed to a model that
-// is about to write, or answer a question about, a single card
-// (docs/plans/09-07-whiteboard-card-ai/master.md §4).
+// is about to write, or answer a question about, a single card.
 //
 // Three parts, and the split is the whole design:
 //

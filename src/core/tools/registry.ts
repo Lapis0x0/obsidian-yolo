@@ -14,7 +14,7 @@ import type {
  * The finite set of capability ids / tool names, derived structurally from
  * the concrete `CAPABILITIES` array rather than hand-maintained. This is the
  * root every completeness check in this project hangs off: the two exhaustive
- * UI wiring tables (`TOOL_RENDERERS` / `CAPABILITY_SETTINGS_LAUNCHERS`, D4)
+ * UI wiring tables (`TOOL_RENDERERS` / `CAPABILITY_SETTINGS_LAUNCHERS`)
  * `satisfies Record<BuiltinToolName, ...>` / `Record<BuiltinCapabilityId, ...>`
  * against these unions, so forgetting to wire up a new tool/capability is a
  * compile error instead of a silent gap.
@@ -62,7 +62,7 @@ export function assertNoDuplicates(
 
 // Build-time assertions: capability ids and tool names must each be unique.
 // A `Record<K, V>` literal silently de-duplicates repeated keys, so the two
-// exhaustive wiring tables in D4 would NOT catch a duplicate on their own —
+// exhaustive wiring tables would NOT catch a duplicate on their own —
 // this is the only place that does.
 assertNoDuplicates(
   CAPABILITIES.map((capability) => capability.id),
@@ -113,9 +113,8 @@ export const listBuiltinToolNames = (): string[] =>
  * The same, narrowed to what a built-in chat mode exposes to the model: every
  * tool of every capability whose `chatModes` includes `mode`.
  *
- * This is the *only* derivation of per-mode tool visibility
- * (docs/plans/09-05-yolo-max/master.md §6). A mode that wants to hide a
- * capability changes that capability's `chatModes`; there is no list of
+ * This is the *only* derivation of per-mode tool visibility. A mode that
+ * wants to hide a capability changes that capability's `chatModes`; there is no list of
  * blocked ids or names to keep in sync anywhere. Module chat modes never
  * reach here — see `chatModes`'s doc comment in types.ts.
  */

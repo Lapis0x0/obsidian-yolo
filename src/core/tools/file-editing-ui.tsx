@@ -39,7 +39,7 @@ import { MAX_FILE_SIZE_BYTES } from './tool-args'
  *
  * Shared by four tools rather than owned by one, so it lives beside
  * `file-editing-support.ts` under the same "谁用它谁收留" rule that put the
- * shared path summary there (phase2-migration.md D6).
+ * shared path summary there.
  *
  * `kind: 'content'`: it replaces both default sections of the expanded card
  * (see `tool-renderers/types.ts`). The arguments JSON it displaces *is* the
@@ -49,7 +49,7 @@ import { MAX_FILE_SIZE_BYTES } from './tool-args'
  * Which statuses draw a diff is decided by `resolveFileChangeRows` alone;
  * `null` from it hands the card back to the default sections.
  *
- * `definition.ts` never imports this file (master.md §3.2): the import
+ * `definition.ts` never imports this file: the import
  * direction is `ui.tsx -> components`, never `definition.ts -> ui.tsx`, so
  * the tool definitions stay free of the React tree.
  */

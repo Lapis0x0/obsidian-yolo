@@ -30,8 +30,8 @@ import { validateVaultPath } from './vaultFileOps'
  *     clients (JSON, via `runVaultSearch` — see `desktopLocalMcpServer.ts`)
  *
  * It used to be reachable from the agent only as the virtual shell's custom
- * `search` subcommand; that subcommand is gone (docs/plans/09-10-vault-search/
- * plan.md D11) and semantic retrieval is a tool of its own again.
+ * `search` subcommand; that subcommand is gone and semantic retrieval is a
+ * tool of its own again.
  */
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024

@@ -1,14 +1,13 @@
 // The edges overlay for the `.yoloboard` canvas: a single SVG drawn into the
 // world layer, redrawn wholesale on structural change and per-path on card
-// position change (docs/plans/08-25-yolo-whiteboard/p1-design.md §3: "世界层
-// 内单个 SVG overlay 画全部 edges...只在 edges 或端点卡片位移时重绘（不进逐帧
-// 路径）"). Split out of `../canvas.ts` structurally (no behavior change):
-// that file remains the single state owner (board data, selection, an
-// in-progress label rename) and keeps the connection *gesture* (dragging a
-// new edge out of a card, re-attaching an existing one) and the edge label's
-// edit-commit logic entirely to itself; this class owns only the SVG/DOM side
-// of drawing edges, reached through the narrow `EdgeLayerCallbacks` it is
-// constructed with.
+// position change ("世界层内单个 SVG overlay 画全部 edges...只在 edges 或端点
+// 卡片位移时重绘（不进逐帧路径）"). Split out of `../canvas.ts`
+// structurally (no behavior change): that file remains the single state
+// owner (board data, selection, an in-progress label rename) and keeps the
+// connection *gesture* (dragging a new edge out of a card, re-attaching an
+// existing one) and the edge label's edit-commit logic entirely to itself;
+// this class owns only the SVG/DOM side of drawing edges, reached through the
+// narrow `EdgeLayerCallbacks` it is constructed with.
 //
 // `WhiteboardCanvas` is the only importer; this module must never import it
 // back (single-direction dependency between the canvas and its
@@ -134,14 +133,14 @@ export class EdgeLayer {
   }
 
   // -----------------------------------------------------------------------
-  // Viewport culling (P4-2).
+  // Viewport culling.
   //
   // Edges used to be the one thing on the board with no virtualization at
   // all: every edge in the file kept two paths and possibly a label in the
   // document at every zoom level, so a board with a few thousand of them paid
   // Blink's per-element compositing bill in *every* tier — the same
   // `PaintArtifactCompositor::Update` tax that card virtualization exists to
-  // bound (p4-perf-overview §一.5). The overview tier draws edges on a canvas
+  // bound. The overview tier draws edges on a canvas
   // and is unaffected; this is what the two DOM tiers needed.
   //
   // Culling is a `display: none` rather than a teardown, unlike a card's. An

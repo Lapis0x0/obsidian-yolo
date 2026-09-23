@@ -99,8 +99,8 @@ function AgentToolsModalContent({
   const builtinToolGroups = useMemo(() => {
     // Every registered capability is listed unconditionally: this page shows
     // what the user has *authorized*, which is independent of whether a
-    // capability's tools happen to be runnable right now (master.md decision
-    // 18 + its D7 ruling). Pre-D7 this list was derived from
+    // capability's tools happen to be runnable right now. Previously this
+    // list was derived from
     // `getLocalFileTools()`, so disabling the `bash-engine` runtime component
     // also made the Vault Shell row disappear — while the equivalent gates on
     // `web_search` / `terminal_command` (which live downstream in

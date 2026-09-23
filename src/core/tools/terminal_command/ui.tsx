@@ -15,8 +15,8 @@ import { getTerminalCommandChatSummary } from './chat-summary'
 // Ported verbatim from ToolMessage.tsx's private `extractTerminalCommandArgs`
 // / `extractSyntheticLiveTaskOutput` helpers — same precedent as
 // `delegate_subagent/ui.tsx` duplicating its own small pure extraction
-// helpers rather than sharing them (D8: "small, single-tool-only pure
-// functions with no reason to live anywhere else").
+// helpers rather than sharing them ("small, single-tool-only pure functions
+// with no reason to live anywhere else").
 const extractTerminalCommandArgs = (
   rawArguments?: ToolCallRequest['arguments'],
 ): { command?: string; workingDirectory?: string } | undefined => {
@@ -52,12 +52,12 @@ const extractSyntheticLiveTaskOutput = (
  * renderer) for two other sources of the same "terminal-like" shape — CLI
  * `command_execution` capability calls and the legacy
  * `delegate_external_agent` tool name — because neither is tool-name-indexed
- * (D8: non-tool-name branches stay inline).
+ * (non-tool-name branches stay inline).
  *
  * `props.terminalCommandResult` (present only once a background session's
  * result has been hydrated from persisted state) takes priority over any
  * synthetic stdout/stderr embedded directly in the request arguments —
- * matching `ToolMessage.tsx`'s pre-D8 `syntheticLiveTaskOutput` computation
+ * matching `ToolMessage.tsx`'s original `syntheticLiveTaskOutput` computation
  * verbatim. `props.response` is expected to already be the caller's
  * `effectiveTerminalResponse` (hydrated from `terminalCommandResult` when
  * present) — that computation doesn't depend on which renderer ends up

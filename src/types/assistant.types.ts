@@ -95,14 +95,12 @@ export const assistantSchema = z.object({
     .optional(),
   /**
    * Per-assistant enablement/approval for built-in capabilities, keyed by
-   * `BuiltinCapabilityId` (docs/plans/2026-08-15-tool-registry/master.md
-   * decision 15/16). Reuses `assistantToolPreferenceSchema`'s shape — same
+   * `BuiltinCapabilityId`. Reuses `assistantToolPreferenceSchema`'s shape — same
    * `{ enabled?, approvalMode? }` fields, just keyed by capability id
    * instead of a tool FQN. This is now the *only* place a built-in
    * capability's per-assistant state lives; `toolPreferences` /
    * `enabledToolNames` above are exclusively for remote MCP tools as of the
-   * `80_to_81` settings migration (D9,
-   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9).
+   * `80_to_81` settings migration.
    */
   builtinCapabilityPreferences: z
     .record(z.string(), assistantToolPreferenceSchema)

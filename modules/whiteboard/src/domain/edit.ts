@@ -1,5 +1,4 @@
-// One agent edit, applied to a board (docs/plans/09-03-whiteboard-agent-tools
-// master.md D2).
+// One agent edit, applied to a board.
 //
 // `edit_board` takes six arrays — delete, create, update, connect, group,
 // arrange — and this is what they mean. Three properties hold it together.

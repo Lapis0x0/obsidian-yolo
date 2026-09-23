@@ -1,15 +1,14 @@
 // Activate-level, always-on service: the "event layer" half of reference
-// resilience (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.2). Runs for
-// the lifetime of the module (registered once from src/index.tsx's
-// `activate`), independent of whether any `.yoloboard` file is currently
-// open — a card's backing file can be renamed/moved while its board is
-// closed, and the board must still come back correct next time it's
-// opened.
+// resilience. Runs for the lifetime of the module (registered once from
+// src/index.tsx's `activate`), independent of whether any `.yoloboard` file
+// is currently open — a card's backing file can be renamed/moved while its
+// board is closed, and the board must still come back correct next time
+// it's opened.
 //
 // Scope: a vault-wide `rename` subscription (`host.vault.subscribe('', …)`
 // — the empty scope path matches every path, per moduleVault.ts's
 // `doesPathAffectScope`). On every rename, every `.yoloboard` file in the
-// vault is scanned (p1-design: "白板文件数量少，全量扫描 + 按需改写即可，不
+// vault is scanned ("白板文件数量少，全量扫描 + 按需改写即可，不
 // 建常驻索引") and rewritten only if it actually references the moved path.
 // A `.yoloboard` file being renamed itself is a no-op here — the reference
 // direction is board -> card, never the reverse, so nothing points *at* a

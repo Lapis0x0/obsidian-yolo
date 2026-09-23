@@ -64,8 +64,7 @@ function resolveNext<T>(action: SetStateActionLike<T>, prev: T): T {
  * reasoningLevel / chatMode / persistedChatMode / yoloEnabled /
  * conversationOverrides）及各自的每会话 Ref 缓存的唯一 owner。
  *
- * 见 docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md
- * 「分期 B」。普通 TS class，零 React 依赖——由
+ * 普通 TS class，零 React 依赖——由
  * `useChatRuntimePreferences` 经 `useSyncExternalStore` 订阅，每个 ChatView
  * 实例持有一个（随 Chat.tsx 组件创建/销毁，不是全局单例，保证多窗口隔离）。
  *

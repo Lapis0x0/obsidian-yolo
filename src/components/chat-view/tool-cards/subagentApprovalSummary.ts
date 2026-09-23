@@ -49,8 +49,8 @@ export function buildSubagentApprovalSummary(
   const summary: SubagentApprovalSummary = { label: toolShortName }
 
   switch (toolShortName) {
-    // fs_list/fs_create/fs_delete/fs_move/fs_copy/fs_search retired
-    // (master.md decision 10) — no case for them here anymore; they now
+    // fs_list/fs_create/fs_delete/fs_move/fs_copy/fs_search retired — no
+    // case for them here anymore; they now
     // fall through to the generic `default` branch below like any other
     // unknown/retired tool name.
     case 'fs_edit':

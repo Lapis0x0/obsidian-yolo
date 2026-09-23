@@ -41,9 +41,8 @@ export const fsWriteDefinition = defineTool({
     }) satisfies Omit<McpTool, 'name'>,
   // `fs_write` has no entry in the legacy `BUILTIN_TOOL_UI_META` table —
   // its only existing display label lives in `ToolMessage.tsx`'s
-  // `chat.toolCall.writeAction.write` i18n key (master.md D6 批 4 item 5 /
-  // survey-current-state.md §五.1: "两个同类工具的标签来自两套来源"). This
-  // reuses that same key as `chatLabel`'s unified source rather than
+  // `chat.toolCall.writeAction.write` i18n key ("两个同类工具的标签来自两套
+  // 来源"). This reuses that same key as `chatLabel`'s unified source rather than
   // inventing a new one, closing that asymmetry with `fs_edit`.
   chatLabel: {
     key: 'chat.toolCall.writeAction.write',
@@ -60,9 +59,7 @@ export const fsWriteDefinition = defineTool({
   // fs_delete, fs_move, ...) shared it; today `FsFileOpAction` has exactly
   // one member (`'write'`, see `LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION` in
   // `localFileTools.ts`) and that indirection has no other consumer left,
-  // so it is deliberately not reproduced here (master.md D6 批 4 item 4 /
-  // phase2-migration.md D6 "注意" on `LOCAL_FS_SPLIT_ACTION_TOOL_NAMES`:
-  // "不要原样搬过去") — this writes the single remaining action directly.
+  // so it is deliberately not reproduced here ("不要原样搬过去") — this writes the single remaining action directly.
   // `localFileTools.ts`'s own `executeFsFileOps` / `LOCAL_FS_SPLIT_ACTION_*`
   // machinery is untouched: it still backs the old switch's `case
   // 'fs_write'`, which stays in place as the equivalence baseline.
@@ -70,7 +67,7 @@ export const fsWriteDefinition = defineTool({
   // Output JSON shape (`{ tool: 'fs_write', action: 'write', results: [...] }`)
   // is preserved exactly for equivalence with that old branch. Path
   // validation / abort / workspace-scope / YOLO-data-root guards are
-  // dispatcher responsibilities (master.md §3.4) and are not repeated here.
+  // dispatcher responsibilities and are not repeated here.
   execute: async (args, ctx) => {
     const { app, conversationId, roundId, toolCallId, promptSourceWatcher } =
       ctx

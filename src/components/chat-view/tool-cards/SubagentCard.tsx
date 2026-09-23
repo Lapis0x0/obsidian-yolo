@@ -132,7 +132,7 @@ export function SubagentCard({
   // pauses at PendingApproval (loop-worker emits done; runChildAgent waits
   // on a gate), and `liveTask.liveTranscript` mirrors the runtime messages
   // — so the card can render approval buttons next to the running thinking
-  // output. See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+  // output.
   const pendingApprovals = useMemo<SubagentPendingApproval[]>(() => {
     const transcript = liveTask?.liveTranscript ?? []
     const result: SubagentPendingApproval[] = []

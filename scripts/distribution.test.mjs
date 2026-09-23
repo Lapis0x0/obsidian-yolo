@@ -216,7 +216,7 @@ function runtimeAssetFetch(repository, version, registry, attachments) {
 }
 
 test('reads a historical schema-v1 registry with no assets field at all', async () => {
-  // A pre-P0 release only ever wrote schema v1 — no `assets` key on any
+  // An older release only ever wrote schema v1 — no `assets` key on any
   // component. `describeRuntimeComponentArtifacts` reads whichever Core
   // version is requested (not necessarily the current one), so it must
   // keep working against these old tags going forward.

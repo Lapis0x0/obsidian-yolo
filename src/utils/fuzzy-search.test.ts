@@ -92,11 +92,11 @@ describe('fuzzySearch / fuzzySearchFolders (YOLO user data root exclusion)', () 
   })
 })
 
-// D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: `.yoloboard` isn't
+// `.yoloboard` isn't
 // (and shouldn't be — this is a general host utility with no import of
 // core/modules) in the static MENTION_SEARCHABLE_EXTENSIONS list, so a module
 // that's claimed a file-text renderer for it is unioned in per call instead.
-describe('fuzzySearch extraSearchableExtensions (D3)', () => {
+describe('fuzzySearch extraSearchableExtensions', () => {
   it('excludes a module-owned extension by default', () => {
     const boardFile = makeFile('Boards/Reading Notes.yoloboard')
     const app = makeApp([boardFile], [])

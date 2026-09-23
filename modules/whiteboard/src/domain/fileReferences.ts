@@ -1,10 +1,9 @@
 // Rename-reference rewrite — the pure half of the "event layer" reference
-// resilience insurance (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.2:
-// "监听 vault rename 事件，改写所有 .yoloboard...中对该路径的引用"). The host
-// side (src/host/renameRewriter.ts) does the vault scanning/read/write I/O;
-// this module only decides *whether* and *how* a given board's card `file`
-// references change for a single rename, so the decision is testable
-// without any vault fixture.
+// resilience insurance ("监听 vault rename 事件，改写所有 .yoloboard...中
+// 对该路径的引用"). The host side (src/host/renameRewriter.ts) does the vault
+// scanning/read/write I/O; this module only decides *whether* and *how* a
+// given board's card `file` references change for a single rename, so the
+// decision is testable without any vault fixture.
 
 import type { Board, BoardNode } from './fileFormat'
 

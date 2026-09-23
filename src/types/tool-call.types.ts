@@ -231,8 +231,8 @@ export type ToolCallRequest = {
      * module registry, so a module upgrade/disable/reload never changes the
      * outcome for an already-created call. Present only for tool calls
      * created during a module chat mode run; absent (including for
-     * historical/pre-D3 sessions) means "not a module chat mode call" and
-     * every consumer falls back to its pre-D3 behavior.
+     * historical sessions) means "not a module chat mode call" and every
+     * consumer falls back to its normal behavior.
      */
     approvalPolicy?: 'auto' | 'always-require-user'
     /**
@@ -267,8 +267,7 @@ export type ToolCallRequest = {
     allowAlwaysAllow?: boolean
     /**
      * Absolute filesystem path this call reaches that lies outside the vault,
-     * resolved at creation time (docs/plans/09-05-yolo-max/master.md §4
-     * Q7/Q10). Present only for a run whose mode enforces the vault boundary.
+     * resolved at creation time. Present only for a run whose mode enforces the vault boundary.
      * Its presence is what makes the call pause for approval, what the card
      * explains to the user, and what makes an "always allow" on it grant the
      * shared `OUTSIDE_VAULT_ALLOWANCE_KEY` permission rather than only this

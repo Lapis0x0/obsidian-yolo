@@ -38,8 +38,8 @@ export const contextCompactDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts:2337`
   // pre-migration), minus the abort check / workspace-scope / YOLO-data-root
   // guards and the outer try/catch that normalizes thrown errors to an
-  // Error-status result — those are dispatcher responsibilities (master.md
-  // §3.4), not tool semantics.
+  // Error-status result — those are dispatcher responsibilities, not tool
+  // semantics.
   execute: async (args, ctx) => {
     return {
       status: ToolCallResponseStatus.Success,

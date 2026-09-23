@@ -164,8 +164,7 @@ describe('buildSubagentContinuationInput', () => {
   })
 })
 
-// A subagent inherits the parent's mode, not just its tool names
-// (docs/plans/09-05-yolo-max/master.md §4 Q11).
+// A subagent inherits the parent's mode, not just its tool names.
 describe('subagent inherits the parent chat mode', () => {
   const capabilityOverrides = new Map([
     ['native_files', { forceEnabled: true }],

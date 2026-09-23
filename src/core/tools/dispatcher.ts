@@ -9,7 +9,7 @@ import type { LocalToolCallResult, ToolContext } from './types'
  * The single execution entry point for built-in tools, and the only caller of
  * `enforceBuiltinToolSecurityBoundary` (see `./security-boundary.ts`).
  *
- * Full step list (master.md §3.4 / phase1-skeleton.md D1):
+ * Full step list:
  *   1. `signal.aborted` check
  *   2. workspace-scope second line of defense
  *   3. YOLO user-data-root isolation

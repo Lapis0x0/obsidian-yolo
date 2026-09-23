@@ -3,7 +3,7 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { isContextPrunableToolName } from '../../../utils/chat/tool-context-pruning'
 
 // `context_prune_tool_results` is this helper's only consumer, so it lives
-// alongside that tool's own definition (phase2-migration.md D6 "注意").
+// alongside that tool's own definition.
 
 export type ContextPruneMode = 'selected' | 'all'
 

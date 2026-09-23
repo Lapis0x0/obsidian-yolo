@@ -30,7 +30,7 @@ describe('fileNodeKind', () => {
     expect(fileNodeKind('Board/legacy.HTM')).toBe('html')
   })
 
-  it('leaves everything else unsupported, PDF included (its card is M2)', () => {
+  it('leaves everything else unsupported, PDF included', () => {
     expect(fileNodeKind('papers/foo.pdf')).toBe('unsupported')
     expect(fileNodeKind('data/table.csv')).toBe('unsupported')
     expect(fileNodeKind('Assets/README')).toBe('unsupported')

@@ -72,8 +72,7 @@ export const createAssistantQuoteMentionable = ({
 /**
  * Highest `annotationNumber` currently reserved in `mentionables`, across
  * every mentionable kind that participates in the shared annotation pool
- * (assistant-quote and PDF-quote blocks — see docs/plans/2026-08-16-pdf-
- * annotation-quotes.md, architecture decision A). The number pool is shared
+ * (assistant-quote and PDF-quote blocks). The number pool is shared
  * so a fresh annotation — of either kind — can never collide with an
  * existing "批注N" in the same input.
  */

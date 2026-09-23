@@ -1,6 +1,5 @@
 /**
- * Tests for the shared annotation-number pool (see docs/plans/2026-08-16-pdf-
- * annotation-quotes.md, architecture decision A): `getMaxAssistantQuoteNumber`
+ * Tests for the shared annotation-number pool: `getMaxAssistantQuoteNumber`
  * must scan every mentionable kind that participates in "批注N" numbering —
  * not just `assistant-quote` — so assistant replies and PDF selections can
  * never be assigned the same number within one input.

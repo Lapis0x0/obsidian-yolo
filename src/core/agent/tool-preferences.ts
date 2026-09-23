@@ -28,8 +28,7 @@ export const DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE: AssistantToolDisclosureMode
  * `toolPreferences` is the single source of truth for per-agent state, and
  * the migration is the only path that writes defaults into it.
  *
- * D7 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D7 item 5):
- * "default off" used to be a hand-maintained deny-list
+ * "Default off" used to be a hand-maintained deny-list
  * (`BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES`) that had to be kept in sync
  * with each capability's own `defaultEnabled` by inspection. It is now read
  * directly off the owning capability via `getCapabilityForTool` — every
@@ -110,13 +109,13 @@ export const getDefaultDisclosureModeForTool = (
 }
 
 /**
- * D7 (phase2-migration.md D7 items 5-7): this used to consult three
+ * This used to consult three
  * independent side tables (`FULL_ACCESS_LOCAL_TOOLS`,
  * `REQUIRE_APPROVAL_LOCAL_TOOLS`, plus a bash-specific `if`) that each had to
  * be kept in sync with the capability model by hand. It now reads a single
  * fact — the owning capability's `approval.defaultMode` — off the registry,
  * via {@link getCapabilityForTool}. This is also where bash's old
- * `parsedToolName === BASH_TOOL_NAME` special case (D6 batch 7) folds away:
+ * `parsedToolName === BASH_TOOL_NAME` special case folds away:
  * `bash` is `vault_shell`'s only member, so the generic lookup already
  * returns `vault_shell`'s `dangerous_only` default for it — no separate
  * branch needed.
@@ -131,7 +130,7 @@ export const getDefaultApprovalModeForTool = (
     }
 
     // `load_tool_schemas` is the one local tool that is not a `CAPABILITIES`
-    // member (master.md §3.1: "内部协议工具（不属任何 capability）") — it's
+    // member ("内部协议工具（不属任何 capability）") — it's
     // injected by the on-demand tool disclosure mechanism, not a
     // user-configurable capability, so `getCapabilityForTool` can never
     // resolve it. It has always run at `full_access` (the old
@@ -149,7 +148,7 @@ export const getDefaultApprovalModeForTool = (
     }
 
     // Unknown local tool short name — e.g. a retired name like
-    // `fs_list`/`fs_search` (see master.md decision 10) that can still show
+    // `fs_list`/`fs_search` that can still show
     // up in historical `toolPreferences` data. Matches the pre-refactor
     // fallthrough (`REQUIRE_APPROVAL_LOCAL_TOOLS.has(...) ?
     // 'require_approval' : 'full_access'`), which defaulted to full_access
@@ -164,10 +163,9 @@ export const getDefaultApprovalModeForTool = (
  * Builds a freshly-seeded FQN-keyed `toolPreferences` map: every default-on
  * built-in tool FQN gets an explicit `{ enabled, approvalMode }` entry.
  *
- * As of the `80_to_81` settings migration (D9,
- * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9), built-in
- * capability state no longer lives in `toolPreferences` at all — creation
- * paths (default assistant, "new agent" UI) seed
+ * As of the `80_to_81` settings migration, built-in capability state no
+ * longer lives in `toolPreferences` at all — creation paths (default
+ * assistant, "new agent" UI) seed
  * {@link buildDefaultBuiltinCapabilityPreferences} instead. This function is
  * kept **only** because the historical v60→v61 and v78→v79 migrations
  * (`settings/schema/migrations/60_to_61.ts`, `78_to_79.ts`) call it — those
@@ -196,7 +194,7 @@ export const buildDefaultBuiltinToolPreferences = (): Record<
  * `{ enabled, approvalMode }` entry at its own declared defaults. This is
  * the current creation-path seed (default assistant, "new agent" UI) — the
  * capability-model successor to {@link buildDefaultBuiltinToolPreferences}
- * above, which now serves only the frozen pre-D9 migration chain.
+ * above, which now serves only the frozen pre-`80_to_81` migration chain.
  *
  * Explicit seeding (rather than leaving the map empty and relying on the
  * read-time fallback that {@link resolveBuiltinCapabilityPreference} already
@@ -300,8 +298,7 @@ export type ModuleToolSetEnablementV1 = Readonly<{
  * ever explicitly touched has an explicit entry by the time runtime reads
  * it, so this function can safely treat an absent remote entry as disabled.
  *
- * Built-in tools: expanded from `builtinCapabilityPreferences` (D9,
- * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9) — every
+ * Built-in tools: expanded from `builtinCapabilityPreferences` — every
  * *enabled* capability's member tools all count as enabled, resolved via
  * {@link resolveBuiltinCapabilityPreference} (explicit per-assistant entry,
  * or the capability's own default when absent). `toolPreferences` no longer
@@ -554,16 +551,14 @@ export const renameAssistantToolPreferencesServer = <
 }
 
 /**
- * As of the `80_to_81` settings migration (D9,
- * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9), a built-in
- * tool's enablement is owned by its capability's
- * `builtinCapabilityPreferences` entry, not `toolPreferences` — resolved via
+ * As of the `80_to_81` settings migration, a built-in tool's enablement is
+ * owned by its capability's `builtinCapabilityPreferences` entry, not `toolPreferences` — resolved via
  * {@link getCapabilityForTool} (FQN's short name -> owning capability) and
  * {@link resolveBuiltinCapabilityPreference}. A local short name the
  * registry doesn't recognize (the protocol-only `load_tool_schemas`, or a
  * retired name like `fs_list` that can still appear in historical chat
  * state) falls through to the generic `toolPreferences` lookup below, which
- * mirrors the pre-D9 behavior for those names (never present there, so
+ * mirrors the pre-`80_to_81` behavior for those names (never present there, so
  * always `false`). Remote MCP tools were never affected by this migration
  * and keep reading `toolPreferences` exactly as before.
  */
@@ -615,7 +610,7 @@ export const isAssistantToolEnabled = (
  * Same split as {@link isAssistantToolEnabled}: a recognized built-in short
  * name resolves its approval tier off `builtinCapabilityPreferences` via its
  * owning capability; everything else (remote MCP tools, and local names the
- * registry doesn't recognize) falls through to the pre-D9 paths unchanged —
+ * registry doesn't recognize) falls through to the pre-`80_to_81` paths unchanged —
  * server-level `toolServerPreferences` for remote tools, and
  * `toolPreferences` + `getDefaultApprovalModeForTool` for anything else.
  */

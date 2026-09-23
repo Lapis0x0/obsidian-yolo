@@ -119,7 +119,6 @@ const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
   CONTEXT_COMPACT_TOOL_NAME,
 )
 
-// D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9):
 // `context_compact`'s owning capability id — `getCapabilityForTool` isn't
 // used here since this constant must survive even if the tool were ever
 // renamed independently of its capability; matches the hardcoded id already
@@ -160,7 +159,7 @@ const enableAutoContextCompactionTool = (
     allowedToolNames,
     // `context_compact` is a built-in tool: its enabled/approval state is
     // resolved from `builtinCapabilityPreferences`, not `toolPreferences`
-    // (D9) — forcing it on for auto-compaction must write there instead.
+    // — forcing it on for auto-compaction must write there instead.
     builtinCapabilityPreferences: {
       ...(runtime.builtinCapabilityPreferences ?? {}),
       [AUTO_CONTEXT_COMPACT_CAPABILITY_ID]: {
@@ -263,8 +262,7 @@ export function useChatStreamManager({
     moduleChatModeRegistry.getSnapshot,
   )
 
-  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md D1b):
-  // same registry `useSyncExternalStore` pattern as the chat mode registry
+  // Module tool sets: same registry `useSyncExternalStore` pattern as the chat mode registry
   // above, reduced to what `getEnabledAssistantToolNames` needs so a module
   // tool set's default-enabled tools count as enabled here exactly as they
   // do everywhere else that resolves an assistant's tool list.
@@ -341,9 +339,8 @@ export function useChatStreamManager({
 
       // The `chatMessages`/`compactionState`/`pendingCompactionAnchorMessageId`
       // mirror into React state used to happen here — it's now
-      // `ChatSessionController`'s own independent AgentSessionService subscription
-      // (see docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md,
-      // "分期 C1"). This effect keeps its own subscription only for
+      // `ChatSessionController`'s own independent AgentSessionService subscription.
+      // This effect keeps its own subscription only for
       // `baseConversationMessagesRef`/`baseCompactionStateRef` (read by
       // `compactConversation`/`submitChatMutation` below) and the
       // auto-scroll trigger.
@@ -802,7 +799,7 @@ export function useChatStreamManager({
           blockedCommandPrefixes: settings.mcp.builtinCapabilityOptions.terminal
             ?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
           // The assistant selector stays populated in settings even while a
-          // module chat mode is active (D4 hides it in the UI); its
+          // module chat mode is active (the UI hides it); its
           // workspace scope must not leak into a run where the assistant
           // otherwise takes no part at all.
           workspaceScope: isModuleMode

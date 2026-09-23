@@ -1,5 +1,4 @@
-// Which freshly imported boards should open framed on their whole content
-// (P3 batch 3 wave B, feature 8).
+// Which freshly imported boards should open framed on their whole content.
 //
 // The problem: a `.canvas` carries no camera, so the importer has to invent
 // one. It parks the world origin near the content's top-left corner at 1:1

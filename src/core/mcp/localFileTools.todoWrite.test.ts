@@ -6,7 +6,7 @@ import { executeBuiltinTool } from '../tools/dispatcher'
 const stubApp = {} as unknown as App
 
 // See the same note in `localFileTools.test.ts`: `callLocalFileTool` was
-// deleted with the old switch (D12); this suite now runs `todo_write`
+// deleted with the old switch; this suite now runs `todo_write`
 // through the registry dispatcher instead.
 const call = (args: Record<string, unknown>) =>
   executeBuiltinTool('todo_write', args, { app: stubApp })

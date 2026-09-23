@@ -87,8 +87,7 @@ export type LocalToolCallResult =
  * circular dependency component containing `core/mcp/mcpManager.ts` — a
  * static import of `SubagentParentContext` from *this* file would pull every
  * capability and tool definition (all of which import `ToolContext`) back
- * into that cycle the moment `mcpManager.ts` calls into the registry
- * (docs/plans/2026-08-15-tool-registry/master.md, D6a fix).
+ * into that cycle the moment `mcpManager.ts` calls into the registry.
  */
 export type OpaqueSubagentParentContext = unknown
 
@@ -101,7 +100,7 @@ export type BuiltinToolCategory = 'vault' | 'context' | 'external'
  * depend on `src/components/`, and this union is the one the tool registry is
  * defined against. It is the single definition, not one of two: the UI layer's
  * `BuiltinChatMode` (`components/chat-view/chat-input/ChatModeSelect`) is an
- * alias of it (docs/plans/09-05-yolo-max/master.md §6).
+ * alias of it.
  */
 export type BuiltinChatModeId = 'ask' | 'agent' | 'max'
 
@@ -111,8 +110,7 @@ export type BuiltinChatModeId = 'ask' | 'agent' | 'max'
  *
  * This is the mode's own trust contract, not a per-capability declaration:
  * "Max is a real terminal" is a fact about Max, and putting it here keeps
- * every capability free of per-mode tables (docs/plans/09-05-yolo-max/
- * master.md §4 Q8, §6). It is produced in exactly one place —
+ * every capability free of per-mode tables. It is produced in exactly one place —
  * `resolveChatModeRuntime` — and travels with the run.
  */
 export type ChatModeCapabilityOverride = Readonly<{
@@ -154,8 +152,7 @@ export type ToolCatalogContext = {
  * Context available when deciding whether a tool is usable in the current
  * environment (platform, provider/feature configuration, ...). Kept separate
  * from `ToolCatalogContext` (different inputs) and from capability enablement
- * (a user-authorization concern, not an environment one — see master.md
- * decision 18).
+ * (a user-authorization concern, not an environment one).
  */
 export type ToolAvailabilityContext = {
   settings?: YoloSettings
@@ -172,8 +169,7 @@ export type ToolAvailabilityContext = {
  * `_runContext` — so there was no live shape to hide, only a dead field to
  * remove). Every other field's type,
  * optionality, and comment is copied verbatim. Do NOT narrow this to a
- * per-tool slice here — that's an explicit non-goal for this phase (see
- * master.md decision 5 / §7).
+ * per-tool slice here — that's an explicit non-goal.
  */
 export type ToolContext = {
   app: App
@@ -198,7 +194,7 @@ export type ToolContext = {
   /**
    * Host-provided capability to dispatch a subagent run — the same
    * dependency-injection shape as `openApplyReview` / `ragAccess` above
-   * (master.md decision 5: `ToolContext` is DI; tools consume host
+   * (`ToolContext` is DI; tools consume host
    * capabilities through it rather than importing the implementation
    * themselves). `delegate_subagent` is this field's only consumer.
    *
@@ -236,8 +232,7 @@ export type ToolContext = {
    * Looks up the module that owns a file extension's "what does this look
    * like to a model" text form (`ModuleFileTextRendererRegistry.resolve`),
    * e.g. `.yoloboard` → the whiteboard module's board-summary renderer.
-   * `fs_read` is this field's only consumer (docs/plans/09-03-whiteboard-agent-tools/master.md
-   * D3): a claimed extension is read and rendered instead of returned
+   * `fs_read` is this field's only consumer: a claimed extension is read and rendered instead of returned
    * verbatim. Same DI shape as `ragAccess` / `openApplyReview` above — the
    * tool consumes the host capability through `ToolContext`, it never reaches
    * into `core/modules/` itself. Undefined (host/test contexts that never
@@ -302,9 +297,8 @@ export type BuiltinToolDefinition<Name extends string = string> = {
    * The argument that carries a real filesystem path — one that may point
    * anywhere on the machine rather than inside the vault. Declared here so
    * the vault-boundary approval in `AgentToolGateway` reads it off the tool
-   * itself instead of keeping a tool-name table of its own
-   * (docs/plans/09-05-yolo-max/master.md §4 Q7/Q10). Omitted for every tool
-   * whose paths are vault-relative.
+   * itself instead of keeping a tool-name table of its own. Omitted for
+   * every tool whose paths are vault-relative.
    */
   filesystemPathArg?: string
   /**
@@ -324,9 +318,8 @@ export type BuiltinToolDefinition<Name extends string = string> = {
 
 /**
  * A user-authorized capability: the thing a person actually enables/disables
- * and sets an approval tier for. Owns the tools it exposes to the model (see
- * master.md decision 13 — ownership flows capability -> tools, never the
- * reverse). `Id`/`Tools` are local generics for the same reason `Name` is
+ * and sets an approval tier for. Owns the tools it exposes to the model
+ * (ownership flows capability -> tools, never the reverse). `Id`/`Tools` are local generics for the same reason `Name` is
  * local on `BuiltinToolDefinition` above — see that type's doc comment.
  */
 export type BuiltinCapabilityDefinition<
@@ -344,8 +337,8 @@ export type BuiltinCapabilityDefinition<
    * The single source of truth for per-mode visibility: `resolveChatModeRuntime`
    * filters an assistant's enabled tools through this field and nothing else,
    * and no per-mode list of blocked capabilities or tool names may exist
-   * anywhere (docs/plans/09-05-yolo-max/master.md §6 — the same rule that
-   * makes settings rows, approval policy, and persisted keys capability-derived).
+   * anywhere (the same rule that makes settings rows, approval policy, and
+   * persisted keys capability-derived).
    *
    * Module chat modes do not go through this field at all: their tool grant is
    * self-declared (capability tier + mode tools, see
@@ -359,7 +352,7 @@ export type BuiltinCapabilityDefinition<
     /** false = hide the "always allow for this conversation" button. */
     allowAlwaysAllow: boolean
   }
-  /** Whether the settings page has a dedicated configuration entry for this capability. Which modal opens is decided by the UI-layer wiring table (D4), not here. */
+  /** Whether the settings page has a dedicated configuration entry for this capability. Which modal opens is decided by the UI-layer wiring table, not here. */
   hasSettings: boolean
   tools: Tools
 }

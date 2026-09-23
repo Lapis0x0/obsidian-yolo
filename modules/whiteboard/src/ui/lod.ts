@@ -48,7 +48,7 @@ function truncate(text: string, maxLength: number): string {
  * card wears until its content is built, and the line the overview canvas
  * draws for a card that has no element at all. A file node shows its backing
  * file's basename, a link node its URL, a text node its first line (trimmed
- * and truncated) — p1-design §3's "note 卡显示文件名、text 卡显示首行截断". A
+ * and truncated) — "note 卡显示文件名、text 卡显示首行截断". A
  * group node never shows one: its label is chrome, drawn at every zoom, so
  * this returns it unchanged for the callers that ask.
  *
@@ -81,7 +81,7 @@ export function nodeTitleText(node: BoardNode): string {
  *
  * A card is a window onto its document: `startLine` says where the window
  * sits, and the card's height says how much fits. An unfocused card clips and
- * does not scroll (style.css's content mask, D7), so the renderer only ever
+ * does not scroll (style.css's content mask), so the renderer only ever
  * needs that much source — see constants.ts's CARD_CONTENT_MIN_LINE_WORLD_PX
  * for why a line budget derived from the height cannot come up short.
  * Everything outside the window is parsed, post-processed and laid out for a

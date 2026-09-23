@@ -27,8 +27,8 @@ import xiaomimimoLogo from '../assets/provider-icons/xiaomimimo.svg'
 import zhipuLogo from '../assets/provider-icons/zhipu.svg'
 import { LLMProviderPresetType } from '../types/provider.types'
 
-// Picker categories from the V1-grid design. `custom` is rendered as a
-// dedicated last tile, not as part of any category list.
+// Picker categories. `custom` is rendered as a dedicated last tile, not as
+// part of any category list.
 export type ProviderPickerCategory = 'main' | 'cn' | 'gw' | 'cloud' | 'local'
 
 export type ProviderTint =

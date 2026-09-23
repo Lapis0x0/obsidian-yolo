@@ -1,9 +1,8 @@
 // Structured board operations — the primitives (`addNode`, `updateNode`,
 // `replaceNode`, `removeNode`, `moveNodes`, `addEdge`, `updateEdge`,
-// `removeEdge`) that are
-// the *only* sanctioned way to change a Board in 1.0
-// (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1). This is also the land for the AI-driven editing
-// primitives promised for a later milestone, so keep this the single choke
+// `removeEdge`) that are the *only* sanctioned way to change a Board in 1.0.
+// This is also the land for the AI-driven editing primitives promised for a
+// later milestone, so keep this the single choke
 // point for board mutation rather than letting callers hand-edit `Board`
 // object literals.
 //

@@ -7,8 +7,9 @@ import type { ToolRenderer } from './types'
  * per-entry (instead of omitting the entry, or defaulting a missing one to
  * this) is the entire point of the table: `satisfies
  * Record<BuiltinToolName, ToolRenderer>` makes forgetting a new tool a
- * compile error rather than a silent fallback (see master.md §1.4c for the
- * `hasSettings` fallback bug this pattern exists to rule out).
+ * compile error rather than a silent fallback (see
+ * `CAPABILITY_SETTINGS_LAUNCHERS` for the `hasSettings` fallback bug this
+ * pattern exists to rule out).
  *
  * Reserved for `getToolRenderer`'s fallback on names that are not built-in
  * tools at all (remote MCP tools, retired names in historical data).

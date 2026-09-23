@@ -210,8 +210,7 @@ export class ChatViewNavigator {
   }
 
   /**
-   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md,
-   * architecture decision A). `selectedBlock` must already carry a
+   * PDF multi-quote annotation. `selectedBlock` must already carry a
    * `highlightId` (the pinned PDF highlight was created by the caller before
    * this is invoked). Chat assigns the `annotationNumber` and returns it so
    * `pdfSelectionHighlightController` can render "批注N" on the bubble.
@@ -257,7 +256,7 @@ export class ChatViewNavigator {
 
   /**
    * The one deps channel the PDF-side bubble editor uses to patch or remove
-   * its mentionable's comment (architecture decision B). The mention can live
+   * its mentionable's comment. The mention can live
    * in any open chat leaf's input or history — not necessarily
    * `resolveTargetChatLeaf()`'s (the "last interacted" leaf) — so this
    * broadcasts to every open chat leaf and lets each one's

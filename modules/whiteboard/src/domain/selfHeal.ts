@@ -1,10 +1,9 @@
-// Pure decision logic for the "self-heal" insurance layer (docs/plans/
-// 08-25-yolo-whiteboard/p1-design.md §1.2: "白板打开时逐卡解析 file 路径；
-// 失效的用文件名...重定位（移动不改名必中），找回即就地修正保存"). The host
-// side (src/ui/canvas.ts) does the I/O — checking which file nodes' `file`
-// no longer resolves to a vault entry, and listing the vault's markdown
-// files — and hands both in here; this module only decides which of those
-// missing nodes can be safely relocated.
+// Pure decision logic for the "self-heal" insurance layer ("白板打开时逐卡
+// 解析 file 路径；失效的用文件名...重定位（移动不改名必中），找回即就地
+// 修正保存"). The host side (src/ui/canvas.ts) does the I/O — checking
+// which file nodes' `file` no longer resolves to a vault entry, and listing
+// the vault's markdown files — and hands both in here; this module only
+// decides which of those missing nodes can be safely relocated.
 //
 // Conservative on purpose: a node is only relocated when its basename
 // matches *exactly one* candidate file. Zero matches (truly gone) or
@@ -29,7 +28,7 @@ export type FileNodeRelocation = Readonly<{ nodeId: NodeId; file: string }>
  * (`host.vault.listMarkdownFiles()`). Returns one relocation per missing
  * node that has exactly one same-basename candidate elsewhere in the
  * vault — nodes with zero or multiple candidates are omitted (the caller
- * renders them as "file missing" instead, per p1-design's "真丢失的渲染
+ * renders them as "file missing" instead, "真丢失的渲染
  * '文件丢失'占位卡" — no automatic guess).
  */
 export function planFileNodeSelfHeal(

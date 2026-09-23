@@ -946,8 +946,7 @@ describe('AgentToolGateway', () => {
 
   it('routes approval-required subagent child calls to PendingApproval (parent UI)', () => {
     // Subagent approval requests bubble up to the SubagentCard's inline
-    // approval block in the parent conversation. See
-    // `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+    // approval block in the parent conversation.
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(false),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
@@ -1847,8 +1846,7 @@ describe('AgentToolGateway', () => {
     })
   })
 
-  // YOLO Max's mode-level trust (docs/plans/09-05-yolo-max/master.md §4
-  // Q7/Q8/Q10/Q11). Two facts travel with the run: what the mode grants past
+  // YOLO Max's mode-level trust. Two facts travel with the run: what the mode grants past
   // the user's switches, and where the vault boundary is.
   describe('chat mode capability grant and the vault boundary', () => {
     const MAX_OVERRIDES = new Map([
@@ -2028,7 +2026,7 @@ describe('AgentToolGateway', () => {
         })?.response.status,
       ).toBe(ToolCallResponseStatus.PendingApproval)
       // A read-only command mentioning an outside path but declaring no cwd
-      // runs: the command text is not a path expression (Q10).
+      // runs: the command text is not a path expression.
       expect(
         call(gateway, 'yolo_local__terminal_command', { command: 'ls /etc' })
           ?.response.status,

@@ -51,7 +51,7 @@ type SelectionActionsMenuProps = {
    * NOT part of `selectionChatActionCatalog`: that catalog also drives the
    * registered Obsidian commands, and this action is meaningless outside a
    * PDF view — putting it there would surface a command that silently does
-   * nothing in markdown. See docs/plans/2026-08-16-pdf-annotation-quotes.md.
+   * nothing in markdown.
    */
   onQuoteAction?: () => void
 }

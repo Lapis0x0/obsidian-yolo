@@ -3,8 +3,8 @@ import { truncateText } from '../chat-summary-support'
 /**
  * Chat-surface summary for `web_search` — ported verbatim from the
  * `toolName === 'web_search'` branch of `ToolMessage.tsx`'s private
- * `getLocalToolSummaryText` (pre-D8). Wired into `TOOL_RENDERERS` as this
- * tool's `summary` field (phase2-migration.md D8).
+ * `getLocalToolSummaryText`. Wired into `TOOL_RENDERERS` as this tool's
+ * `summary` field.
  */
 export const getWebSearchChatSummary = ({
   argumentsObject,

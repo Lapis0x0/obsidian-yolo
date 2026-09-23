@@ -3,8 +3,8 @@ import { summarizeShellCommand } from '../shell-command-summary'
 /**
  * Chat-surface summary for `bash` — ported verbatim from the
  * `toolName === 'bash'` branch of `ToolMessage.tsx`'s private
- * `getLocalToolSummaryText` (pre-D8). Wired into `TOOL_RENDERERS` as this
- * tool's `summary` field (phase2-migration.md D8).
+ * `getLocalToolSummaryText`. Wired into `TOOL_RENDERERS` as this tool's
+ * `summary` field.
  */
 export const getBashChatSummary = ({
   argumentsObject,

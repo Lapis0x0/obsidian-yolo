@@ -1,9 +1,9 @@
 // The panel that asks for one value before a card can be created: which note,
-// which media file, or what URL (P3 batch 3 wave B, feature 1).
+// which media file, or what URL.
 //
 // Obsidian Canvas reaches for a `FuzzySuggestModal` (notes, media) and a small
-// prompt modal (website). The Host API publishes neither, and this wave is not
-// the place to widen it: a suggester is a *UI* affordance, and the surface a
+// prompt modal (website). The Host API publishes neither, and a card prompt is
+// not the place to widen it: a suggester is a *UI* affordance, and the surface a
 // module is given (`notice`, `confirm`, `showMenu`) is deliberately about
 // host-owned chrome rather than arbitrary dialogs. So the panel is drawn in the
 // module — one component for all three prompts, because they differ only in

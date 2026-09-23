@@ -8,15 +8,13 @@
 // single tool's own directory when that tool is its only consumer).
 //
 // The check this file backs is UNCONDITIONAL — independent of whether the
-// owning module is installed or active
-// (docs/plans/09-03-whiteboard-agent-tools/master.md D4 / Q11). The
-// alternative (only blocking when the module happens to be active) would
+// owning module is installed or active. The alternative (only blocking when the module happens to be active) would
 // make the same fs_edit call on the same file behave differently on two
 // machines depending on which modules are installed there — worse than a
 // missing feature, because it's an inconsistency the model (and the user
 // reading its output) has no way to predict. That's also why this is a
 // static table rather than a query against `ModuleFileTextRendererRegistry`
-// (D3's read-side registry): registration there is runtime/module-driven by
+// (the read-side registry): registration there is runtime/module-driven by
 // design, and reusing it here would make the write-side guard only as
 // reliable as "did the module happen to load before this call."
 

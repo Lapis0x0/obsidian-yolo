@@ -10,7 +10,7 @@ import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 
 /**
  * The two safety-critical checks that live outside every built-in tool's own
- * logic (master.md §3.4). `dispatcher.ts` is the only caller.
+ * logic. `dispatcher.ts` is the only caller.
  *
  * Throws with the exact same messages the pre-registry inline checks threw.
  * Callers must run this inside the same try/catch that normalizes thrown

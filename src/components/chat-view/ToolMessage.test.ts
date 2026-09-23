@@ -959,14 +959,12 @@ describe('ToolMessage headline helpers', () => {
   })
 
   // fs_delete/fs_create_dir/fs_move retired with the virtual bash tool
-  // (master.md decision 10, schema v79). D8/D10 deliberately drop their
-  // `getLocalToolSummaryText` branches along with the rest of the retired
-  // `if` chain: retired tool names no longer get a special-cased summary,
+  // (schema v79). Their `getLocalToolSummaryText` branches were deliberately
+  // dropped along with the rest of the retired `if` chain: retired tool names no longer get a special-cased summary,
   // only whatever `displayName` this test's own `labels` fixture still
   // happens to carry (a real `getToolLabels()` call — unlike this hand-built
   // fixture — no longer carries one either, so real historical conversations
-  // show the bare tool name; see D10's checklist for `ToolMessage.tsx`'s
-  // `displayNames` map).
+  // show the bare tool name; see `ToolMessage.tsx`'s `displayNames` map).
   it('has no summary for retired delete headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
@@ -1214,7 +1212,7 @@ describe('isAlwaysAllowDisabledForRequest', () => {
   })
 
   it("prefers the running mode's snapshot over the capability declaration", () => {
-    // Max opens always-allow on the terminal (master.md §4 Q8) ...
+    // Max opens always-allow on the terminal ...
     expect(
       isAlwaysAllowDisabledForRequest({
         name: 'yolo_local__terminal_command',

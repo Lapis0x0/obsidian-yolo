@@ -166,8 +166,7 @@ type SelectionChatControllerDeps = {
     assistantId?: string,
   ) => Promise<void>
   /**
-   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md,
-   * architecture decision A). `selectedBlock` must already carry a
+   * PDF multi-quote annotation. `selectedBlock` must already carry a
    * `highlightId`. Returns the annotation number chat assigned, so the PDF
    * bubble can render "批注N" without ever numbering itself.
    */
@@ -176,7 +175,7 @@ type SelectionChatControllerDeps = {
   ) => Promise<number | undefined>
   /**
    * The one deps channel the PDF-side bubble editor uses to patch or remove
-   * its mentionable's comment (architecture decision B).
+   * its mentionable's comment.
    */
   updatePdfQuoteMention: (
     highlightId: string,
@@ -1262,10 +1261,8 @@ export class SelectionChatController {
    * add-to-sidebar / chat-input / chat-send actions (routed through
    * `handleReadOnlySelectionAction`) AND the PDF quote button
    * (`handlePdfQuoteAction`) — the only two producers of PDF pinned blocks.
-   * See docs/plans/2026-08-16-pdf-annotation-quotes.md item 5.
    *
-   * Anchor and paint are decoupled (see the 2026-08-16 addendum to the plan,
-   * "锚点与涂色必须解耦"): `addHighlight` is called unconditionally so a
+   * Anchor and paint are decoupled ("锚点与涂色必须解耦"): `addHighlight` is called unconditionally so a
    * `highlightId` is always produced — the quote button's bubble/editor must
    * work even when `persistSelectionHighlight` is off, since that setting
    * only promises a *visual* preference, not the annotation feature itself.
@@ -1296,11 +1293,10 @@ export class SelectionChatController {
   }
 
   /**
-   * Handles a click on the PDF-only "引用" button (docs/plans/2026-08-16-pdf-
-   * annotation-quotes.md item 6). Builds the same pinned highlight + block as
-   * the add-to-sidebar action (via `buildPinnedPdfBlock`), sends it to chat to
-   * get a numbered "批注N" slot — chat is the only side allowed to assign the
-   * number (architecture decision A) — then tells
+   * Handles a click on the PDF-only "引用" button. Builds the same pinned
+   * highlight + block as the add-to-sidebar action (via `buildPinnedPdfBlock`),
+   * sends it to chat to get a numbered "批注N" slot — chat is the only side
+   * allowed to assign the number — then tells
    * `pdfSelectionHighlightController` to render the bubble and open its
    * editor immediately in the "new" draft state, mirroring
    * `AssistantSelectionQuoteButton.handleCreateQuote`.

@@ -1,5 +1,4 @@
-// The whiteboard's tools, as the agent sees them
-// (docs/plans/09-03-whiteboard-agent-tools/master.md D2, D3).
+// The whiteboard's tools, as the agent sees them.
 //
 // Two tools and one renderer, and the split between them is the whole design:
 //
@@ -7,11 +6,10 @@
 //     with `fs_read`. What the registered renderer changes is only *what it
 //     gets back* — a summary instead of several hundred KB of JSON. A
 //     `read_board` beside `fs_read` would make the model choose between two
-//     ways to read the same thing and leave two outputs to keep in step
-//     (Q23).
+//     ways to read the same thing and leave two outputs to keep in step.
 //   - **Writing is a tool**, because `fs_edit`'s string replacement over
 //     JSON is not editing a board, it is corrupting one on a bad day. So
-//     `.yoloboard` is blocked there (D4) and `edit_board` is what exists
+//     `.yoloboard` is blocked there and `edit_board` is what exists
 //     instead: operations over cards and connections, never over text.
 //
 // Both tools are deferred by default, like every module tool set: a user who

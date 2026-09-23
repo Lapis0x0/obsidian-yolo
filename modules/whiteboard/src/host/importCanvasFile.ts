@@ -1,4 +1,4 @@
-// The vault-facing half of the `.canvas` importer (p3-canvas-parity D4). The
+// The vault-facing half of the `.canvas` importer. The
 // conversion itself is pure and lives in domain/canvasImport.ts; this file
 // only does I/O: read the `.canvas`, pick a free `.yoloboard` name beside it,
 // write it, and say what happened.
@@ -121,9 +121,9 @@ export async function importCanvasFileAndOpen(
  *
  * A command carries no target — the Host API has no active-file surface and
  * no file picker — so the useful thing a command can do here is the migration
- * D4 exists for: bring a vault's canvases across in one go. It asks first,
- * with the count, because it writes one new file per canvas; nothing existing
- * is overwritten (`generateBoardFileName` finds a free name each time).
+ * the importer exists for: bring a vault's canvases across in one go. It asks
+ * first, with the count, because it writes one new file per canvas; nothing
+ * existing is overwritten (`generateBoardFileName` finds a free name each time).
  */
 export async function importAllCanvasFiles(
   host: YoloModuleHostApiV1,

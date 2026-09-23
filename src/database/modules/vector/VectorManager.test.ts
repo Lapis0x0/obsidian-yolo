@@ -781,9 +781,9 @@ describe('VectorManager.reconcile', () => {
   })
 })
 
-// ---- Real-store coverage for the C3 Codex fixes (sections B and C of
-// 09-c3-codex-fixes.md) — a mocked repository can't prove "no row survives"
-// or "no duplicate row", so these exercise the real IndexedDB-backed store.
+// ---- Real-store coverage — a mocked repository can't prove "no row
+// survives" or "no duplicate row", so these exercise the real
+// IndexedDB-backed store.
 async function openRealStore(
   namespaceId: string,
 ): Promise<IndexedDbVectorStore> {

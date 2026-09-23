@@ -1,11 +1,10 @@
-// D6b's own verification point (phase2-migration.md "工具目录接线"):
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts`) used to return a
 // hand-written literal array — a second, independent truth source from the
-// registry's `getMcpTool(ctx)` projections that D6 batches 1-7 built and
-// left dangling. This file locks in the two things D6b promises:
+// registry's `getMcpTool(ctx)` projections. This file locks in the two
+// things wiring the catalog to the registry promises:
 //
 //   1. Order: the model-facing tool list must not silently reorder. The
-//      exact pre-D6b literal-array order is asserted per option combo below.
+//      exact original literal-array order is asserted per option combo below.
 //   2. Content: each entry's schema must equal that tool's own
 //      `getMcpTool(ctx)` (proving the catalog is actually built from the
 //      registry, not a parallel copy).
@@ -15,8 +14,7 @@
 // one place that checks the *whole* catalog — order and membership — across
 // the option combinations that matter: no options, a text-only model, a
 // vision model, a PDF model, and the `bash-engine` runtime component on/off
-// (see bash-equivalence.test.ts's own "D6b: bash-engine gate unified"
-// `describe` block for the deeper bash-specific coverage of that last axis).
+// (see bash-equivalence.test.ts's own bash-engine gate `describe` block for the deeper bash-specific coverage of that last axis).
 
 jest.mock('obsidian')
 
@@ -30,7 +28,7 @@ afterEach(() => {
   setRuntimeComponentEnabledOverrideForTests(null)
 })
 
-// The pre-D6b literal array's exact order (`bash` included — every case in
+// The original literal array's exact order (`bash` included — every case in
 // this file that doesn't explicitly disable the runtime component runs with
 // it enabled, matching the "无 options" baseline other equivalence suites
 // use).
@@ -48,12 +46,12 @@ const EXPECTED_ORDER_WITH_BASH = [
   'delegate_subagent',
   'ask_user_question',
   'todo_write',
-  // `native_files` (YOLO Max S1) — appended after the frozen pre-D6b order
+  // `native_files` — appended after the frozen original order
   // so nothing the model already sees moved.
   'read_file',
   'write_file',
   'edit_file',
-  // `vault_search` (docs/plans/09-10-vault-search) — appended for the same
+  // `vault_search` — appended for the same
   // reason.
   'vault_search',
 ]
@@ -80,7 +78,7 @@ function expectCatalogMatchesRegistry(
   }
 }
 
-describe('getLocalFileTools() catalog: order and content match the registry (D6b)', () => {
+describe('getLocalFileTools() catalog: order and content match the registry', () => {
   beforeEach(() => {
     setRuntimeComponentEnabledOverrideForTests(() => true)
   })
@@ -118,7 +116,7 @@ describe('getLocalFileTools() catalog: order and content match the registry (D6b
   })
 })
 
-describe('getLocalFileTools() catalog: bash-engine on/off (D6b)', () => {
+describe('getLocalFileTools() catalog: bash-engine on/off', () => {
   it('bash-engine on: bash appears in its legacy position', () => {
     setRuntimeComponentEnabledOverrideForTests(() => true)
     expectCatalogMatchesRegistry(undefined, EXPECTED_ORDER_WITH_BASH)

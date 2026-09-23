@@ -197,7 +197,7 @@ export type AgentRunApiOptions = {
    * Optional so pre-existing test fixtures that construct this service
    * without a plugin instance keep compiling — a caller that omits it simply
    * gets no module tool sets in `assistantEnabledToolNames`, matching the
-   * pre-D1b behavior. The real host (`main.ts`) always provides it.
+   * behavior before module tool sets existed. The real host (`main.ts`) always provides it.
    */
   getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
@@ -459,8 +459,8 @@ export async function resolveAgentApiRunInput({
   agentService: AgentSessionService
   mcpManager: McpManager
   /**
-   * Registry snapshot of module-contributed tool sets (whiteboard, etc.) —
-   * see docs/plans/09-03-whiteboard-agent-tools/master.md D1b. Optional so
+   * Registry snapshot of module-contributed tool sets (whiteboard, etc.).
+   * Optional so
    * the many test call sites that don't exercise module tool sets don't need
    * to pass one; a caller that omits it just resolves with none available,
    * same as before this parameter existed.

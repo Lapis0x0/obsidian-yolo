@@ -19,7 +19,7 @@
  *   min-width / max-width / max-height / width / margin
  * 尺寸是 consumer 的责任 —— 通过 minWidth/maxWidth/maxHeight props 传入，
  * 或一次性需求自带 `yolo-popover-<purpose>` class（例如聊天历史的 -64px 对齐）。
- * 违反这条会跨组件污染（历史踩坑详见 docs/plans/parsed-wiggling-shore.md）。
+ * 违反这条会跨组件污染。
  *
  * ─────────────────────────────────────────────
  * 3. 变体规则按文件归属，禁止跨文件覆盖

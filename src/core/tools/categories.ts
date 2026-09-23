@@ -2,8 +2,7 @@ import type { BuiltinToolCategory } from './types'
 
 /**
  * Display order for the three settings-page category sections. Moved here
- * verbatim from the retired `core/agent/builtinToolUiMeta.ts` (D7,
- * docs/plans/2026-08-15-tool-registry/phase2-migration.md D7 item 2/3) — a
+ * verbatim from the retired `core/agent/builtinToolUiMeta.ts` — a
  * capability concept (`BuiltinToolCategory` lives on
  * `BuiltinCapabilityDefinition`), not a UI-only one, so it belongs in
  * `core/tools/` rather than `core/agent/`.

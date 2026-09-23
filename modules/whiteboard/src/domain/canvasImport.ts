@@ -1,9 +1,8 @@
-// One-way `.canvas` -> `.yoloboard` conversion (docs/plans/
-// 08-25-yolo-whiteboard/p3-canvas-parity.md D4). Import only: we never write
+// One-way `.canvas` -> `.yoloboard` conversion. Import only: we never write
 // `.canvas`, never register a view for it, and never touch the source file.
 //
 // The mapping is close to the identity function, which is the whole reason
-// D5 realigned our schema onto JSON Canvas's concepts first. What is *not*
+// our schema was realigned onto JSON Canvas's concepts first. What is *not*
 // identity, and why:
 //
 //   - `width`/`height` -> `w`/`h`. An abbreviation, not a concept (see

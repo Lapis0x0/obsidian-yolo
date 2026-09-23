@@ -1,5 +1,5 @@
 // Where a card goes when nobody said where — the other half of `edit_board`'s
-// optional coordinates (docs/plans/09-03-whiteboard-agent-tools Q4, Q9).
+// optional coordinates.
 //
 // This is the *only* thing a caller cannot express with coordinates, which is
 // why it is the only placement behaviour that exists. There is no anchor, no
@@ -14,8 +14,8 @@
 // it fits.
 //
 // The prohibition: **never move a node that is already there.** Pushing
-// neighbours aside to make room is a re-layout nobody asked for, and Q2
-// opened re-layout only to an explicit request (`arrange`). So placement
+// neighbours aside to make room is a re-layout nobody asked for, and
+// re-layout is open only to an explicit request (`arrange`). So placement
 // searches for space; it never makes space. The worst it can do is put a card
 // further away than the prettiest spot.
 //

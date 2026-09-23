@@ -8,13 +8,12 @@ import { defineTool } from '../define'
 
 // This tool's implementation is NOT inlined here — it lives in
 // `core/mcp/jsSandboxTool.ts` (schema/description building, the sandboxed
-// Worker runner, and — as of D6 batch 6 — the `$vault`/`$browser`/`$fetch`/
-// `$db` proxy-handler construction that used to live in
+// Worker runner, and the `$vault`/`$browser`/`$fetch`/`$db` proxy-handler construction that used to live in
 // `core/mcp/localFileTools.ts`; see that file's own doc comment for why it
 // moved). `execute` below is a thin adapter that gathers `ToolContext`
 // dependencies and hands them to `callJsSandboxTool`, proving
 // `BuiltinToolDefinition.execute` can delegate to an external implementation
-// rather than inlining everything (phase2-migration.md D6 batch 6).
+// rather than inlining everything.
 export const jsEvalDefinition = defineTool({
   name: 'js_eval',
   summaryAction: 'analysis',
@@ -31,7 +30,7 @@ export const jsEvalDefinition = defineTool({
   // no platform restriction today (`jsSandboxTool.ts` makes zero references
   // to `Platform`; its "slow / mobile devices" comment treats mobile as a
   // case to accommodate, not exclude). Adding one here would be an
-  // unapproved behavior change (master.md §3.1b).
+  // unapproved behavior change.
   chatLabel: {
     key: 'settings.agent.builtinJsEvalLabel',
     fallback: 'Analysis Sandbox',
@@ -40,8 +39,8 @@ export const jsEvalDefinition = defineTool({
   // Ported verbatim from the `case JS_SANDBOX_TOOL_NAME` branch of
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts`), minus the abort
   // check and the outer try/catch that normalizes thrown errors to an
-  // Error-status result — those are dispatcher responsibilities
-  // (master.md §3.4), not tool semantics.
+  // Error-status result — those are dispatcher responsibilities, not tool
+  // semantics.
   //
   // Workspace-scope and YOLO-data-root enforcement are NOT dispatcher
   // responsibilities for this tool: `js_eval`'s only argument is opaque

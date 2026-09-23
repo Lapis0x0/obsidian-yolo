@@ -1,7 +1,6 @@
 /**
  * Unit tests for pdfSelectionHighlightController — focused on the
- * anchor/paint decoupling contract added in the 2026-08-16 addendum to
- * docs/plans/2026-08-16-pdf-annotation-quotes.md ("锚点与涂色必须解耦"):
+ * anchor/paint decoupling contract ("锚点与涂色必须解耦"):
  * `addHighlight` must always build the anchor (offsets, ranges, the
  * `textlayerrendered` resubscription) even when painting is disabled, either
  * by the caller's `options.paint` or by the CSS Custom Highlight API being

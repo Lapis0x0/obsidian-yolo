@@ -143,18 +143,18 @@ const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
  * Re-exported for external callers (`core/agent/tool-selection.ts`,
  * `core/agent/tool-preferences.ts`, `core/agent/tool-gateway.ts`) — the
  * implementation moved to `core/tools/internal/load_tool_schemas/definition.ts`
- * (D6b: it is a protocol-internal tool, not a `CAPABILITIES` member, so it
+ * (it is a protocol-internal tool, not a `CAPABILITIES` member, so it
  * lives in `internal/` rather than getting a `defineTool` entry — see that
  * module's own doc comment). This is a plain re-export, not a registry
- * lookup (master.md §3.5: compat exports may only forward a per-tool
- * module's own constant, never round-trip through the registry).
+ * lookup (compat exports may only forward a per-tool module's own
+ * constant, never round-trip through the registry).
  */
 export { LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME, getLoadToolSchemasTool }
 
 /**
- * Model-facing catalog order, preserved verbatim from the pre-D6b literal
- * array this function used to return directly (phase2-migration.md D6b —
- * "顺序与内容逐条不变": the model's tool list must not silently reorder).
+ * Model-facing catalog order, preserved verbatim from the literal array this
+ * function used to return directly ("顺序与内容逐条不变": the model's tool
+ * list must not silently reorder).
  * Every registered `BuiltinToolName` must appear here exactly once; the
  * module-load assertions below turn "forgot to add the new tool here" into
  * an immediate throw instead of a silently incomplete catalog.
@@ -210,7 +210,7 @@ export function getLocalFileTools(options?: {
   return LOCAL_FILE_TOOL_CATALOG_ORDER.filter((name) => {
     // `bash`'s catalog-inclusion is gated by the `bash-engine` runtime
     // component being enabled — the one tool whose presence here was ever
-    // conditional (see the pre-D6b literal array this replaced). That
+    // conditional (see the former literal array this replaced). That
     // judgment now lives on the tool's own `isAvailable`
     // (`core/tools/bash/definition.ts`) rather than a raw
     // `isRuntimeComponentEnabled` call inline here, but this loop still has
@@ -220,8 +220,8 @@ export function getLocalFileTools(options?: {
     // `isAvailable` needs `settings`) from every catalog built here —
     // including the settings-page call sites (`AgentSection.tsx`,
     // `AgentToolsModal.tsx`, `agentToolPersistence.ts`) that need the full,
-    // unfiltered list to render toggles regardless of runtime readiness
-    // (master.md decision 18). `web_search` / `terminal_command` /
+    // unfiltered list to render toggles regardless of runtime readiness.
+    // `web_search` / `terminal_command` /
     // `js_eval` stay unconditionally listed here, exactly as before;
     // environment-availability filtering for *them* happens downstream, in
     // `McpManager.isLocalToolEnabled` (`core/mcp/mcpManager.ts`), which

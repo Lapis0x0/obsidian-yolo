@@ -8,7 +8,7 @@ import { getDesktopProxyAgent } from '../../llm/sdkFetch'
  *
  * Bypasses Obsidian's `DataAdapter` (which buffers whole files in memory) and
  * writes directly through `node:fs`: local embedding model weights range from
- * ~25MB to ~570MB (`docs/plans/08-22-local-embedding/00-plan.md` §3.3), too
+ * ~25MB to ~570MB, too
  * large to buffer twice (once for the download, once for
  * `adapter.writeBinary`) the way the runtime-component installer does for its
  * much smaller entry.js/wasm assets.

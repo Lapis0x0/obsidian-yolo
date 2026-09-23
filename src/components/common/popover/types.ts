@@ -8,7 +8,7 @@ export type YoloPopoverVariant = 'default' | 'continuation'
  * Sizing is intentionally explicit: every consumer MUST declare its own
  * minWidth / maxWidth / maxHeight (or leave them undefined for `auto`).
  * No values are inherited from any "shared" CSS class — that's the whole
- * point of this abstraction. See docs/plans/parsed-wiggling-shore.md.
+ * point of this abstraction.
  */
 export type YoloPopoverProps = {
   /** Visual preset. `default` matches the chat-sidebar look; `continuation` matches the Continuation floating popover look. */

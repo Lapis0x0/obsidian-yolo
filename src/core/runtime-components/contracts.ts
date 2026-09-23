@@ -260,7 +260,7 @@ export type EmbeddingEngineSpec = Readonly<{
  * Callbacks injected by the host so the component never touches the network
  * or the vault directly. `loadWasm` reads a runtime-component asset (see
  * `readRuntimeComponentAsset`); `loadModelFile` reads a file from the
- * `LocalEmbeddingModelManager`-owned model directory (host-only, P2). Both
+ * `LocalEmbeddingModelManager`-owned model directory (host-only). Both
  * receive `createSession`'s own `signal` so a caller that aborts while
  * assets/model files are still loading (network fetch, vault read) can
  * cancel that work instead of it running to completion unobserved.

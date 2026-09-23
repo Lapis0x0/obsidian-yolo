@@ -361,10 +361,9 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
         mentionable.pageNumber !== undefined
           ? `:p${mentionable.pageNumber}`
           : ''
-      // PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-
-      // quotes.md): two distinct annotations can select the same repeated
-      // substring on the same page, which otherwise collide on identical
-      // file/line/page/contentHash. `annotationNumber` is only ever set on
+      // PDF multi-quote annotation: two distinct annotations can select the
+      // same repeated substring on the same page, which otherwise collide on
+      // identical file/line/page/contentHash. `annotationNumber` is only ever set on
       // annotated blocks (see its definition in types/mentionable.ts), so
       // appending it here is additive and never runs for plain blocks —
       // the key format below is byte-for-byte unchanged when it's absent,

@@ -20,8 +20,7 @@ export const SIMILAR_NOTES_CHUNK_LIMIT = 60
  * No similarity floor. Cosine scales differ per embedding model (some
  * cluster around 0.2, others around 0.8), so any fixed threshold would
  * silently empty the panel for some models. Ranking plus the fixed card
- * count carries the signal instead — see the design doc's "no percentages"
- * decision.
+ * count carries the signal instead.
  */
 export const SIMILAR_NOTES_MIN_SIMILARITY = 0
 

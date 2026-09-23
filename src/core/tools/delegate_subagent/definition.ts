@@ -8,8 +8,7 @@ import { getOptionalTextArg, getTextArg } from '../tool-args'
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:1102`). Deliberately
 // does NOT include `modelId` — that field is injected dynamically by
 // `applyDynamicToolDescriptions()` (`src/core/agent/tool-selection.ts:165`),
-// which still operates on `getLocalFileTools()`'s output and is untouched
-// this phase (D6). Adding `modelId` here ahead of that migration would be a
+// which still operates on `getLocalFileTools()`'s output. Adding `modelId` here ahead of that migration would be a
 // silent schema fork between the live path and this inert one.
 const DELEGATE_SUBAGENT_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
@@ -50,12 +49,11 @@ export const delegateSubagentDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts:3818`), minus the
   // abort check / workspace-scope / YOLO-data-root guards and the outer
   // try/catch that normalizes thrown errors to an Error-status result —
-  // those are dispatcher responsibilities (master.md §3.4), not tool
-  // semantics. A thrown Error here is expected to propagate to
+  // those are dispatcher responsibilities, not tool semantics. A thrown Error here is expected to propagate to
   // `executeBuiltinTool`, which converts it the same way the old outer
   // catch did.
   //
-  // Approval note (D3 question 2): this tool's OWN pending-approval flow is
+  // Approval note: this tool's OWN pending-approval flow is
   // the ordinary one (`AgentSessionService.approveToolCall` -> the gateway ->
   // this `execute`), same as every other tool. `approveSubagentToolCall`
   // (`src/core/agent/service.ts:1760`) is a different concern entirely: it

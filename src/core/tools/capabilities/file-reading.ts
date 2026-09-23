@@ -3,9 +3,8 @@ import { fsReadDefinition } from '../fs_read/definition'
 
 // label/description copied from the `fs_read` entry in `builtinToolUiMeta.ts`;
 // category from `BUILTIN_TOOL_CATEGORY_MAP` (`'vault'`). The i18n keys are
-// unchanged from the existing locale entries (master.md §5). `id:
-// 'file_reading'` is a new capability id (decision 16) for this 1:1 tool
-// (decision 14).
+// unchanged from the existing locale entries. `id: 'file_reading'` is a new
+// capability id for this 1:1 tool.
 //
 // defaultEnabled/approval cross-checked against the pre-refactor sources:
 // `fs_read` is NOT in `BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES` ->
@@ -14,8 +13,7 @@ import { fsReadDefinition } from '../fs_read/definition'
 // the web split-action tools, and `terminal_command`), or the bash
 // special-case -> defaultMode falls through to 'full_access'. Not in
 // `ALWAYS_ALLOW_DISABLED_TOOL_NAMES` -> allowAlwaysAllow: true. Not one of
-// the three dedicated-settings tools -> hasSettings: false. Matches
-// master.md §3.1's capability table row for `file_reading` exactly.
+// the three dedicated-settings tools -> hasSettings: false.
 export const fileReadingCapability = defineCapability({
   id: 'file_reading',
   label: {
@@ -29,7 +27,7 @@ export const fileReadingCapability = defineCapability({
   },
   category: 'vault',
   // Reading a vault file changes nothing, so Ask gets it. Max does not: it
-  // reads through `native_files` instead (master.md Q5).
+  // reads through `native_files` instead.
   chatModes: ['ask', 'agent'],
   defaultEnabled: true,
   approval: {

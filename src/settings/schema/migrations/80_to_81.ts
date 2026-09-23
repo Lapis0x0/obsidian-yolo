@@ -24,14 +24,12 @@ const isApprovalMode = (value: unknown): value is AssistantToolApprovalMode =>
  * This is the merge rule for a capability whose member tools carried
  * different legacy approval values — today only reachable for
  * `file_editing` (`fs_edit` defaulted `full_access`, `fs_write` defaulted
- * `require_approval`; see decision 17 / §1.4 of
- * docs/plans/2026-08-15-tool-registry/master.md). Picking the strictest
+ * `require_approval`). Picking the strictest
  * resolves that pre-existing contradiction toward what the settings page
  * already *displayed* (an aggregated "Require approval"), rather than the
  * looser value the runtime happened to read. For every other capability
  * this is an identity transform: member values there can never actually
- * diverge (docs/plans/2026-08-15-tool-registry/master.md §2.5 — the only
- * legacy write paths for both the global group switch and each assistant's
+ * diverge (the only legacy write paths for both the global group switch and each assistant's
  * per-tool preferences always wrote every member the same value).
  */
 const mostStrictApprovalMode = (
@@ -183,8 +181,7 @@ const isLocalFqn = (name: string): boolean =>
  * here, so there is nothing to merge/carry for that field at this layer.
  *
  * Two capabilities carry tool-specific config the generic `disabled`
- * migration would otherwise drop (docs/plans/2026-08-15-tool-registry's D9
- * brief, "坑 1"): `subagent_delegation`'s `allowedModelIds` /
+ * migration would otherwise drop: `subagent_delegation`'s `allowedModelIds` /
  * `preferredModelId` (read straight from the old `delegate_subagent` key)
  * and `terminal`'s `blockedPrefixes` (from the old `terminal_command` key).
  */
@@ -203,7 +200,7 @@ const migrateBuiltinToolOptions = (
       ...capability.toolNames,
     ].filter((key): key is string => typeof key === 'string')
 
-    // Matches the pre-D9 runtime aggregation exactly
+    // Matches the pre-migration runtime aggregation exactly
     // (`builtinCapabilityRows.ts`'s `enabled` / `McpManager.
     // isLocalToolPersistedEnabled`'s per-group checks): disabled if *any*
     // legacy key (group key, if this capability had one, or any member) was
@@ -265,10 +262,9 @@ const migrateBuiltinToolOptions = (
  *     tool's own legacy default when a present entry's `approvalMode` is
  *     itself missing/invalid.
  *   - **No member present at all -> `enabled: false`**, NOT the capability's
- *     `defaultEnabled`. This is the one place the D9 plan text
- *     (phase2-migration.md: "若旧值缺失 → 用 capability 的 defaultEnabled")
- *     is wrong about runtime semantics, and getting it wrong turns
- *     capabilities *on* that were off. `getEnabledAssistantToolNames`'s own
+ *     `defaultEnabled`. Falling back to `defaultEnabled` here would be wrong
+ *     about runtime semantics, and would turn capabilities *on* that were
+ *     off. `getEnabledAssistantToolNames`'s own
  *     doc comment is explicit: it "returns the explicit `enabled: true`
  *     entries from `toolPreferences` — no fill-in, no implicit defaults",
  *     so an absent entry has always meant the tool is unavailable at
@@ -385,7 +381,7 @@ const migrateAssistantBuiltinCapabilities = (
 /**
  * v80->v81: collapse the pre-capability persistence shape (short tool/group
  * names) into the capability-keyed shape everywhere built-in tool
- * enablement/approval is stored (docs/plans/2026-08-15-tool-registry, D9).
+ * enablement/approval is stored.
  *
  * Two independent layers, both handled here:
  *   - Global: `settings.mcp.builtinToolOptions` -> `builtinCapabilityOptions`.

@@ -1,9 +1,9 @@
 // Canvas tuning constants for the `.yoloboard` file view, ported from the
 // S2/S3 spikes (`git show
-// spike/s2-editor-lifecycle:src/features/whiteboard-spike/constants.ts`) per
-// docs/plans/08-25-yolo-whiteboard/p1-design.md §3. UI/host-loop tuning, not
-// domain data — kept out of domain/ per that layer's zero-dependency
-// contract (it doesn't need these; only src/ui/canvas.ts's rAF loop does).
+// spike/s2-editor-lifecycle:src/features/whiteboard-spike/constants.ts`).
+// UI/host-loop tuning, not domain data — kept out of domain/ per that layer's
+// zero-dependency contract (it doesn't need these; only src/ui/canvas.ts's
+// rAF loop does).
 
 /** Camera scale clamp range. `min` is the floor for a board that fits inside
  * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN. */
@@ -162,17 +162,16 @@ export const FRAME_ON_TIME_MS = 20
 export const INTERACTING_TIMEOUT_MS = 250
 
 /** How long the camera must sit idle after the last pan/zoom input before
- * it's folded into the board and persisted (p1-design §3: "手势结束（而非
+ * it's folded into the board and persisted ("手势结束（而非
  * 逐帧）把 camera 写回 board 并 requestSave"). */
 export const CAMERA_SETTLE_MS = 300
 
 /** Pointer movement (screen px) beyond which a press-and-move gesture that
- * started on a card is treated as a drag rather than a click-to-edit
- * (docs/plans/08-25-yolo-whiteboard/p1-design.md's W3-A task brief: "~4px"). */
+ * started on a card is treated as a drag rather than a click-to-edit. */
 export const DRAG_THRESHOLD_PX = 4
 
 // -----------------------------------------------------------------------
-// The one rendering-tier switch (P4-1, revised). At and above the threshold a
+// The one rendering-tier switch. At and above the threshold a
 // card is a DOM element with its content built; below it no card has DOM at
 // all and the whole board is drawn on one screen-space canvas
 // (ui/canvas/overviewLayer.ts).
@@ -193,14 +192,13 @@ export const DRAG_THRESHOLD_PX = 4
 // nobody can read; higher and it would drop the DOM while the DOM is still
 // saying something.
 //
-// Rendering tier and capability stay separate ideas (p4-perf-overview §二):
-// what is drawn how is a performance detail the user never asked for, and what
-// can be done at a given zoom is a product rule. Selecting, marquee, dragging,
-// resizing and connecting all keep working below the threshold, because there
-// is no reason for them not to. What does key off it is what genuinely cannot
+// Rendering tier and capability stay separate ideas: what is drawn how is a
+// performance detail the user never asked for, and what can be done at a
+// given zoom is a product rule. Selecting, marquee, dragging, resizing and
+// connecting all keep working below the threshold, because there is no reason
+// for them not to. What does key off it is what genuinely cannot
 // be done to a card with no element — editing it — and alignment, which has no
-// precision to offer here and whose candidate set would be the whole board
-// (P4-D1).
+// precision to offer here and whose candidate set would be the whole board.
 // -----------------------------------------------------------------------
 
 /**
@@ -211,7 +209,7 @@ export const DRAG_THRESHOLD_PX = 4
  * a reader gets from it is its title and its colour — both of which a
  * rectangle and one `fillText` give for a rounding error of the cost. Above it
  * the mounted count is bounded by what a screen holds; below it the count is
- * bounded by the board, which is the whole problem (p4-perf-overview §一.2).
+ * bounded by the board, which is the whole problem.
  */
 export const OVERVIEW_SCALE_THRESHOLD = 0.35
 
@@ -222,7 +220,7 @@ export const OVERVIEW_SCALE_THRESHOLD = 0.35
  *
  * Crossing this line unmounts or rebuilds every card on screen, so a zoom that
  * settles on the boundary would do exactly that on alternate throttle ticks
- * (p3-canvas-parity D8: "跨越阈值来回抖动时不能反复构造/销毁打爆帧").
+ * ("跨越阈值来回抖动时不能反复构造/销毁打爆帧").
  *
  * Expressed in doublings because that is the unit the wheel works in (see
  * WHEEL_DELTA_PER_ZOOM_DOUBLING): a quarter doubling is ~75 delta — inside a
@@ -237,7 +235,7 @@ export const OVERVIEW_RESTORE_SCALE =
 
 /**
  * Screen width, in pixels, below which an overview card is drawn as a plain
- * tile with no title (p4-perf-overview §三). Not a legibility bar — the type
+ * tile with no title. Not a legibility bar — the type
  * is already small by then — but the point past which drawing a title costs a
  * `fillText` per card and returns a smudge.
  */
@@ -323,7 +321,7 @@ export const GROUP_LABEL_WORLD_FONT_PX = 20
 
 /**
  * Screen size a group's label is held at in the overview tier, however far the
- * board is zoomed out (P4-D2).
+ * board is zoomed out.
  *
  * Everything else in the world layer shrinks with the board, which is right for
  * a card — at this zoom a card is a tile, and its title is not the point. A
@@ -585,7 +583,7 @@ export const EDGE_CULLED_CLASS = 'yolo-whiteboard-edge-culled'
 // -----------------------------------------------------------------------
 // Card content budget.
 //
-// A card's body clips and does not scroll (style.css's content mask, D7), so
+// A card's body clips and does not scroll (style.css's content mask), so
 // everything a card renders past its own height is work whose result no user
 // can reach. Handing the whole note to a renderer costs a full parse, an
 // image decode per image and a post-processor pass over the entire document,

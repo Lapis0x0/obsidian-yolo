@@ -461,8 +461,7 @@ export const yoloSettingsSchema = z.object({
   knowledgeBases: knowledgeBasesFieldSchema,
 
   /**
-   * Local (on-device) embedding model download settings — see
-   * docs/plans/08-22-local-embedding/00-plan.md §3.4. `endpoint` is the
+   * Local (on-device) embedding model download settings. `endpoint` is the
    * Hugging Face Hub-compatible host model files are resolved against
    * (`${endpoint}/${hfRepo}/resolve/${revision}/${file}`); a purely additive
    * field with a schema default, so it needs no migration entry of its own.
@@ -478,8 +477,7 @@ export const yoloSettingsSchema = z.object({
       servers: resilientArraySchema(mcpServerConfigSchema),
       /**
        * Keyed by `BuiltinCapabilityId` as of the `80_to_81` settings
-       * migration (D9, docs/plans/2026-08-15-tool-registry/phase2-migration.md
-       * D9) — was `builtinToolOptions`, keyed by the pre-capability short
+       * migration — was `builtinToolOptions`, keyed by the pre-capability short
        * tool/group names. Reuses `mcpServerToolOptionsSchema` unchanged: this
        * map carries more than `disabled` — `delegate_subagent`'s
        * `allowedModelIds`/`preferredModelId` and `terminal_command`'s

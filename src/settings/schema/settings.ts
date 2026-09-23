@@ -15,9 +15,8 @@ export function normalizeYoloSettingsReferences(
   )
   const seenEmbeddingModelKeys = new Set<string>()
   const embeddingModels = settings.embeddingModels.filter((model) => {
-    // `yolo-local` (P2, docs/plans/08-22-local-embedding/00-plan.md §3.5) is
-    // a reserved providerId with deliberately no matching `settings.providers`
-    // entry — it's not "a provider" (no API key/base URL), it's the RAG-only
+    // `yolo-local` is a reserved providerId with deliberately no matching
+    // `settings.providers` entry — it's not "a provider" (no API key/base URL), it's the RAG-only
     // local inference path. Without this carve-out every local embedding
     // model would be silently dropped here on the very next settings save.
     if (

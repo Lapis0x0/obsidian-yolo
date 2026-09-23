@@ -163,8 +163,7 @@ export type ChatConversationPaneProps = {
    * Full override for a module chat mode's empty state — the registry's
    * resolved label/description (and optionally icon) instead of the
    * ask/agent copy. Takes priority over every other `emptyState*` prop when
-   * present (module modes are a complete, decoupled product surface — see
-   * Phase D design doc 4.7).
+   * present (module modes are a complete, decoupled product surface).
    */
   emptyStateModuleContent?: {
     title: ReactNode

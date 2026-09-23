@@ -31,7 +31,7 @@ export const webScrapeDefinition = defineTool({
   // the generic static-HTML scraper (`core/web-search/genericScrape.ts`)
   // when no provider is configured, so it stays usable either way. Ported
   // verbatim from `isLocalToolEnabled`'s comment in
-  // `src/core/mcp/mcpManager.ts` (master.md §3.1b).
+  // `src/core/mcp/mcpManager.ts`.
   chatLabel: {
     key: 'settings.agent.builtinWebScrapeLabel',
     fallback: 'Web Scrape',
@@ -41,7 +41,7 @@ export const webScrapeDefinition = defineTool({
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts`), minus the abort
   // check / workspace-scope / YOLO-data-root guards and the outer try/catch
   // that normalizes thrown errors to an Error-status result — those are
-  // dispatcher responsibilities (master.md §3.4), not tool semantics.
+  // dispatcher responsibilities, not tool semantics.
   execute: async (args, ctx) => {
     const { settings, signal } = ctx
     if (!settings) {

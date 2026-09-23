@@ -79,7 +79,7 @@ import {
 
 /**
  * The old `callLocalFileTool` switch was deleted once every built-in tool
- * lived in the registry (docs/plans/2026-08-15-tool-registry, D12). These
+ * lived in the registry. These
  * suites are the original behavioural coverage for those tools, so they
  * stay — re-pointed at the one remaining execution path. The adapter keeps
  * their call shape unchanged so the re-point is visibly a boundary swap and
@@ -1847,10 +1847,9 @@ describe('local fs tool action helpers', () => {
     }
   })
 
-  // D4 of docs/plans/09-03-whiteboard-agent-tools/master.md (Q11): fs_edit /
-  // fs_write refuse `.yoloboard` unconditionally — no `resolveModuleFileTextRenderer`
-  // is even passed here, proving the block does not depend on the whiteboard
-  // module being installed or active.
+  // fs_edit / fs_write refuse `.yoloboard` unconditionally — no
+  // `resolveModuleFileTextRenderer` is even passed here, proving the block
+  // does not depend on the whiteboard module being installed or active.
   it('rejects fs_write against a .yoloboard path, pointing at the whiteboard edit tool', async () => {
     const create = jest.fn()
     const modify = jest.fn()
@@ -2620,12 +2619,11 @@ describe('fs_read wikilink resolution', () => {
   })
 })
 
-// D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: fs_read dispatches
-// a claimed extension to the module's renderer instead of returning raw
-// bytes. `resolveModuleFileTextRenderer` is threaded straight through
+// fs_read dispatches a claimed extension to the module's renderer instead of
+// returning raw bytes. `resolveModuleFileTextRenderer` is threaded straight through
 // `ToolContext`, so these tests pass it as a plain function the way
 // `mcpManager.ts` would populate it from `ModuleFileTextRendererRegistry`.
-describe('fs_read module file text renderer dispatch (D3)', () => {
+describe('fs_read module file text renderer dispatch', () => {
   const makeFile = (path: string, extension: string, size = 100): TFile =>
     Object.assign(new TFile(), {
       path,
@@ -2788,8 +2786,8 @@ describe('fs_read module file text renderer dispatch (D3)', () => {
   it('rejects an oversized raw file before ever calling the renderer', async () => {
     // MODULE_RENDERED_FILE_SOURCE_MAX_BYTES (20 MiB) is far above the
     // MAX_FILE_SIZE_BYTES (2 MiB) an unclaimed text file would be capped at —
-    // this is the "size ordering is reversed for a claimed extension" case
-    // from master.md D3: a huge raw board must still be readable so it can
+    // this is the "size ordering is reversed for a claimed extension" case:
+    // a huge raw board must still be readable so it can
     // be rendered down to a small summary.
     const oversized = 21 * 1024 * 1024
     const file = makeFile('Board.yoloboard', 'yoloboard', oversized)

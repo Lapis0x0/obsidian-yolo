@@ -263,8 +263,8 @@ describe('migrateFrom80To81', () => {
   // An absent legacy entry means the tool was NOT available at runtime —
   // `getEnabledAssistantToolNames` does no fill-in ("no implicit defaults").
   // The capability's own `defaultEnabled` must NOT be used as the fallback
-  // here, or capabilities silently switch on during migration. The D9 plan
-  // text says otherwise; it is wrong (see `80_to_81.ts`'s own doc comment).
+  // here, or capabilities silently switch on during migration (see
+  // `80_to_81.ts`'s own doc comment).
   it('maps a capability with no legacy entry at all to enabled: false, NOT its defaultEnabled', () => {
     const result = runMigration({
       version: 80,

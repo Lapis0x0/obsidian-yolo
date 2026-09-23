@@ -1,8 +1,7 @@
 /**
  * Static, hand-curated catalog of local embedding models — the only models
  * `yolo-local` (see `constants.ts`) will ever expose. Self-registration of
- * arbitrary HF repos is deliberately out of scope (see
- * docs/plans/08-22-local-embedding/00-plan.md §0 "模型范围"): most HF repos
+ * arbitrary HF repos is deliberately out of scope: most HF repos
  * don't ship an ONNX export at all, and a wrong `pooling`/`normalize`/prefix
  * guess would silently poison every vector in a knowledge base.
  *
@@ -17,8 +16,7 @@
  * `sha256`/`byteSize` below was captured directly from the Hub API
  * (`GET /api/models/<repo>/tree/<revision>?recursive=true`, which reports
  * `lfs.oid` — itself a SHA-256 — for LFS-tracked files) or, for small
- * non-LFS text files, by downloading the file and hashing it locally. See
- * the P2 implementation report for the exact commands.
+ * non-LFS text files, by downloading the file and hashing it locally.
  */
 
 export type LocalEmbeddingCatalogFile = Readonly<{
@@ -33,7 +31,7 @@ export type LocalEmbeddingCatalogFile = Readonly<{
 export type LocalEmbeddingDevice = 'cpu' | 'gpu'
 
 export type LocalEmbeddingCatalogEntry = Readonly<{
-  /** Our stable slug — becomes `EmbeddingModel.model` for entries created via the P3 UI. */
+  /** Our stable slug — becomes `EmbeddingModel.model` for entries created via the settings UI. */
   id: string
   /** `<owner>/<name>` on Hugging Face Hub. */
   hfRepo: string
@@ -345,7 +343,7 @@ const BASE_ENTRIES: readonly LocalEmbeddingCatalogEntry[] = [
     // depending on batch composition (cosine similarity as low as 0.95
     // between the same text embedded alone vs. batched with dissimilar
     // text); fp16 keeps it clean (cosine similarity 1.0, matching fp32) at
-    // roughly half fp32's weight size. See P2 follow-up investigation notes.
+    // roughly half fp32's weight size.
     dtype: 'fp16',
     devices: ['cpu', 'gpu'],
     files: [

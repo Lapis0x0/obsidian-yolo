@@ -1,6 +1,6 @@
-// Alignment and even distribution for a multi-node selection (P3 batch 3
-// wave B, feature 5) — pure geometry, no DOM and no Board (Module Boundaries,
-// CLAUDE.md: domain/ stays dependency-free). ui/canvas.ts turns the returned
+// Alignment and even distribution for a multi-node selection — pure
+// geometry, no DOM and no Board (Module Boundaries, CLAUDE.md: domain/ stays
+// dependency-free). ui/canvas.ts turns the returned
 // positions into one `setNodePositions` call, i.e. one undo step per action.
 //
 // Both operations are Obsidian Canvas's own, read off its running
@@ -16,7 +16,7 @@
 //
 // Canvas's "arrange horizontally/vertically/as grid" and "justify" are
 // deliberately not here: those reflow or resize a selection rather than align
-// it, and are a different feature from the one this wave was asked for.
+// it, and are a different feature from alignment and distribution.
 
 export type ArrangeRect = Readonly<{
   id: string

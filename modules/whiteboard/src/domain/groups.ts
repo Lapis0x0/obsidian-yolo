@@ -1,6 +1,5 @@
-// Group membership and the rectangle a new group takes (P3 batch 3 wave B,
-// feature 3) — pure geometry over board nodes, no DOM (Module Boundaries,
-// CLAUDE.md).
+// Group membership and the rectangle a new group takes — pure geometry over
+// board nodes, no DOM (Module Boundaries, CLAUDE.md).
 //
 // Membership is **spatial, not stored**: a node belongs to a group while it
 // sits inside the group's rectangle, and stops belonging the moment either one
