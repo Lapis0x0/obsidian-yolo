@@ -1,5 +1,6 @@
 import { PDFDocument } from 'pdf-lib'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
+import binaryData from 'virtual:pdfjs-binary-data'
 import workerSource from 'virtual:pdfjs-worker-script'
 
 type PdfTextItem = {
@@ -72,6 +73,46 @@ function pageItemsToText(items: unknown[]): string {
   return lines.map((parts) => parts.join(' ').trim()).join('\n')
 }
 
+/**
+ * pdf.js loads standard font programs and the JBIG2/OpenJPEG wasm decoders
+ * on demand. We never let it fetch them from a URL: the component has to work
+ * offline and self-contained, so the files are inlined at build time
+ * (`virtual:pdfjs-binary-data`) and handed over through this factory, which
+ * pdf.js consults on the main thread whenever `useWorkerFetch` is false.
+ */
+class InlineBinaryDataFactory {
+  async fetch({
+    kind,
+    filename,
+  }: {
+    kind: string
+    filename: string
+  }): Promise<Uint8Array> {
+    const encoded = binaryData[kind]?.[filename]
+    if (encoded === undefined) {
+      throw new Error(`PDF engine has no bundled ${kind} file "${filename}"`)
+    }
+    return decodeBase64(encoded)
+  }
+}
+
+function decodeBase64(encoded: string): Uint8Array {
+  const binary = atob(encoded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function openDocument(bytes: Uint8Array) {
+  return pdfjs.getDocument({
+    data: bytes.slice(),
+    useWorkerFetch: false,
+    BinaryDataFactory: InlineBinaryDataFactory,
+  })
+}
+
 function abortIfNeeded(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new DOMException('PDF operation aborted', 'AbortError')
@@ -97,11 +138,7 @@ globalThis.__yolo_register_runtime_component__({
       ) {
         assertActive()
         abortIfNeeded(options.signal)
-        const task = pdfjs.getDocument({
-          data: bytes.slice(),
-          useWorkerFetch: false,
-          isEvalSupported: false,
-        })
+        const task = openDocument(bytes)
         const document = await task.promise
         try {
           const pages: { page: number; text: string }[] = []
@@ -121,23 +158,19 @@ globalThis.__yolo_register_runtime_component__({
           }
           return { totalPages: document.numPages, pages }
         } finally {
-          await document.destroy()
+          await task.destroy()
         }
       },
 
       async getPageCount(bytes: Uint8Array, signal?: AbortSignal) {
         assertActive()
         abortIfNeeded(signal)
-        const task = pdfjs.getDocument({
-          data: bytes.slice(),
-          useWorkerFetch: false,
-          isEvalSupported: false,
-        })
+        const task = openDocument(bytes)
         const document = await task.promise
         try {
           return document.numPages
         } finally {
-          await document.destroy()
+          await task.destroy()
         }
       },
 
@@ -148,11 +181,7 @@ globalThis.__yolo_register_runtime_component__({
       ) {
         assertActive()
         abortIfNeeded(signal)
-        const task = pdfjs.getDocument({
-          data: bytes.slice(),
-          useWorkerFetch: false,
-          isEvalSupported: false,
-        })
+        const task = openDocument(bytes)
         const document = await task.promise
         try {
           if (pageNumber < 1 || pageNumber > document.numPages) {
@@ -168,7 +197,7 @@ globalThis.__yolo_register_runtime_component__({
             page.cleanup()
           }
         } finally {
-          await document.destroy()
+          await task.destroy()
         }
       },
 
@@ -179,11 +208,7 @@ globalThis.__yolo_register_runtime_component__({
       ) {
         assertActive()
         abortIfNeeded(signal)
-        const task = pdfjs.getDocument({
-          data: bytes.slice(),
-          useWorkerFetch: false,
-          isEvalSupported: false,
-        })
+        const task = openDocument(bytes)
         const document = await task.promise
         try {
           const start = Math.max(1, range.startPage)
@@ -201,13 +226,7 @@ globalThis.__yolo_register_runtime_component__({
               try {
                 canvas.width = viewport.width
                 canvas.height = viewport.height
-                const context = canvas.getContext('2d')
-                if (!context) {
-                  throw new Error(
-                    `Failed to get 2D canvas context for PDF page ${pageNumber}`,
-                  )
-                }
-                await page.render({ canvasContext: context, viewport }).promise
+                await page.render({ canvas, viewport }).promise
                 rendered.push({
                   page: pageNumber,
                   dataUrl: canvas.toDataURL('image/png'),
@@ -222,7 +241,7 @@ globalThis.__yolo_register_runtime_component__({
           }
           return { totalPages: document.numPages, rendered }
         } finally {
-          await document.destroy()
+          await task.destroy()
         }
       },
 

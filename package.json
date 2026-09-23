@@ -137,7 +137,7 @@
     "parse5": "^7.1.2",
     "path-browserify": "^1.0.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.3.289",
     "proxy-agent": "^6.5.0",
     "proxy-chain": "^2.7.1",
     "proxy-from-env": "^1.1.0",

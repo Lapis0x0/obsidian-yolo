@@ -308,6 +308,19 @@ function componentPlugins(componentId, workerMetafiles) {
             loader: 'js',
           }),
         )
+        build.onResolve({ filter: /^virtual:pdfjs-binary-data$/ }, () => ({
+          path: 'pdf-binary-data',
+          namespace: 'runtime-worker',
+        }))
+        build.onLoad(
+          { filter: /^pdf-binary-data$/, namespace: 'runtime-worker' },
+          async () => ({
+            contents: `export default ${JSON.stringify(
+              await readPdfBinaryData(),
+            )}`,
+            loader: 'js',
+          }),
+        )
       },
     })
   }
@@ -315,6 +328,43 @@ function componentPlugins(componentId, workerMetafiles) {
     plugins.push(embeddingWorkerPlugin(workerMetafiles))
   }
   return plugins
+}
+
+/**
+ * The files pdf.js requests through `BinaryDataFactory` (see pdf-engine's
+ * `InlineBinaryDataFactory`), inlined as base64 so the component never
+ * fetches anything at runtime. Keyed by pdf.js's own request `kind`.
+ * Stored uncompressed on purpose: registry.json pins this artifact's sha256,
+ * and CI rebuilds it on a different Node/zlib/CPU, where compressed bytes
+ * are not guaranteed to be identical.
+ * - Standard fonts: with pdf.js's browser default `useSystemFonts`, a
+ *   non-embedded standard font resolves to a system font, and only Symbol
+ *   and ZapfDingbats are ever requested, so those are the only two shipped.
+ * - `jbig2.wasm` / `openjpeg.wasm`: the only JBIG2, CCITT and JPEG 2000
+ *   decoders since pdf.js 5 (scanned PDFs render blank without them). The
+ *   `*_nowasm_fallback.js` variants are left out — every supported WebView
+ *   has WebAssembly — and so is `qcms_bg.wasm`, which pdf.js only uses with
+ *   `useWorkerFetch`.
+ */
+async function readPdfBinaryData() {
+  const sources = {
+    standardFontDataUrl: [
+      'standard_fonts/FoxitDingbats.pfb',
+      'standard_fonts/FoxitSymbol.pfb',
+    ],
+    wasmUrl: ['wasm/jbig2.wasm', 'wasm/openjpeg.wasm'],
+  }
+  const data = {}
+  for (const [kind, files] of Object.entries(sources)) {
+    data[kind] = {}
+    for (const file of files) {
+      const bytes = await readFile(
+        path.resolve('node_modules/pdfjs-dist', file),
+      )
+      data[kind][path.basename(file)] = bytes.toString('base64')
+    }
+  }
+  return data
 }
 
 /**
