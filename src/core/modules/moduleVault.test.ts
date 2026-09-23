@@ -101,8 +101,12 @@ function createApp(entries: Array<TFile | TFolder>) {
   }
   const fileManager = {
     generateMarkdownLink: jest.fn(
-      (file: TFile, sourcePath: string, subpath?: string) =>
-        `[[${file.path}${subpath ?? ''}|from ${sourcePath}]]`,
+      (file: TFile, sourcePath: string, subpath?: string, alias?: string) =>
+        `[[${file.path}${subpath ?? ''}|${alias ?? `from ${sourcePath}`}]]`,
+    ),
+    getAvailablePathForAttachment: jest.fn(
+      async (fileName: string, sourcePath: string) =>
+        `${sourcePath.split('/').slice(0, -1).join('/')}/attachments/${fileName}`,
     ),
   }
   return {
@@ -213,7 +217,22 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
     expect(
       capability.api.generateLink('notes/card.md', 'boards/b.yoloboard', '#x'),
     ).toBe('[[notes/card.md#x|from boards/b.yoloboard]]')
+    expect(
+      capability.api.generateLink('notes/card.md', '', '#page=2', 'card, p.2'),
+    ).toBe('[[notes/card.md#page=2|card, p.2]]')
     expect(capability.api.generateLink('notes/missing.md', '')).toBeNull()
+
+    // An attachment's place is the user's attachment setting, asked of
+    // Obsidian for the document it belongs to; only a bare file name is one.
+    await expect(
+      capability.api.getAvailableAttachmentPath('x.png', 'boards/b.yoloboard'),
+    ).resolves.toBe('boards/attachments/x.png')
+    await expect(
+      capability.api.getAvailableAttachmentPath(
+        '../x.png',
+        'boards/b.yoloboard',
+      ),
+    ).rejects.toThrow('must be a file name')
     expect(() =>
       capability.api.generateLink('notes/card.md', '', 'page=1'),
     ).toThrow('must start with "#"')

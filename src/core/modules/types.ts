@@ -781,7 +781,8 @@ export type YoloModuleVaultV1 = {
    * A link to `filePath` as the user's settings write one — wiki link or
    * Markdown link, and the path form ("shortest", relative, absolute) — for
    * a link written in `sourcePath`. `subpath` is what follows the file name,
-   * starting with `#` (a heading, or a PDF's `#page=3&selection=…`).
+   * starting with `#` (a heading, or a PDF's `#page=3&selection=…`), and
+   * `alias` the text the link displays instead of the path.
    *
    * Obsidian's own `generateMarkdownLink`, so a link a module writes or
    * copies is the link a note would get from the editor. Null when
@@ -791,7 +792,21 @@ export type YoloModuleVaultV1 = {
     filePath: string,
     sourcePath: string,
     subpath?: string,
+    alias?: string,
   ): string | null
+  /**
+   * Where a new attachment named `fileName` (with its extension) for the
+   * document at `sourcePath` goes under the user's "Default location for new
+   * attachments" setting: a free vault path, its folder created, the name
+   * suffixed when taken. Nothing is written — `createBinary` it there.
+   *
+   * Obsidian's own `getAvailablePathForAttachment`, the one a pasted image
+   * in a note goes through.
+   */
+  getAvailableAttachmentPath(
+    fileName: string,
+    sourcePath: string,
+  ): Promise<string>
   ensureFolder(folderPath: string): Promise<void>
   createFolder(folderPath: string): Promise<void>
   createText(
