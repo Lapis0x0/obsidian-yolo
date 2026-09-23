@@ -1,12 +1,3 @@
-import type {
-  Content as GeminiContent,
-  FunctionCall as GeminiFunctionCall,
-  FunctionDeclaration as GeminiFunctionDeclaration,
-  GenerateContentResponse as GeminiGenerateContentResponse,
-  Part as GeminiPart,
-  Tool as GeminiTool,
-  ToolConfig as GeminiToolConfig,
-} from '@google/genai'
 import { v4 as uuidv4 } from 'uuid'
 
 import { ChatModel } from '../../types/chat-model.types'
@@ -53,6 +44,15 @@ import {
   geminiStreamViaBufferedFetch,
   geminiStreamViaFetch,
 } from './geminiFetchTransport'
+import type {
+  GeminiContent,
+  GeminiFunctionCall,
+  GeminiFunctionDeclaration,
+  GeminiGenerateContentResponse,
+  GeminiPart,
+  GeminiTool,
+  GeminiToolConfig,
+} from './geminiTypes'
 import { createProviderErrorFetch } from './providerErrors'
 import { ModelRequestPolicy } from './requestPolicy'
 import {
@@ -78,12 +78,6 @@ type GeminiReplayPart = GeminiPart & {
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com'
 const GEMINI_API_VERSION = 'v1beta'
 const PROVIDER_LABEL = 'Gemini'
-
-/**
- * TODO: Consider future migration from '@google/generative-ai' to '@google/genai' (https://github.com/googleapis/js-genai)
- * - Current '@google/generative-ai' library will not support newest models and features
- * - Not migrating yet as '@google/genai' is still in preview status
- */
 
 /**
  * Note on OpenAI Compatibility API:
@@ -699,10 +693,9 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     const { contentText, reasoningText } =
       GeminiProvider.extractTextSegments(parts)
 
-    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
-      functionCalls: response.functionCalls,
-      parts: response.candidates?.[0]?.content?.parts,
-    })
+    const functionCalls = GeminiProvider.extractFunctionCallsFromParts(
+      response.candidates?.[0]?.content?.parts,
+    )
 
     const toolCallsRaw = functionCalls
       ?.map((call) => GeminiProvider.mapFunctionCall(call))
@@ -826,10 +819,9 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     const parts = chunk.candidates?.[0]?.content?.parts ?? []
     const { contentText: contentPiece, reasoningText: reasoningPiece } =
       GeminiProvider.extractTextSegments(parts)
-    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
-      functionCalls: chunk.functionCalls,
-      parts: chunk.candidates?.[0]?.content?.parts,
-    })
+    const functionCalls = GeminiProvider.extractFunctionCallsFromParts(
+      chunk.candidates?.[0]?.content?.parts,
+    )
 
     const toolCallDeltaRaw =
       functionCalls
@@ -897,30 +889,6 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
       contentText,
       reasoningText: reasoningText || undefined,
     }
-  }
-
-  private static resolveFunctionCallsWithMetadata({
-    functionCalls,
-    parts,
-  }: {
-    functionCalls: GeminiFunctionCall[] | undefined
-    parts: GeminiPart[] | undefined
-  }): GeminiFunctionCallWithMetadata[] | undefined {
-    const fromParts = GeminiProvider.extractFunctionCallsFromParts(parts)
-    if (!functionCalls || functionCalls.length === 0) {
-      return fromParts
-    }
-
-    return functionCalls.map((call, index) => {
-      const partCall = fromParts?.[index]
-      if (!partCall?.thoughtSignature) {
-        return call as GeminiFunctionCallWithMetadata
-      }
-      return {
-        ...(call as GeminiFunctionCallWithMetadata),
-        thoughtSignature: partCall.thoughtSignature,
-      }
-    })
   }
 
   private static extractFunctionCallsFromParts(

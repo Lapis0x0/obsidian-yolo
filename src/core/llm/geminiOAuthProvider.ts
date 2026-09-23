@@ -1,5 +1,3 @@
-import type { GenerateContentResponse as GeminiGenerateContentResponse } from '@google/genai'
-
 import { ChatModel } from '../../types/chat-model.types'
 import {
   LLMOptions,
@@ -30,6 +28,7 @@ import {
   geminiStreamViaBufferedFetch,
   geminiStreamViaFetch,
 } from './geminiFetchTransport'
+import type { GeminiGenerateContentResponse } from './geminiTypes'
 import { createProviderErrorFetch } from './providerErrors'
 import { ModelRequestPolicy } from './requestPolicy'
 import {
@@ -44,7 +43,7 @@ const CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com'
 const PROVIDER_LABEL = 'Gemini OAuth'
 
 type CodeAssistResponseEnvelope = {
-  response?: GeminiGenerateContentResponse & { responseId?: string }
+  response?: GeminiGenerateContentResponse
   traceId?: string
 }
 
@@ -62,11 +61,9 @@ const unwrapCodeAssistResponse: GeminiUnwrap = (raw) => {
     value.response
   ) {
     const responseId = value.response.responseId ?? value.traceId
-    return (
-      responseId ? { ...value.response, responseId } : value.response
-    ) as GeminiGenerateContentResponse & { responseId?: string }
+    return responseId ? { ...value.response, responseId } : value.response
   }
-  return value as GeminiGenerateContentResponse & { responseId?: string }
+  return value as GeminiGenerateContentResponse
 }
 
 export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {

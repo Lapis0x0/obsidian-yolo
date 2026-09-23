@@ -1,5 +1,3 @@
-import type { GenerateContentResponse as GeminiGenerateContentResponse } from '@google/genai'
-
 import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
@@ -7,6 +5,7 @@ import {
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 import { LLMRateLimitExceededException } from './exception'
+import type { GeminiGenerateContentResponse } from './geminiTypes'
 import {
   ProviderRequestError,
   extractProviderErrorMessage,
@@ -37,9 +36,7 @@ export type GeminiFetchRequest = {
 // Some Gemini-flavored endpoints wrap the actual response (e.g. Code Assist's
 // `{ response, traceId }`). Providers supply an unwrap to surface the native
 // `GeminiGenerateContentResponse` shape. Default is identity.
-export type GeminiUnwrap = (raw: unknown) => GeminiGenerateContentResponse & {
-  responseId?: string
-}
+export type GeminiUnwrap = (raw: unknown) => GeminiGenerateContentResponse
 
 export type GeminiTransportContext = {
   providerLabel: string
@@ -48,7 +45,7 @@ export type GeminiTransportContext = {
 }
 
 const defaultUnwrap: GeminiUnwrap = (raw) =>
-  raw as GeminiGenerateContentResponse & { responseId?: string }
+  raw as GeminiGenerateContentResponse
 
 const withAcceptSse = (headers: Headers): Headers => {
   const next = new Headers(headers)
