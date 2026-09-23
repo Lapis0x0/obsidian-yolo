@@ -81,7 +81,16 @@ describe('listGeminiModelIds', () => {
     )
 
     await expect(listGeminiModelIds({ apiKey: 'bad' })).rejects.toThrow(
-      'Failed to fetch models: 400 API key not valid.',
+      'HTTP 400 API key not valid.',
     )
+  })
+
+  it('rejects a success response that is not JSON', async () => {
+    requestUrlMock.mockResolvedValueOnce({
+      status: 200,
+      text: '<html>proxy page</html>',
+    } as never)
+
+    await expect(listGeminiModelIds({ apiKey: 'key' })).rejects.toThrow()
   })
 })

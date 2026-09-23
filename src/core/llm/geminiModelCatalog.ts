@@ -14,7 +14,9 @@ type GeminiListModelsResponse = {
   error?: { message?: string }
 }
 
-const parseResponse = (text: string): GeminiListModelsResponse => {
+// Error bodies are best-effort; a success body that isn't JSON must throw
+// rather than read as an empty listing.
+const parseErrorBody = (text: string): GeminiListModelsResponse => {
   try {
     const parsed: unknown = JSON.parse(text)
     return parsed && typeof parsed === 'object'
@@ -56,13 +58,11 @@ export async function listGeminiModelIds(
       throw: false,
     })
     if (response.status < 200 || response.status >= 300) {
-      const detail = parseResponse(response.text).error?.message
-      throw new Error(
-        `Failed to fetch models: ${response.status}${detail ? ` ${detail}` : ''}`,
-      )
+      const detail = parseErrorBody(response.text).error?.message
+      throw new Error(`HTTP ${response.status}${detail ? ` ${detail}` : ''}`)
     }
 
-    const json = parseResponse(response.text)
+    const json = JSON.parse(response.text) as GeminiListModelsResponse
     for (const entry of json.models ?? []) {
       const raw = extractModelIdentifier(entry)
       if (!raw) continue

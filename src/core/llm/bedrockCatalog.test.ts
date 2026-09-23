@@ -110,7 +110,7 @@ describe('bedrockCatalog', () => {
     )
 
     await expect(listBedrockChatModelIds(provider)).rejects.toThrow(
-      'Failed to fetch models: 403 Invalid API Key format',
+      'HTTP 403 Invalid API Key format',
     )
   })
 
@@ -119,5 +119,14 @@ describe('bedrockCatalog', () => {
       listBedrockChatModelIds({ apiKey: 'key', additionalSettings: {} }),
     ).rejects.toThrow('AWS region is required')
     expect(requestUrlMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a success response that is not JSON', async () => {
+    requestUrlMock.mockResolvedValueOnce({
+      status: 200,
+      text: '<html>proxy page</html>',
+    } as never)
+
+    await expect(listBedrockChatModelIds(provider)).rejects.toThrow()
   })
 })

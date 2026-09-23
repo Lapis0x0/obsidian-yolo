@@ -47,7 +47,9 @@ type ListFoundationModelsResponse = {
   Message?: string
 }
 
-const parseResponse = (text: string): ListFoundationModelsResponse => {
+// Error bodies are best-effort; a success body that isn't JSON must throw
+// rather than read as an empty listing.
+const parseErrorBody = (text: string): ListFoundationModelsResponse => {
   try {
     const parsed: unknown = JSON.parse(text)
     return parsed && typeof parsed === 'object'
@@ -76,14 +78,13 @@ async function listFoundationModels(
     },
     throw: false,
   })
-  const json = parseResponse(response.text)
   if (response.status < 200 || response.status >= 300) {
-    const detail = json.message ?? json.Message
-    throw new Error(
-      `Failed to fetch models: ${response.status}${detail ? ` ${detail}` : ''}`,
-    )
+    const body = parseErrorBody(response.text)
+    const detail = body.message ?? body.Message
+    throw new Error(`HTTP ${response.status}${detail ? ` ${detail}` : ''}`)
   }
 
+  const json = JSON.parse(response.text) as ListFoundationModelsResponse
   return json.modelSummaries ?? []
 }
 
