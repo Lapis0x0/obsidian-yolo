@@ -10,8 +10,8 @@
 // jobs, and a card is not improved by guessing).
 //
 // Zero dependencies, no DOM: the CSS side of this lives in style.css, which
-// maps each preset to `--canvas-color-N`, Obsidian's own canvas palette, so a
-// theme that restyles Canvas restyles our boards too.
+// maps each preset to the theme colour Obsidian's own Canvas uses for it
+// (`--color-red` for "1", and so on), so a theme's palette is our boards' too.
 
 export const COLOR_PRESETS = ['1', '2', '3', '4', '5', '6'] as const
 
@@ -29,14 +29,11 @@ const NONE: ResolvedColor = Object.freeze({ kind: 'none' })
 const HEX_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
 
 /**
- * The six presets' colours as Obsidian itself defines them (read off
- * `--canvas-color-1`..`-6` in a running Obsidian 1.13.7 with the default
- * theme). They are *fallbacks*, not the source of truth: style.css always
- * asks for `var(--canvas-color-N, <this>)`, so a theme's override wins and
- * these only apply where Obsidian's variables are missing entirely.
- *
- * They are also what seeds the custom-colour input when the current colour is
- * a preset — an OS colour picker has to open on some concrete value.
+ * The six presets' colours in Obsidian's default theme (read off
+ * `--canvas-color-1`..`-6` in a running Obsidian 1.13.7). Not what a board
+ * renders — style.css reads the live theme colours — only what seeds the
+ * custom-colour input when the current colour is a preset: an OS colour
+ * picker has to open on some concrete value.
  */
 export const PRESET_HEX: Readonly<Record<ColorPreset, string>> = Object.freeze({
   '1': '#e93147',

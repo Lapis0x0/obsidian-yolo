@@ -1,24 +1,25 @@
 /* --- PDF annotations --------------------------------------------------------
  * The palette (domain/pdfAnnotations.ts's ANNOTATION_COLORS), in the theme's
  * own named colours so a theme that re-tunes its yellow re-tunes the
- * highlights with it. A colour class sets both the annotation colour and the
- * board's swatch colour, so the toolbar's swatches paint from the same rule
- * the marks do. */
+ * highlights with it — `--color-X`, never `--color-X-rgb`, since themes do
+ * not always keep the `-rgb` twins in step (see root.css). A colour class
+ * sets both the annotation colour and the board's swatch colour, so the
+ * toolbar's swatches paint from the same rule the marks do. */
 
 .yolo-whiteboard-annotation-yellow {
-  --yolo-whiteboard-annotation: rgb(var(--color-yellow-rgb, 224, 172, 0));
+  --yolo-whiteboard-annotation: var(--color-yellow);
 }
 .yolo-whiteboard-annotation-green {
-  --yolo-whiteboard-annotation: rgb(var(--color-green-rgb, 8, 185, 78));
+  --yolo-whiteboard-annotation: var(--color-green);
 }
 .yolo-whiteboard-annotation-blue {
-  --yolo-whiteboard-annotation: rgb(var(--color-blue-rgb, 8, 109, 221));
+  --yolo-whiteboard-annotation: var(--color-blue);
 }
 .yolo-whiteboard-annotation-pink {
-  --yolo-whiteboard-annotation: rgb(var(--color-pink-rgb, 213, 57, 132));
+  --yolo-whiteboard-annotation: var(--color-pink);
 }
 .yolo-whiteboard-annotation-purple {
-  --yolo-whiteboard-annotation: rgb(var(--color-purple-rgb, 120, 82, 238));
+  --yolo-whiteboard-annotation: var(--color-purple);
 }
 [class*='yolo-whiteboard-annotation-'] {
   --yolo-whiteboard-color: var(--yolo-whiteboard-annotation);

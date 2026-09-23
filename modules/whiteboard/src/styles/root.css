@@ -15,25 +15,36 @@
   background: var(--background-primary);
 
   /* --- node/edge colour palette (JSON Canvas `color`) --------------------
-   * The six presets are Obsidian's own canvas palette, referenced rather than
-   * copied: `--canvas-color-N` is what a theme overrides to restyle Canvas, so
-   * a board coloured "3" and a Canvas node coloured "3" stay the same yellow
-   * in whatever theme the user runs. The hex literals are fallbacks for an
-   * Obsidian that no longer defines them (measured off 1.13.7's defaults —
-   * see domain/color.ts, which keeps the same table for the colour input).
+   * The six presets are the theme's named colours, in the order Obsidian's
+   * own Canvas maps them (app.css: `--canvas-color-1: var(--color-red)` and
+   * so on), so a board coloured "3" and a Canvas node coloured "3" stay the
+   * same yellow in whatever theme the user runs.
+   *
+   * `--color-X` is read rather than `--canvas-color-N` or `--color-X-rgb`:
+   * it is the one form Obsidian guarantees to be a whole colour, and the one
+   * a theme always sets when it re-tunes its palette. Many themes still write
+   * `--canvas-color-N` as a bare `r, g, b` triplet (Canvas's pre-1.x format),
+   * which is no colour at all to `background-color` or `color-mix`, and the
+   * `-rgb` twins are not always kept in step with `--color-X`. The same rule
+   * holds for every themed colour in this module (see pdf/annotations.css).
    *
    * `--yolo-whiteboard-color` is the *resolved* colour of whatever element is
-   * being painted: this default (Obsidian's own uncoloured grey) unless a
-   * .yolo-whiteboard-color-N class or an inline custom property overrides it
-   * further down the tree. Everything that paints in a node colour reads only
-   * this one property. */
-  --yolo-whiteboard-color-1: var(--canvas-color-1, #e93147);
-  --yolo-whiteboard-color-2: var(--canvas-color-2, #ec7500);
-  --yolo-whiteboard-color-3: var(--canvas-color-3, #e0ac00);
-  --yolo-whiteboard-color-4: var(--canvas-color-4, #08b94e);
-  --yolo-whiteboard-color-5: var(--canvas-color-5, #00bfbc);
-  --yolo-whiteboard-color-6: var(--canvas-color-6, #7852ee);
-  --yolo-whiteboard-color: var(--canvas-color, #c0c0c0);
+   * being painted: this default (Obsidian Canvas's uncoloured grey, owned
+   * here because themes rewrite `--canvas-color` in the triplet form too)
+   * unless a .yolo-whiteboard-color-N class or an inline custom property
+   * overrides it further down the tree. Everything that paints in a node
+   * colour reads only this one property. */
+  --yolo-whiteboard-color-1: var(--color-red);
+  --yolo-whiteboard-color-2: var(--color-orange);
+  --yolo-whiteboard-color-3: var(--color-yellow);
+  --yolo-whiteboard-color-4: var(--color-green);
+  --yolo-whiteboard-color-5: var(--color-cyan);
+  --yolo-whiteboard-color-6: var(--color-purple);
+  --yolo-whiteboard-color: #c0c0c0;
+}
+
+.theme-dark .yolo-whiteboard-root {
+  --yolo-whiteboard-color: #7e7e7e;
 }
 
 .yolo-whiteboard-color-1 {
