@@ -1,6 +1,6 @@
 import { getLocalFileToolServerName } from '../../core/mcp/localFileToolNames'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
-import type { ChatMessage, ChatToolMessage } from '../../types/chat'
+import type { ChatMessage } from '../../types/chat'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
@@ -97,36 +97,11 @@ export const collectContextPrunedToolCallIds = (
   return prunedToolCallIds
 }
 
-export const filterContextPrunedAssistantToolCalls = (
-  toolCalls: ToolCallRequest[] | undefined,
+/** What a pruned call's result reads as in later requests; the call itself stays. */
+export const PRUNED_TOOL_RESULT_PLACEHOLDER = '[Result pruned from context]'
+
+export const isContextPrunedToolCall = (
+  request: Pick<ToolCallRequest, 'id' | 'name'>,
   prunedToolCallIds: ReadonlySet<string>,
-): ToolCallRequest[] | undefined => {
-  if (!toolCalls || toolCalls.length === 0 || prunedToolCallIds.size === 0) {
-    return toolCalls
-  }
-
-  const nextToolCalls = toolCalls.filter((toolCall) => {
-    return !(
-      prunedToolCallIds.has(toolCall.id) &&
-      isContextPrunableToolName(toolCall.name)
-    )
-  })
-
-  return nextToolCalls.length > 0 ? nextToolCalls : undefined
-}
-
-export const filterContextPrunedToolCalls = (
-  toolCalls: ChatToolMessage['toolCalls'],
-  prunedToolCallIds: ReadonlySet<string>,
-): ChatToolMessage['toolCalls'] => {
-  if (toolCalls.length === 0 || prunedToolCallIds.size === 0) {
-    return toolCalls
-  }
-
-  return toolCalls.filter((toolCall) => {
-    return !(
-      prunedToolCallIds.has(toolCall.request.id) &&
-      isContextPrunableToolName(toolCall.request.name)
-    )
-  })
-}
+): boolean =>
+  prunedToolCallIds.has(request.id) && isContextPrunableToolName(request.name)

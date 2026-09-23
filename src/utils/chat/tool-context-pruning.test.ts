@@ -6,8 +6,7 @@ import {
 
 import {
   collectContextPrunedToolCallIds,
-  filterContextPrunedAssistantToolCalls,
-  filterContextPrunedToolCalls,
+  isContextPrunedToolCall,
 } from './tool-context-pruning'
 
 const emptyArgs = createCompleteToolCallArguments({ value: {} })
@@ -45,99 +44,16 @@ describe('tool context pruning', () => {
     ])
   })
 
-  it('filters pruned tool calls from assistant and tool messages', () => {
-    const prunedToolCallIds = new Set(['read-1', 'edit-1'])
+  it('marks pruned calls, except the context control tools', () => {
+    const prunedToolCallIds = new Set(['read-1', 'prune-1', 'compact-1'])
+    const isPruned = (id: string, name: string) =>
+      isContextPrunedToolCall({ id, name }, prunedToolCallIds)
 
-    expect(
-      filterContextPrunedAssistantToolCalls(
-        [
-          {
-            id: 'read-1',
-            name: 'yolo_local__fs_read',
-            arguments: emptyArgs,
-          },
-          {
-            id: 'edit-1',
-            name: 'yolo_local__fs_edit',
-            arguments: emptyArgs,
-          },
-        ],
-        prunedToolCallIds,
-      ),
-    ).toBeUndefined()
-
-    expect(
-      filterContextPrunedToolCalls(
-        [
-          {
-            request: {
-              id: 'read-1',
-              name: 'yolo_local__fs_read',
-              arguments: emptyArgs,
-            },
-            response: {
-              status: ToolCallResponseStatus.Success,
-              data: { type: 'text', text: '{}' },
-            },
-          },
-          {
-            request: {
-              id: 'edit-1',
-              name: 'yolo_local__fs_edit',
-              arguments: emptyArgs,
-            },
-            response: {
-              status: ToolCallResponseStatus.Success,
-              data: { type: 'text', text: '{}' },
-            },
-          },
-          {
-            request: {
-              id: 'prune-1',
-              name: 'yolo_local__context_prune_tool_results',
-              arguments: emptyArgs,
-            },
-            response: {
-              status: ToolCallResponseStatus.Success,
-              data: { type: 'text', text: '{}' },
-            },
-          },
-        ],
-        prunedToolCallIds,
-      ),
-    ).toHaveLength(1)
-  })
-
-  it('keeps context control tools even when ids are present in prune results', () => {
-    const prunedToolCallIds = new Set(['prune-1', 'compact-1'])
-
-    expect(
-      filterContextPrunedAssistantToolCalls(
-        [
-          {
-            id: 'prune-1',
-            name: 'yolo_local__context_prune_tool_results',
-            arguments: emptyArgs,
-          },
-          {
-            id: 'compact-1',
-            name: 'yolo_local__context_compact',
-            arguments: emptyArgs,
-          },
-        ],
-        prunedToolCallIds,
-      ),
-    ).toEqual([
-      {
-        id: 'prune-1',
-        name: 'yolo_local__context_prune_tool_results',
-        arguments: emptyArgs,
-      },
-      {
-        id: 'compact-1',
-        name: 'yolo_local__context_compact',
-        arguments: emptyArgs,
-      },
-    ])
+    expect(isPruned('read-1', 'yolo_local__fs_read')).toBe(true)
+    expect(isPruned('read-2', 'yolo_local__fs_read')).toBe(false)
+    expect(isPruned('prune-1', 'yolo_local__context_prune_tool_results')).toBe(
+      false,
+    )
+    expect(isPruned('compact-1', 'yolo_local__context_compact')).toBe(false)
   })
 })

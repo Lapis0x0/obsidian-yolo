@@ -13,7 +13,7 @@ import { getContextPrunableToolCallIds, getContextPruneMode } from './helpers'
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:716`).
 const CONTEXT_PRUNE_TOOL_RESULTS_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
-    'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
+    'Replace the results of earlier tool calls with a short placeholder in future context; the calls themselves stay, and chat history is unchanged. Prunes selected calls or all prunable calls at once.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -29,7 +29,7 @@ const CONTEXT_PRUNE_TOOL_RESULTS_MCP_TOOL: Omit<McpTool, 'name'> = {
           type: 'string',
         },
         description:
-          'Tool call ids to exclude from future prompt context when mode is selected.',
+          'Tool call ids whose results to prune when mode is selected.',
       },
       reason: {
         type: 'string',

@@ -1112,7 +1112,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     })
   })
 
-  it('hides pruned tool results from future request context', async () => {
+  it('replaces pruned tool results with a placeholder and keeps the call', async () => {
     const app = {
       vault: {
         adapter: {
@@ -1227,11 +1227,11 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     })
 
     expect(
-      requestMessages.some(
+      requestMessages.find(
         (message) =>
           message.role === 'tool' && message.tool_call.id === 'edit-1',
-      ),
-    ).toBe(false)
+      )?.content,
+    ).toBe('[Result pruned from context]')
     expect(
       requestMessages.some(
         (message) =>
@@ -1240,7 +1240,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
             (toolCall) => toolCall.id === 'edit-1',
           ),
       ),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       requestMessages.some(
         (message) =>

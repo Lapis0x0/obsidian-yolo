@@ -98,9 +98,9 @@ import {
   filterRequestMessagesByToolBoundary,
 } from './tool-boundary'
 import {
+  PRUNED_TOOL_RESULT_PLACEHOLDER,
   collectContextPrunedToolCallIds,
-  filterContextPrunedAssistantToolCalls,
-  filterContextPrunedToolCalls,
+  isContextPrunedToolCall,
 } from './tool-context-pruning'
 
 /** Regex matching the `<user_selected_skills>...</user_selected_skills>` block
@@ -999,9 +999,7 @@ export class RequestContextBuilder {
           }
 
           if (message.role === 'assistant') {
-            requestMessages.push(
-              ...this.parseAssistantMessage({ message, prunedToolCallIds }),
-            )
+            requestMessages.push(...this.parseAssistantMessage({ message }))
             continue
           }
 
@@ -1053,9 +1051,7 @@ export class RequestContextBuilder {
       }
 
       if (message.role === 'assistant') {
-        requestMessages.push(
-          ...this.parseAssistantMessage({ message, prunedToolCallIds }),
-        )
+        requestMessages.push(...this.parseAssistantMessage({ message }))
         continue
       }
 
@@ -1257,10 +1253,8 @@ export class RequestContextBuilder {
 
   private parseAssistantMessage({
     message,
-    prunedToolCallIds,
   }: {
     message: ChatAssistantMessage
-    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
     let citationContent: string | null = null
     if (message.annotations && message.annotations.length > 0) {
@@ -1283,14 +1277,12 @@ ${message.annotations
         ].join('\n'),
         reasoning: message.reasoning,
         providerMetadata: message.metadata?.providerMetadata,
-        tool_calls: filterContextPrunedAssistantToolCalls(
+        tool_calls:
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))
             .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
               Boolean(toolCall),
             ) ?? undefined,
-          prunedToolCallIds ?? new Set<string>(),
-        ),
       },
     ]
   }
@@ -1360,16 +1352,24 @@ ${message.annotations
     const toolMessages: RequestMessage[] = []
     const collectedContentParts: ContentPart[] = []
 
-    for (const toolCall of filterContextPrunedToolCalls(
-      message.toolCalls,
-      prunedToolCallIds ?? new Set<string>(),
-    )) {
+    for (const toolCall of message.toolCalls) {
       // Same boundary as the assistant tool_calls above: a tool result answers
       // the call by name on providers that pair them that way (Gemini), so it
       // has to speak the model-facing name too.
       const request = {
         ...toolCall.request,
         name: toModelToolName(toolCall.request.name),
+      }
+      if (
+        prunedToolCallIds &&
+        isContextPrunedToolCall(toolCall.request, prunedToolCallIds)
+      ) {
+        toolMessages.push({
+          role: 'tool',
+          tool_call: request,
+          content: PRUNED_TOOL_RESULT_PLACEHOLDER,
+        })
+        continue
       }
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
