@@ -30,6 +30,7 @@ import {
 import type { CardRenderer } from './cardRenderer'
 import type { CanvasCore } from './core'
 import type { EdgeLayer } from './edgeLayer'
+import { KEY_LAYER_RANK, type KeyLayers } from './keymapController'
 
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 /** On a card whose body is being written into by rung one
@@ -90,6 +91,8 @@ export type EditingControllerDeps = Readonly<{
   /** A rename started or ended: the selection's keys re-decide whether they
    * are armed. */
   onRenameChange: () => void
+  /** Where Escape's live-content layer goes. */
+  keyLayers: KeyLayers
 }>
 
 export class EditingController {
@@ -113,6 +116,14 @@ export class EditingController {
 
   constructor(private readonly deps: EditingControllerDeps) {
     this.core = deps.core
+    // Escape steps out of a card's content before it lets go of the card. An
+    // entered card is always the focused one, so this layer only ever answers
+    // while there is a selection.
+    deps.keyLayers.addLayer('escape', KEY_LAYER_RANK.content, () => {
+      if (this.enteredNodeId === null) return null
+      this.exitLiveContent()
+      return true
+    })
   }
 
   /** Whether a card's editor is open at all. */

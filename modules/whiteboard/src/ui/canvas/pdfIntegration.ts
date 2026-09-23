@@ -52,6 +52,11 @@ import type { PdfReader, ReaderAnnotationEvents } from '../pdf/pdfReader'
 import { READER_PANEL_DEFAULT_WIDTH, ReaderPanel } from '../pdf/readerPanel'
 
 import type { CanvasCore } from './core'
+import {
+  KEY_LAYER_RANK,
+  type KeyLayers,
+  isTypingIntoField,
+} from './keymapController'
 import { PdfExcerpts } from './pdfExcerpts'
 
 /** How much of the view the board keeps however wide the reading panel is
@@ -78,9 +83,10 @@ export type PdfIntegrationDeps = Readonly<{
   getEnteredNodeId: () => NodeId | null
   /** The board's viewport changed size: re-measure what depends on it. */
   onResize: () => void
+  /** Where this class's layers of Escape, Delete and undo/redo go. */
+  keyLayers: KeyLayers
   /** The whole Escape chain — the reader keymap binds Escape too. */
   runEscape: () => boolean
-  isTypingIntoField: () => boolean
 }>
 
 export class PdfIntegration {
@@ -134,6 +140,23 @@ export class PdfIntegration {
       },
       reportError: core.reportError,
     })
+    const layers = deps.keyLayers
+    const handled = (done: boolean) => (done ? true : null)
+    layers.addLayer('escape', KEY_LAYER_RANK.overField, () =>
+      handled(this.dismissAnnotation()),
+    )
+    layers.addLayer('escape', KEY_LAYER_RANK.reader, () =>
+      handled(this.escapeReader()),
+    )
+    layers.addLayer('delete', KEY_LAYER_RANK.reader, () =>
+      handled(this.deleteActiveAnnotation()),
+    )
+    layers.addLayer('undo', KEY_LAYER_RANK.reader, () =>
+      handled(this.undoAnnotation()),
+    )
+    layers.addLayer('redo', KEY_LAYER_RANK.reader, () =>
+      handled(this.redoAnnotation()),
+    )
   }
 
   /** What every reader of this view reports its selections and annotation
@@ -520,7 +543,7 @@ export class PdfIntegration {
     const cardEl = cardId === null ? null : core.getRuntime(cardId)?.el
     // Typing somewhere else — a label, a prompt — is not reading.
     if (
-      this.deps.isTypingIntoField() &&
+      isTypingIntoField(core.context.getDocument()) &&
       !panel?.contains(active) &&
       !(active && cardEl?.contains(active))
     ) {
@@ -538,13 +561,13 @@ export class PdfIntegration {
 
   /** Escape's first layer: the PDF annotation toolbar (or its comment
    * editor). */
-  dismissAnnotation(): boolean {
+  private dismissAnnotation(): boolean {
     return this.annotationController.dismiss()
   }
 
   /** Escape's reader layer: the reader being read leaves area mode, else
    * closes its search. */
-  escapeReader(): boolean {
+  private escapeReader(): boolean {
     const reader = this.activeReader()
     if (reader?.isAreaMode()) {
       reader.setAreaMode(false)
@@ -569,21 +592,21 @@ export class PdfIntegration {
 
   /** Delete/Backspace: a PDF annotation being acted on is what the key
    * deletes. */
-  deleteActiveAnnotation(): boolean {
+  private deleteActiveAnnotation(): boolean {
     return this.annotationController.deleteActive()
   }
 
   /** Mod+Z: while a PDF reader is the thing being read, its annotation edits
    * are what is taken back first. False when there is nothing to undo there,
    * so the board's own history comes next. */
-  undoAnnotation(): boolean {
+  private undoAnnotation(): boolean {
     const store = this.activeReader()?.getAnnotationStore()
     if (!store?.canUndo()) return false
     store.undo()
     return true
   }
 
-  redoAnnotation(): boolean {
+  private redoAnnotation(): boolean {
     const store = this.activeReader()?.getAnnotationStore()
     if (!store?.canRedo()) return false
     store.redo()

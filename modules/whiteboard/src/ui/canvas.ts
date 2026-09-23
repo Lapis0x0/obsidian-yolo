@@ -122,6 +122,7 @@ import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
+import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
@@ -422,7 +423,6 @@ export class WhiteboardCanvas {
   private preheatRenderer: ReturnType<
     YoloModuleHostApiV1['ui']['createMarkdownRenderer']
   > | null = null
-  private viewKeymapDisposer: (() => void) | null = null
   /** The element a pan captures the pointer on (see CameraController). */
   private panCaptureEl!: HTMLElement
   /** Space is held on this board: a left press pans, like a middle press. */
@@ -478,7 +478,6 @@ export class WhiteboardCanvas {
    * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
-  private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
   // Selection toolbar: one instance per view,
@@ -498,6 +497,9 @@ export class WhiteboardCanvas {
   /** What is being typed: a card's editor, a label, live content
    * (./canvas/editingController.ts). Built in `ensureDom`. */
   private editing!: EditingController
+  /** The board's keys and the layered Escape/Delete/undo chains
+   * (./canvas/keymapController.ts). Built in `ensureDom`. */
+  private keymap!: KeymapController
 
   // Resize: one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
@@ -819,8 +821,7 @@ export class WhiteboardCanvas {
     this.disarmSpacePan()
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
-    this.viewKeymapDisposer?.()
-    this.viewKeymapDisposer = null
+    this.keymap.destroy()
     this.pdf.destroy()
 
     this.editing.endRename(true)
@@ -1109,6 +1110,18 @@ export class WhiteboardCanvas {
       reportError: this.core.reportError,
       t: this.core.t,
     })
+    this.keymap = new KeymapController({
+      core: this.core,
+      isEditing: () => this.editing.isActive(),
+      isRenaming: () => this.editing.isRenamingAny(),
+      isPromptOpen: () => this.dropImport.isPromptOpen(),
+      editCard: (id) => this.editing.editCard(id),
+      fitAll: () => this.cameraController.fitCameraToNodes(this.board.nodes),
+      zoomToSelection: () => this.cameraController.zoomToSelection(),
+      resetCamera: () => this.cameraController.resetCamera(),
+      armSpacePan: this.armSpacePan,
+    })
+    this.registerBoardKeyLayers()
     this.editing = new EditingController({
       core: this.core,
       cards: this.cardRenderer,
@@ -1133,7 +1146,8 @@ export class WhiteboardCanvas {
       flushOverviewChromeZoomScale: () =>
         this.cameraController.flushOverviewChromeZoomScale(),
       closePopover: () => this.toolbarController.closePopover(),
-      onRenameChange: () => this.syncSelectionKeymapScope(),
+      onRenameChange: () => this.keymap.syncSelectionScope(),
+      keyLayers: this.keymap,
     })
     // A PDF card draws its pages for the zoom they are seen at, so it has to
     // hear about every zoom — and redraws once one holds still (the reader's
@@ -1185,15 +1199,15 @@ export class WhiteboardCanvas {
       getPdfPosition: (id) => this.cardRenderer.getPdfPosition(id),
       getEnteredNodeId: () => this.editing.getEnteredNodeId(),
       onResize: () => this.onResize(),
-      runEscape: () => this.onEscape(),
-      isTypingIntoField: () => this.isTypingIntoField(),
+      keyLayers: this.keymap,
+      runEscape: () => this.keymap.run('escape'),
     })
     this.dropImport = new DropImport({
       core: this.core,
       viewportEl: viewport,
       overlay: this.toolbarController.overlay,
       closePopover: () => this.toolbarController.closePopover(),
-      onPromptChange: () => this.syncSelectionKeymapScope(),
+      onPromptChange: () => this.keymap.syncSelectionScope(),
       nodeIdAtPointer: (e) => this.nodeIdAtPointer(e),
       beginCreateDrag: (e, size, create) =>
         this.beginCreateDrag(e, size, create),
@@ -1281,7 +1295,7 @@ export class WhiteboardCanvas {
     )
 
     this.setupInteraction()
-    this.registerViewKeymap()
+    this.keymap.bindViewKeys()
     this.setupVaultSubscription()
     this.preheat()
 
@@ -2785,59 +2799,30 @@ export class WhiteboardCanvas {
     return value
   }
 
-  /** Undo/redo live on the view's own keymap, so they are armed exactly
-   * while this board is the leaf being looked at. While a card's editor has
-   * the caret, they belong to that editor — CodeMirror has its own history,
-   * and the text being typed is not a board change yet. */
-  private registerViewKeymap(): void {
-    // A key typed into a field — a PDF reader's page or search box — is the
-    // field's: Mod+Z undoes the typing, Shift+1 types "!".
-    const busy = () => this.editing.isActive() || this.isTypingIntoField()
-    const run = (action: () => void) => () => {
-      if (busy()) return false
-      action()
+  /** The board's own layer of each layered key, asked after every other:
+   * Escape lets go of the selection, Delete deletes it, and undo/redo walk
+   * the board's history. */
+  private registerBoardKeyLayers(): void {
+    const { keymap } = this
+    keymap.addLayer('escape', KEY_LAYER_RANK.board, () => {
+      if (this.selectedIds.size === 0 && this.selectedEdgeIds.size === 0) {
+        return false
+      }
+      this.clearSelection()
       return true
-    }
-    // While a PDF reader is the thing being read, its annotation edits are
-    // what Mod+Z takes back first; the board's own history comes after.
-    const undo = run(() => {
-      if (!this.pdf.undoAnnotation()) this.undo()
     })
-    const redo = run(() => {
-      if (!this.pdf.redoAnnotation()) this.redo()
-    })
-    // Obsidian Canvas's camera keys. Zoom-to-selection declines (falls
-    // through to Obsidian) when nothing is selected, same as Canvas.
-    const fitAll = () => {
-      if (busy()) return false
-      return this.cameraController.fitCameraToNodes(this.board.nodes)
-    }
-    const fitSelection = () => {
-      if (busy()) return false
-      return this.cameraController.zoomToSelection()
-    }
-    // Back to the origin at 1:1. Obsidian Canvas binds no key to its own
-    // (weaker) reset — Shift+1 and Shift+2 are the only two camera keys it
-    // has — so Shift+0 is ours to choose, and it belongs to the same Shift+digit
-    // family as the two fits while reading as the "100%" that Mod+0 means in
-    // every browser.
-    const home = () => {
-      if (busy()) return false
-      this.cameraController.resetCamera()
+    keymap.addLayer('delete', KEY_LAYER_RANK.board, () => {
+      this.deleteSelection()
       return true
-    }
-    this.viewKeymapDisposer = this.context.registerKeymap([
-      { modifiers: ['Mod'], key: 'Z', handler: undo },
-      { modifiers: ['Mod', 'Shift'], key: 'Z', handler: redo },
-      // Windows' second redo binding, which Obsidian Canvas also carries.
-      { modifiers: ['Mod'], key: 'Y', handler: redo },
-      { modifiers: ['Shift'], key: '1', handler: fitAll },
-      { modifiers: ['Shift'], key: '2', handler: fitSelection },
-      { modifiers: ['Shift'], key: '0', handler: home },
-      // Obsidian names Space by its character (measured: both `key` and
-      // `vkey` are " "), not by 'Space'.
-      { modifiers: [], key: ' ', handler: this.armSpacePan },
-    ])
+    })
+    keymap.addLayer('undo', KEY_LAYER_RANK.board, () => {
+      this.undo()
+      return true
+    })
+    keymap.addLayer('redo', KEY_LAYER_RANK.board, () => {
+      this.redo()
+      return true
+    })
   }
 
   // -----------------------------------------------------------------------
@@ -2851,27 +2836,9 @@ export class WhiteboardCanvas {
   // happens while the window is not listening.
   // -----------------------------------------------------------------------
 
-  /** Whether the keyboard is currently typing into something that takes
-   * text: the card being edited, a label being renamed, a PDF card's page
-   * field, a Quick Ask panel. */
-  private isTypingIntoField(): boolean {
-    // Read off the element rather than tested with `instanceof HTMLElement`:
-    // in a popout the element belongs to that window, whose constructor is a
-    // different one, and the test would answer false there.
-    const active = this.context.getDocument().activeElement as
-      | (Element & { isContentEditable?: boolean })
-      | null
-    if (!active) return false
-    return (
-      active.isContentEditable === true ||
-      active.tagName === 'INPUT' ||
-      active.tagName === 'TEXTAREA'
-    )
-  }
-
   private readonly armSpacePan = (): boolean => {
     // A space typed into something is a space.
-    if (this.isTypingIntoField()) return false
+    if (this.keymap.isTypingIntoField()) return false
     // Consumed even while already armed: the key auto-repeats, and each
     // repeat left through would scroll whatever Obsidian scrolls on Space.
     if (!this.spacePanArmed) {
@@ -2924,7 +2891,7 @@ export class WhiteboardCanvas {
     // selection ring is drawn.
     this.overviewLayer?.markDirty()
     this.applyFocusedNode()
-    this.syncSelectionKeymapScope()
+    this.keymap.syncSelectionScope()
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
     this.toolbarController.refreshToolbar()
@@ -3003,7 +2970,7 @@ export class WhiteboardCanvas {
     }
     this.selectedEdgeIds = next
     this.overviewLayer?.markDirty()
-    this.syncSelectionKeymapScope()
+    this.keymap.syncSelectionScope()
     // A label being typed belongs to the edge that was selected when it
     // opened; deselecting that edge ends the session.
     this.editing.onEdgeSelectionChange(next)
@@ -3019,100 +2986,6 @@ export class WhiteboardCanvas {
   private clearSelection(): void {
     if (this.selectedIds.size > 0) this.setSelection([])
     if (this.selectedEdgeIds.size > 0) this.setEdgeSelection([])
-  }
-
-  /** One scope for both kinds of selection, pushed while either is non-empty
-   * and popped when both are. */
-  private syncSelectionKeymapScope(): void {
-    const hasSelection =
-      (this.selectedIds.size > 0 || this.selectedEdgeIds.size > 0) &&
-      // While a label is being typed or a creation prompt is open,
-      // Backspace/Delete/Escape belong to that field, not to the selection
-      // behind it — the same rule that keeps the card editor and the selection
-      // scope from ever being armed at once.
-      !this.editing.isRenamingAny() &&
-      !this.dropImport.isPromptOpen()
-    if (hasSelection && !this.selectionScopeDisposer) {
-      this.pushSelectionKeymapScope()
-    } else if (!hasSelection && this.selectionScopeDisposer) {
-      this.popSelectionKeymapScope()
-    }
-  }
-
-  private pushSelectionKeymapScope(): void {
-    this.selectionScopeDisposer = this.context.registerKeymap([
-      {
-        modifiers: [],
-        key: 'Backspace',
-        handler: () => {
-          // A key typed into a field inside a selected card (a PDF card's
-          // page number) is that field's, not a request to delete the card.
-          if (this.isTypingIntoField()) return false
-          // A PDF annotation being acted on is what the key deletes.
-          if (this.pdf.deleteActiveAnnotation()) return true
-          this.deleteSelection()
-          return true
-        },
-      },
-      {
-        modifiers: [],
-        key: 'Delete',
-        handler: () => {
-          if (this.isTypingIntoField()) return false
-          if (this.pdf.deleteActiveAnnotation()) return true
-          this.deleteSelection()
-          return true
-        },
-      },
-      {
-        modifiers: [],
-        key: 'Enter',
-        handler: () => {
-          if (this.isTypingIntoField()) return false
-          if (this.selectedIds.size !== 1) return false
-          const id = this.selectedIds.values().next().value
-          return id !== undefined && this.editing.editCard(id)
-        },
-      },
-      {
-        modifiers: [],
-        key: 'Escape',
-        handler: () => this.onEscape(),
-      },
-    ])
-  }
-
-  /**
-   * Escape, one layer at a time, the way it steps out of an editor: first the
-   * PDF annotation toolbar (or its comment editor), then a reader's area
-   * mode or open search, then out of the card's content, and only a last
-   * press lets go of the card itself.
-   *
-   * Bound twice — on the selection's scope, and while there is a PDF reader
-   * (`syncReaderKeymap`) — because a panel can be read with nothing
-   * selected. Obsidian's scope runs only the first binding for a key, so
-   * both are this one chain and it does not matter which runs.
-   */
-  private onEscape(): boolean {
-    if (this.pdf.dismissAnnotation()) return true
-    // A field inside a card or the panel (a page or search box) handles its
-    // own Escape.
-    if (this.isTypingIntoField()) return false
-    if (this.pdf.escapeReader()) return true
-    if (this.selectedIds.size === 0 && this.selectedEdgeIds.size === 0) {
-      return false
-    }
-    if (this.editing.getEnteredNodeId() !== null) {
-      this.editing.exitLiveContent()
-      return true
-    }
-    this.clearSelection()
-    return true
-  }
-
-  private popSelectionKeymapScope(): void {
-    this.selectionScopeDisposer?.()
-    this.selectionScopeDisposer = null
   }
 
   // -----------------------------------------------------------------------
@@ -3859,7 +3732,7 @@ export class WhiteboardCanvas {
     )
     this.selectedEdgeIds = new Set(surviving)
     for (const id of surviving) this.markEdgeSelected(id, true)
-    this.syncSelectionKeymapScope()
+    this.keymap.syncSelectionScope()
     this.toolbarController.refreshToolbar()
   }
 
@@ -3881,7 +3754,7 @@ export class WhiteboardCanvas {
     this.snapGuideLayer?.clear()
     this.marqueeEl?.remove()
     this.marqueeEl = null
-    this.popSelectionKeymapScope()
+    this.keymap.popSelectionScope()
     this.selectedIds = new Set()
     this.focusedNodeId = null
     // Dropped rather than exited: every card element is about to go, so there
