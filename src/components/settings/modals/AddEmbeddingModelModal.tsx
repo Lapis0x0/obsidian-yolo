@@ -1,10 +1,10 @@
-import { GoogleGenAI } from '@google/genai'
 import { App, Notice, requestUrl } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
+import { listGeminiModelIds } from '../../../core/llm/geminiModelCatalog'
 import { getProviderClient } from '../../../core/llm/manager'
 import type YoloPlugin from '../../../main'
 import {
@@ -225,27 +225,12 @@ function AddEmbeddingModelModalComponent({
         }
 
         if (selectedProvider.apiType === 'gemini') {
-          const ai = new GoogleGenAI({
-            apiKey: selectedProvider.apiKey ?? '',
-            httpOptions: providerHeaders
-              ? { headers: providerHeaders }
-              : undefined,
+          const ids = await listGeminiModelIds(selectedProvider)
+          // Keep embedding models and general gemini models
+          const names = ids.filter((id) => {
+            const lower = id.toLowerCase()
+            return lower.includes('embedding') || lower.includes('gemini')
           })
-          const pager = await ai.models.list()
-          const names: string[] = []
-          for await (const entry of pager) {
-            const raw = extractModelIdentifier(entry) ?? ''
-            if (!raw) continue
-            // Normalize like "models/text-embedding-004" -> "text-embedding-004"
-            const norm = raw.includes('/') ? raw.split('/').pop()! : raw
-            // Keep embedding models and general gemini models
-            if (
-              norm.toLowerCase().includes('embedding') ||
-              norm.toLowerCase().includes('gemini')
-            ) {
-              names.push(norm)
-            }
-          }
           // Sort with embedding models first
           const unique = Array.from(new Set(names))
           const sorted = sortModelsForEmbedding(unique)
