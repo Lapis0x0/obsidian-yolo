@@ -43,7 +43,7 @@ export type PageSearchIndex = Readonly<{
 /** Scripts written without spaces between words, where a line break is not
  * a word break. Kana, CJK ideographs (with extensions and compatibility),
  * CJK punctuation and the full-width forms. */
-const UNSPACED_SCRIPT =
+export const UNSPACED_SCRIPT =
   /[\u2e80-\u2fff\u3000-\u30ff\u3100-\u31ff\u3200-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]/
 
 const WHITESPACE = /\s/

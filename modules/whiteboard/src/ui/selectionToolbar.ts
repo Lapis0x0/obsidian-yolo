@@ -112,11 +112,20 @@ export type ToolbarIconName =
   | 'align-horizontal-distribute-center'
   | 'align-vertical-distribute-center'
   | 'book-open'
+  | 'highlighter'
+  | 'message-square'
+  | 'message-square-quote'
+  | 'link'
+  | 'chevron-down'
 
 export type ToolbarAction = Readonly<{
   kind?: 'action'
   label: string
   icon: ToolbarIconName
+  /** Added to the button's own classes — for a button that has to look like
+   * the state it acts in (the highlight button drawn in the colour it will
+   * highlight with). */
+  className?: string
   onSelect: (event: MouseEvent) => void
 }>
 
@@ -171,6 +180,25 @@ export type ToolbarMenuControl = Readonly<{
   groups: readonly (readonly ToolbarMenuEntry[])[]
 }>
 
+/**
+ * A button opening a row of fixed swatches — a palette that is not the
+ * board's (the PDF highlight colours), with no "no colour" and no custom
+ * colour, because every value in it has to be one of those listed.
+ */
+export type ToolbarSwatchControl = Readonly<{
+  kind: 'swatches'
+  label: string
+  icon: ToolbarIconName
+  swatches: readonly Readonly<{
+    value: string
+    label: string
+    /** What paints the swatch (the caller's colour class). */
+    className: string
+  }>[]
+  current: string | undefined
+  onPick: (value: string) => void
+}>
+
 /** One button in the row. The controls that open something are items like any
  * other so their place in the row is the caller's decision, not this class's —
  * the delete button has to be able to sit before them. */
@@ -178,6 +206,7 @@ export type ToolbarItem =
   | ToolbarAction
   | ToolbarColorControl
   | ToolbarMenuControl
+  | ToolbarSwatchControl
 
 export type ToolbarModel = Readonly<{
   /** Drawn left to right. A control the selection cannot use is simply
@@ -312,6 +341,38 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
       d: 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z',
     },
   ],
+  highlighter: [
+    { kind: 'path', d: 'm9 11-6 6v3h9l3-3' },
+    {
+      kind: 'path',
+      d: 'm22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4',
+    },
+  ],
+  'message-square': [
+    {
+      kind: 'path',
+      d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+    },
+  ],
+  'message-square-quote': [
+    {
+      kind: 'path',
+      d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+    },
+    { kind: 'path', d: 'M8 12a2 2 0 0 0 2-2V8H8' },
+    { kind: 'path', d: 'M14 12a2 2 0 0 0 2-2V8h-2' },
+  ],
+  link: [
+    {
+      kind: 'path',
+      d: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+    },
+    {
+      kind: 'path',
+      d: 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+    },
+  ],
+  'chevron-down': [{ kind: 'path', d: 'm6 9 6 6 6-6' }],
   trash: [
     { kind: 'path', d: 'M3 6h18' },
     { kind: 'path', d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' },
@@ -353,6 +414,8 @@ export class SelectionToolbar {
   /** The colour item out of `model.items`, kept aside because the popover and
    * `setCurrentColor` reach for it on every interaction. */
   private color: ToolbarColorControl | null = null
+  /** The swatch control whose popover is open, if one is. */
+  private swatches: ToolbarSwatchControl | null = null
 
   constructor(
     private readonly doc: Document,
@@ -409,6 +472,14 @@ export class SelectionToolbar {
           })
           break
         }
+        case 'swatches': {
+          const button = this.appendButton({
+            label: item.label,
+            icon: item.icon,
+            onSelect: () => this.togglePopover(button, item),
+          })
+          break
+        }
         default:
           this.appendButton(item)
       }
@@ -445,6 +516,7 @@ export class SelectionToolbar {
   }
 
   closePopover(): void {
+    this.swatches = null
     if (!this.popover) return
     this.popover.el.remove()
     this.popover.button.classList.remove('is-active')
@@ -467,7 +539,7 @@ export class SelectionToolbar {
     // `clickable-icon` is Obsidian's own icon-button treatment (hover, active
     // and focus states, icon sizing) — the same class its Canvas menu uses.
     // The yolo- class beside it is what this stylesheet is allowed to target.
-    button.className = `clickable-icon ${TOOLBAR_BUTTON_CLASS}`
+    button.className = `clickable-icon ${TOOLBAR_BUTTON_CLASS}${action.className ? ` ${action.className}` : ''}`
     button.type = 'button'
     button.setAttribute('aria-label', action.label)
     button.appendChild(this.createIcon(action.icon))
@@ -520,21 +592,41 @@ export class SelectionToolbar {
    * time is the whole rule: a second click on the same button closes it, and a
    * click on a different one replaces it.
    */
-  private togglePopover(button: HTMLElement, menu?: ToolbarMenuControl): void {
+  private togglePopover(
+    button: HTMLElement,
+    control?: ToolbarMenuControl | ToolbarSwatchControl,
+  ): void {
     const wasOpen = this.popover?.button === button
     this.closePopover()
     if (wasOpen) return
 
+    const menu = control?.kind === 'menu' ? control : undefined
     const popover = this.doc.createElement('div')
     popover.className = `${POPOVER_CLASS} ${menu ? MENU_POPOVER_CLASS : COLOR_POPOVER_CLASS}`
     if (menu) this.fillMenuPopover(popover, menu)
-    else if (!this.fillColorPopover(popover)) return
+    else if (control?.kind === 'swatches') {
+      this.fillSwatchPopover(popover, control)
+    } else if (!this.fillColorPopover(popover)) return
 
     this.el.appendChild(popover)
     this.positionPopover(popover, button)
     this.popover = { el: popover, button }
     button.classList.add('is-active')
     if (!menu) this.markActiveSwatch()
+  }
+
+  private fillSwatchPopover(
+    popover: HTMLElement,
+    control: ToolbarSwatchControl,
+  ): void {
+    this.swatches = control
+    for (const swatch of control.swatches) {
+      this.appendSwatch(popover, {
+        label: swatch.label,
+        extraClass: swatch.className,
+        value: swatch.value,
+      })
+    }
   }
 
   /**
@@ -635,6 +727,10 @@ export class SelectionToolbar {
     swatch.dataset.color = options.value ?? ''
     swatch.addEventListener('click', (event) => {
       event.preventDefault()
+      if (this.swatches) {
+        if (options.value !== undefined) this.swatches.onPick(options.value)
+        return
+      }
       this.color?.onPick(options.value)
     })
     popover.appendChild(swatch)
@@ -671,8 +767,18 @@ export class SelectionToolbar {
 
   private markActiveSwatch(): void {
     const popover = this.popover?.el
-    const current = this.color?.current
     if (!popover) return
+    if (this.swatches) {
+      const current = this.swatches.current
+      for (const swatch of Array.from(popover.children)) {
+        swatch.classList.toggle(
+          SWATCH_ACTIVE_CLASS,
+          (swatch as HTMLElement).dataset.color === current,
+        )
+      }
+      return
+    }
+    const current = this.color?.current
     const resolved = resolveColor(current)
     // `null` = no plain swatch can match, which is the custom case: the empty
     // string belongs to the "no colour" swatch alone.

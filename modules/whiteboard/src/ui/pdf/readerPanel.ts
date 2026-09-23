@@ -14,8 +14,10 @@
 // Every element and listener belongs to the document the panel was built in,
 // so it keeps working in a popout window.
 
+import type { AnnotationLease } from '../../host/annotationStore'
+
 import { createReaderIconButton } from './icons'
-import { PdfReader } from './pdfReader'
+import { PdfReader, type ReaderAnnotationEvents } from './pdfReader'
 
 type Translate = (key: string) => string
 
@@ -33,6 +35,9 @@ export type ReaderPanelOptions = Readonly<{
   onResize: (width: number, done: boolean) => void
   onClose: () => void
   onPositionChange: (position: number) => void
+  /** The annotations of a PDF, for the panel's reader to hold. */
+  openAnnotations: (path: string) => AnnotationLease
+  annotationEvents: ReaderAnnotationEvents
   reportError?: (stage: string, error: unknown) => void
 }>
 
@@ -140,8 +145,15 @@ export class ReaderPanel {
       interactive: true,
       t: this.options.t,
       onPositionChange: (next) => this.options.onPositionChange(next),
+      annotations: this.options.openAnnotations(path),
+      annotationEvents: this.options.annotationEvents,
       reportError: this.options.reportError,
     })
+  }
+
+  /** The panel's reader, while it is reading something. */
+  getReader(): PdfReader | null {
+    return this.reader
   }
 
   setTitle(title: string): void {

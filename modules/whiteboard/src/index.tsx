@@ -11,6 +11,8 @@
 // point is fixed at that path (scripts/build-first-party-modules.mjs), not
 // because it uses JSX.
 
+import { AnnotationPrefs } from './host/annotationPrefs'
+import { AnnotationStores } from './host/annotationStore'
 import { registerWhiteboardAgentTools } from './host/boardTools'
 import { createWhiteboard } from './host/createWhiteboard'
 import {
@@ -44,6 +46,18 @@ yolo.registerModule({
         console.error(`[YOLO Whiteboard] ${stage} failed`, error),
     )
 
+    const reportError = (stage: string, error: unknown) =>
+      console.error(`[YOLO Whiteboard] ${stage} failed`, error)
+    // PDF annotations: one store per PDF shared by every board and reader,
+    // and the follower that keeps each annotation file beside its PDF across
+    // renames and deletes — for PDFs no board shows, too.
+    const annotationStores = new AnnotationStores(host, reportError)
+    host.lifecycle.add(() => annotationStores.dispose())
+    const annotationPrefs = new AnnotationPrefs(
+      host.privateStorage.synchronized,
+      reportError,
+    )
+
     host.workspace.registerFileView({
       viewType: VIEW_TYPE,
       extensions: ['yoloboard'],
@@ -53,7 +67,14 @@ yolo.registerModule({
         // Read on the first board opened, not at activation: private
         // storage only answers once the module is active.
         readerPanelPrefs.load()
-        const canvas = new WhiteboardCanvas(context, host, readerPanelPrefs)
+        annotationPrefs.load()
+        const canvas = new WhiteboardCanvas(
+          context,
+          host,
+          readerPanelPrefs,
+          annotationStores,
+          annotationPrefs,
+        )
         const forgetOpenBoard = openBoards.add(canvas)
         return {
           setViewData: (data, clear) => canvas.setViewData(data, clear),

@@ -124,6 +124,8 @@ import {
   computeWorldViewportRect,
   intersectsViewport,
 } from '../domain/virtualization'
+import type { AnnotationPrefs } from '../host/annotationPrefs'
+import type { AnnotationStores } from '../host/annotationStore'
 import { resolveCardContext } from '../host/cardContext'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
@@ -184,6 +186,8 @@ import {
 } from './constants'
 import { asElement, asNode } from './eventTarget'
 import { blockStartLine, nextOverviewState } from './lod'
+import { AnnotationController } from './pdf/annotationController'
+import type { PdfReader } from './pdf/pdfReader'
 import { READER_PANEL_DEFAULT_WIDTH, ReaderPanel } from './pdf/readerPanel'
 import {
   PromptOverlay,
@@ -712,11 +716,16 @@ export class WhiteboardCanvas {
   /** Mod+F, bound only while there is a reader to search (see
    * `syncReaderKeymap`). */
   private readerKeymapDisposer: (() => void) | null = null
+  /** The PDF annotation toolbar and comment editor, over the whole view
+   * (./pdf/annotationController.ts). */
+  private annotationController: AnnotationController | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly host: YoloModuleHostApiV1,
     private readonly readerPanelPrefs: ReaderPanelPrefs,
+    private readonly annotationStores: AnnotationStores,
+    private readonly annotationPrefs: AnnotationPrefs,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -909,6 +918,8 @@ export class WhiteboardCanvas {
     this.canvasControls?.destroy()
     this.canvasControls = null
     this.toolbarController.destroy()
+    this.annotationController?.destroy()
+    this.annotationController = null
     this.overviewLayer?.destroy()
     this.overviewLayer = null
     this.teardownAllCards()
@@ -1185,6 +1196,8 @@ export class WhiteboardCanvas {
       getSourcePath: () => this.sourcePathForBoard(),
       getViewScale: () => this.cameraController.view.scale,
       getPdfStartPosition: (id) => this.pdfStartPosition(id),
+      openAnnotations: (path) => this.annotationStores.acquire(path),
+      getAnnotationEvents: () => this.annotationController?.events,
       onPdfPositionChange: (id, position) =>
         this.onCardPdfPosition(id, position),
       pdfPageLabel: this.pdfPageLabel,
@@ -1230,6 +1243,19 @@ export class WhiteboardCanvas {
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
       tidySelection: () => this.tidySelection(),
+    })
+    // Over the whole view rather than the viewport: it serves the reading
+    // panel as well as the cards. Built after the board's toolbar, so the two
+    // never compete for the same layer.
+    this.annotationController?.destroy()
+    this.annotationController = new AnnotationController({
+      parent: root,
+      host: this.host,
+      prefs: this.annotationPrefs,
+      t: (key) => this.t(key),
+      getSourcePath: () => this.sourcePathForBoard(),
+      registerKeymap: (bindings) => this.context.registerKeymap(bindings),
+      reportError: (stage, error) => this.reportError(stage, error),
     })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
@@ -3132,8 +3158,18 @@ export class WhiteboardCanvas {
       action()
       return true
     }
-    const undo = run(() => this.undo())
-    const redo = run(() => this.redo())
+    // While a PDF reader is the thing being read, its annotation edits are
+    // what Mod+Z takes back first; the board's own history comes after.
+    const undo = run(() => {
+      const store = this.activeReader()?.getAnnotationStore()
+      if (store?.canUndo()) store.undo()
+      else this.undo()
+    })
+    const redo = run(() => {
+      const store = this.activeReader()?.getAnnotationStore()
+      if (store?.canRedo()) store.redo()
+      else this.redo()
+    })
     // Obsidian Canvas's camera keys. Zoom-to-selection declines (falls
     // through to Obsidian) when nothing is selected, same as Canvas.
     const fitAll = () => {
@@ -3377,6 +3413,8 @@ export class WhiteboardCanvas {
           // A key typed into a field inside a selected card (a PDF card's
           // page number) is that field's, not a request to delete the card.
           if (this.isTypingIntoField()) return false
+          // A PDF annotation being acted on is what the key deletes.
+          if (this.annotationController?.deleteActive()) return true
           this.deleteSelection()
           return true
         },
@@ -3386,6 +3424,7 @@ export class WhiteboardCanvas {
         key: 'Delete',
         handler: () => {
           if (this.isTypingIntoField()) return false
+          if (this.annotationController?.deleteActive()) return true
           this.deleteSelection()
           return true
         },
@@ -3403,23 +3442,66 @@ export class WhiteboardCanvas {
       {
         modifiers: [],
         key: 'Escape',
-        handler: () => {
-          // A field inside a card or the panel (a page or search box)
-          // handles its own Escape.
-          if (this.isTypingIntoField()) return false
-          // Steps out one layer at a time, the way Escape does out of an
-          // editor: first a PDF reader's open search, then out of the card's
-          // content, and only a last press lets go of the card itself.
-          if (this.closeReaderSearchForEscape()) return true
-          if (this.enteredNodeId !== null) {
-            this.exitLiveContent()
-            return true
-          }
-          this.clearSelection()
-          return true
-        },
+        handler: () => this.onEscape(),
       },
     ])
+  }
+
+  /**
+   * Escape, one layer at a time, the way it steps out of an editor: first the
+   * PDF annotation toolbar (or its comment editor), then a reader's area
+   * mode or open search, then out of the card's content, and only a last
+   * press lets go of the card itself.
+   *
+   * Bound twice — on the selection's scope, and while there is a PDF reader
+   * (`syncReaderKeymap`) — because a panel can be read with nothing
+   * selected. Obsidian's scope runs only the first binding for a key, so
+   * both are this one chain and it does not matter which runs.
+   */
+  private onEscape(): boolean {
+    if (this.annotationController?.dismiss()) return true
+    // A field inside a card or the panel (a page or search box) handles its
+    // own Escape.
+    if (this.isTypingIntoField()) return false
+    const reader = this.activeReader()
+    if (reader?.isAreaMode()) {
+      reader.setAreaMode(false)
+      return true
+    }
+    if (this.closeReaderSearchForEscape()) return true
+    if (this.selectedIds.size === 0 && this.selectedEdgeIds.size === 0) {
+      return false
+    }
+    if (this.enteredNodeId !== null) {
+      this.exitLiveContent()
+      return true
+    }
+    this.clearSelection()
+    return true
+  }
+
+  /**
+   * The PDF reader being read: the one the annotation toolbar is acting
+   * for, else the panel's when focus is in it, else the entered card's.
+   */
+  private activeReader(): PdfReader | null {
+    const acting = this.annotationController?.reader
+    if (acting) return acting
+    const active = this.context.getDocument().activeElement
+    if (this.readerPanel?.contains(active)) {
+      return this.readerPanel.getReader()
+    }
+    if (this.enteredNodeId !== null) {
+      return this.cardRenderer.getRuntime(this.enteredNodeId)?.pdfReader ?? null
+    }
+    return null
+  }
+
+  private requireAnnotationController(): AnnotationController {
+    if (!this.annotationController) {
+      throw new Error('Whiteboard view is not built')
+    }
+    return this.annotationController
   }
 
   private popSelectionKeymapScope(): void {
@@ -4902,6 +4984,8 @@ export class WhiteboardCanvas {
         },
         onClose: () => this.closeReaderPanel(true),
         onPositionChange: (next) => this.onReaderPanelPosition(next),
+        openAnnotations: (path) => this.annotationStores.acquire(path),
+        annotationEvents: this.requireAnnotationController().events,
         reportError: (stage, error) => this.reportError(stage, error),
       })
     }
@@ -5036,6 +5120,7 @@ export class WhiteboardCanvas {
           key: 'F',
           handler: () => this.openReaderSearch(),
         },
+        { modifiers: [], key: 'Escape', handler: () => this.onEscape() },
       ])
     } else if (!wanted && this.readerKeymapDisposer) {
       this.readerKeymapDisposer()

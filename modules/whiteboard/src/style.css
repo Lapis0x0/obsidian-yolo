@@ -1079,6 +1079,176 @@ input.yolo-whiteboard-pdf-search-input {
   background-color: var(--text-highlight-bg-active, rgba(255, 128, 0, 0.4));
 }
 
+/* --- PDF annotations --------------------------------------------------------
+ * The palette (domain/pdfAnnotations.ts's ANNOTATION_COLORS), in the theme's
+ * own named colours so a theme that re-tunes its yellow re-tunes the
+ * highlights with it. A colour class sets both the annotation colour and the
+ * board's swatch colour, so the toolbar's swatches paint from the same rule
+ * the marks do. */
+
+.yolo-whiteboard-annotation-yellow {
+  --yolo-whiteboard-annotation: rgb(var(--color-yellow-rgb, 224, 172, 0));
+}
+.yolo-whiteboard-annotation-green {
+  --yolo-whiteboard-annotation: rgb(var(--color-green-rgb, 8, 185, 78));
+}
+.yolo-whiteboard-annotation-blue {
+  --yolo-whiteboard-annotation: rgb(var(--color-blue-rgb, 8, 109, 221));
+}
+.yolo-whiteboard-annotation-pink {
+  --yolo-whiteboard-annotation: rgb(var(--color-pink-rgb, 213, 57, 132));
+}
+.yolo-whiteboard-annotation-purple {
+  --yolo-whiteboard-annotation: rgb(var(--color-purple-rgb, 120, 82, 238));
+}
+[class*='yolo-whiteboard-annotation-'] {
+  --yolo-whiteboard-color: var(--yolo-whiteboard-annotation);
+}
+
+/* The layer between a page's picture and its text layer
+ * (ui/pdf/annotationLayer.ts). It never takes the pointer: the text layer
+ * above has to keep every press that selects text, and the reader finds the
+ * annotation a click meant by geometry. */
+.yolo-whiteboard-pdf-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Multiplied into the page, so the ink shows through the colour the way a
+ * highlighter pen's does. In a dark theme the page is drawn inverted (light
+ * ink on dark paper, and only the canvas is filtered) — multiplying there
+ * would swallow the ink, so the colour is screened instead, which tints the
+ * paper and leaves the ink standing out. */
+.yolo-whiteboard-pdf-mark {
+  position: absolute;
+  border-radius: 1px;
+  background: color-mix(
+    in srgb,
+    var(--yolo-whiteboard-annotation) 45%,
+    transparent
+  );
+  mix-blend-mode: multiply;
+}
+
+.theme-dark .yolo-whiteboard-pdf-mark {
+  background: color-mix(
+    in srgb,
+    var(--yolo-whiteboard-annotation) 40%,
+    transparent
+  );
+  mix-blend-mode: screen;
+}
+
+.yolo-whiteboard-pdf-mark.yolo-whiteboard-pdf-mark-area {
+  border: 2px solid var(--yolo-whiteboard-annotation);
+  border-radius: 2px;
+  background: color-mix(
+    in srgb,
+    var(--yolo-whiteboard-annotation) 10%,
+    transparent
+  );
+  mix-blend-mode: normal;
+}
+
+.yolo-whiteboard-pdf-mark.yolo-whiteboard-pdf-mark-active {
+  outline: 2px solid var(--yolo-whiteboard-annotation);
+  outline-offset: 1px;
+}
+
+/* A commented annotation's dot, just past the end of its first line. */
+.yolo-whiteboard-pdf-mark-note {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border-radius: 50%;
+  background: var(--yolo-whiteboard-annotation);
+  box-shadow: 0 0 0 1.5px var(--background-primary);
+}
+
+/* Area mode: a drag on a page frames a region. The text layer steps out of
+ * the way so the press reaches the page instead of starting a selection. */
+.yolo-whiteboard-pdf-reader-area-mode .yolo-whiteboard-pdf-text {
+  pointer-events: none;
+}
+
+.yolo-whiteboard-pdf-reader-area-mode .yolo-whiteboard-pdf-page {
+  cursor: crosshair;
+}
+
+.yolo-whiteboard-pdf-area-draft {
+  position: absolute;
+  border: 1.5px dashed var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+  pointer-events: none;
+}
+
+button.yolo-whiteboard-pdf-area-toggle {
+  --icon-size: 12px;
+  align-self: center;
+  width: auto;
+  height: auto;
+  margin-right: 2px;
+  padding: 1px;
+  box-shadow: none;
+}
+
+button.yolo-whiteboard-pdf-area-toggle.is-active {
+  color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
+}
+
+/* The annotation toolbar spans the whole view, reading panel included, so it
+ * paints above the panel. */
+.yolo-whiteboard-overlay.yolo-whiteboard-pdf-annotation-overlay {
+  z-index: 2;
+}
+
+/* The one-click highlight button carries the colour it highlights in. */
+button.yolo-whiteboard-pdf-highlight-button {
+  box-shadow: inset 0 -2px 0 var(--yolo-whiteboard-annotation);
+}
+
+/* The comment under the toolbar: its text, or the field editing it. */
+.yolo-whiteboard-pdf-comment {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 260px;
+  max-width: calc(100% - 16px);
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background-color: var(--background-primary);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-pdf-comment[hidden],
+.yolo-whiteboard-pdf-comment.yolo-whiteboard-pdf-comment-hidden {
+  display: none;
+}
+
+.yolo-whiteboard-pdf-comment-text {
+  max-height: 12em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+textarea.yolo-whiteboard-pdf-comment-input {
+  display: block;
+  width: 100%;
+  min-height: 4.5em;
+  padding: 2px 4px;
+  resize: vertical;
+  font: inherit;
+}
+
 /* --- reading panel -----------------------------------------------------------
  * A column on the right of the view (ui/pdf/readerPanel.ts). The board does
  * not slide under it: canvas.ts moves the viewport's right edge in by the

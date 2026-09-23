@@ -15,6 +15,7 @@ import {
   basenameWithoutExtension,
   fileNodeKind,
 } from '../../domain/naming'
+import type { AnnotationLease } from '../../host/annotationStore'
 import {
   CARD_BODY_LIVE_CLASS,
   CARD_BODY_SCROLLS_CLASS,
@@ -25,7 +26,7 @@ import {
   WEB_URL_PATTERN,
 } from '../constants'
 import { cardMarkdownWindow, nodeTitleText } from '../lod'
-import { PdfReader } from '../pdf/pdfReader'
+import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
 
 /** The host's one-pass Markdown renderer. Named through the Host API rather
@@ -193,6 +194,10 @@ export type CardRendererCallbacks = Readonly<{
   getPdfStartPosition: (id: NodeId) => number | undefined
   /** A PDF card's reader moved (see PdfReader's `onPositionChange`). */
   onPdfPositionChange: (id: NodeId, position: number) => void
+  /** The annotations of a PDF, for a reader to hold until it goes. */
+  openAnnotations: (path: string) => AnnotationLease
+  /** Where the board's readers report selections and annotation clicks. */
+  getAnnotationEvents: () => ReaderAnnotationEvents | undefined
   /** "name · p. N", localized: what a PDF card's title block says once it
    * has been read past page 1 (ui/lod.ts's `nodeTitleText`). */
   pdfPageLabel: (name: string, page: number) => string
@@ -1185,6 +1190,8 @@ export class CardRenderer {
       canStartWork: () => this.callbacks.canBuildContent(),
       onPositionChange: (position) =>
         this.callbacks.onPdfPositionChange(id, position),
+      annotations: this.callbacks.openAnnotations(path),
+      annotationEvents: this.callbacks.getAnnotationEvents(),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
     })
     runtime.pdfReader = reader

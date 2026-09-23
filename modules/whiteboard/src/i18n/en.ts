@@ -148,6 +148,29 @@ export const en = {
     searchClose: 'Close find (Esc)',
     searchNoResults: 'No results',
     closePanel: 'Close reader',
+    areaMode: 'Frame an area',
+    annotate: {
+      highlight: 'Highlight',
+      colors: 'Highlight colour',
+      color: {
+        yellow: 'Yellow',
+        green: 'Green',
+        blue: 'Blue',
+        pink: 'Pink',
+        purple: 'Purple',
+      },
+      comment: 'Comment',
+      editComment: 'Edit comment',
+      commentPlaceholder: 'Write a comment…',
+      quoteToChat: 'Quote in chat',
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
+      linkUnavailable:
+        'This text is no longer where it was on the page, so it has no link.',
+      delete: 'Delete annotation',
+      readOnly:
+        'The annotations of this PDF were saved by a newer version and can only be viewed.',
+    },
   },
   error: {
     title: 'Could not read this whiteboard',

@@ -144,6 +144,29 @@ export const it = {
     searchClose: 'Chiudi ricerca (Esc)',
     searchNoResults: 'Nessun risultato',
     closePanel: 'Chiudi il lettore',
+    areaMode: "Seleziona un'area",
+    annotate: {
+      highlight: 'Evidenzia',
+      colors: 'Colore evidenziazione',
+      color: {
+        yellow: 'Giallo',
+        green: 'Verde',
+        blue: 'Blu',
+        pink: 'Rosa',
+        purple: 'Viola',
+      },
+      comment: 'Commento',
+      editComment: 'Modifica commento',
+      commentPlaceholder: 'Scrivi un commento…',
+      quoteToChat: 'Cita nella chat',
+      copyLink: 'Copia link',
+      linkCopied: 'Link copiato',
+      linkUnavailable:
+        'Questo testo non è più dove si trovava nella pagina, quindi non ha un link.',
+      delete: 'Elimina annotazione',
+      readOnly:
+        'Le annotazioni di questo PDF sono state salvate da una versione più recente e si possono solo visualizzare.',
+    },
   },
   error: {
     title: 'Impossibile leggere questa lavagna',

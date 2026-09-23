@@ -4,13 +4,32 @@
 // icon dependency, and a handful of paths is not worth one. Circles are
 // written as two arcs so every icon is a list of paths.
 
-export type ReaderIconName = 'search' | 'chevron-up' | 'chevron-down' | 'x'
+export type ReaderIconName =
+  | 'search'
+  | 'chevron-up'
+  | 'chevron-down'
+  | 'x'
+  | 'square-dashed'
 
 const ICONS: Readonly<Record<ReaderIconName, readonly string[]>> = {
   search: ['M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0', 'm21 21-4.3-4.3'],
   'chevron-up': ['m18 15-6-6-6 6'],
   'chevron-down': ['m6 9 6 6 6-6'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
+  'square-dashed': [
+    'M5 3a2 2 0 0 0-2 2',
+    'M19 3a2 2 0 0 1 2 2',
+    'M21 19a2 2 0 0 1-2 2',
+    'M5 21a2 2 0 0 1-2-2',
+    'M9 3h1',
+    'M9 21h1',
+    'M14 3h1',
+    'M14 21h1',
+    'M3 9v1',
+    'M21 9v1',
+    'M3 14v1',
+    'M21 14v1',
+  ],
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'

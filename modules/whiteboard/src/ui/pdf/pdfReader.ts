@@ -31,7 +31,29 @@
 // each other through `onPositionChange` and `setPosition`. `setPosition` is
 // the follower's half and is silent: the scroll it causes is not reported
 // back, so the two cannot bounce a position between them.
+//
+// Annotations: given the PDF's annotation store (../../host/annotationStore.
+// ts), every drawn page carries a layer of them between its picture and its
+// text layer (./annotationLayer.ts), repainted whenever the store changes —
+// which is how a highlight made in one reader appears in every other. What
+// the reader reports is only what happened on its pages: text selected, an
+// annotation clicked, an area framed. What to do about it (the toolbar, the
+// store edits) is the owner's (./annotationController.ts).
 
+import type { PdfRectTuple } from '../../domain/pdfAnnotations'
+import type {
+  AnnotationLease,
+  AnnotationStore,
+} from '../../host/annotationStore'
+
+import { type PageFrame, hitTestAnnotations } from './annotationGeometry'
+import {
+  annotationClientRect,
+  boxesFor,
+  markActiveAnnotation,
+  placeBox,
+  renderAnnotationLayer,
+} from './annotationLayer'
 import { createReaderIconButton } from './icons'
 import { PdfSearch } from './pdfSearch'
 import {
@@ -70,7 +92,37 @@ export type PdfReaderOptions = Readonly<{
    * a search hit, or a relayout that moved the column under it. Not called
    * for a `setPosition`. */
   onPositionChange?: (position: number) => void
+  /** The PDF's annotations, held for the reader: it lets go when destroyed. */
+  annotations?: AnnotationLease
+  annotationEvents?: ReaderAnnotationEvents
   reportError?: (stage: string, error: unknown) => void
+}>
+
+/** Text selected on a reader's pages, one piece per page it touches. */
+export type ReaderTextSelection = Readonly<{
+  pieces: readonly YoloModuleHostPdfTextSelectionV1[]
+  /** Where the selection is on screen now — it moves as the reader scrolls
+   * or the board pans — or null once it is not drawn. */
+  getRect: () => DOMRect | null
+}>
+
+export type ReaderAnnotationEvents = Readonly<{
+  /** A selection was made (on release), or the one reported went away. */
+  onTextSelection: (
+    reader: PdfReader,
+    selection: ReaderTextSelection | null,
+  ) => void
+  /** A click on a page: on an annotation (`id`), or on none. */
+  onAnnotationClick: (reader: PdfReader, id: string | null) => void
+  onAnnotationContextMenu: (
+    reader: PdfReader,
+    id: string,
+    event: MouseEvent,
+  ) => void
+  /** A frame was drawn in area mode: `rect` in the page's PDF space. */
+  onAreaDrawn: (reader: PdfReader, page: number, rect: PdfRectTuple) => void
+  /** The reader is being destroyed. */
+  onReaderDestroyed: (reader: PdfReader) => void
 }>
 
 /** How long a zoom (or a resize) has to hold still before the visible pages
@@ -99,6 +151,16 @@ const STATUS_CLASS = 'yolo-whiteboard-pdf-status'
 const STATUS_ERROR_CLASS = 'yolo-whiteboard-pdf-status-error'
 const STATUS_HINT_CLASS = 'yolo-whiteboard-pdf-status-hint'
 const SEARCH_BUTTON_CLASS = 'yolo-whiteboard-pdf-search-open'
+const AREA_BUTTON_CLASS = 'yolo-whiteboard-pdf-area-toggle'
+const AREA_MODE_CLASS = 'yolo-whiteboard-pdf-reader-area-mode'
+const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
+const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
+/** A press that travels less than this is a click, not a drag. */
+const CLICK_SLOP_PX = 4
+/** How near a thin highlight a click still counts as on it, in CSS px. */
+const HIT_SLOP_PX = 3
+/** The smallest framed area kept, as a fraction of the page's width. */
+const MIN_AREA_FRACTION = 0.01
 
 type Slot = {
   readonly index: number
@@ -119,6 +181,26 @@ type Slot = {
   textLayer: YoloModuleHostPdfTextLayerV1 | null
   textTask: PdfTask<YoloModuleHostPdfTextLayerV1> | null
   textScale: number
+  /** The annotation layer, while the page has a picture. */
+  marksEl: HTMLElement | null
+  /** The page's PDF-to-layout transform, once the page is loaded. */
+  frame: PageFrame | null
+}
+
+type Press = Readonly<{
+  pointerId: number
+  x: number
+  y: number
+}>
+
+type AreaDraft = {
+  readonly pointerId: number
+  readonly slot: Slot
+  readonly el: HTMLElement
+  readonly startX: number
+  readonly startY: number
+  x: number
+  y: number
 }
 
 export class PdfReader {
@@ -172,6 +254,16 @@ export class PdfReader {
   private failed = false
   private destroyed = false
 
+  private readonly store: AnnotationStore | null
+  private unsubscribeAnnotations: (() => void) | null = null
+  private readonly areaButton: HTMLButtonElement | null = null
+  private areaMode = false
+  private areaDraft: AreaDraft | null = null
+  private press: Press | null = null
+  /** A selection was reported and has not been reported gone. */
+  private selectionReported = false
+  private activeAnnotationId: string | null = null
+
   constructor(options: PdfReaderOptions) {
     this.options = options
     this.path = options.path
@@ -199,6 +291,18 @@ export class PdfReader {
     this.inputEl.setAttribute('aria-label', options.t('pdf.pageInput'))
     this.countEl = doc.createElement('span')
     this.countEl.className = PAGE_COUNT_CLASS
+    this.store = options.annotations?.store ?? null
+    if (this.store) {
+      this.areaButton = createReaderIconButton(
+        doc,
+        AREA_BUTTON_CLASS,
+        'square-dashed',
+        options.t('pdf.areaMode'),
+        () => this.setAreaMode(!this.areaMode),
+      )
+      this.areaButton.setAttribute('aria-pressed', 'false')
+      this.indicatorEl.append(this.areaButton)
+    }
     this.indicatorEl.append(
       createReaderIconButton(
         doc,
@@ -232,6 +336,18 @@ export class PdfReader {
     this.inputEl.addEventListener('focus', this.onInputFocus)
     this.inputEl.addEventListener('blur', this.onInputBlur)
     this.inputEl.addEventListener('keydown', this.onInputKeyDown)
+
+    if (this.store) {
+      this.unsubscribeAnnotations = this.store.subscribe(() =>
+        this.renderAllMarks(),
+      )
+      this.pagesEl.addEventListener('pointerdown', this.onPagesPointerDown)
+      this.pagesEl.addEventListener('pointermove', this.onPagesPointerMove)
+      this.pagesEl.addEventListener('contextmenu', this.onPagesContextMenu)
+      doc.addEventListener('pointerup', this.onDocumentPointerUp)
+      doc.addEventListener('pointercancel', this.onDocumentPointerUp)
+      doc.addEventListener('selectionchange', this.onSelectionChange)
+    }
 
     const win = doc.defaultView
     this.resizeObserver = win?.ResizeObserver
@@ -361,6 +477,60 @@ export class PdfReader {
     else this.cancelFrame()
   }
 
+  /** The annotation store this reader draws, if it was given one. */
+  getAnnotationStore(): AnnotationStore | null {
+    return this.store
+  }
+
+  /** Marks one annotation as the one being acted on (or none). */
+  setActiveAnnotation(id: string | null): void {
+    if (id === this.activeAnnotationId) return
+    this.activeAnnotationId = id
+    for (const slot of this.active) {
+      if (slot.marksEl) markActiveAnnotation(slot.marksEl, id)
+    }
+  }
+
+  /** Where an annotation is on screen, or null when its page is not drawn. */
+  getAnnotationRect(id: string): DOMRect | null {
+    const annotation = this.store?.get(id)
+    if (!annotation) return null
+    const marks = this.slots[annotation.anchor.page - 1]?.marksEl
+    return marks ? annotationClientRect(marks, id) : null
+  }
+
+  /** A page's text items, as its text layer numbers them. */
+  async getTextItems(
+    page: number,
+  ): Promise<readonly YoloModuleHostPdfTextItemV1[]> {
+    const handle = this.handle
+    if (!handle) throw new Error('PDF is not open')
+    return (await handle.getPage(page)).getTextItems()
+  }
+
+  /** In area mode a drag on a page frames a region instead of selecting
+   * text. */
+  setAreaMode(on: boolean): void {
+    if (!this.store || on === this.areaMode) return
+    this.areaMode = on
+    this.rootEl.classList.toggle(AREA_MODE_CLASS, on)
+    this.areaButton?.setAttribute('aria-pressed', String(on))
+    this.areaButton?.classList.toggle('is-active', on)
+    if (!on) this.cancelAreaDraft()
+  }
+
+  isAreaMode(): boolean {
+    return this.areaMode
+  }
+
+  /** Clears the text selection if it is on this reader's pages. */
+  clearTextSelection(): void {
+    const selection = this.rootEl.ownerDocument.getSelection()
+    if (selection && this.selectionInPages(selection)) {
+      selection.removeAllRanges()
+    }
+  }
+
   /** Opens the file again if the last attempt failed — the file may have
    * been repaired, or the engine installed, since. */
   retryIfFailed(): void {
@@ -381,6 +551,18 @@ export class PdfReader {
     this.inputEl.removeEventListener('focus', this.onInputFocus)
     this.inputEl.removeEventListener('blur', this.onInputBlur)
     this.inputEl.removeEventListener('keydown', this.onInputKeyDown)
+    const doc = this.rootEl.ownerDocument
+    this.pagesEl.removeEventListener('pointerdown', this.onPagesPointerDown)
+    this.pagesEl.removeEventListener('pointermove', this.onPagesPointerMove)
+    this.pagesEl.removeEventListener('contextmenu', this.onPagesContextMenu)
+    doc.removeEventListener('pointerup', this.onDocumentPointerUp)
+    doc.removeEventListener('pointercancel', this.onDocumentPointerUp)
+    doc.removeEventListener('selectionchange', this.onSelectionChange)
+    this.unsubscribeAnnotations?.()
+    this.unsubscribeAnnotations = null
+    this.selectionReported = false
+    this.options.annotationEvents?.onReaderDestroyed(this)
+    this.options.annotations?.release()
     this.search.destroy()
     for (const slot of this.slots) this.releaseSlot(slot)
     this.slots = []
@@ -430,7 +612,7 @@ export class PdfReader {
     this.hideStatus()
     this.estimate = { width: first.width, height: first.height }
     this.rebuildSlots(handle.pageCount)
-    this.slots[0].page = first
+    this.setPage(this.slots[0], first)
     this.slots[0].size = this.estimate
     this.countEl.textContent = `/ ${handle.pageCount}`
     this.indicatorEl.hidden = false
@@ -471,12 +653,14 @@ export class PdfReader {
       slot.page = null
       slot.loading = false
       slot.size = null
+      slot.frame = null
       this.releaseTextLayer(slot)
     }
     const doc = this.rootEl.ownerDocument
     for (let index = this.slots.length; index < pageCount; index += 1) {
       const el = doc.createElement('div')
       el.className = PAGE_CLASS
+      el.dataset.page = String(index + 1)
       this.pagesEl.appendChild(el)
       this.slots.push({
         index,
@@ -492,6 +676,8 @@ export class PdfReader {
         textLayer: null,
         textTask: null,
         textScale: 0,
+        marksEl: null,
+        frame: null,
       })
     }
   }
@@ -713,7 +899,7 @@ export class PdfReader {
       (page) => {
         if (generation !== this.generation) return
         slot.loading = false
-        slot.page = page
+        this.setPage(slot, page)
         const size = { width: page.width, height: page.height }
         const known = slot.size ?? this.estimate
         slot.size = size
@@ -745,6 +931,13 @@ export class PdfReader {
       canvas.className = CANVAS_CLASS
       slot.el.prepend(canvas)
       slot.canvas = canvas
+      if (this.store) {
+        const marks = this.rootEl.ownerDocument.createElement('div')
+        marks.className = MARKS_CLASS
+        canvas.after(marks)
+        slot.marksEl = marks
+        this.renderMarks(slot)
+      }
     }
     const scale = layout.scales[slot.index]
     const ratio = this.wantedRatio(slot.drawnRatio === 0)
@@ -835,6 +1028,8 @@ export class PdfReader {
       slot.canvas.remove()
       slot.canvas = null
     }
+    slot.marksEl?.remove()
+    slot.marksEl = null
     slot.drawnScale = 0
     slot.drawnRatio = 0
     this.releaseTextLayer(slot)
@@ -879,6 +1074,253 @@ export class PdfReader {
       0,
       Math.min(room, scroller.scrollTop + top - height / 3),
     )
+  }
+
+  // -----------------------------------------------------------------------
+  // Annotations
+  // -----------------------------------------------------------------------
+
+  private setPage(slot: Slot, page: PdfPage): void {
+    slot.page = page
+    slot.frame = {
+      width: page.width,
+      height: page.height,
+      toViewport: (point) => page.toViewportPoint(point, 1),
+    }
+    this.renderMarks(slot)
+  }
+
+  private renderMarks(slot: Slot): void {
+    if (!this.store || !slot.marksEl) return
+    if (!slot.frame) {
+      slot.marksEl.replaceChildren()
+      return
+    }
+    renderAnnotationLayer(
+      slot.marksEl,
+      this.store.forPage(slot.index + 1),
+      slot.frame,
+      this.activeAnnotationId,
+    )
+  }
+
+  private renderAllMarks(): void {
+    for (const slot of this.active) this.renderMarks(slot)
+    if (this.activeAnnotationId && !this.store?.get(this.activeAnnotationId)) {
+      this.activeAnnotationId = null
+    }
+  }
+
+  /** The page slot under a pointer event, and where on it as page
+   * fractions — measured against the page's on-screen box, a ratio a board
+   * camera's scale does not distort. */
+  private pointOnPage(
+    event: MouseEvent,
+  ): { slot: Slot; x: number; y: number; rect: DOMRect } | null {
+    const target = event.target as Element | null
+    const pageEl = target?.closest?.(`.${PAGE_CLASS}`) as HTMLElement | null
+    if (!pageEl || !this.pagesEl.contains(pageEl)) return null
+    const slot = this.slots[Number(pageEl.dataset.page) - 1]
+    if (!slot) return null
+    const rect = pageEl.getBoundingClientRect()
+    if (!(rect.width > 0 && rect.height > 0)) return null
+    return {
+      slot,
+      x: (event.clientX - rect.left) / rect.width,
+      y: (event.clientY - rect.top) / rect.height,
+      rect,
+    }
+  }
+
+  private annotationAt(event: MouseEvent): string | null {
+    const store = this.store
+    const at = this.pointOnPage(event)
+    if (!store || !at?.slot.frame) return null
+    const frame = at.slot.frame
+    const entries = store.forPage(at.slot.index + 1).map((annotation) => ({
+      id: annotation.id,
+      boxes: boxesFor(annotation, frame),
+    }))
+    return hitTestAnnotations(
+      entries,
+      [at.x, at.y],
+      HIT_SLOP_PX / at.rect.width,
+    )
+  }
+
+  private readonly onPagesPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return
+    this.press = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    }
+    if (!this.areaMode) return
+    const at = this.pointOnPage(event)
+    if (!at) return
+    // The press is the frame's, not the start of a text selection.
+    event.preventDefault()
+    const el = this.rootEl.ownerDocument.createElement('div')
+    el.className = AREA_DRAFT_CLASS
+    at.slot.el.appendChild(el)
+    at.slot.el.setPointerCapture(event.pointerId)
+    this.areaDraft = {
+      pointerId: event.pointerId,
+      slot: at.slot,
+      el,
+      startX: at.x,
+      startY: at.y,
+      x: at.x,
+      y: at.y,
+    }
+    this.placeAreaDraft()
+  }
+
+  private readonly onPagesPointerMove = (event: PointerEvent): void => {
+    const draft = this.areaDraft
+    if (!draft || event.pointerId !== draft.pointerId) return
+    const rect = draft.slot.el.getBoundingClientRect()
+    if (!(rect.width > 0 && rect.height > 0)) return
+    draft.x = clamp01((event.clientX - rect.left) / rect.width)
+    draft.y = clamp01((event.clientY - rect.top) / rect.height)
+    this.placeAreaDraft()
+  }
+
+  private placeAreaDraft(): void {
+    const draft = this.areaDraft
+    if (!draft) return
+    placeBox(draft.el, {
+      left: Math.min(draft.startX, draft.x),
+      top: Math.min(draft.startY, draft.y),
+      right: Math.max(draft.startX, draft.x),
+      bottom: Math.max(draft.startY, draft.y),
+    })
+  }
+
+  private cancelAreaDraft(): void {
+    const draft = this.areaDraft
+    if (!draft) return
+    this.areaDraft = null
+    draft.el.remove()
+    if (draft.slot.el.hasPointerCapture(draft.pointerId)) {
+      draft.slot.el.releasePointerCapture(draft.pointerId)
+    }
+  }
+
+  private finishAreaDraft(): void {
+    const draft = this.areaDraft
+    if (!draft) return
+    this.cancelAreaDraft()
+    const page = draft.slot.page
+    const events = this.options.annotationEvents
+    if (!page || !events) return
+    const left = Math.min(draft.startX, draft.x)
+    const right = Math.max(draft.startX, draft.x)
+    const top = Math.min(draft.startY, draft.y)
+    const bottom = Math.max(draft.startY, draft.y)
+    const minHeight = (MIN_AREA_FRACTION * page.width) / page.height
+    if (right - left < MIN_AREA_FRACTION || bottom - top < minHeight) return
+    const [x1, y1] = page.toPdfPoint([left * page.width, top * page.height], 1)
+    const [x2, y2] = page.toPdfPoint(
+      [right * page.width, bottom * page.height],
+      1,
+    )
+    events.onAreaDrawn(this, draft.slot.index + 1, [
+      Math.min(x1, x2),
+      Math.min(y1, y2),
+      Math.max(x1, x2),
+      Math.max(y1, y2),
+    ])
+  }
+
+  private readonly onDocumentPointerUp = (event: PointerEvent): void => {
+    const press = this.press
+    if (!press || event.pointerId !== press.pointerId) return
+    this.press = null
+    if (this.areaDraft) {
+      if (event.type === 'pointerup') this.finishAreaDraft()
+      else this.cancelAreaDraft()
+      return
+    }
+    if (event.type !== 'pointerup') return
+    const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y)
+    // Read on the next frame: the browser settles a drag-selection, and
+    // collapses the old one on a click, after pointerup.
+    const win = this.window()
+    const clickTarget = moved < CLICK_SLOP_PX ? event : null
+    const hit = clickTarget ? this.annotationAt(clickTarget) : null
+    win?.requestAnimationFrame(() => {
+      if (this.destroyed) return
+      if (this.reportSelection()) return
+      if (clickTarget) {
+        this.options.annotationEvents?.onAnnotationClick(this, hit)
+      }
+    })
+  }
+
+  private readonly onPagesContextMenu = (event: MouseEvent): void => {
+    const id = this.annotationAt(event)
+    if (!id) return
+    event.preventDefault()
+    event.stopPropagation()
+    this.options.annotationEvents?.onAnnotationContextMenu(this, id, event)
+  }
+
+  private readonly onSelectionChange = (): void => {
+    if (!this.selectionReported) return
+    const selection = this.rootEl.ownerDocument.getSelection()
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      this.selectionInPages(selection)
+    ) {
+      return
+    }
+    this.selectionReported = false
+    this.options.annotationEvents?.onTextSelection(this, null)
+  }
+
+  private selectionInPages(selection: Selection): boolean {
+    if (selection.rangeCount === 0) return false
+    const range = selection.getRangeAt(0)
+    return (
+      this.pagesEl.contains(range.startContainer) ||
+      this.pagesEl.contains(range.endContainer)
+    )
+  }
+
+  /** Reports the selection on this reader's pages, if there is one. */
+  private reportSelection(): boolean {
+    const events = this.options.annotationEvents
+    const selection = this.rootEl.ownerDocument.getSelection()
+    if (
+      !events ||
+      !selection ||
+      selection.isCollapsed ||
+      !this.selectionInPages(selection)
+    ) {
+      return false
+    }
+    const range = selection.getRangeAt(0)
+    const pieces: YoloModuleHostPdfTextSelectionV1[] = []
+    for (const slot of this.slots) {
+      const piece = slot.textLayer?.describeRange(range)
+      if (piece && piece.text.trim() !== '') pieces.push(piece)
+    }
+    if (pieces.length === 0) return false
+    this.selectionReported = true
+    events.onTextSelection(this, {
+      pieces,
+      getRect: () => {
+        const current = this.rootEl.ownerDocument.getSelection()
+        if (!current || current.rangeCount === 0 || current.isCollapsed) {
+          return null
+        }
+        const rect = current.getRangeAt(0).getBoundingClientRect()
+        return rect.width > 0 || rect.height > 0 ? rect : null
+      },
+    })
+    return true
   }
 
   // -----------------------------------------------------------------------
@@ -957,6 +1399,10 @@ export class PdfReader {
   private window(): Window | null {
     return this.rootEl.ownerDocument.defaultView
   }
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
 }
 
 function isAbort(error: unknown): boolean {
