@@ -1,6 +1,6 @@
 ---
 name: obsidian-cli
-description: Drive Obsidian via the official CLI through terminal_command. Use when the user asks for Obsidian CLI, or when native fs_* / js_eval tools cannot cover Obsidian-specific operations (backlinks, properties, daily notes, command palette, plugin reload, tasks/tags, version history, etc.).
+description: Drive Obsidian through its official CLI from the local OS shell. Use when the user asks for the Obsidian CLI, or for Obsidian-specific operations that reading and writing files cannot do (backlinks, properties, daily notes, command palette, plugin reload, tasks/tags, version history, etc.).
 mode: lazy
 ---
 
@@ -10,8 +10,8 @@ Thin adapter: route to the official CLI executable and let its help command supp
 
 ## When to use
 
-- User explicitly asks for Obsidian CLI, or needs capabilities that `fs_*` / `js_eval` do not cover (Obsidian semantics: backlinks, frontmatter properties, daily notes, command palette, plugin reload, link graph, tasks/tags, file history, etc.).
-- Otherwise prefer native tools (`bash`, `fs_write`, `fs_edit`, …). Do not round-trip through `terminal_command` for simple vault file work — `bash` already covers it.
+- User explicitly asks for Obsidian CLI, or needs Obsidian semantics that reading and writing files cannot provide (backlinks, frontmatter properties, daily notes, command palette, plugin reload, link graph, tasks/tags, file history, etc.).
+- For plain vault file work, use the file tools rather than the CLI.
 
 ## Workflow
 
@@ -25,7 +25,7 @@ Rules:
 - Never launch the interactive TUI (do not run the resolved CLI with no subcommand).
 - Do not use `/Applications/Obsidian.app/Contents/MacOS/obsidian` as the CLI on macOS; that is the app executable, not the preferred CLI binary.
 - Mutating CLI commands may require user approval like any other shell command.
-- Desktop only (`terminal_command` is not available on mobile).
+- Needs the local OS shell, which exists only on desktop.
 
 ## Probe failure
 

@@ -27,4 +27,4 @@ The prompt text to insert.
 
 ## Workflow
 
-Read `YOLO/snippets.md` and append a new `## trigger` block. Create the file with `fs_write` if missing.
+Read `YOLO/snippets.md` and append a new `## trigger` block. Create the file if it is missing.

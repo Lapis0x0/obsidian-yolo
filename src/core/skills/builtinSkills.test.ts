@@ -57,7 +57,7 @@ describe('builtin skills', () => {
     expect(builtin?.content).toContain(
       '/Applications/Obsidian.app/Contents/MacOS/obsidian',
     )
-    expect(builtin?.content).toContain('terminal_command')
+    expect(builtin?.content).toContain('local OS shell')
   })
 
   // Metadata lives in each `SKILL.md` frontmatter and nowhere else. These
