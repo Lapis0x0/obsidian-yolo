@@ -240,7 +240,15 @@ export function parseBoard(raw: string): BoardParseResult {
       ],
     }
   }
+  return parseBoardValue(json)
+}
 
+/**
+ * `parseBoard` for a value already read out of JSON — the same rules, for a
+ * caller that has an object in hand rather than file text (domain/
+ * clipboard.ts, whose payload is a board fragment in JSON Canvas spelling).
+ */
+export function parseBoardValue(json: unknown): BoardParseResult {
   if (!isPlainObject(json)) {
     return {
       ok: false,
@@ -507,7 +515,7 @@ function parseNodeGeometry(
   }
 }
 
-function serializeNode(node: BoardNode): Record<string, unknown> {
+export function serializeNode(node: BoardNode): Record<string, unknown> {
   const common = {
     id: node.id,
     type: node.type,
@@ -645,7 +653,7 @@ function parseEdge(
   }
 }
 
-function serializeEdge(edge: Edge): Record<string, unknown> {
+export function serializeEdge(edge: Edge): Record<string, unknown> {
   return {
     id: edge.id,
     fromNode: edge.fromNode,
