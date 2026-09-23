@@ -1,16 +1,8 @@
 import cx from 'clsx'
 import { ChevronDown, ChevronUp, Eye } from 'lucide-react'
-import {
-  PropsWithChildren,
-  Suspense,
-  lazy,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { PropsWithChildren, useEffect, useMemo, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
-import { useDarkModeContext } from '../../contexts/dark-mode-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
   openMarkdownFile,
@@ -20,40 +12,24 @@ import {
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 
-// Defer react-syntax-highlighter (refractor + prism langs, ~600KB) until a
-// reference block actually renders highlighted code. esbuild keeps the bytes
-// in main.js but skips top-level evaluation until the dynamic import resolves.
-const LazySyntaxHighlighterWrapper = lazy(() =>
-  import('./SyntaxHighlighterWrapper').then((mod) => ({
-    default: mod.MemoizedSyntaxHighlighterWrapper,
-  })),
-)
-
 export default function MarkdownReferenceBlock({
   filename,
   startLine,
   endLine,
-  language,
   previewContent,
 }: PropsWithChildren<{
   filename: string
   startLine: number
   endLine: number
-  language?: string
   /** For PDF references: assistant-provided excerpt (vault read is not plain text). */
   previewContent?: string
 }>) {
   const app = useApp()
-  const { isDarkMode } = useDarkModeContext()
   const { t } = useLanguage()
 
   const [isPreviewMode, setIsPreviewMode] = useState(true)
   const [blockContent, setBlockContent] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
-
-  const wrapLines = useMemo(() => {
-    return !language || ['markdown'].includes(language)
-  }, [language])
 
   const isPdf = filename.toLowerCase().endsWith('.pdf')
 
@@ -158,32 +134,7 @@ export default function MarkdownReferenceBlock({
             <ObsidianMarkdown content={displayContent} scale="sm" />
           </div>
         ) : (
-          <Suspense
-            fallback={
-              <pre
-                className={cx(
-                  'yolo-syntax-highlighter',
-                  filename
-                    ? 'yolo-syntax-highlighter--with-filename'
-                    : 'yolo-syntax-highlighter--standalone',
-                  language === 'markdown'
-                    ? 'yolo-syntax-highlighter--markdown'
-                    : null,
-                )}
-              >
-                {displayContent}
-              </pre>
-            }
-          >
-            <LazySyntaxHighlighterWrapper
-              isDarkMode={isDarkMode}
-              language={language}
-              hasFilename={!!filename}
-              wrapLines={wrapLines}
-            >
-              {displayContent}
-            </LazySyntaxHighlighterWrapper>
-          </Suspense>
+          <pre className="yolo-reference-raw-text">{displayContent}</pre>
         )}
       </div>
     )
