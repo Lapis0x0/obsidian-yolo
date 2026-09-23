@@ -46,6 +46,10 @@ import { parseImageDataUrl } from '../../utils/llm/image'
 
 import { BaseLLMProvider } from './base'
 import {
+  claudeAcceptsSamplingParams,
+  resolveClaudeReasoningRequest,
+} from './claudeReasoning'
+import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
   LLMModelNotFoundException,
@@ -91,23 +95,13 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
-    const thinkingBudget = BedrockProvider.resolveThinkingBudgetTokens(
-      model,
-      request,
-    )
-    const maxTokens =
-      request.max_tokens ??
-      (thinkingBudget !== null
-        ? thinkingBudget + BedrockProvider.DEFAULT_MAX_TOKENS
-        : BedrockProvider.DEFAULT_MAX_TOKENS)
+    const { maxTokens, additionalModelRequestFields } =
+      BedrockProvider.buildReasoning(model, request)
 
     const toolConfig = BedrockProvider.buildToolConfig(
       request.tools,
       request.tool_choice,
     )
-
-    const additionalModelRequestFields =
-      BedrockProvider.buildAdditionalModelRequestFields(model, request)
 
     try {
       const response = await runWithModelRequestPolicy({
@@ -121,10 +115,14 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
               ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
               inferenceConfig: {
                 maxTokens,
-                ...(request.temperature != null
-                  ? { temperature: request.temperature }
+                ...(claudeAcceptsSamplingParams(request.model)
+                  ? {
+                      ...(request.temperature != null
+                        ? { temperature: request.temperature }
+                        : {}),
+                      ...(request.top_p != null ? { topP: request.top_p } : {}),
+                    }
                   : {}),
-                ...(request.top_p != null ? { topP: request.top_p } : {}),
               },
               ...(toolConfig ? { toolConfig } : {}),
               ...(additionalModelRequestFields
@@ -200,23 +198,13 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
-    const thinkingBudget = BedrockProvider.resolveThinkingBudgetTokens(
-      model,
-      request,
-    )
-    const maxTokens =
-      request.max_tokens ??
-      (thinkingBudget !== null
-        ? thinkingBudget + BedrockProvider.DEFAULT_MAX_TOKENS
-        : BedrockProvider.DEFAULT_MAX_TOKENS)
+    const { maxTokens, additionalModelRequestFields } =
+      BedrockProvider.buildReasoning(model, request)
 
     const toolConfig = BedrockProvider.buildToolConfig(
       request.tools,
       request.tool_choice,
     )
-
-    const additionalModelRequestFields =
-      BedrockProvider.buildAdditionalModelRequestFields(model, request)
 
     try {
       const response = await runWithModelRequestPolicy({
@@ -230,10 +218,14 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
               ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
               inferenceConfig: {
                 maxTokens,
-                ...(request.temperature != null
-                  ? { temperature: request.temperature }
+                ...(claudeAcceptsSamplingParams(request.model)
+                  ? {
+                      ...(request.temperature != null
+                        ? { temperature: request.temperature }
+                        : {}),
+                      ...(request.top_p != null ? { topP: request.top_p } : {}),
+                    }
                   : {}),
-                ...(request.top_p != null ? { topP: request.top_p } : {}),
               },
               ...(toolConfig ? { toolConfig } : {}),
               ...(additionalModelRequestFields
@@ -601,36 +593,51 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  private static resolveThinkingBudgetTokens(
+  /**
+   * `maxTokens` plus the reasoning fields Converse forwards to the model.
+   * A Claude model gets its generation's shape (`resolveClaudeReasoningRequest`);
+   * any other model with Anthropic-style reasoning keeps the fixed budget.
+   * `maxTokens` must cover thinking too, and a `budget_tokens` must stay
+   * below it, so the budget is added on top of the reply size.
+   */
+  private static buildReasoning(
     model: ChatModel,
     request: LLMRequestNonStreaming | LLMRequestStreaming,
-  ): number | null {
+  ): {
+    maxTokens: number
+    additionalModelRequestFields?: BedrockDocumentType
+  } {
+    const replyTokens = request.max_tokens ?? BedrockProvider.DEFAULT_MAX_TOKENS
     const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
-    if (
-      model.reasoningType !== 'anthropic' ||
-      level === undefined ||
-      level === 'off'
-    ) {
-      return null
+    if (model.reasoningType !== 'anthropic' || level === undefined) {
+      return { maxTokens: replyTokens }
     }
-    if (level === 'auto') {
-      return REASONING_META.medium.budget
-    }
-    return REASONING_META[level].budget
-  }
 
-  private static buildAdditionalModelRequestFields(
-    model: ChatModel,
-    request: LLMRequestNonStreaming | LLMRequestStreaming,
-  ): BedrockDocumentType | undefined {
-    const budget = BedrockProvider.resolveThinkingBudgetTokens(model, request)
-    if (budget === null) {
-      return undefined
+    const claude = resolveClaudeReasoningRequest(request.model, level)
+    if (claude) {
+      if (!claude.thinking) return { maxTokens: replyTokens }
+      return {
+        maxTokens:
+          claude.thinking.type === 'enabled'
+            ? replyTokens + claude.thinkingTokens
+            : (request.max_tokens ??
+              BedrockProvider.DEFAULT_MAX_TOKENS + claude.thinkingTokens),
+        additionalModelRequestFields: {
+          thinking: claude.thinking,
+          ...(claude.effort
+            ? { output_config: { effort: claude.effort } }
+            : {}),
+        },
+      }
     }
+
+    if (level === 'off') return { maxTokens: replyTokens }
+    const budget = REASONING_META[level === 'auto' ? 'medium' : level].budget
     return {
-      thinking: {
-        type: 'enabled',
-        budget_tokens: budget,
+      maxTokens:
+        request.max_tokens ?? BedrockProvider.DEFAULT_MAX_TOKENS + budget,
+      additionalModelRequestFields: {
+        thinking: { type: 'enabled', budget_tokens: budget },
       },
     }
   }
