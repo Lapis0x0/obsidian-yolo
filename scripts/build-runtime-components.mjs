@@ -331,28 +331,30 @@ function componentPlugins(componentId, workerMetafiles) {
 }
 
 /**
- * The files pdf.js requests through `BinaryDataFactory` (see pdf-engine's
- * `InlineBinaryDataFactory`), inlined as base64 so the component never
- * fetches anything at runtime. Keyed by pdf.js's own request `kind`.
+ * The files pdf.js requests through its `StandardFontDataFactory` and
+ * `WasmFactory` (see pdf-engine's `InlineBinaryDataFactory`), inlined as
+ * base64 so the component never fetches anything at runtime. Keyed by kind.
  * Stored uncompressed on purpose: registry.json pins this artifact's sha256,
  * and CI rebuilds it on a different Node/zlib/CPU, where compressed bytes
  * are not guaranteed to be identical.
  * - Standard fonts: with pdf.js's browser default `useSystemFonts`, a
  *   non-embedded standard font resolves to a system font, and only Symbol
  *   and ZapfDingbats are ever requested, so those are the only two shipped.
- * - `jbig2.wasm` / `openjpeg.wasm`: the only JBIG2, CCITT and JPEG 2000
- *   decoders since pdf.js 5 (scanned PDFs render blank without them). The
- *   `*_nowasm_fallback.js` variants are left out — every supported WebView
- *   has WebAssembly — and so is `qcms_bg.wasm`, which pdf.js only uses with
- *   `useWorkerFetch`.
+ * - `openjpeg.wasm`: pdf.js 5.4's only JPEG 2000 decoder once its
+ *   `openjpeg_nowasm_fallback.js` is left out (every supported WebView has
+ *   WebAssembly); without it JPX images render blank.
+ * - `jbig2.wasm`: pdf.js 5.4's default JBIG2 decoder; its JS decoder is only
+ *   a fallback after the wasm one fails, with a warning per image. CCITT is
+ *   decoded in JS and needs nothing. `qcms_bg.wasm` is left out: pdf.js only
+ *   uses it with `useWorkerFetch`.
  */
 async function readPdfBinaryData() {
   const sources = {
-    standardFontDataUrl: [
+    standardFontData: [
       'standard_fonts/FoxitDingbats.pfb',
       'standard_fonts/FoxitSymbol.pfb',
     ],
-    wasmUrl: ['wasm/jbig2.wasm', 'wasm/openjpeg.wasm'],
+    wasm: ['wasm/jbig2.wasm', 'wasm/openjpeg.wasm'],
   }
   const data = {}
   for (const [kind, files] of Object.entries(sources)) {

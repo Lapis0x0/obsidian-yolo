@@ -1,4 +1,9 @@
 import { PDFDocument } from 'pdf-lib'
+// pdfjs-dist is pinned to exactly 5.4.624 (package.json, no caret): it needs
+// Chrome 110 / Safari 16.4, the same floor as the pdf.js Obsidian bundles, so
+// every device that opens PDFs in Obsidian can run this engine. 5.5 raises
+// the floor to Chrome 118, 6.x to Chrome 125 / Safari 18, and 5.6.83-6.2.107
+// carry GHSA-hq66-cqwq-w95j. Do not bump without revisiting that floor.
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import binaryData from 'virtual:pdfjs-binary-data'
 import workerSource from 'virtual:pdfjs-worker-script'
@@ -85,24 +90,25 @@ function pageItemsToText(items: unknown[]): string {
  * pdf.js loads standard font programs and the JBIG2/OpenJPEG wasm decoders
  * on demand. We never let it fetch them from a URL: the component has to work
  * offline and self-contained, so the files are inlined at build time
- * (`virtual:pdfjs-binary-data`) and handed over through this factory, which
- * pdf.js consults on the main thread whenever `useWorkerFetch` is false.
+ * (`virtual:pdfjs-binary-data`) and handed over through these factories,
+ * which pdf.js consults on the main thread whenever `useWorkerFetch` is
+ * false. pdf.js 5.4 asks one factory per kind, each with `fetch({ filename })`.
  */
-class InlineBinaryDataFactory {
-  async fetch({
-    kind,
-    filename,
-  }: {
-    kind: string
-    filename: string
-  }): Promise<Uint8Array> {
-    const encoded = binaryData[kind]?.[filename]
-    if (encoded === undefined) {
-      throw new Error(`PDF engine has no bundled ${kind} file "${filename}"`)
+function inlineBinaryDataFactory(kind: 'standardFontData' | 'wasm') {
+  return class InlineBinaryDataFactory {
+    async fetch({ filename }: { filename: string }): Promise<Uint8Array> {
+      const encoded = binaryData[kind]?.[filename]
+      if (encoded === undefined) {
+        throw new Error(`PDF engine has no bundled ${kind} file "${filename}"`)
+      }
+      return decodeBase64(encoded)
     }
-    return decodeBase64(encoded)
   }
 }
+
+const InlineStandardFontDataFactory =
+  inlineBinaryDataFactory('standardFontData')
+const InlineWasmFactory = inlineBinaryDataFactory('wasm')
 
 function decodeBase64(encoded: string): Uint8Array {
   const binary = atob(encoded)
@@ -120,7 +126,8 @@ function openDocument(bytes: Uint8Array) {
     // here, and pages are drawn on canvases of this document.
     ownerDocument: RENDER_DOCUMENT,
     useWorkerFetch: false,
-    BinaryDataFactory: InlineBinaryDataFactory,
+    StandardFontDataFactory: InlineStandardFontDataFactory,
+    WasmFactory: InlineWasmFactory,
   })
 }
 

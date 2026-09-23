@@ -4,7 +4,7 @@ declare module 'virtual:pdfjs-worker-script' {
 }
 
 declare module 'virtual:pdfjs-binary-data' {
-  /** pdf.js binary-data kind (`standardFontDataUrl`, `wasmUrl`) -> file name -> base64 bytes. */
+  /** binary-data kind (`standardFontData`, `wasm`) -> file name -> base64 bytes. */
   const files: Readonly<Record<string, Readonly<Record<string, string>>>>
   export default files
 }
