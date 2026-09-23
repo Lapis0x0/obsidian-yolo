@@ -66,6 +66,7 @@ import type {
   YoloModuleBackgroundV1,
   YoloModuleCapabilitiesV1,
   YoloModuleChatModeV1,
+  YoloModuleChatSelectionV1,
   YoloModuleChatV1,
   YoloModuleFileTextRendererV1,
   YoloModuleToolSetV1,
@@ -331,6 +332,8 @@ export type ModuleChatCapabilityProviderOptions = Readonly<{
   sink: ModuleChatModeContributionSinkV1
   toolSetSink: ModuleToolSetContributionSinkV1
   fileTextRendererSink: ModuleFileTextRendererContributionSinkV1
+  /** Puts a validated selection into the chat (`YoloModuleChatV1.addSelection`). */
+  addSelection: (selection: YoloModuleChatSelectionV1) => Promise<void>
 }>
 
 export class CoreModuleChatCapabilityProvider
@@ -345,6 +348,7 @@ export class CoreModuleChatCapabilityProvider
       sink: this.options.sink,
       toolSetSink: this.options.toolSetSink,
       fileTextRendererSink: this.options.fileTextRendererSink,
+      addSelection: this.options.addSelection,
     })
   }
 }
@@ -362,6 +366,8 @@ export const UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER: ModuleChatCapabilityPr
         registerFileTextRenderer: () => {
           throw new Error('Module chat capability is unavailable')
         },
+        addSelection: () =>
+          Promise.reject(new Error('Module chat capability is unavailable')),
       }),
       commit: () => undefined,
       activate: () => undefined,
@@ -381,12 +387,14 @@ function createModuleChatCapability({
   sink,
   toolSetSink,
   fileTextRendererSink,
+  addSelection,
 }: {
   moduleId: string
   lifecycle: ModuleLifecycleScope
   sink: ModuleChatModeContributionSinkV1
   toolSetSink: ModuleToolSetContributionSinkV1
   fileTextRendererSink: ModuleFileTextRendererContributionSinkV1
+  addSelection: (selection: YoloModuleChatSelectionV1) => Promise<void>
 }): {
   api: YoloModuleChatV1
   commit(): void
@@ -466,6 +474,10 @@ function createModuleChatCapability({
         fileTextRendererSink.remove(moduleId, snapshot)
       }
     },
+    addSelection: async (selection) => {
+      assertActive()
+      await addSelection(snapshotChatSelection(selection))
+    },
   })
   return {
     api,
@@ -497,6 +509,24 @@ function createModuleChatCapability({
       activationComplete = true
     },
   }
+}
+
+function snapshotChatSelection(
+  selection: YoloModuleChatSelectionV1,
+): YoloModuleChatSelectionV1 {
+  const { path, text, page } = selection
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new TypeError('Module chat selection path must be a string')
+  }
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new TypeError('Module chat selection text must not be empty')
+  }
+  if (page !== undefined && !(Number.isInteger(page) && page >= 1)) {
+    throw new TypeError('Module chat selection page must be a positive integer')
+  }
+  return Object.freeze(
+    page === undefined ? { path, text } : { path, text, page },
+  )
 }
 
 function createModuleBackgroundCapability({

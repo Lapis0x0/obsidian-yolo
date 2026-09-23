@@ -381,6 +381,15 @@ export type YoloModuleFileTextRendererV1 = Readonly<{
   ): string | Promise<string>
 }>
 
+/** Text the user selected in a vault file, as a module's own view shows it. */
+export type YoloModuleChatSelectionV1 = Readonly<{
+  /** Vault path of the file the text was selected in. */
+  path: string
+  text: string
+  /** 1-based page, for a selection in a PDF. */
+  page?: number
+}>
+
 export type YoloModuleChatV1 = Readonly<{
   registerMode(mode: YoloModuleChatModeV1): void
   registerToolSet(set: YoloModuleToolSetV1): void
@@ -388,6 +397,15 @@ export type YoloModuleChatV1 = Readonly<{
   registerFileTextRenderer(
     renderer: YoloModuleFileTextRendererV1,
   ): ModuleDisposer
+  /**
+   * Quotes a selection into the chat: the same thing "add to chat" does for
+   * a selection in a note or in Obsidian's PDF view — the text becomes a
+   * mention of its file (and page) in the chat's input, opening the chat
+   * view when none is open. For a module that draws a file itself (a PDF
+   * read on a board), whose selections the host's own selection watcher can
+   * never see. Rejects when `path` is not a file in the vault.
+   */
+  addSelection(selection: YoloModuleChatSelectionV1): Promise<void>
 }>
 
 export type YoloModulePathsSnapshotV1 = Readonly<{
@@ -759,6 +777,21 @@ export type YoloModuleVaultV1 = {
     linktext: string,
     sourcePath: string,
   ): YoloModuleVaultFileV1 | null
+  /**
+   * A link to `filePath` as the user's settings write one — wiki link or
+   * Markdown link, and the path form ("shortest", relative, absolute) — for
+   * a link written in `sourcePath`. `subpath` is what follows the file name,
+   * starting with `#` (a heading, or a PDF's `#page=3&selection=…`).
+   *
+   * Obsidian's own `generateMarkdownLink`, so a link a module writes or
+   * copies is the link a note would get from the editor. Null when
+   * `filePath` is not a file in the vault.
+   */
+  generateLink(
+    filePath: string,
+    sourcePath: string,
+    subpath?: string,
+  ): string | null
   ensureFolder(folderPath: string): Promise<void>
   createFolder(folderPath: string): Promise<void>
   createText(

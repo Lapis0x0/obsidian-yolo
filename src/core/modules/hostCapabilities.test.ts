@@ -506,6 +506,7 @@ describe('CoreModuleHostCapabilityProvider', () => {
         sink: { add, remove },
         toolSetSink: { add: jest.fn(), remove: jest.fn() },
         fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+        addSelection: jest.fn(),
       }),
     }).create('learning', lifecycle)
 
@@ -524,6 +525,38 @@ describe('CoreModuleHostCapabilityProvider', () => {
 })
 
 describe('CoreModuleChatCapabilityProvider', () => {
+  it('hands a validated selection to the chat and rejects malformed ones', async () => {
+    const addSelection = jest.fn(async () => undefined)
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+      toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection,
+    }).create('whiteboard', lifecycle)
+
+    await activation.api.addSelection({
+      path: 'papers/a.pdf',
+      text: 'quoted',
+      page: 3,
+    })
+    expect(addSelection).toHaveBeenCalledWith({
+      path: 'papers/a.pdf',
+      text: 'quoted',
+      page: 3,
+    })
+    await expect(
+      activation.api.addSelection({ path: 'a.pdf', text: '  ' }),
+    ).rejects.toThrow(TypeError)
+    await expect(
+      activation.api.addSelection({ path: 'a.pdf', text: 'x', page: 0 }),
+    ).rejects.toThrow(TypeError)
+    lifecycle.dispose()
+    await expect(
+      activation.api.addSelection({ path: 'a.pdf', text: 'x' }),
+    ).rejects.toThrow('no longer active')
+  })
+
   it('stages immutable mode declarations and publishes them by module on commit', () => {
     const add = jest.fn()
     const remove = jest.fn()
@@ -532,6 +565,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add, remove },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
     const declaration = baseChatMode()
 
@@ -556,6 +590,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
     activation.activate()
     activation.commit()
@@ -572,6 +607,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode())
@@ -587,6 +623,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode({ id: 'a' }))
@@ -607,6 +644,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add, remove },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode())
@@ -627,6 +665,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
 
     lifecycle.dispose()
@@ -641,6 +680,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
       fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
+      addSelection: jest.fn(),
     }).create('learning', lifecycle)
 
     activation.activate()

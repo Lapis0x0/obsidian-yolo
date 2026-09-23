@@ -9,6 +9,7 @@ import type {
   YoloModuleActionToastV1,
   YoloModuleChatModeToolV1,
   YoloModuleChatModeV1,
+  YoloModuleChatSelectionV1,
   YoloModuleFileMenuActionV1,
   YoloModuleFileViewContextV1,
   YoloModuleFileViewInstanceV1,
@@ -45,6 +46,7 @@ declare global {
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
   type YoloModuleHostChatModeV1 = YoloModuleChatModeV1
   type YoloModuleHostChatModeToolV1 = YoloModuleChatModeToolV1
+  type YoloModuleHostChatSelectionV1 = YoloModuleChatSelectionV1
   type YoloModuleHostFileMenuActionV1 = YoloModuleFileMenuActionV1
   type YoloModuleHostFileViewContextV1 = YoloModuleFileViewContextV1
   type YoloModuleHostFileViewInstanceV1 = YoloModuleFileViewInstanceV1

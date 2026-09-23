@@ -4199,6 +4199,21 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           sink: this.moduleChatModeRegistry,
           toolSetSink: this.moduleToolSetRegistry,
           fileTextRendererSink: this.moduleFileTextRendererRegistry,
+          addSelection: async ({ path, text, page }) => {
+            const file = this.app.vault.getAbstractFileByPath(path)
+            if (!(file instanceof TFile)) {
+              throw new Error(`Not a file in the vault: ${path}`)
+            }
+            // Line numbers mean nothing for a PDF (the host's own PDF
+            // selections carry 0 too); the page is what locates it.
+            await this.getChatViewNavigator().addSelectionBlockToChat({
+              content: text,
+              file,
+              startLine: 0,
+              endLine: 0,
+              ...(page === undefined ? {} : { pageNumber: page }),
+            })
+          },
         }),
         config: new ModuleConfigCapabilityProvider({
           createBackend: (moduleId) => {

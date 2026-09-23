@@ -99,8 +99,14 @@ function createApp(entries: Array<TFile | TFolder>) {
       refs.delete(ref)
     }),
   }
+  const fileManager = {
+    generateMarkdownLink: jest.fn(
+      (file: TFile, sourcePath: string, subpath?: string) =>
+        `[[${file.path}${subpath ?? ''}|from ${sourcePath}]]`,
+    ),
+  }
   return {
-    app: { vault } as unknown as App,
+    app: { vault, fileManager } as unknown as App,
     binary,
     emit: (event: string, ...args: unknown[]) => {
       for (const ref of [...refs]) {
@@ -201,6 +207,16 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
     expect(() => capability.api.getResourceUrl('../escape.png')).toThrow(
       'dot segments',
     )
+
+    // Links are Obsidian's own, written for the given source; a path that is
+    // no file has no link, and a subpath is only ever a `#` fragment.
+    expect(
+      capability.api.generateLink('notes/card.md', 'boards/b.yoloboard', '#x'),
+    ).toBe('[[notes/card.md#x|from boards/b.yoloboard]]')
+    expect(capability.api.generateLink('notes/missing.md', '')).toBeNull()
+    expect(() =>
+      capability.api.generateLink('notes/card.md', '', 'page=1'),
+    ).toThrow('must start with "#"')
 
     lifecycle.dispose()
     expect(() => capability.api.getEntry('notes')).toThrow('not active')
