@@ -1,5 +1,4 @@
 import { backOff } from 'exponential-backoff'
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { App, TFile } from 'obsidian'
 
 import { IndexProgress } from '../../../components/chat-view/QueryProgress'
@@ -32,6 +31,11 @@ import {
 } from '../../../utils/common/yield-to-main'
 import { extractPdfText } from '../../../utils/pdf/extractPdfText'
 import { matchesIncludeExcludeScope } from '../../../utils/scope-match'
+
+import {
+  MARKDOWN_SEPARATORS,
+  RecursiveCharacterTextSplitter,
+} from './textSplitter'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
@@ -402,10 +406,10 @@ export class VectorManager {
       }
     }
 
-    const textSplitter = RecursiveCharacterTextSplitter.fromLanguage(
-      'markdown',
-      { chunkSize: config.chunkSize },
-    )
+    const textSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: config.chunkSize,
+      separators: MARKDOWN_SEPARATORS,
+    })
 
     // Chunkify failures are soft (self-healing): the file is excluded from
     // that batch's diff (its old index is preserved and mtime not
@@ -892,17 +896,13 @@ export class VectorManager {
 
     const fileContent = await this.app.vault.cachedRead(file)
     const sanitized = fileContent.split('\u0000').join('')
-    const docs = await textSplitter.createDocuments([sanitized])
-
     const chunks: DesiredChunk[] = []
-    for (const doc of docs) {
-      const startLine = doc.metadata.loc.lines.from as number
-      const endLine = doc.metadata.loc.lines.to as number
-      const meta: VectorMetaData = { startLine, endLine }
-      const contentHash = await sha256HexPrefix16(doc.pageContent)
+    for (const { content, lines } of textSplitter.splitWithLines(sanitized)) {
+      const meta: VectorMetaData = { startLine: lines.from, endLine: lines.to }
+      const contentHash = await sha256HexPrefix16(content)
       chunks.push({
         path: file.path,
-        content: doc.pageContent,
+        content,
         contentHash,
         metadata: meta,
         mtime: file.stat.mtime,
@@ -961,11 +961,9 @@ export class VectorManager {
           mtime: file.stat.mtime,
         })
       } else {
-        const docs = await pageSplitter.createDocuments([trimmed])
-        for (const doc of docs) {
-          const from = doc.metadata.loc.lines.from as number
-          const to = doc.metadata.loc.lines.to as number
-          const content = `[page ${pageNum}]\n${doc.pageContent}`
+        for (const chunk of pageSplitter.splitWithLines(trimmed)) {
+          const { from, to } = chunk.lines
+          const content = `[page ${pageNum}]\n${chunk.content}`
           const contentHash = await sha256HexPrefix16(content)
           chunks.push({
             path: file.path,

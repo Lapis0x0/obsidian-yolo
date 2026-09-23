@@ -125,7 +125,6 @@
     "https-proxy-agent": "^7.0.6",
     "jszip": "^3.10.1",
     "just-bash": "3.2.0",
-    "langchain": "^0.3.2",
     "lexical": "^0.17.1",
     "lodash.debounce": "^4.0.8",
     "lodash.isequal": "^4.5.0",

@@ -27,7 +27,6 @@ jest.mock('../../../utils/pdf/extractPdfText', () => ({
 // mocked one — see `09-c3-codex-fixes.md` section B).
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 
 import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
 import { IndexedDbVectorStore } from '../../vector-store/IndexedDbVectorStore'
@@ -36,6 +35,10 @@ import {
   vectorDatabaseName,
 } from '../../vector-store/vectorDatabase'
 
+import {
+  MARKDOWN_SEPARATORS,
+  RecursiveCharacterTextSplitter,
+} from './textSplitter'
 import { VectorManager } from './VectorManager'
 
 type ManagerInternals = {
@@ -596,13 +599,14 @@ describe('VectorManager.reconcile', () => {
     // must call deleteVectorsByPaths so the reused/bumped row is removed too;
     // otherwise it would survive carrying the fresh mtime and freeze the gap.
     const content = `${'A'.repeat(900)}\n\n${'B'.repeat(900)}`
-    const splitter = RecursiveCharacterTextSplitter.fromLanguage('markdown', {
+    const splitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
+      separators: MARKDOWN_SEPARATORS,
     })
-    const docs = await splitter.createDocuments([content])
+    const docs = splitter.splitWithLines(content)
     expect(docs.length).toBe(2)
     const firstDoc = docs[0]
-    const firstHash = await sha256HexPrefix16(firstDoc.pageContent)
+    const firstHash = await sha256HexPrefix16(firstDoc.content)
 
     // Seed the existing row to match the FIRST desired chunk's identity and
     // content hash, but with a stale mtime so it is reused via bumpMtime.
@@ -615,8 +619,8 @@ describe('VectorManager.reconcile', () => {
           mtime: 100,
           content_hash: firstHash,
           metadata: {
-            startLine: firstDoc.metadata.loc.lines.from as number,
-            endLine: firstDoc.metadata.loc.lines.to as number,
+            startLine: firstDoc.lines.from,
+            endLine: firstDoc.lines.to,
           },
         },
       ],
