@@ -38,7 +38,9 @@ export function isCanvasPath(path: string): boolean {
  * The three media lists are exactly the extensions Obsidian itself registers
  * image/audio/video views for (read off `app.viewRegistry.typeByExtension` in
  * a running 1.13 instance) — behaviour alignment starts with agreeing on what
- * counts as an image. `unsupported` covers everything left, PDF included.
+ * counts as an image. `pdf` is Obsidian's single PDF extension, and a card of
+ * its own: a reader over the file (ui/pdf/pdfReader.ts). `unsupported` covers
+ * everything left.
  *
  * `html` is ours rather than Obsidian's: Obsidian registers no view for it at
  * all, so a `.html` file in a vault is inert. On a board it is a page, shown
@@ -49,6 +51,7 @@ export function isCanvasPath(path: string): boolean {
  */
 export type FileNodeKind =
   | 'markdown'
+  | 'pdf'
   | 'image'
   | 'audio'
   | 'video'
@@ -83,6 +86,7 @@ const AUDIO_EXTENSIONS = [
  */
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'mkv'] as const
 const HTML_EXTENSIONS = ['html', 'htm'] as const
+const PDF_EXTENSION = 'pdf'
 
 /** The extension a dropped HTML document is saved under. `.htm` is read but
  * never written: one spelling in, one spelling out. */
@@ -91,6 +95,7 @@ export const HTML_EXTENSION = '.html'
 export function fileNodeKind(path: string): FileNodeKind {
   if (isMarkdownPath(path)) return 'markdown'
   const extension = extensionOf(path)
+  if (extension === PDF_EXTENSION) return 'pdf'
   if ((IMAGE_EXTENSIONS as readonly string[]).includes(extension))
     return 'image'
   if ((AUDIO_EXTENSIONS as readonly string[]).includes(extension))

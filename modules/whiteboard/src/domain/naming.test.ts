@@ -30,8 +30,12 @@ describe('fileNodeKind', () => {
     expect(fileNodeKind('Board/legacy.HTM')).toBe('html')
   })
 
-  it('leaves everything else unsupported, PDF included', () => {
-    expect(fileNodeKind('papers/foo.pdf')).toBe('unsupported')
+  it('reads a PDF as its own kind, whatever the case of its extension', () => {
+    expect(fileNodeKind('papers/foo.pdf')).toBe('pdf')
+    expect(fileNodeKind('papers/SCAN.PDF')).toBe('pdf')
+  })
+
+  it('leaves everything else unsupported', () => {
     expect(fileNodeKind('data/table.csv')).toBe('unsupported')
     expect(fileNodeKind('Assets/README')).toBe('unsupported')
     expect(fileNodeKind('.gitignore')).toBe('unsupported')

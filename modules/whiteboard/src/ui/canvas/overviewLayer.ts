@@ -111,6 +111,9 @@ export type OverviewLayerCallbacks = Readonly<{
    * element; here it is the same numbers, drawn.
    */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
+  /** Localized "name · p. N" for a PDF card read past page 1 — see
+   * ui/lod.ts's `nodeTitleText`. */
+  pdfPageLabel: (name: string, page: number) => string
 }>
 
 /**
@@ -468,7 +471,7 @@ export class OverviewLayer {
     ctx.textBaseline = 'middle'
     for (const card of visible) {
       if (card.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      const title = nodeTitleText(card.node)
+      const title = nodeTitleText(card.node, this.callbacks.pdfPageLabel)
       if (title.length === 0) continue
       ctx.fillText(
         title,

@@ -64,7 +64,7 @@ export const en = {
     webDropHint: 'or drop an HTML file here',
     noMatches: 'No matching file.',
     createNote: 'Create note "{name}"',
-    noMedia: 'This vault has no images, audio or video.',
+    noMedia: 'This vault has no images, audio, video or PDFs.',
   },
   // Floating toolbar over the current selection.
   toolbar: {
@@ -102,7 +102,7 @@ export const en = {
   notice: {
     convertedToNote: 'Card saved as {path}',
     dropUnsupported:
-      'Only notes, images, audio, video and HTML files can be dropped onto a whiteboard.',
+      'Only notes, PDFs, images, audio, video and HTML files can be dropped onto a whiteboard.',
     imported: 'Imported as {path}',
     importedAll:
       'Imported {imported} Canvas file(s); {failed} could not be read.',
@@ -133,6 +133,12 @@ export const en = {
     linkNotWeb: 'Not a web address',
     linkNotWebHint:
       'Only http and https pages can be shown. This card points at "{url}".',
+  },
+  pdf: {
+    loading: 'Opening PDF…',
+    openFailed: 'Could not open this PDF',
+    pageInput: 'Page',
+    pageTitle: '{name} · p. {page}',
   },
   error: {
     title: 'Could not read this whiteboard',

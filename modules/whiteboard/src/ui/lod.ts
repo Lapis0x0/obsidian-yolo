@@ -7,7 +7,7 @@
 // ever changes.
 
 import type { BoardNode } from '../domain/fileFormat'
-import { basenameWithoutExtension } from '../domain/naming'
+import { basenameWithoutExtension, fileNodeKind } from '../domain/naming'
 
 import {
   CARD_CONTENT_EXTRA_LINES,
@@ -57,11 +57,25 @@ function truncate(text: string, maxLength: number): string {
  * common way to title one — would otherwise wear its syntax in the one place
  * the syntax is never rendered. Only the heading marker goes; a first line
  * that starts with a bullet or a quote is prose the user wrote that way.
+ *
+ * A PDF card read past its first page also says which page it is on
+ * (`pageLabel`, the caller's localized "name · p. N"), because below the
+ * threshold that is all a card has to say about where its reader was — and a
+ * board of papers is exactly the board zoomed out to find one.
  */
-export function nodeTitleText(node: BoardNode): string {
+export function nodeTitleText(
+  node: BoardNode,
+  pageLabel?: (name: string, page: number) => string,
+): string {
   switch (node.type) {
-    case 'file':
-      return basenameWithoutExtension(node.file)
+    case 'file': {
+      const name = basenameWithoutExtension(node.file)
+      const page = Math.floor(node.startPage ?? 1)
+      if (!pageLabel || page <= 1 || fileNodeKind(node.file) !== 'pdf') {
+        return name
+      }
+      return pageLabel(name, page)
+    }
     case 'link':
       return truncate(node.url, MAX_TITLE_LENGTH)
     case 'group':

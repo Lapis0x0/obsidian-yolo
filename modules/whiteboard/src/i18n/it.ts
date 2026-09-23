@@ -61,7 +61,7 @@ export const it = {
     webDropHint: 'oppure trascina qui un file HTML',
     noMatches: 'Nessun file corrispondente.',
     createNote: 'Crea la nota "{name}"',
-    noMedia: 'Questo vault non contiene immagini, audio o video.',
+    noMedia: 'Questo vault non contiene immagini, audio, video o PDF.',
   },
   toolbar: {
     color: 'Imposta colore',
@@ -97,7 +97,7 @@ export const it = {
   notice: {
     convertedToNote: 'Scheda salvata come {path}',
     dropUnsupported:
-      'Su una lavagna si possono trascinare solo note, immagini, audio, video e file HTML.',
+      'Su una lavagna si possono trascinare solo note, PDF, immagini, audio, video e file HTML.',
     imported: 'Importato come {path}',
     importedAll:
       'Importati {imported} file Canvas; {failed} non sono stati letti.',
@@ -129,6 +129,12 @@ export const it = {
     linkNotWeb: 'Non è un indirizzo web',
     linkNotWebHint:
       'Si possono mostrare solo pagine http e https. Questa scheda punta a "{url}".',
+  },
+  pdf: {
+    loading: 'Apertura del PDF…',
+    openFailed: 'Impossibile aprire questo PDF',
+    pageInput: 'Pagina',
+    pageTitle: '{name} · p. {page}',
   },
   error: {
     title: 'Impossibile leggere questa lavagna',

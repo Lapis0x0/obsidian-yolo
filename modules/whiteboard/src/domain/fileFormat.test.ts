@@ -243,6 +243,76 @@ describe('parseBoard / serializeBoard', () => {
     })
   })
 
+  describe('startPage', () => {
+    const pdfNode = (extra: Record<string, unknown>): string =>
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 'p1',
+            type: 'file',
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 10,
+            file: 'papers/foo.pdf',
+            ...extra,
+          },
+        ],
+      })
+
+    it('round-trips a PDF card reading position', () => {
+      const board = requireOk(parseBoard(pdfNode({ startPage: 3.25 })))
+      expect((board.nodes[0] as { startPage?: number }).startPage).toBe(3.25)
+      expect(board.nodes[0].extra).toEqual({})
+      expect(JSON.parse(serializeBoard(board)).nodes[0].startPage).toBe(3.25)
+    })
+
+    it('writes no field for a PDF read from the top of page 1', () => {
+      const board = requireOk(parseBoard(pdfNode({})))
+      expect('startPage' in JSON.parse(serializeBoard(board)).nodes[0]).toBe(
+        false,
+      )
+    })
+
+    it('drops a position that names no place in a document', () => {
+      for (const value of [1, 0.5, -2, 'three', null, NaN, {}]) {
+        const board = requireOk(parseBoard(pdfNode({ startPage: value })))
+        expect(
+          (board.nodes[0] as { startPage?: number }).startPage,
+        ).toBeUndefined()
+      }
+    })
+
+    it('keeps a file node line window and page window apart', () => {
+      const board = requireOk(
+        parseBoard(pdfNode({ startLine: 12, startPage: 2.5 })),
+      )
+      expect(board.nodes[0]).toMatchObject({ startLine: 12, startPage: 2.5 })
+    })
+
+    it('is carried as an unknown field on nodes that have no pages', () => {
+      const raw = JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 't',
+            type: 'text',
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            text: 'a',
+            startPage: 4,
+          },
+        ],
+      })
+      const board = requireOk(parseBoard(raw))
+      expect(board.nodes[0].extra).toEqual({ startPage: 4 })
+      expect(JSON.parse(serializeBoard(board)).nodes[0].startPage).toBe(4)
+    })
+  })
+
   describe('unknown-field forward compatibility', () => {
     it('preserves and round-trips unknown fields at the file, node, and edge level', () => {
       const raw = JSON.stringify({

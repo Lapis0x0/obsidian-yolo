@@ -9,6 +9,7 @@ import {
   type NodePatch,
   addEdge,
   addNode,
+  boardWithPageWindow,
   boardWithReadingWindow,
   moveNodes,
   removeEdge,
@@ -366,6 +367,42 @@ describe('updateEdge', () => {
     expect(() => updateEdge(board, 'missing', { toNode: 'c3' })).toThrow(
       /not found/i,
     )
+  })
+})
+
+describe('boardWithPageWindow', () => {
+  const pdfCard = (startPage?: number): BoardNode => ({
+    id: 'p',
+    type: 'file',
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    file: 'papers/foo.pdf',
+    ...(startPage === undefined ? {} : { startPage }),
+    extra: {},
+  })
+
+  it('records where a PDF card is being read, to two decimals', () => {
+    const next = boardWithPageWindow(boardWith([pdfCard()]), 'p', 3.25678)
+    expect((next.nodes[0] as { startPage?: number }).startPage).toBe(3.26)
+  })
+
+  it('drops the field for a card back at the top of page 1', () => {
+    const next = boardWithPageWindow(boardWith([pdfCard(4)]), 'p', 1.001)
+    expect('startPage' in next.nodes[0]).toBe(false)
+  })
+
+  it('returns the same board when nothing moved', () => {
+    const board = boardWith([pdfCard(2.5)])
+    expect(boardWithPageWindow(board, 'p', 2.5)).toBe(board)
+    expect(boardWithPageWindow(board, 'p', 2.501)).toBe(board)
+  })
+
+  it('ignores a node that has no pages, or one that is gone', () => {
+    const board = boardWith([textCard('a')])
+    expect(boardWithPageWindow(board, 'a', 3)).toBe(board)
+    expect(boardWithPageWindow(board, 'missing', 3)).toBe(board)
   })
 })
 

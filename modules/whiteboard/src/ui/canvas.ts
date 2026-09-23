@@ -90,6 +90,7 @@ import {
 import {
   addEdge,
   addNode,
+  boardWithPageWindow,
   boardWithReadingWindow,
   moveNodes,
   removeEdge,
@@ -786,6 +787,10 @@ export class WhiteboardCanvas {
       if (line !== null) {
         board = this.boardWithSnappedWindow(board, this.focusedNodeId, line)
       }
+      const page = this.cardRenderer.getPdfPosition(this.focusedNodeId)
+      if (page !== null) {
+        board = boardWithPageWindow(board, this.focusedNodeId, page)
+      }
     }
     if (this.editing) {
       const liveText = this.editing.editor.getValue()
@@ -996,6 +1001,7 @@ export class WhiteboardCanvas {
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.renamingEdgeId,
       getLiveRects: () => this.liveNodeRects,
+      pdfPageLabel: this.pdfPageLabel,
     })
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
@@ -1135,9 +1141,18 @@ export class WhiteboardCanvas {
       getMountedCount: () => this.engine.mounted.size,
       purgeNode: (id) => this.purgeNodeRuntime(id),
       getSourcePath: () => this.sourcePathForBoard(),
+      getViewScale: () => this.cameraController.view.scale,
+      pdfPageLabel: this.pdfPageLabel,
       reportError: (stage, error) => this.reportError(stage, error),
       t: (key, fallback) => this.t(key, fallback),
     })
+    // A PDF card draws its pages for the zoom they are seen at, so it has to
+    // hear about every zoom — and redraws once one holds still (the reader's
+    // own settle). Same lifetime as the camera and the renderer, so nothing
+    // to unsubscribe.
+    this.cameraController.subscribeViewChange(() =>
+      this.cardRenderer.setViewScale(this.cameraController.view.scale),
+    )
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
     this.toolbarController = new ToolbarController(this.context, viewport, {
@@ -2885,8 +2900,15 @@ export class WhiteboardCanvas {
    */
   private commitReadingWindow(id: NodeId): void {
     const line = this.cardRenderer.getContentScrollLine(id)
-    if (line === null) return
-    const next = this.boardWithSnappedWindow(this.board, id, line)
+    const page = this.cardRenderer.getPdfPosition(id)
+    // A PDF card's window is a page rather than a line — the same field
+    // idea (fileFormat.ts's `startPage`), in the unit the document speaks.
+    const next =
+      line !== null
+        ? this.boardWithSnappedWindow(this.board, id, line)
+        : page !== null
+          ? boardWithPageWindow(this.board, id, page)
+          : this.board
     if (next === this.board) return
     this.board = next
     this.syncBoardIndex()
@@ -3084,18 +3106,27 @@ export class WhiteboardCanvas {
   // happens while the window is not listening.
   // -----------------------------------------------------------------------
 
+  /** Whether the keyboard is currently typing into something that takes
+   * text: the card being edited, a label being renamed, a PDF card's page
+   * field, a Quick Ask panel. */
+  private isTypingIntoField(): boolean {
+    // Read off the element rather than tested with `instanceof HTMLElement`:
+    // in a popout the element belongs to that window, whose constructor is a
+    // different one, and the test would answer false there.
+    const active = this.context.getDocument().activeElement as
+      | (Element & { isContentEditable?: boolean })
+      | null
+    if (!active) return false
+    return (
+      active.isContentEditable === true ||
+      active.tagName === 'INPUT' ||
+      active.tagName === 'TEXTAREA'
+    )
+  }
+
   private readonly armSpacePan = (): boolean => {
-    // A space typed into something is a space: the card being edited, a
-    // label being renamed, a Quick Ask panel — anything that takes text.
-    const active = this.context.getDocument().activeElement
-    if (
-      active instanceof HTMLElement &&
-      (active.isContentEditable ||
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA')
-    ) {
-      return false
-    }
+    // A space typed into something is a space.
+    if (this.isTypingIntoField()) return false
     // Consumed even while already armed: the key auto-repeats, and each
     // repeat left through would scroll whatever Obsidian scrolls on Space.
     if (!this.spacePanArmed) {
@@ -3164,6 +3195,13 @@ export class WhiteboardCanvas {
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
    * field's doc comment for what the state means. */
+  /** "name · p. N" for a PDF card's title once it has been read past its
+   * first page (ui/lod.ts's `nodeTitleText`). */
+  private readonly pdfPageLabel = (name: string, page: number): string =>
+    this.t('pdf.pageTitle')
+      .replace('{name}', name)
+      .replace('{page}', String(page))
+
   private applyFocusedNode(): void {
     const next =
       this.selectedIds.size === 1
@@ -3261,6 +3299,9 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Backspace',
         handler: () => {
+          // A key typed into a field inside a selected card (a PDF card's
+          // page number) is that field's, not a request to delete the card.
+          if (this.isTypingIntoField()) return false
           this.deleteSelection()
           return true
         },
@@ -3269,6 +3310,7 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Delete',
         handler: () => {
+          if (this.isTypingIntoField()) return false
           this.deleteSelection()
           return true
         },
@@ -3277,6 +3319,7 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Enter',
         handler: () => {
+          if (this.isTypingIntoField()) return false
           if (this.selectedIds.size !== 1) return false
           const id = this.selectedIds.values().next().value
           return id !== undefined && this.editCard(id)
@@ -3915,8 +3958,9 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Every image, audio and video file in the vault, depth-first from
-   * `folderPath`.
+   * Every image, audio, video and PDF file in the vault, depth-first from
+   * `folderPath` — Obsidian Canvas's "add media from vault" offers PDFs
+   * alongside the rest too.
    *
    * The Host API lists markdown files directly (`listMarkdownFiles`) but has
    * nothing equivalent for media, so this walks the tree the same way
@@ -3933,7 +3977,12 @@ export class WhiteboardCanvas {
         continue
       }
       const kind = fileNodeKind(entry.path)
-      if (kind === 'image' || kind === 'audio' || kind === 'video') {
+      if (
+        kind === 'image' ||
+        kind === 'audio' ||
+        kind === 'video' ||
+        kind === 'pdf'
+      ) {
         paths.push(entry.path)
       }
     }

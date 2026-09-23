@@ -25,6 +25,7 @@ import {
   WEB_URL_PATTERN,
 } from '../constants'
 import { cardMarkdownWindow, nodeTitleText } from '../lod'
+import { PdfReader } from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
 
 /** The host's one-pass Markdown renderer. Named through the Host API rather
@@ -132,6 +133,13 @@ export type NodeRuntime = {
    * down (see WEB_FRAME_POOL_CAPACITY and `unmountNode`).
    */
   webFrameUrl: string | null
+  /**
+   * A PDF card's reader, or null when the body holds anything else. Like a
+   * rendered note it is parked rather than destroyed when the card leaves the
+   * viewport (`unmountNode`): its document, its drawn pages and its scroll
+   * position are what coming back would otherwise have to rebuild.
+   */
+  pdfReader: PdfReader | null
   missingFile: boolean
   /** Last known content for a *note* card (its backing file's text), cached
    * because note-card content never lives in `board` — this
@@ -178,6 +186,11 @@ export type CardRendererCallbacks = Readonly<{
    * `destroyRuntime` for the half that moved here. */
   purgeNode: (id: NodeId) => void
   getSourcePath: () => string
+  /** The camera's current zoom — what a PDF card's pages are drawn for. */
+  getViewScale: () => number
+  /** "name · p. N", localized: what a PDF card's title block says once it
+   * has been read past page 1 (ui/lod.ts's `nodeTitleText`). */
+  pdfPageLabel: (name: string, page: number) => string
   reportError: (stage: string, error: unknown) => void
   t: (key: string, fallback?: string) => string
 }>
@@ -213,6 +226,9 @@ export class CardRenderer {
    * `setGroupLabelFontSize`.
    */
   private groupLabelFontPx: number | null = null
+  /** Cards that hold (or held) a PDF reader — what a camera move has to
+   * reach (`setViewScale`). Pruned lazily as their readers go. */
+  private readonly pdfCards = new Set<NodeId>()
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -345,6 +361,7 @@ export class CardRenderer {
         contentSourcePath: null,
         releaseContent: null,
         webFrameUrl: null,
+        pdfReader: null,
         missingFile: false,
         noteText: null,
       })
@@ -404,7 +421,7 @@ export class CardRenderer {
     // position does.
     const titleBlock = doc.createElement('div')
     titleBlock.className = CARD_TITLE_BLOCK_CLASS
-    titleBlock.textContent = nodeTitleText(node)
+    titleBlock.textContent = nodeTitleText(node, this.callbacks.pdfPageLabel)
     el.appendChild(titleBlock)
 
     // Click-to-edit vs. drag-to-move is disambiguated centrally in
@@ -421,6 +438,7 @@ export class CardRenderer {
       contentSourcePath: null,
       releaseContent: null,
       webFrameUrl: null,
+      pdfReader: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
     })
@@ -451,12 +469,19 @@ export class CardRenderer {
     //     very often brings it back moments later: half the mounts in one
     //     measured pan were cards that had just left. Parking them was decided
     //     on that measurement.
+    //   - a PDF card would reopen its document and redraw every page it was
+    //     showing, blank until it had. Parked, it keeps the pages it has drawn
+    //     — which is bounded by what it showed, since pages far from its
+    //     viewport are released anyway — and its document handle; the handle
+    //     is let go when the card is evicted from the pool or deleted, or the
+    //     board closes (`destroyCardContent`).
     //
     // Everything else — media (its "off-screen stops playing" is deliberate),
     // placeholders, groups — is torn down here, because
     // rebuilding it costs nothing worth keeping DOM for.
     if (
       runtime.webFrameUrl !== null ||
+      runtime.pdfReader !== null ||
       runtime.contentRenderer !== null ||
       runtime.contentView !== null
     ) {
@@ -496,6 +521,7 @@ export class CardRenderer {
       runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
     )
     this.callbacks.dequeueContentSync(id)
+    runtime.pdfReader?.setVisible(false)
     // Delete before adding so a re-parked card moves to the back of the queue:
     // insertion order is the LRU order (see `parkedCards`).
     this.parkedCards.delete(id)
@@ -527,6 +553,12 @@ export class CardRenderer {
       CARD_FOCUSED_CLASS,
       this.callbacks.isFocused(id),
     )
+    if (runtime.pdfReader) {
+      // The camera kept moving while the card was away; its pages are redrawn
+      // for where it is now once that zoom has settled.
+      runtime.pdfReader.setViewScale(this.callbacks.getViewScale())
+      runtime.pdfReader.setVisible(true)
+    }
   }
 
   /**
@@ -729,6 +761,8 @@ export class CardRenderer {
     runtime.contentSourcePath = null
     runtime.contentMarkdown = null
     runtime.webFrameUrl = null
+    runtime.pdfReader?.destroy()
+    runtime.pdfReader = null
     this.runContentRelease(runtime)
     runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
     runtime.bodyEl?.classList.remove(CARD_BODY_SCROLLS_CLASS)
@@ -775,7 +809,9 @@ export class CardRenderer {
         // Only markdown has text an editor could be seeded from; leaving the
         // cache set from a previous identity would seed one with a stale note.
         runtime.noteText = null
-        if (kind === 'unsupported') {
+        if (kind === 'pdf') {
+          this.renderPdfInto(id, runtime, node.file)
+        } else if (kind === 'unsupported') {
           this.renderUnsupportedFilePlaceholder(runtime, node.file)
         } else if (kind === 'html') {
           this.renderFileFrameInto(runtime, node.file)
@@ -1062,9 +1098,11 @@ export class CardRenderer {
   }
 
   scrollCardContent(id: NodeId, deltaX: number, deltaY: number): boolean {
-    const scroller = this.runtimeByNodeId
-      .get(id)
-      ?.bodyEl?.querySelector<HTMLElement>('.markdown-preview-view')
+    const runtime = this.runtimeByNodeId.get(id)
+    if (runtime?.pdfReader) return runtime.pdfReader.scrollBy(deltaX, deltaY)
+    const scroller = runtime?.bodyEl?.querySelector<HTMLElement>(
+      '.markdown-preview-view',
+    )
     if (!scroller) return false
     const room = scroller.scrollHeight - scroller.clientHeight
     if (room <= 0) return false
@@ -1074,6 +1112,78 @@ export class CardRenderer {
     )
     scroller.scrollLeft += deltaX
     return true
+  }
+
+  /**
+   * Where a PDF card is being read, as a 1-based fractional page, or null
+   * when this card holds no reader.
+   */
+  getPdfPosition(id: NodeId): number | null {
+    return this.runtimeByNodeId.get(id)?.pdfReader?.getPosition() ?? null
+  }
+
+  /**
+   * Tells every PDF card on screen how far the camera is zoomed. Called on
+   * every frame the camera moves, so it touches only the cards holding a
+   * reader; each one redraws for the new zoom once it holds still.
+   */
+  setViewScale(scale: number): void {
+    for (const id of this.pdfCards) {
+      const reader = this.runtimeByNodeId.get(id)?.pdfReader
+      if (!reader) {
+        this.pdfCards.delete(id)
+        continue
+      }
+      if (!this.parkedCards.has(id)) reader.setViewScale(scale)
+    }
+  }
+
+  /**
+   * Puts a PDF on a card: a reader over the whole document, opened where the
+   * card was last read (`startPage`).
+   *
+   * Its body is live content, like a web page's, and for the same reason: a
+   * PDF has text to select, which a masked body cannot give it. So it is
+   * entered the way a web card is — double-click, or Enter on the selected
+   * card — and until then a press on it is a press on the card
+   * (canvas.ts's `enterLiveContent`). Scrolling needs no entering: the
+   * focused card takes the wheel, as a note card does.
+   *
+   * A card that already holds a reader over this file keeps it: this is
+   * reached again on every focus change and every modify event, and the
+   * reader handles a changed file itself (it reopens, in place). What changes
+   * here is only whether it is the card being read — the one whose pages
+   * carry text layers.
+   */
+  private renderPdfInto(id: NodeId, runtime: NodeRuntime, path: string): void {
+    const existing = runtime.pdfReader
+    if (existing && existing.path === path) {
+      existing.setInteractive(this.callbacks.isFocused(id))
+      existing.retryIfFailed()
+      return
+    }
+    if (!this.callbacks.canBuildContent()) {
+      this.callbacks.queueContentSync(id)
+      return
+    }
+    this.destroyCardContent(runtime)
+    const bodyEl = runtime.bodyEl
+    if (!bodyEl) return
+    const node = this.callbacks.getNode(id)
+    const reader = new PdfReader({
+      pdf: this.host.pdf,
+      path,
+      container: bodyEl,
+      position: node?.type === 'file' ? node.startPage : undefined,
+      viewScale: this.callbacks.getViewScale(),
+      interactive: this.callbacks.isFocused(id),
+      t: (key) => this.callbacks.t(key),
+      canStartWork: () => this.callbacks.canBuildContent(),
+      reportError: (stage, error) => this.callbacks.reportError(stage, error),
+    })
+    runtime.pdfReader = reader
+    bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
+    this.pdfCards.add(id)
   }
 
   private renderMissingFilePlaceholder(
@@ -1090,7 +1200,7 @@ export class CardRenderer {
   }
 
   /** What a file card shows while its file type has no card of its own — a
-   * PDF, anything else. Named after the file so the card still says
+   * CSV, an archive, anything else. Named after the file so the card still says
    * which one it is. */
   private renderUnsupportedFilePlaceholder(
     runtime: NodeRuntime,
@@ -1126,7 +1236,7 @@ export class CardRenderer {
   private renderMediaInto(
     runtime: NodeRuntime,
     path: string,
-    kind: Exclude<FileNodeKind, 'markdown' | 'html' | 'unsupported'>,
+    kind: Exclude<FileNodeKind, 'markdown' | 'pdf' | 'html' | 'unsupported'>,
   ): void {
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl

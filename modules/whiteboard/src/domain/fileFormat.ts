@@ -80,6 +80,21 @@ export type BoardNodeBase = Readonly<{
  */
 type ReadingWindow = Readonly<{ startLine?: number }>
 
+/**
+ * Where a PDF card is being read: the same window as `startLine`, in the
+ * coordinate a paged document speaks. The integer part is the 1-based page at
+ * the card's top edge and the fraction how far down that page the edge sits —
+ * 3.25 is page 3 with its top quarter scrolled past.
+ *
+ * A fraction of the page rather than a pixel offset, because nothing about a
+ * card fixes its pixels: the card can be resized, which re-lays every page at
+ * a new width, and the same place has to come back. Absent means the top of
+ * page 1. A separate field rather than `startLine` read differently: a file
+ * node's kind follows its path, and a card whose file is renamed from `.md`
+ * to `.pdf` must not reinterpret a line number as a page.
+ */
+type PageWindow = Readonly<{ startPage?: number }>
+
 /** JSON Canvas text node: markdown that lives in the board file itself. */
 export type TextNode = BoardNodeBase &
   ReadingWindow &
@@ -89,15 +104,16 @@ export type TextNode = BoardNodeBase &
   }>
 
 /**
- * JSON Canvas file node: a reference to a vault file. Markdown, image, audio
- * and video files each render as their own kind of card (domain/naming.ts's
- * `fileNodeKind`); every other extension renders as a placeholder until the
- * PDF card lands. One node type rather than the old `note`/`pdf` pair,
+ * JSON Canvas file node: a reference to a vault file. Markdown, PDF, image,
+ * audio, video and HTML files each render as their own kind of card
+ * (domain/naming.ts's `fileNodeKind`); every other extension renders as a
+ * placeholder. One node type rather than the old `note`/`pdf` pair,
  * because "which file is this" is a path question, not a schema question —
  * and Canvas has always modelled it that way.
  */
 export type FileNode = BoardNodeBase &
   ReadingWindow &
+  PageWindow &
   Readonly<{
     type: 'file'
     /** Vault-relative path to the backing file. */
@@ -309,7 +325,12 @@ export function serializeBoard(board: Board): string {
 
 const NODE_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'color'] as const
 const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text', 'startLine'] as const
-const FILE_NODE_KEYS = [...NODE_COMMON_KEYS, 'file', 'startLine'] as const
+const FILE_NODE_KEYS = [
+  ...NODE_COMMON_KEYS,
+  'file',
+  'startLine',
+  'startPage',
+] as const
 const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
 const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
 
@@ -393,6 +414,7 @@ function parseNode(
         type: 'file',
         file,
         ...parseReadingWindow(entry),
+        ...parsePageWindow(entry),
         extra: extractExtra(entry, FILE_NODE_KEYS),
       }
     }
@@ -448,6 +470,16 @@ function parseReadingWindow(entry: Record<string, unknown>): {
   return { startLine: value }
 }
 
+/** The same rule for a page window: the top of page 1 is 1, and anything
+ * that is not a place at or past it is no window at all. */
+function parsePageWindow(entry: Record<string, unknown>): {
+  startPage?: number
+} {
+  const value = entry.startPage
+  if (!isFiniteNumber(value) || value <= 1) return {}
+  return { startPage: value }
+}
+
 function parseNodeGeometry(
   entry: Record<string, unknown>,
   index: number,
@@ -498,6 +530,7 @@ function serializeNode(node: BoardNode): Record<string, unknown> {
         ...common,
         file: node.file,
         startLine: node.startLine,
+        startPage: node.startPage,
         ...node.extra,
       }
     case 'link':

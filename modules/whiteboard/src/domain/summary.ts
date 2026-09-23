@@ -143,7 +143,7 @@ function position(node: BoardNode): string {
 
 /**
  * The kind a model should reason about, which is finer than the file format's
- * four node types: a `file` node is a note, an image, or a media file
+ * four node types: a `file` node is a note, a PDF, an image, or a media file
  * depending on its extension, and those behave differently enough (a note has
  * text to read and edit; an image does not) that flattening them to "file"
  * would hide the distinction that matters.
@@ -158,6 +158,8 @@ function cardKind(card: BoardNode): string {
       switch (fileNodeKind(card.file)) {
         case 'markdown':
           return 'note'
+        case 'pdf':
+          return 'pdf'
         case 'image':
           return 'image'
         case 'audio':

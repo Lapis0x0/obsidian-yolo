@@ -871,6 +871,140 @@
   max-height: 100%;
 }
 
+/* --- PDF cards -------------------------------------------------------------
+ * A continuous column of pages (ui/pdf/pdfReader.ts). The reader brings its
+ * own scroller, like every other card surface, and keeps it scrollbar-free:
+ * the content mask makes a scrollbar undraggable until the card is entered,
+ * and toggling one on selection would change the column's width and redraw
+ * every page. The wheel scrolls the focused card (canvas.ts's
+ * `scrollFocusedCardBy`); the page field says where it is.
+ *
+ * The colours are the ones Obsidian's own PDF view uses — `--pdf-background`
+ * around the pages, `--pdf-page-background` behind them before they are
+ * drawn, `--pdf-shadow` under them — so a PDF on a board looks like the same
+ * PDF opened in a tab. */
+
+.yolo-whiteboard-pdf-reader {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--pdf-background, var(--background-secondary));
+}
+
+.yolo-whiteboard-pdf-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.yolo-whiteboard-pdf-pages {
+  width: max-content;
+  min-width: 100%;
+}
+
+.yolo-whiteboard-pdf-page {
+  position: relative;
+  background: var(--pdf-page-background, #ffffff);
+  box-shadow: var(--pdf-shadow);
+}
+
+.yolo-whiteboard-pdf-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Dark themes read a PDF inverted. Obsidian gets there by patching pdf.js to
+ * draw inverted (its opt-in "adapt to theme"); our engine runs stock pdf.js,
+ * so the same result comes from a filter on the picture. On the canvas alone:
+ * the text layer above it carries the selection highlight, which has to stay
+ * the theme's selection colour rather than its inverse. Inverting to 0.88
+ * rather than all the way puts a white page at the theme's own background
+ * instead of pure black, and the hue rotation brings coloured figures back to
+ * their own hues. */
+.theme-dark .yolo-whiteboard-pdf-canvas {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+.theme-dark .yolo-whiteboard-pdf-page {
+  background: var(--background-primary);
+}
+
+/* The host styles the layer itself (src/styles/pdf/text-layer.css): this is
+ * only the box it fills, over the page. */
+.yolo-whiteboard-pdf-text {
+  position: absolute;
+  inset: 0;
+}
+
+.yolo-whiteboard-pdf-indicator {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.yolo-whiteboard-pdf-indicator[hidden],
+.yolo-whiteboard-pdf-status[hidden] {
+  display: none;
+}
+
+/* A bare number field: no frame, no padding, no height of its own — the pill
+ * around it is the control's shape. Reset explicitly because Obsidian styles
+ * every `input[type=text]` globally. */
+input.yolo-whiteboard-pdf-page-input {
+  width: 3.5ch;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font: inherit;
+  text-align: right;
+}
+
+input.yolo-whiteboard-pdf-page-input:focus {
+  box-shadow: none;
+  color: var(--text-accent);
+}
+
+.yolo-whiteboard-pdf-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--background-primary);
+}
+
+.yolo-whiteboard-pdf-status-error {
+  color: var(--text-error);
+}
+
+.yolo-whiteboard-pdf-status-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
 /* A web card's frame. Sandbox flags and the http(s)-only rule live in
  * ui/canvas.ts (WEB_FRAME_SANDBOX) — this is only its geometry. */
 .yolo-whiteboard-card-web-frame {

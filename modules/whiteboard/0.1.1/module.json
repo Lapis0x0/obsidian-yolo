@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "whiteboard",
   "version": "0.1.1",
-  "hostApi": "^1.9.0",
+  "hostApi": "^1.10.0",
   "dataSchemas": {
     "settings": {
       "readMin": 0,
@@ -19,8 +19,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 188009,
-          "sha256": "823d8b3f7e511dacd8c4385d96cb3118be9344c26993f050ce8375277c9e6607",
+          "byteSize": 203316,
+          "sha256": "c4610b496b1c7d40d300094c97d45fdbcc51c2119611cb6d8b23b58eb28fc78c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
@@ -28,8 +28,8 @@
           "role": "style",
           "name": "style.css",
           "path": "style.css",
-          "byteSize": 25712,
-          "sha256": "4ce3b72db05d764c1626d74613f543cc40e758fb2bafccfa58141b2b94de7215",
+          "byteSize": 27504,
+          "sha256": "befee680482c78cd3da07422950e5cb4722fcbfbed1a31309b74426575e3412c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/style.css",
           "storage": "module"
         }
@@ -43,8 +43,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 188009,
-          "sha256": "823d8b3f7e511dacd8c4385d96cb3118be9344c26993f050ce8375277c9e6607",
+          "byteSize": 203316,
+          "sha256": "c4610b496b1c7d40d300094c97d45fdbcc51c2119611cb6d8b23b58eb28fc78c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
@@ -52,8 +52,8 @@
           "role": "style",
           "name": "style.css",
           "path": "style.css",
-          "byteSize": 25712,
-          "sha256": "4ce3b72db05d764c1626d74613f543cc40e758fb2bafccfa58141b2b94de7215",
+          "byteSize": 27504,
+          "sha256": "befee680482c78cd3da07422950e5cb4722fcbfbed1a31309b74426575e3412c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/style.css",
           "storage": "module"
         }

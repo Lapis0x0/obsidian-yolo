@@ -109,6 +109,35 @@ export function boardWithReadingWindow(
 }
 
 /**
+ * Moves a PDF card's reading window (fileFormat.ts's `startPage`) — the same
+ * rules as `boardWithReadingWindow`, in pages: the top of the document
+ * carries no field, and the position is kept to two decimals (a hundredth of
+ * a page is a few pixels on any card a page can be read on).
+ */
+export function boardWithPageWindow(
+  board: Board,
+  id: NodeId,
+  page: number,
+): Board {
+  const index = board.nodes.findIndex((node) => node.id === id)
+  if (index === -1) return board
+  const current = board.nodes[index]
+  if (current.type !== 'file') return board
+  const rounded = Math.round(page * 100) / 100
+  const startPage =
+    Number.isFinite(rounded) && rounded > 1 ? rounded : undefined
+  if (current.startPage === startPage) return board
+
+  const next: { startPage?: number } = { ...current }
+  if (startPage === undefined) delete next.startPage
+  else next.startPage = startPage
+
+  const nodes = board.nodes.slice()
+  nodes[index] = next as BoardNode
+  return { ...board, nodes }
+}
+
+/**
  * Swaps one node for another that keeps its id — the "same node, different
  * identity" operation, used when a text node is converted into a file node.
  *

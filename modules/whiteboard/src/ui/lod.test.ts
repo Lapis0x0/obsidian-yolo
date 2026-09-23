@@ -82,6 +82,20 @@ describe('nodeTitleText', () => {
     expect(nodeTitleText(fileNode('papers/foo.pdf'))).toBe('foo')
   })
 
+  it('adds the page a PDF card is on once it is past the first', () => {
+    const label = (name: string, page: number) => `${name} · p. ${page}`
+    const pdf = (startPage?: number): FileNode => ({
+      ...fileNode('papers/foo.pdf'),
+      ...(startPage === undefined ? {} : { startPage }),
+    })
+    expect(nodeTitleText(pdf(), label)).toBe('foo')
+    expect(nodeTitleText(pdf(3.75), label)).toBe('foo · p. 3')
+    // Only a PDF has pages; a note's window is a line, not a page.
+    expect(
+      nodeTitleText({ ...fileNode('Cards/a.md'), startPage: 4 }, label),
+    ).toBe('a')
+  })
+
   it('shows a group label, and nothing for an unlabelled group', () => {
     expect(nodeTitleText(groupNode('研究'))).toBe('研究')
     expect(nodeTitleText(groupNode())).toBe('')

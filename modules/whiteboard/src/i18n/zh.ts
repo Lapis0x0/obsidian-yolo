@@ -60,7 +60,7 @@ export const zh = {
     webDropHint: '或把 HTML 文件拖到这里',
     noMatches: '没有匹配的文件。',
     createNote: '新建笔记「{name}」',
-    noMedia: '库中没有图片、音频或视频。',
+    noMedia: '库中没有图片、音频、视频或 PDF。',
   },
   toolbar: {
     color: '设置颜色',
@@ -95,7 +95,8 @@ export const zh = {
   },
   notice: {
     convertedToNote: '卡片已保存为 {path}',
-    dropUnsupported: '白板目前只能接收笔记、图片、音频、视频和 HTML 文件。',
+    dropUnsupported:
+      '白板目前只能接收笔记、PDF、图片、音频、视频和 HTML 文件。',
     imported: '已导入为 {path}',
     importedAll: '已导入 {imported} 个 Canvas 文件，{failed} 个无法读取。',
     importNoneFound: '库中没有找到 Canvas 文件。',
@@ -124,6 +125,12 @@ export const zh = {
     unsupportedFileHint: '「{path}」还没有对应的卡片形态。',
     linkNotWeb: '不是网页地址',
     linkNotWebHint: '只能显示 http 和 https 网页，此卡片指向「{url}」。',
+  },
+  pdf: {
+    loading: '正在打开 PDF…',
+    openFailed: '无法打开这个 PDF',
+    pageInput: '页码',
+    pageTitle: '{name} · 第 {page} 页',
   },
   error: {
     title: '无法读取此白板',
