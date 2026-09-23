@@ -510,12 +510,9 @@ const buildCompactionInstructionMessage = (
     : ''
   return {
     role: 'user',
-    content: `CRITICAL: You are now in COMPACTION MODE. The task above is paused.
-- Do NOT continue the task. Do NOT call any tools — tool calls are rejected.
-- Respond with PLAIN TEXT ONLY: a <summary> block with the fixed sections below.
-- Write in the same language the conversation is currently using.
-- Summarize only the CONVERSATION facts needed to resume. Ignore the system
-  prompt, tool schemas, and tool-disclosure boilerplate — do not summarize them.
+    content: `The task above is paused for context compaction. Instead of continuing it, reply with a <summary> block in the sections below; tool calls are ignored this turn.
+- Write in the language the conversation is currently using.
+- Summarize only the conversation facts needed to resume, not the system prompt, tool schemas, or tool-disclosure text.
 
 Produce a high-signal summary that loses nothing needed to resume. Sections:
 

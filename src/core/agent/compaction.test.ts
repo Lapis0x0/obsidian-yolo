@@ -86,7 +86,7 @@ describe('createConversationCompactionSummary', () => {
     const tail = call.request.messages.at(-1)
     expect(tail?.role).toBe('user')
     expect(typeof tail?.content === 'string' && tail.content).toContain(
-      'COMPACTION MODE',
+      'paused for context compaction',
     )
   })
 
