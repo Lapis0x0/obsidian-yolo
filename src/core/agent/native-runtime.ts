@@ -392,6 +392,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   const turnMessages =
                     input.requestContextBuilder.parseTurnMessagesToRequestMessages(
                       this.messages.slice(currentTurnMessageBoundary),
+                      input.model.id,
                     )
                   const focusInstruction =
                     findCompactInstruction(completedToolMessage)

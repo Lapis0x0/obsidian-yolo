@@ -773,6 +773,7 @@ export class RequestContextBuilder {
         snapshotEntries,
         compaction,
         scope: skillScope,
+        modelId: _model.id,
       })),
     ]
 
@@ -926,11 +927,14 @@ export class RequestContextBuilder {
    */
   public parseTurnMessagesToRequestMessages(
     messages: ChatMessage[],
+    modelId: string,
   ): RequestMessage[] {
     const requestMessages: RequestMessage[] = []
     for (const message of messages) {
       if (message.role === 'assistant') {
-        requestMessages.push(...this.parseAssistantMessage({ message }))
+        requestMessages.push(
+          ...this.parseAssistantMessage({ message, modelId }),
+        )
         continue
       }
       if (message.role === 'tool') {
@@ -947,11 +951,14 @@ export class RequestContextBuilder {
     snapshotEntries,
     compaction,
     scope,
+    modelId,
   }: {
     messages: ChatMessage[]
     snapshotEntries: Record<string, string | ContentPart[]>
     compaction?: ChatConversationCompactionLike | null
     scope?: LiteSkillScope
+    /** The model this request goes to — see `parseAssistantMessage`. */
+    modelId: string
   }): Promise<RequestMessage[]> {
     const requestMessages: RequestMessage[] = []
     const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
@@ -986,7 +993,9 @@ export class RequestContextBuilder {
           }
 
           if (message.role === 'assistant') {
-            requestMessages.push(...this.parseAssistantMessage({ message }))
+            requestMessages.push(
+              ...this.parseAssistantMessage({ message, modelId }),
+            )
             continue
           }
 
@@ -1038,7 +1047,9 @@ export class RequestContextBuilder {
       }
 
       if (message.role === 'assistant') {
-        requestMessages.push(...this.parseAssistantMessage({ message }))
+        requestMessages.push(
+          ...this.parseAssistantMessage({ message, modelId }),
+        )
         continue
       }
 
@@ -1257,10 +1268,18 @@ export class RequestContextBuilder {
       .join('\n\n')}\n</user_selected_skills>\n`
   }
 
+  /**
+   * The provider's native reply is handed back only to the model that wrote
+   * it: reasoning signatures and encrypted reasoning are bound to their
+   * model, and another model gets the reply rebuilt from its text and tool
+   * calls. The provider decides everything else about what is still valid.
+   */
   private parseAssistantMessage({
     message,
+    modelId,
   }: {
     message: ChatAssistantMessage
+    modelId: string
   }): RequestMessage[] {
     let citationContent: string | null = null
     if (message.annotations && message.annotations.length > 0) {
@@ -1282,7 +1301,10 @@ ${message.annotations
           ...(citationContent ? [citationContent] : []),
         ].join('\n'),
         reasoning: message.reasoning,
-        providerMetadata: message.metadata?.providerMetadata,
+        providerMetadata:
+          message.metadata?.model?.id === modelId
+            ? message.metadata?.providerMetadata
+            : undefined,
         tool_calls:
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))

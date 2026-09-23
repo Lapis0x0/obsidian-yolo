@@ -2120,6 +2120,80 @@ describe('RequestContextBuilder generateRequestMessages stamped context', () => 
   })
 })
 
+describe('RequestContextBuilder native reply replay', () => {
+  const nativeParts = { gemini: { parts: [{ text: 'native' }] } }
+  const build = (requestModelId: string) =>
+    new RequestContextBuilder(
+      {
+        metadataCache: { getFileCache: jest.fn(() => null) },
+        vault: {
+          adapter: {
+            exists: jest.fn().mockResolvedValue(false),
+            mkdir: jest.fn().mockResolvedValue(undefined),
+            read: jest.fn().mockResolvedValue(''),
+            write: jest.fn().mockResolvedValue(undefined),
+          },
+          cachedRead: jest.fn(async () => ''),
+          getFileByPath: jest.fn(() => null),
+          getFolderByPath: jest.fn(() => null),
+        },
+      } as never,
+      {
+        systemPrompt: '',
+        assistants: [],
+        chatOptions: {},
+        skills: {},
+      } as unknown as YoloSettings,
+    ).generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'hi',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: 'hello',
+          metadata: {
+            model: { id: 'gemini-a' } as never,
+            providerMetadata: nativeParts as never,
+          },
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'again',
+          mentionables: [],
+        },
+      ],
+      model: { id: requestModelId, model: requestModelId } as never,
+      conversationId: 'conv-replay',
+    })
+
+  const assistantOf = (messages: RequestMessage[]) =>
+    messages.find((m) => m.role === 'assistant') as Extract<
+      RequestMessage,
+      { role: 'assistant' }
+    >
+
+  it('hands the native reply back to the model that wrote it', async () => {
+    expect(assistantOf(await build('gemini-a')).providerMetadata).toEqual(
+      nativeParts,
+    )
+  })
+
+  it('rebuilds the reply for a different model', async () => {
+    const assistant = assistantOf(await build('gemini-b'))
+    expect(assistant.providerMetadata).toBeUndefined()
+    expect(assistant.content).toBe('hello')
+  })
+})
+
 describe('stripUnsupportedImages', () => {
   const visionModel = {
     id: 'v/vision',
