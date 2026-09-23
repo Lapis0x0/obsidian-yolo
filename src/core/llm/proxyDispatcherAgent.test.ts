@@ -9,12 +9,12 @@ import { ProxyDispatcherAgent } from './proxyDispatcherAgent'
 
 type FakeAgent = { kind: string; proxy: string; destroy: jest.Mock }
 
-const created: FakeAgent[] = []
+const mockCreated: FakeAgent[] = []
 
 const mockAgentClass = (kind: string) =>
   jest.fn().mockImplementation((proxy: string) => {
     const agent: FakeAgent = { kind, proxy, destroy: jest.fn() }
-    created.push(agent)
+    mockCreated.push(agent)
     return agent
   })
 
@@ -43,7 +43,7 @@ const secure = { secureEndpoint: true } as AgentConnectOpts
 const plain = { secureEndpoint: false } as AgentConnectOpts
 
 beforeEach(() => {
-  created.length = 0
+  mockCreated.length = 0
 })
 
 describe('ProxyDispatcherAgent', () => {
@@ -79,7 +79,7 @@ describe('ProxyDispatcherAgent', () => {
     const direct = await agent.connect(request('a.com'), plain)
     expect(direct).toBeInstanceOf(http.Agent)
     expect(direct).not.toBeInstanceOf(https.Agent)
-    expect(created).toHaveLength(0)
+    expect(mockCreated).toHaveLength(0)
   })
 
   it.each([
@@ -135,7 +135,7 @@ describe('ProxyDispatcherAgent', () => {
     expect(plainAgent).not.toBe(first)
     proxy = 'http://p2:8080'
     expect(await agent.connect(request('a.com'), secure)).not.toBe(first)
-    expect(created).toHaveLength(3)
+    expect(mockCreated).toHaveLength(3)
   })
 
   it('shares one agent between concurrent first requests for the same key', async () => {
@@ -179,8 +179,8 @@ describe('ProxyDispatcherAgent', () => {
 
     agent.destroy()
 
-    expect(created).toHaveLength(2)
-    for (const cached of created) {
+    expect(mockCreated).toHaveLength(2)
+    for (const cached of mockCreated) {
       expect(cached.destroy).toHaveBeenCalledTimes(1)
     }
   })
