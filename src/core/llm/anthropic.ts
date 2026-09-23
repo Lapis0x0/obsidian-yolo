@@ -24,9 +24,11 @@ import {
 } from '../../types/llm/request'
 import {
   Annotation,
+  AnthropicReplayBlock,
   HostedWebSearchCall,
   LLMResponseNonStreaming,
   LLMResponseStreaming,
+  ProviderMetadata,
   ResponseUsage,
   ToolCall,
 } from '../../types/llm/response'
@@ -47,6 +49,8 @@ import {
 import { BaseLLMProvider } from './base'
 import {
   claudeAcceptsSamplingParams,
+  claudeBindsThinkingToPrefix,
+  isClaudeModelId,
   resolveClaudeReasoningRequest,
 } from './claudeReasoning'
 import {
@@ -87,6 +91,14 @@ const parseHostedSearchQuery = (partialJson: string): string | undefined => {
     return undefined
   }
 }
+
+/**
+ * Lets a request say what happens to a thinking block whose prefix changed
+ * (`thinking.block_binding`). The plugin rewrites history on purpose —
+ * pruning tool results, compacting, switching modes — and asks the API to
+ * drop the blocks that no longer match instead of rejecting the request.
+ */
+const THINKING_BINDING_BETA = 'thinking-binding-controls-2026-08-01'
 
 const SUPPORTED_IMAGE_TYPES = [
   'image/jpeg',
@@ -161,6 +173,8 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
   private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+  /** An `anthropic-beta` value the user set as a custom header. */
+  private customBetaHeader: string | undefined
 
   private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
     if (this.requestTransportMode === mode) {
@@ -209,9 +223,16 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
             claude.thinkingTokens
           : (requestedMaxTokens ??
             AnthropicProvider.DEFAULT_MAX_TOKENS + claude.thinkingTokens)
+      const thinking =
+        claude.thinking && claudeBindsThinkingToPrefix(modelId)
+          ? {
+              ...claude.thinking,
+              block_binding: { prefix_mismatch_behavior: 'drop_block' },
+            }
+          : claude.thinking
       return {
         max_tokens: maxTokens,
-        ...(claude.thinking ? { thinking: claude.thinking } : {}),
+        ...(thinking ? { thinking } : {}),
         ...(claude.effort ? { output_config: { effort: claude.effort } } : {}),
       }
     }
@@ -243,6 +264,9 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
+    this.customBetaHeader = Object.entries(defaultHeaders ?? {}).find(
+      ([name]) => name.toLowerCase() === 'anthropic-beta',
+    )?.[1]
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
@@ -312,6 +336,21 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     return [...(functionTools ?? []), hostedWebSearch]
   }
 
+  /** Per-request headers: the beta that `thinking.block_binding` needs. */
+  private buildRequestHeaders(
+    payload: Record<string, unknown>,
+  ): Record<string, string> | undefined {
+    const thinking = payload.thinking as { block_binding?: unknown } | undefined
+    if (!thinking?.block_binding) {
+      return undefined
+    }
+    return {
+      'anthropic-beta': [this.customBetaHeader, THINKING_BINDING_BETA]
+        .filter(Boolean)
+        .join(','),
+    }
+  }
+
   async generateResponse(
     model: ChatModel,
     request: LLMRequestNonStreaming,
@@ -360,6 +399,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
           : payloadBase),
       })
 
+      const headers = this.buildRequestHeaders(payload)
       const response = await runWithRequestTransport({
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
@@ -367,18 +407,24 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
         runBrowser: () =>
           this.browserClient.messages.create(payload, {
             signal: options?.signal,
+            headers,
           }),
         runObsidian: () =>
           this.obsidianClient.messages.create(payload, {
             signal: options?.signal,
+            headers,
           }),
         runNode: () =>
           this.nodeClient.messages.create(payload, {
             signal: options?.signal,
+            headers,
           }),
       })
 
-      return AnthropicProvider.parseNonStreamingResponse(response)
+      return AnthropicProvider.parseNonStreamingResponse(
+        response,
+        request.model,
+      )
     } catch (error) {
       if (error instanceof Anthropic.AuthenticationError) {
         // Anthropic's CORS Policy Change (March 2025)
@@ -468,6 +514,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
           : payloadBase),
       })
 
+      const headers = this.buildRequestHeaders(payload)
       const stream = (await runWithRequestTransportForStream({
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
@@ -477,20 +524,23 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
           this.browserClient.messages.create(payload, {
             signal: signal ?? options?.signal,
             stream: true,
+            headers,
           }),
         createObsidianStream: (signal) =>
           this.obsidianClient.messages.create(payload, {
             signal: signal ?? options?.signal,
             stream: true,
+            headers,
           }),
         createNodeStream: (signal) =>
           this.nodeClient.messages.create(payload, {
             signal: signal ?? options?.signal,
             stream: true,
+            headers,
           }),
       })) as unknown as AsyncIterable<MessageStreamEvent>
 
-      return this.streamResponseGenerator(stream)
+      return this.streamResponseGenerator(stream, request.model)
     } catch (error) {
       if (error instanceof Anthropic.AuthenticationError) {
         // Anthropic's CORS Policy Change (March 2025)
@@ -533,6 +583,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
 
   private async *streamResponseGenerator(
     stream: AsyncIterable<MessageStreamEvent>,
+    requestModel: string,
   ): AsyncIterable<LLMResponseStreaming> {
     let messageId = ''
     let model = ''
@@ -567,7 +618,21 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       model,
     })
 
+    // The reply block by block, assembled from its deltas, so a Claude reply
+    // can be sent back exactly as it was generated.
+    const replayBlocks = new Map<number, AnthropicReplayBlock>()
+    const replayInputJson = new Map<number, string>()
+    let completed = false
+
     for await (const chunk of stream) {
+      AnthropicProvider.accumulateReplayBlock(
+        chunk,
+        replayBlocks,
+        replayInputJson,
+      )
+      if (chunk.type === 'message_stop') {
+        completed = true
+      }
       if (chunk.type === 'message_start') {
         messageId = chunk.message.id
         model = chunk.message.model
@@ -698,6 +763,37 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       }
     }
 
+    // `providerMetadata` is replaced whole by each chunk that carries it, so
+    // the replay goes out once, complete, together with the search receipts.
+    const replayContent =
+      completed && isClaudeModelId(requestModel)
+        ? AnthropicProvider.toReplayBlocks(
+            [...replayBlocks.entries()]
+              .sort(([a], [b]) => a - b)
+              .map(([, block]) => block),
+          )
+        : null
+    if (replayContent) {
+      yield {
+        id: messageId,
+        choices: [
+          {
+            finish_reason: null,
+            delta: {
+              providerMetadata: {
+                anthropic: { content: replayContent },
+                ...(hostedSearchByToolUseId.size > 0
+                  ? { hostedWebSearch: [...hostedSearchByToolUseId.values()] }
+                  : {}),
+              },
+            },
+          },
+        ],
+        object: 'chat.completion.chunk',
+        model,
+      }
+    }
+
     // After the stream is complete, yield the final usage
     yield {
       id: messageId,
@@ -706,6 +802,104 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       model: model,
       usage: usage,
     }
+  }
+
+  private static accumulateReplayBlock(
+    chunk: MessageStreamEvent,
+    blocks: Map<number, AnthropicReplayBlock>,
+    inputJson: Map<number, string>,
+  ): void {
+    if (chunk.type === 'content_block_start') {
+      blocks.set(chunk.index, {
+        ...(chunk.content_block as unknown as AnthropicReplayBlock),
+      })
+      return
+    }
+    if (chunk.type === 'content_block_delta') {
+      const block = blocks.get(chunk.index)
+      if (!block) return
+      const delta = chunk.delta as {
+        type: string
+        text?: string
+        thinking?: string
+        signature?: string
+        partial_json?: string
+      }
+      switch (delta.type) {
+        case 'text_delta':
+          block.text = `${(block.text as string | undefined) ?? ''}${delta.text ?? ''}`
+          break
+        case 'thinking_delta':
+          block.thinking = `${(block.thinking as string | undefined) ?? ''}${delta.thinking ?? ''}`
+          break
+        case 'signature_delta':
+          block.signature = delta.signature
+          break
+        case 'input_json_delta':
+          inputJson.set(
+            chunk.index,
+            `${inputJson.get(chunk.index) ?? ''}${delta.partial_json ?? ''}`,
+          )
+          break
+      }
+      return
+    }
+    if (chunk.type === 'content_block_stop') {
+      const block = blocks.get(chunk.index)
+      const json = inputJson.get(chunk.index)
+      if (!block || json === undefined || json === '') return
+      try {
+        block.input = JSON.parse(json) as unknown
+      } catch {
+        block.input = undefined
+      }
+    }
+  }
+
+  /**
+   * A Claude reply's content in the shape the API takes back. Null when a
+   * tool call's input never finished (a reply cut off at `max_tokens`): such
+   * a reply cannot be sent back as it was, and is rebuilt instead.
+   */
+  private static toReplayBlocks(
+    content: readonly unknown[],
+  ): AnthropicReplayBlock[] | null {
+    const blocks: AnthropicReplayBlock[] = []
+    for (const raw of content) {
+      const block = raw as AnthropicReplayBlock
+      switch (block.type) {
+        case 'text':
+          if (typeof block.text === 'string' && block.text !== '') {
+            blocks.push({ type: 'text', text: block.text })
+          }
+          break
+        case 'thinking':
+          blocks.push({
+            type: 'thinking',
+            thinking: block.thinking,
+            signature: block.signature,
+          })
+          break
+        case 'redacted_thinking':
+          blocks.push({ type: 'redacted_thinking', data: block.data })
+          break
+        case 'tool_use':
+        case 'server_tool_use':
+          if (typeof block.input !== 'object' || block.input === null) {
+            return null
+          }
+          blocks.push({
+            type: block.type,
+            id: block.id,
+            name: block.name,
+            input: block.input,
+          })
+          break
+        default:
+          blocks.push(block)
+      }
+    }
+    return blocks
   }
 
   // Anthropic 协议要求 role 严格交替（user / assistant）。当 assistant 一次返回
@@ -743,6 +937,10 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         return { role: 'user', content: parseUserMessageContent(message) }
       }
       case 'assistant': {
+        const replay = AnthropicProvider.parseReplayedAssistantMessage(message)
+        if (replay) {
+          return replay
+        }
         const anthropicToolCalls = message.tool_calls?.map(
           (toolCall): ContentBlockParam => {
             return {
@@ -790,6 +988,32 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         }
       }
     }
+  }
+
+  /**
+   * The Claude reply exactly as generated, when the message carries it. Tool
+   * calls the request no longer answers are left out, since a `tool_use`
+   * without its `tool_result` is rejected; every other block, thinking and
+   * its signature included, goes back untouched.
+   */
+  private static parseReplayedAssistantMessage(
+    message: Extract<RequestMessage, { role: 'assistant' }>,
+  ): MessageParam | null {
+    const native = message.providerMetadata?.anthropic?.content
+    if (!native) {
+      return null
+    }
+    const toolCallIds = new Set(message.tool_calls?.map((call) => call.id))
+    const content = native.filter(
+      (block) =>
+        block.type !== 'tool_use' || toolCallIds.has(block.id as string),
+    )
+    return content.length > 0
+      ? {
+          role: 'assistant',
+          content: content as unknown as ContentBlockParam[],
+        }
+      : null
   }
 
   /**
@@ -873,6 +1097,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
 
   static parseNonStreamingResponse(
     response: Anthropic.Message,
+    requestModel: string,
   ): LLMResponseNonStreaming {
     const textContent = response.content
       .filter((c) => c.type === 'text')
@@ -907,6 +1132,14 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       response.content,
     )
 
+    const replayContent = isClaudeModelId(requestModel)
+      ? AnthropicProvider.toReplayBlocks(response.content)
+      : null
+    const providerMetadata: ProviderMetadata = {
+      ...(replayContent ? { anthropic: { content: replayContent } } : {}),
+      ...(hostedWebSearch.length > 0 ? { hostedWebSearch } : {}),
+    }
+
     const cacheRead = response.usage.cache_read_input_tokens ?? undefined
     const cacheCreation =
       response.usage.cache_creation_input_tokens ?? undefined
@@ -923,8 +1156,8 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
             reasoning: reasoningContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
             ...(annotations.length > 0 ? { annotations } : {}),
-            ...(hostedWebSearch.length > 0
-              ? { providerMetadata: { hostedWebSearch } }
+            ...(Object.keys(providerMetadata).length > 0
+              ? { providerMetadata }
               : {}),
             role: response.role,
           },

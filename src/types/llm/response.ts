@@ -89,9 +89,19 @@ export type ProviderExecutedToolCall = {
   resultText?: string
 }
 
+/** One content block of a Claude reply, kept as the API returned it. */
+export type AnthropicReplayBlock = { type: string } & Record<string, unknown>
+
 export type ProviderMetadata = {
   gemini?: {
     parts: GeminiAssistantPart[]
+  }
+  /**
+   * The whole Claude reply, block by block in the order it was generated —
+   * thinking blocks keep the signature the API checks when they come back.
+   */
+  anthropic?: {
+    content: AnthropicReplayBlock[]
   }
   hostedWebSearch?: HostedWebSearchCall[]
 }

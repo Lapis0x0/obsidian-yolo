@@ -21,7 +21,7 @@ const parseClaudeVersion = (modelId: string): ClaudeVersion | null => {
   return { major: Number(match[1]), minor: Number(match[2] ?? 0) }
 }
 
-const isClaudeModelId = (modelId: string): boolean =>
+export const isClaudeModelId = (modelId: string): boolean =>
   modelId.toLowerCase().includes('claude')
 
 const isBudgetGeneration = (version: ClaudeVersion | null): boolean =>
@@ -89,4 +89,29 @@ export function resolveClaudeReasoningRequest(
 export function claudeAcceptsSamplingParams(modelId: string): boolean {
   if (!isClaudeModelId(modelId)) return true
   return isBudgetGeneration(parseClaudeVersion(modelId))
+}
+
+const CLAUDE_FAMILY_VERSION_PATTERN =
+  /claude-(opus|sonnet|haiku|fable|mythos)-(\d{1,2})(?:[-.](\d{1,2})(?!\d))?/
+
+/**
+ * Whether the model binds each thinking block's signature to everything sent
+ * before it (Opus 5.5, Fable 5.1, Mythos 5.1 and later): a request that
+ * changes that prefix must tell the API what to do with the stale blocks. A
+ * Claude id this cannot place is a newer model and is treated as binding.
+ */
+export function claudeBindsThinkingToPrefix(modelId: string): boolean {
+  if (!isClaudeModelId(modelId)) return false
+  const match = CLAUDE_FAMILY_VERSION_PATTERN.exec(modelId.toLowerCase())
+  if (!match) return parseClaudeVersion(modelId) === null
+  const version = Number(match[2]) + Number(match[3] ?? 0) / 10
+  switch (match[1]) {
+    case 'opus':
+      return version >= 5.5
+    case 'fable':
+    case 'mythos':
+      return version >= 5.1
+    default:
+      return false
+  }
 }

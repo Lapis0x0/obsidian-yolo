@@ -45,10 +45,14 @@ function addCacheControlToMessageTail(message: MessageParam): MessageParam {
       content: [{ type: 'text', text: content, cache_control: EPHEMERAL }],
     }
   }
-  if (!Array.isArray(content) || content.length === 0) return message
-  const lastIdx = content.length - 1
+  if (!Array.isArray(content)) return message
+  // Thinking blocks take no `cache_control`; a replayed reply can end in one.
+  const breakpointIdx = content.findLastIndex(
+    (block) => block.type !== 'thinking' && block.type !== 'redacted_thinking',
+  )
+  if (breakpointIdx < 0) return message
   const nextContent = content.map((block, i) => {
-    if (i !== lastIdx) return block
+    if (i !== breakpointIdx) return block
     return { ...block, cache_control: EPHEMERAL } as ContentBlockParam
   })
   return { ...message, content: nextContent }

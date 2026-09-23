@@ -106,7 +106,10 @@ describe('AnthropicProvider web_search_tool_result parsing', () => {
       usage: { input_tokens: 10, output_tokens: 5 },
     } as unknown as Anthropic.Message
 
-    const parsed = AnthropicProvider.parseNonStreamingResponse(response)
+    const parsed = AnthropicProvider.parseNonStreamingResponse(
+      response,
+      'deepseek-v4-flash',
+    )
     expect(parsed.choices[0].message.annotations).toEqual([
       {
         type: 'url_citation',
@@ -155,8 +158,8 @@ describe('AnthropicProvider web_search_tool_result parsing', () => {
     } as unknown as Anthropic.Message
 
     expect(
-      AnthropicProvider.parseNonStreamingResponse(response).choices[0].message
-        .annotations,
+      AnthropicProvider.parseNonStreamingResponse(response, 'deepseek-v4-flash')
+        .choices[0].message.annotations,
     ).toBeUndefined()
   })
 })
@@ -226,11 +229,14 @@ describe('AnthropicProvider hosted-search streaming receipt', () => {
     })()
     const gen = (
       new AnthropicProvider(provider) as unknown as {
-        streamResponseGenerator: (s: unknown) => AsyncIterable<{
+        streamResponseGenerator: (
+          s: unknown,
+          requestModel: string,
+        ) => AsyncIterable<{
           choices?: { delta?: Record<string, any> }[]
         }>
       }
-    ).streamResponseGenerator(stream)
+    ).streamResponseGenerator(stream, 'deepseek-v4-flash')
     const chunks = []
     for await (const chunk of gen) chunks.push(chunk)
     return chunks

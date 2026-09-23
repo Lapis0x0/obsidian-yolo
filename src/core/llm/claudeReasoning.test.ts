@@ -1,5 +1,6 @@
 import {
   claudeAcceptsSamplingParams,
+  claudeBindsThinkingToPrefix,
   resolveClaudeReasoningRequest,
 } from './claudeReasoning'
 
@@ -94,5 +95,29 @@ describe('claudeAcceptsSamplingParams', () => {
 
   it('keeps sampling params for non-Claude models', () => {
     expect(claudeAcceptsSamplingParams('kimi-k2.5')).toBe(true)
+  })
+})
+
+describe('claudeBindsThinkingToPrefix', () => {
+  it.each([
+    'claude-opus-5-5',
+    'claude-fable-5-1',
+    'claude-mythos-5-1',
+    'anthropic.claude-opus-5-5-v1:0',
+    'claude-next-preview',
+  ])('binds thinking to the prefix on %s', (id) => {
+    expect(claudeBindsThinkingToPrefix(id)).toBe(true)
+  })
+
+  it.each([
+    'claude-opus-5',
+    'claude-opus-4-8',
+    'claude-sonnet-5',
+    'claude-fable-5',
+    'claude-haiku-4-5',
+    'claude-3-5-sonnet-20240620',
+    'kimi-k2.5',
+  ])('does not bind on %s', (id) => {
+    expect(claudeBindsThinkingToPrefix(id)).toBe(false)
   })
 })
