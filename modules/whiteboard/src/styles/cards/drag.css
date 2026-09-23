@@ -1,0 +1,200 @@
+/* --- drag -------------------------------------------------------------- */
+
+.yolo-whiteboard-card.yolo-whiteboard-card-dragging {
+  cursor: grabbing;
+  will-change: transform;
+  /* Bring the dragged card above its siblings while it's being moved —
+   * cards otherwise stack in plain DOM/mount order (no general z-order
+   * model). */
+  z-index: 1;
+}
+
+/* Marquee-select overlay div, drawn in the viewport (screen-space) layer —
+ * see ui/canvas.ts's startMarquee(). */
+.yolo-whiteboard-marquee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1px solid var(--interactive-accent);
+  background: var(--interactive-accent);
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+/* A file-backed card's title (ui/canvas.ts's mountCard): its file's name,
+ * drawn above the card rather than inside it.
+ *
+ * Outside, because the card's box is for the card's content. A name that
+ * comes from outside the content — a file name, a URL — is a label on the
+ * box, not a line of it: inside, it spends the card's scarcest resource
+ * (height) on something the body will often say again in its own first
+ * heading, and it makes a note on the board look unlike the same note
+ * anywhere else in Obsidian.
+ *
+ * Obsidian Canvas draws a label here too, but keeps its embed's inline title
+ * inside as well, so the same name appears twice. Ours appears once, and the
+ * degraded block below is the same title in the one state where a label this
+ * small would be unreadable — hence the rule that hides this one there.
+ *
+ * Still a child of the node element, so `closest('[data-node-id]')` resolves
+ * a press on it to the card: this row is a drag handle, and for a web card
+ * whose body belongs to the page it is the only one. */
+.yolo-whiteboard-card-title {
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 3px);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+/* An editing card puts a text cursor over itself, but the title is chrome and
+ * not editable — under the pointer it must still read as something to grab,
+ * not something to type into. Dragging keeps the card's own grabbing cursor:
+ * the title row is a perfectly good drag handle. */
+.yolo-whiteboard-card-editing:not(.yolo-whiteboard-card-dragging)
+  .yolo-whiteboard-card-title {
+  cursor: grab;
+}
+
+/* The body is a plain clipping box: whichever surface it holds — the reading
+ * preview, CodeMirror, a placeholder — brings its own scroller and its own
+ * inset. Both live surfaces are scroll containers already, and a scrollbar is
+ * laid out at the inner border edge where padding cannot push it, so putting
+ * the inset on the innermost scroller is what makes the text sit clear of the
+ * card edge while the scrollbar hugs it. */
+.yolo-whiteboard-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  /* The card no longer clips, so the box that fills it has to. */
+  border-radius: inherit;
+  font-size: 13px;
+  /* Containing block for the reading preview while an editor is over it. */
+  position: relative;
+}
+
+/* The reading surface while the card is being edited.
+ *
+ * Kept, not torn down. Where a card is being read is a scroll position on this
+ * element, and this element is the only place that position exists — destroy
+ * it and coming back means reconstructing the reader's place from a source
+ * line, across two renderings that lay the same line out at different heights.
+ * Obsidian's own Canvas keeps it too (measured 2026-09-02: the preview's
+ * `scrollTop` is untouched across an edit, and the card comes back exactly
+ * where it left).
+ *
+ * Out of flow, so the editor is the body's only laid-out child and fills it
+ * the way it did before; `visibility` rather than `display`, because an
+ * element with no layout box has no scroll position either — which is the one
+ * thing it is being kept for. */
+.yolo-whiteboard-editor-host .markdown-preview-view {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+/* While a card hands its body over, whatever comes after the render on its way
+ * out is not ready to be seen (CARD_HANDOFF_CLASS): the incoming preview is
+ * mounted but still at the top of the note, and reaches the card's reading
+ * window a frame or more later.
+ *
+ * Hidden rather than covered. A preview draws no background of its own, so an
+ * outgoing render laid over an incoming one leaves both sets of text visible
+ * at once — measured, and exactly what a person sees as the card flickering.
+ * Giving it a background instead would mean naming the card's own, which is
+ * the card's business and a custom node colour's. So the outgoing render just
+ * stays where it is, in flow, and the incoming one waits its turn.
+ *
+ * `visibility` and not `display`, because a box with no layout is a preview
+ * that cannot measure the sections it has to scroll through — it would never
+ * settle, and the handover would never end. */
+.yolo-whiteboard-card-body > .yolo-whiteboard-card-handoff ~ * {
+  visibility: hidden;
+}
+
+/* Content mask. Until a card is opened for editing,
+ * nothing inside it is reachable by a pointer: not a link, a checkbox, a
+ * button, an embedded iframe, nor the preview's own scroller. On a board the
+ * gestures that matter are select, drag, resize and connect, and every
+ * clickable thing rendered inside a card is a way to misfire one of them —
+ * so a press on a card means the card, wherever in it it landed, and "single
+ * click selects, double click edits" keeps holding everywhere.
+ *
+ * Obsidian Canvas does this with a blocker element over each node. This is
+ * the same rule as a property rather than a node: it costs no DOM on a board
+ * where card DOM weight is the thing being defended, and it needs no
+ * listeners, so it cannot behave differently in a popout window. Events land
+ * on the card element instead, which is exactly what the canvas's own pointer
+ * dispatch already reads (cardIdFromEventTarget), so drag, marquee, hover and
+ * the context menu keep the paths they had.
+ *
+ * Wheel follows from the same rule: with the preview unhittable, a wheel over
+ * a card targets the card, whose every ancestor up to the viewport clips
+ * rather than scrolls — so the canvas's own handler pans or zooms the board,
+ * and the card does not scroll under the cursor.
+ *
+ * The mask lifts for the one body that is hosting a live editor: inside it
+ * CodeMirror needs the caret, the selection and its own scroller, and the
+ * canvas's wheel handler already yields to the card being edited. */
+.yolo-whiteboard-card-body:not(.yolo-whiteboard-editor-host) {
+  pointer-events: none;
+}
+
+/* The one exemption, and the reason it is narrow.
+ *
+ * It applies only to bodies that have no other way in: media transport
+ * controls and an embedded web page. A markdown card has an edit mode —
+ * clicking into it is what "I mean the content, not the card" already means
+ * there — so the mask stays absolute for it, and the misfire surface the
+ * mask exists for (a link, a checkbox, a callout fold) stays covered. A video
+ * that can never be played is not a card, it is a screenshot; that is what
+ * earns the exemption here and nothing else does. An image body is
+ * deliberately *not* live: there is nothing in an image to press, and leaving
+ * it masked keeps the whole card draggable.
+ *
+ * What lifts the mask is `card-entered` — the card a double-click has let the
+ * pointer into — and NOT `card-focused`, the single selection.
+ *
+ * Obsidian Canvas keys it on focus: measured, its frame loop calls
+ * `node.focus()` only when the selection has size 1, and
+ * `.canvas-node.is-focused:not(.is-dragging) .canvas-node-content-blocker
+ * { display: none }`. We shipped that rule and it is wrong, for a reason that
+ * only shows on a card you want to move: a live body a pointer can reach is a
+ * body the card can no longer be dragged by, because the press lands in the
+ * page. Keyed on focus, the single click that selects a web card — the thing
+ * you do *before* moving it — is also the thing that stops you moving it, and
+ * the only handle left is the card's title row. Selecting must never cost the
+ * drag, so entering became its own gesture (ui/constants.ts's
+ * CARD_ENTERED_CLASS), the same double-click that opens a markdown card's
+ * editor. Figma, tldraw and Miro all separate the two the same way.
+ *
+ * `:not(.yolo-whiteboard-card-dragging)` is Canvas's clause, and still right:
+ * while the card is being moved the pointer belongs to the drag. */
+.yolo-whiteboard-card-entered:not(.yolo-whiteboard-card-dragging)
+  .yolo-whiteboard-card-body-live {
+  pointer-events: auto;
+}
+
+/* An entered card says so: the board has given its content surface away, and
+ * the one visible consequence — that dragging from the body no longer moves
+ * this card — needs a tell. The accent ring the selection already draws,
+ * doubled, rather than a new colour: it is the same card in a further state,
+ * not a different kind of thing. */
+.yolo-whiteboard-card.yolo-whiteboard-card-entered {
+  box-shadow:
+    0 0 0 1px var(--interactive-accent),
+    0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-entered {
+  box-shadow:
+    inset 0 0 0 1px var(--yolo-whiteboard-color),
+    0 0 0 1px var(--yolo-whiteboard-color),
+    0 0 0 4px color-mix(in srgb, var(--yolo-whiteboard-color) 25%, transparent);
+}

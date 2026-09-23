@@ -220,11 +220,7 @@ async function loadOfficialModules() {
       throw new Error(`${config.id} preview tag must match its pinned version`)
     }
     warnIfPreviewVersionIsStale(config.id, previewVersion, packageJson.version)
-    const styleSource = path.join(moduleDir, 'src', 'style.css')
-    const hasStyle = await access(styleSource).then(
-      () => true,
-      () => false,
-    )
+    const styleSource = await resolveModuleStyleSource(moduleDir)
     const dataFileAssets = await resolveModuleDataFileAssets(
       config.id,
       moduleDir,
@@ -237,8 +233,8 @@ async function loadOfficialModules() {
       releaseTag: previewTag,
       workers: packageJson.yoloModule?.workers ?? {},
       assets: [
-        ...(hasStyle
-          ? [{ role: 'style', source: 'style.css', path: 'style.css' }]
+        ...(styleSource
+          ? [{ role: 'style', source: styleSource, path: 'style.css' }]
           : []),
         ...dataFileAssets,
       ],
@@ -248,6 +244,24 @@ async function loadOfficialModules() {
     })
   }
   return definitions.sort((left, right) => left.id.localeCompare(right.id))
+}
+
+/**
+ * A module's stylesheet source, relative to its `src/`: `styles/index.css`
+ * when the module splits its styles by responsibility (the same layout as the
+ * host's `src/styles/`), else a single `style.css`. Either way the style asset
+ * is bundled by esbuild, which inlines `@import`s, so the artifact stays one
+ * `style.css`.
+ */
+async function resolveModuleStyleSource(moduleDir) {
+  for (const candidate of ['styles/index.css', 'style.css']) {
+    const exists = await access(path.join(moduleDir, 'src', candidate)).then(
+      () => true,
+      () => false,
+    )
+    if (exists) return candidate
+  }
+  return null
 }
 
 /**

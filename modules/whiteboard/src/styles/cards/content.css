@@ -1,0 +1,93 @@
+/* A web card's frame. Sandbox flags and the http(s)-only rule live in
+ * ui/canvas.ts (WEB_FRAME_SANDBOX) — this is only its geometry. */
+.yolo-whiteboard-card-web-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--background-primary);
+}
+
+/* Obsidian's windowed preview, mounted by the Host API's markdown content
+ * view (ui.createMarkdownContentView) — the single content path both note and
+ * text cards take. It arrives sized to fill and scrolling on its own; what is
+ * ours is the inset and the card-scale type size, both matched to the editor
+ * below so clicking into a card does not shift what is written in it.
+ *
+ * `.markdown-preview-view` alone sets the padding and font size Obsidian uses
+ * for a full document page (0,1,0), so a two-class selector is what it takes
+ * to state the card's instead. */
+.yolo-whiteboard-card-body .markdown-preview-view {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Only a body holding the whole document scrolls — in practice the focused
+ * card, the only one that gets one (cardRenderer's `renderMarkdownInto`).
+ * Every other card is rendered with just the slice it can show, so a
+ * scrollbar on one would be an offer to reach content that was never built —
+ * and a card whose content overshoots its box by a line would grow one for no
+ * reason.
+ *
+ * Keyed on the mounted content rather than on the selection: see
+ * CARD_BODY_SCROLLS_CLASS for the frame of the note's top that the other
+ * spelling paints on the way out.
+ *
+ * The scrollbar is an affordance, not a control: the content mask keeps the
+ * whole card unhittable, so it cannot be dragged. What moves the content is
+ * the wheel, routed by the canvas's own handler. */
+.yolo-whiteboard-card-body .markdown-preview-view {
+  overflow: hidden;
+}
+
+/* Never the render on its way out: it holds a slice, not the document, and a
+ * scrollbar appearing on it for the frames a handover lasts is one more thing
+ * moving in a card that should look still. */
+.yolo-whiteboard-card-body-scrolls
+  .markdown-preview-view:not(.yolo-whiteboard-card-handoff) {
+  overflow: auto;
+}
+
+/* A card's content starts at the card's inset. Obsidian's preview absorbs the
+ * first block's top margin because a document opens under a header; a card has
+ * no header, so the margin would push its one visible screenful down by a line
+ * it cannot afford. Only the leading edge: spacing *between* blocks is what
+ * makes the content read as the note it came from. */
+.yolo-whiteboard-card-body .markdown-preview-sizer > :first-child {
+  margin-top: 0;
+}
+
+/* Same inset, on CodeMirror's scroll container rather than on its content:
+ * putting it on `.cm-content` would also lose to Obsidian's own
+ * `.markdown-source-view.mod-cm6 .cm-content { padding: 0 }` (0,3,0 against
+ * our 0,2,0); nothing styles the scroller's padding, so nothing has to be
+ * fought here. */
+.yolo-whiteboard-editor-host .cm-scroller {
+  padding: 6px 10px;
+  overflow: auto;
+}
+
+.yolo-whiteboard-editor-host .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.yolo-whiteboard-card-missing,
+.yolo-whiteboard-card-unsupported-placeholder {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.yolo-whiteboard-card-missing {
+  color: var(--text-error);
+}
+
+.yolo-whiteboard-card-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}

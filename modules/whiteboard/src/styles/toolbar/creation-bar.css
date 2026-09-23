@@ -1,0 +1,90 @@
+/* --- creation bar ---------------------------------------------------------
+ * Obsidian Canvas's `.canvas-card-menu`: a raised pill of icon buttons pinned
+ * to the bottom centre of the viewport. Screen-space chrome like the selection
+ * toolbar, and in the same overlay so one `contains` check covers both. */
+
+.yolo-whiteboard-card-menu {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  width: fit-content;
+  line-height: 1;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+  /* The overlay is pointer-transparent; its children take events back. The
+   * second translate is the horizontal centring, written here rather than with
+   * a margin so the whole placement is one composited transform. */
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+/* Sized like Canvas's own `.canvas-card-menu-button`, not like the selection
+ * toolbar's: that row is transient chrome next to a selection, this one is
+ * permanent and is also the thing a card gets dragged off, so the icon is the
+ * grab target and wants to be one, not `clickable-icon`'s default.
+ *
+ * One step under Canvas's `--icon-xl`: 24px reads as a handle on a board this
+ * light without the 48px button pressing on it. Obsidian has no token at that
+ * size — `--icon-l` is 18 and `--icon-xl` is 32 — so the size and the stroke
+ * that goes with it are stated here, the stroke interpolated between the two
+ * (1.75 at 18, 1.25 at 32) so the weight still reads as one family. */
+button.yolo-whiteboard-card-menu-button {
+  padding: var(--size-4-2, 8px);
+  --icon-size: 24px;
+  --icon-stroke: 1.5px;
+  /* Every button is also a handle: a card can be dragged off it onto the
+   * board (ui/canvas.ts's beginCreateDrag). */
+  cursor: grab;
+}
+
+button.yolo-whiteboard-card-menu-button:active {
+  cursor: grabbing;
+}
+
+/* The icon lifts on hover, which is how the bar says a button can be picked
+ * up at all — Canvas's own tell for the same gesture. Transform only, at the
+ * feedback duration; reduced motion is handled globally for yolo- classes. */
+.yolo-whiteboard-card-menu-button .svg-icon {
+  transition: transform var(--yolo-anim-duration-feedback, 120ms) ease-out;
+}
+
+@media (hover: hover) {
+  button.yolo-whiteboard-card-menu-button:hover .svg-icon {
+    transform: translateY(-3px);
+  }
+}
+
+/* The card a creation-bar drag is about to make: its outline, at its real
+ * size, in the world layer so it is stated in the same world coordinates the
+ * snapping thought in. An outline rather than a card, because it is not one
+ * yet — what it shows is where and how big, which is all that is known before
+ * the note or the URL has been chosen. */
+.yolo-whiteboard-create-ghost {
+  position: absolute;
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-m, 6px);
+  /* The wash is mixed into the fill rather than applied as `opacity` to the
+   * whole element: enough of a solid to read over the dot grid and not enough
+   * to hide a card it passes over, while the outline stays at full strength —
+   * where the edges land is the thing this is showing. */
+  background-color: color-mix(
+    in oklch,
+    var(--interactive-accent) 14%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* Hidden while the board cannot take a new card — zoomed out past the point
+ * where a card's content is built at all. `display: none` rather than a
+ * disabled state: a bar of four dead buttons is worse than no bar, and the
+ * reason it is gone (the whole board is a field of title blocks) is visible
+ * on the canvas itself. */
+.yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-hidden {
+  display: none;
+}

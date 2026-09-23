@@ -1,0 +1,80 @@
+/* --- reading panel -----------------------------------------------------------
+ * A column on the right of the view (ui/pdf/readerPanel.ts). The board does
+ * not slide under it: canvas.ts moves the viewport's right edge in by the
+ * panel's width, so nothing on the board is ever hidden behind it. */
+
+.yolo-whiteboard-reader-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  outline: none;
+}
+
+/* Wider than the line it draws, so it is easy to catch; centred on the
+ * panel's edge. */
+.yolo-whiteboard-reader-panel-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 2;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.yolo-whiteboard-reader-panel-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 3px;
+  background: var(--interactive-accent);
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+.yolo-whiteboard-reader-panel-divider:hover::after,
+.yolo-whiteboard-reader-panel-divider-active::after {
+  opacity: 1;
+}
+
+.yolo-whiteboard-reader-panel-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-whiteboard-reader-panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-whiteboard-reader-panel-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Out from under the board's camera, the panel's reader scrolls the ordinary
+ * way: the wheel reaches its scroller directly, and so does a scrollbar. */
+.yolo-whiteboard-reader-panel-body .yolo-whiteboard-pdf-scroller {
+  overflow: auto;
+}

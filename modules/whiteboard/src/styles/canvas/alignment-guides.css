@@ -1,0 +1,104 @@
+/* --- alignment guides ------------------------------------------------------
+ * Drawn only while a drag or a resize has something lined up
+ * (ui/canvas/snapGuideLayer.ts). In the world layer, in world coordinates,
+ * over the cards — an alignment hidden behind the card that caused it is not
+ * feedback. Line weight and dot size are counter-scaled like the edges', so
+ * the hint stays the same hint at every zoom.
+ *
+ * Obsidian Canvas's `.canvas-snaps`, at its accent colour and its 0.6 opacity;
+ * it leaves its own weights in world units, which we do not (see the edge
+ * section above). */
+
+.yolo-whiteboard-snap-guides {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0.6;
+  /* Over the cards and over the handle layer, which is the only other thing
+   * in the world layer a gesture puts on screen. */
+  z-index: 3;
+}
+
+.yolo-whiteboard-snap-guides line {
+  stroke: var(--interactive-accent);
+  stroke-width: calc(1 * var(--yolo-whiteboard-zoom-multiplier, 1));
+}
+
+.yolo-whiteboard-snap-guides circle {
+  fill: var(--interactive-accent);
+  /* `r` as a CSS property (SVG 2) so the dot follows the same counter-scale
+   * as everything else here; the element carries a plain `r` attribute too,
+   * which is what would be drawn if it did not apply. */
+  r: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
+}
+
+/* An edge's label: an HTML element in the world layer, next to the SVG that
+ * draws the curves rather than in it, because this is the element that holds
+ * the caret while the label is typed (ui/canvas.ts's beginRename) and SVG
+ * text cannot. Positioned by its centre on the curve's midpoint — the same
+ * anchor domain/edges.ts computes. */
+.yolo-whiteboard-edge-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  /* Obsidian Canvas's own ceiling for a path label. A label is an annotation
+   * on a line, not a card: past this it wraps rather than running the length
+   * of the board. In `em`, so it follows the counter-scaled font size below
+   * and the text wraps at the same word at every zoom. */
+  max-width: 17em;
+  padding: calc(2px * var(--yolo-whiteboard-zoom-multiplier, 1))
+    calc(6px * var(--yolo-whiteboard-zoom-multiplier, 1));
+  border-radius: var(--radius-s, 4px);
+  /* Opaque, so the label stays legible where it crosses its own curve and
+   * any other. (As SVG text this was a stroke halo; as an element it is just
+   * the background, which also gives the ring below something to sit on.) */
+  background: var(--background-primary);
+  color: var(--text-normal);
+  /* A size up from a card's own text (13), a size down from a group's name
+   * (20): an edge label names a relation between cards, which is read at the
+   * zoom where you are looking at structure rather than at any one card.
+   * Obsidian Canvas puts its own at --font-ui-large (20) against 16px card
+   * text, for the same reason and in the same direction. */
+  font-size: calc(15px * var(--yolo-whiteboard-zoom-multiplier, 1));
+  line-height: 1.3;
+  text-align: center;
+  white-space: pre-wrap;
+  /* Reachable, unlike the layer it sits in: the label is part of its edge, so
+   * pressing it grabs that edge and double-clicking it types the label. */
+  pointer-events: auto;
+  cursor: grab;
+}
+
+/* Being typed — the same treatment a group label gets, for the same reason:
+ * nothing about the text moves, it just gains the ring of a field. */
+.yolo-whiteboard-edge-label[contenteditable] {
+  box-shadow: 0 0 0 calc(2px * var(--yolo-whiteboard-zoom-multiplier, 1))
+    var(--yolo-whiteboard-color);
+  outline: none;
+  cursor: text;
+}
+
+/* Only ever empty between being created for an unlabelled edge and being
+ * typed into, so this is the prompt for that moment. */
+.yolo-whiteboard-edge-label:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+}
+
+.yolo-whiteboard-edge-label:not([contenteditable]):active {
+  cursor: grabbing;
+}

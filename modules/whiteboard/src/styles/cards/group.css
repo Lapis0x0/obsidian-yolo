@@ -1,0 +1,150 @@
+/* --- groups ---------------------------------------------------------------
+ * A group is a node like any other — same runtime, same selection, drag and
+ * resize path (ui/canvas.ts's mountNode) — that draws a labelled frame
+ * instead of a card body. What makes it a *frame* is entirely here: it sits
+ * behind everything else in the world layer, and its fill is a wash rather
+ * than an opaque surface, so the cards standing inside it stay legible.
+ *
+ * z-index: -1 rather than a DOM-order trick, because mount order is decided
+ * by virtualization: a group scrolling into view after the cards it contains
+ * would otherwise be appended on top of them and hide them. The world element
+ * always carries a transform, so it is a stacking context and a negative
+ * z-index cannot escape past it onto the dot grid.
+ *
+ * Membership (moving a group carries the nodes inside it, dropping a node
+ * into one joins it) is behaviour, not styling; nothing here implies it. */
+
+.yolo-whiteboard-group {
+  position: absolute;
+  z-index: -1;
+  display: flex;
+  flex-direction: column;
+  /* The label sits above the frame, so neither overflow nor `paint`
+   * containment may clip to the border box. A group has no content of its
+   * own to spill, so nothing is lost by it. */
+  overflow: visible;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 10px);
+  background: color-mix(in oklch, var(--yolo-whiteboard-color) 8%, transparent);
+  contain: layout style;
+}
+
+/* An unselected frame takes no pointer events — only its label does (below).
+ * A group is mostly empty space: if its interior were grabbable, every press
+ * aimed at the canvas inside it — a marquee, a double-click to make a card —
+ * would hit the group instead. So until it is spoken for, the label is the
+ * handle and the frame is scenery.
+ *
+ * Selected, it stops being scenery. The user has said this is the thing they
+ * are working on, and a thing you have selected but can only move by finding
+ * its label again is not selected in any sense that helps. Obsidian Canvas
+ * draws the line in the same place, down to the selector:
+ * `.canvas-node-group:not(.is-focused):not(.is-selected) { pointer-events:
+ * none }`. What it costs is a marquee begun inside the selected group, and
+ * that is one click on the canvas away. */
+.yolo-whiteboard-group:not(.yolo-whiteboard-card-selected) {
+  pointer-events: none;
+}
+
+/* Grabbable, so say so — the same tell the label carries (below), on exactly
+ * the condition that makes the frame grabbable at all. */
+.yolo-whiteboard-root .yolo-whiteboard-group.yolo-whiteboard-card-selected {
+  cursor: grab;
+}
+
+/* Being dragged. A card gets this from the block further down, which a group
+ * does not match: it is not a `.yolo-whiteboard-card`, and it must not take
+ * that block's `z-index: 1` either — a group is a frame and stays behind its
+ * contents while it moves. What it does want is the same grabbing cursor and
+ * the same compositor hint, since a drag rewrites its transform every frame.
+ *
+ * The cursor carries the rule above's whole prefix: two classes would lose to
+ * that rule's three, and the cursor would stay `grab` for the length of the
+ * drag. */
+.yolo-whiteboard-group.yolo-whiteboard-card-dragging {
+  will-change: transform;
+}
+
+.yolo-whiteboard-root .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
+  cursor: grabbing;
+}
+
+.yolo-whiteboard-group.yolo-whiteboard-card-selected {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* A coloured group: the same 70%/full-colour border law as a card, over a
+ * wash that is already the group's whole visual identity. */
+.yolo-whiteboard-group.yolo-whiteboard-themed {
+  border-color: color-mix(
+    in oklch,
+    var(--yolo-whiteboard-color) 70%,
+    transparent
+  );
+}
+
+.yolo-whiteboard-group.yolo-whiteboard-themed.yolo-whiteboard-card-selected {
+  border-color: var(--yolo-whiteboard-color);
+  box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
+}
+
+/* Sized in world units like the degraded card title, and for the same reason:
+ * a group's label belongs to the group, so it shrinks with it rather than
+ * being counter-scaled into a constant screen size. */
+.yolo-whiteboard-group-label {
+  /* Above the frame, not in it — the same rule a card's title follows, and
+   * for a group it also gives back the strip of interior the label used to
+   * cover, which was interior a card could be dropped into. */
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 1px);
+  /* Vertical slop only: the text is the handle, and horizontal padding would
+   * push it out of line with a card title's left edge. */
+  padding: 2px 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* The group's only handle: what selects it, what drags it (carrying the
+   * nodes inside), and what a double-click renames. */
+  pointer-events: auto;
+  /* `max-content` rather than the frame's full width: an empty or short label
+   * should not make a grabbable bar the length of the group, in a band the
+   * pointer otherwise passes straight through. */
+  width: max-content;
+  max-width: 100%;
+  min-width: 2em;
+}
+
+/* Being renamed (ui/canvas.ts's beginGroupRename makes the label itself
+ * editable). The text does not move, change size or change weight — all that
+ * happens is that it stops being clipped to the frame and gains the chrome of
+ * a field, so the rename reads as the label opening up rather than as a box
+ * appearing over it. The negative margin cancels the padding, which is what
+ * keeps the first glyph on the pixel it was already on. */
+.yolo-whiteboard-group-label[contenteditable] {
+  overflow: visible;
+  max-width: none;
+  text-overflow: clip;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-normal);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+  outline: none;
+  cursor: text;
+}
+
+.yolo-whiteboard-root .yolo-whiteboard-group-label:not([contenteditable]) {
+  cursor: grab;
+}
+
+.yolo-whiteboard-root
+  .yolo-whiteboard-group-label:not([contenteditable]):active {
+  cursor: grabbing;
+}

@@ -1,0 +1,15 @@
+/* --- preheat --------------------------------------------------------------
+ * Off-screen (not display:none, so layout/measurement still runs) element
+ * used once per view instance to warm up the markdown renderer pipeline
+ * before the first real card mounts (canvas.ts's preheat()). */
+
+.yolo-whiteboard-preheat {
+  position: absolute;
+  left: -99999px;
+  top: -99999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

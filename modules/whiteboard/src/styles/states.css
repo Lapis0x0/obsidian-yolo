@@ -1,0 +1,32 @@
+/* --- error state ---------------------------------------------------------
+ * Shown in place of the canvas when the .yoloboard file fails to parse — the
+ * file itself is left untouched (canvas.ts's setViewData/getViewData never
+ * reserializes a board in this state). */
+
+.yolo-whiteboard-error {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-normal);
+}
+
+.yolo-whiteboard-error.yolo-whiteboard-error-visible {
+  display: flex;
+}
+
+.yolo-whiteboard-error-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.yolo-whiteboard-error-hint {
+  max-width: 32em;
+  font-size: 13px;
+  color: var(--text-muted);
+}

@@ -1,0 +1,58 @@
+/* --- colour popover -------------------------------------------------------
+ * Six preset dots, a "no colour" dot, and a custom swatch — Obsidian Canvas's
+ * `.canvas-color-picker`, down to the 24px circles and to the custom swatch
+ * being a transparent <input type="color"> over a rainbow dot. */
+
+.yolo-whiteboard-color-popover {
+  display: flex;
+}
+
+button.yolo-whiteboard-color-swatch,
+label.yolo-whiteboard-color-swatch {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: 2px;
+  padding: 0;
+  border: 2px solid var(--background-primary);
+  border-radius: 12px;
+  background-color: var(--yolo-whiteboard-color);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+button.yolo-whiteboard-color-swatch:hover,
+label.yolo-whiteboard-color-swatch:hover,
+.yolo-whiteboard-color-swatch.yolo-whiteboard-color-swatch-active {
+  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+}
+
+/* Before a custom colour has been picked the swatch shows the spectrum it
+ * opens onto; once it carries one, that colour (written as an inline custom
+ * property) replaces it. */
+label.yolo-whiteboard-color-swatch-custom {
+  background-image: conic-gradient(
+    var(--color-red, #e93147),
+    var(--color-yellow, #e0ac00),
+    var(--color-green, #08b94e),
+    var(--color-blue, #086ddd),
+    var(--color-purple, #7852ee),
+    var(--color-red, #e93147)
+  );
+}
+
+label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
+  background-image: none;
+}
+
+.yolo-whiteboard-color-swatch-custom input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}

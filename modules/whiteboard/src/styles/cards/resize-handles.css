@@ -1,0 +1,180 @@
+/* --- resize handles -------------------------------------------------------
+ * One layer for the whole board, parked over the hovered card by
+ * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
+ * so it is in world coordinates like the cards — which is why every handle
+ * dimension is multiplied by --yolo-whiteboard-zoom-multiplier (1/sqrt(scale),
+ * written on this layer by cameraController.ts's applyZoomScale(); the handle
+ * size it is multiplied against is written once on the world element from
+ * ui/canvas.ts).
+ *
+ * The handles are invisible: they are hit areas, not decoration. The card's
+ * own accent ring already says which card the pointer is on, and eight
+ * visible dots at every hover would be noise on a dense board. The cursor is
+ * what tells the user a handle is under the pointer. */
+
+.yolo-whiteboard-interaction-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* The layer must never eat a click meant for the card beneath it; only its
+   * handle children take pointer events. */
+  pointer-events: none;
+  /* Cards are appended to the world layer as they mount, i.e. after this
+   * element, so plain DOM order would bury it. 2 clears the 1 a dragged card
+   * lifts itself to. */
+  z-index: 2;
+}
+
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer-hidden {
+  display: none;
+}
+
+.yolo-whiteboard-resizer {
+  --yolo-whiteboard-resizer-extent: calc(
+    var(--yolo-whiteboard-resizer-size) *
+      var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  --yolo-whiteboard-resizer-offset: calc(
+    var(--yolo-whiteboard-resizer-extent) * -0.5
+  );
+  position: absolute;
+  width: var(--yolo-whiteboard-resizer-extent);
+  height: var(--yolo-whiteboard-resizer-extent);
+  pointer-events: auto;
+}
+
+/* Each handle straddles the border it drags: half outside the card, half in.
+ * An entirely-outside handle would be unreachable at low zoom, where half of
+ * 20px is already only a few screen pixels. */
+
+.yolo-whiteboard-resizer[data-resize='top'],
+.yolo-whiteboard-resizer[data-resize='bottom'] {
+  left: 0;
+  right: 0;
+  width: auto;
+  cursor: ns-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='left'],
+.yolo-whiteboard-resizer[data-resize='right'] {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  cursor: ew-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='top'] {
+  top: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='bottom'] {
+  bottom: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='left'] {
+  left: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='right'] {
+  right: var(--yolo-whiteboard-resizer-offset);
+}
+
+/* Connection points: one per side, nested inside that side's handle
+ * and taking over its middle — the rest of the handle still resizes. The dot
+ * is drawn by ::after so the hit area stays a full handle-sized square while
+ * the visible circle can fade in and out; it appears on hovering the handle
+ * it belongs to (Obsidian Canvas's rule, and the reason a card at rest shows
+ * no dots at all), and stays lit for the side a connection is being dragged
+ * from, where pointer capture has taken :hover away. */
+
+.yolo-whiteboard-connection-point {
+  position: absolute;
+  width: var(--yolo-whiteboard-resizer-extent);
+  height: var(--yolo-whiteboard-resizer-extent);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.yolo-whiteboard-connection-point[data-side='top'],
+.yolo-whiteboard-connection-point[data-side='bottom'] {
+  left: calc(50% - var(--yolo-whiteboard-resizer-extent) / 2);
+}
+
+.yolo-whiteboard-connection-point[data-side='left'],
+.yolo-whiteboard-connection-point[data-side='right'] {
+  top: calc(50% - var(--yolo-whiteboard-resizer-extent) / 2);
+}
+
+.yolo-whiteboard-connection-point[data-side='top'] {
+  top: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='bottom'] {
+  bottom: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='left'] {
+  left: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='right'] {
+  right: 1px;
+}
+
+.yolo-whiteboard-connection-point::after {
+  content: ' ';
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--interactive-accent);
+  border: 3px solid var(--background-modifier-border);
+  opacity: 0;
+}
+
+.yolo-whiteboard-resizer:hover .yolo-whiteboard-connection-point::after,
+.yolo-whiteboard-interaction-layer[data-connecting='top']
+  .yolo-whiteboard-connection-point[data-side='top']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='right']
+  .yolo-whiteboard-connection-point[data-side='right']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='bottom']
+  .yolo-whiteboard-connection-point[data-side='bottom']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='left']
+  .yolo-whiteboard-connection-point[data-side='left']::after {
+  opacity: 1;
+}
+
+/* Corners come after the edges so they win the overlap: a press in the
+ * corner should resize both axes, not whichever edge happens to be later in
+ * the DOM. */
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  cursor: nwse-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='topright'],
+.yolo-whiteboard-resizer[data-resize='bottomleft'] {
+  cursor: nesw-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='topright'] {
+  top: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='bottomleft'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  bottom: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='bottomleft'] {
+  left: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='topright'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  right: var(--yolo-whiteboard-resizer-offset);
+}

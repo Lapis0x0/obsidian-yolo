@@ -1,0 +1,143 @@
+/* --- rung one: an empty card's AI hint, and a card writing itself --------
+ * (See ui/canvas/cardGeneration.ts for what builds them.)
+ *
+ * The hint is the card's placeholder: one faint line exactly where the first
+ * line of text goes (the same 6px 10px inset as the preview and the editor
+ * scroller), so with the editor open it sits on the caret's line the way a
+ * placeholder does. Its instruction words are the only pressable part.
+ *
+ * Laid over the body rather than after it: an empty card's body holds an
+ * empty render, and a line placed in flow under it would sit wherever that
+ * render happened to end.
+ *
+ * The instruction words are the one exemption from the content mask a
+ * markdown card gets, and it is narrow on purpose: they are not content the
+ * mask exists to cover — they only exist while the card has no content at
+ * all. The container stays unhittable so the rest of the line is still card,
+ * and still drags it (or, in an editor, still places the caret). */
+
+.yolo-whiteboard-card-chips {
+  position: absolute;
+  inset: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: inherit;
+  line-height: var(--line-height-normal);
+  pointer-events: none;
+}
+
+/* A placeholder yields to anything drawn where it sits. An empty CodeMirror
+ * line holds nothing but its `<br>`; the host's inline widgets — a
+ * continuation's thinking indicator, its ghost text, a tab completion — are
+ * drawn onto that line while the document itself stays empty, so the text
+ * alone would keep the hint up underneath them. */
+.yolo-whiteboard-editor-host:has(.cm-line > :not(br))
+  > .yolo-whiteboard-card-chips {
+  display: none;
+}
+
+/* A card is too narrow for the host's reasoning snippet beside its thinking
+ * indicator; the indicator alone says enough. */
+.yolo-whiteboard-editor-host .yolo-thinking-snippet {
+  display: none;
+}
+
+.yolo-whiteboard-card-chip-separator {
+  margin: 0 0.35em;
+}
+
+/* Obsidian styles every <button> globally (height, padding, background,
+ * shadow), so an instruction word resets all of it to read as inline text —
+ * component-scoped, not fought with !important. */
+button.yolo-whiteboard-card-chip {
+  display: inline;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-faint);
+  font: inherit;
+  line-height: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+button.yolo-whiteboard-card-chip:hover {
+  background: none;
+  color: var(--text-muted);
+  text-decoration-style: solid;
+}
+
+/* The card while it is being written into. In flow, because the body was
+ * emptied for it and this is the card's content for as long as the run
+ * lasts. */
+.yolo-whiteboard-card-stream {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.yolo-whiteboard-card-stream-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.yolo-whiteboard-card-stream-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The stop control outlives the status text: once the card is writing itself
+ * there is nothing left to say, but there is still something to stop. */
+.yolo-whiteboard-card-stream-stop {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background-color: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.yolo-whiteboard-card-stream-stop:hover {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+/* Plain text, not a render: the model's output is committed and rendered as
+ * Markdown once, when the run settles. Re-parsing it per token is the cost
+ * this deliberately does not pay, and `pre-wrap` is what keeps the source
+ * readable in the meantime. */
+.yolo-whiteboard-card-stream-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-normal);
+}

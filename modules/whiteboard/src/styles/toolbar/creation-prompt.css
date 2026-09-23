@@ -1,0 +1,133 @@
+/* --- creation prompt (file picker / URL entry) ---------------------------
+ * The panel that asks which note, which media file, or what URL. Stands in for
+ * the `FuzzySuggestModal` Canvas opens for the same three actions — see
+ * ui/promptOverlay.ts for why it is drawn here rather than asked of the host.
+ *
+ * The backdrop covers the viewport so a press anywhere outside dismisses it,
+ * which is also what keeps that press from reaching the board. */
+
+.yolo-whiteboard-prompt-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background-color: rgb(0 0 0 / 20%);
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2, 8px);
+  width: min(30em, 90%);
+  max-height: 60vh;
+  padding: var(--size-4-3, 12px);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.yolo-whiteboard-prompt-title {
+  font-size: var(--font-ui-small, 13px);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+input.yolo-whiteboard-prompt-input {
+  width: 100%;
+  padding: var(--size-4-2, 8px);
+  font-size: var(--font-ui-medium, 15px);
+  color: var(--text-normal);
+  background-color: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+
+input.yolo-whiteboard-prompt-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: none;
+}
+
+/* Full-bleed to the panel's right edge — the panel's own padding is cancelled
+ * and re-added here — so the thin overlay scrollbar hugs the frame instead of
+ * floating a gutter inside it, while the rows keep their inset and stay
+ * symmetric with the panel's left padding. The host's model-select menu and
+ * update toast are the same treatment.
+ *
+ * Auto-hide is Chromium's native overlay scrollbar, triggered by
+ * `scrollbar-width`/`scrollbar-color`. Do NOT transition `scrollbar-color`:
+ * Chromium cannot interpolate it and flashes the darker system thumb before
+ * snapping to ours. */
+.yolo-whiteboard-prompt-list {
+  flex: 1 1 auto;
+  margin-right: calc(-1 * var(--size-4-3, 12px));
+  padding-right: var(--size-4-3, 12px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-whiteboard-prompt-list:hover,
+.yolo-whiteboard-prompt-list:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}
+
+.yolo-whiteboard-prompt-item {
+  padding: var(--size-4-1, 4px) var(--size-4-2, 8px);
+  border-radius: var(--radius-s, 4px);
+  cursor: pointer;
+}
+
+.yolo-whiteboard-prompt-item.yolo-whiteboard-prompt-item-active {
+  background-color: var(--background-modifier-hover);
+}
+
+.yolo-whiteboard-prompt-item-title {
+  font-size: var(--font-ui-small, 13px);
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-whiteboard-prompt-item-detail,
+.yolo-whiteboard-prompt-empty {
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-whiteboard-prompt-empty {
+  padding: var(--size-4-2, 8px);
+}
+
+/* The web prompt's second half: drop an HTML document instead of typing a URL
+ * (ui/promptOverlay.ts's `createDropZone`). Dashed, because a dashed frame is
+ * what every drop target in this app is, and unstyled otherwise — it is a
+ * place to aim at, not a control. No transition on the active state: the
+ * feedback has to be immediate, and colour is not ours to animate
+ * (tokens/motion.css). */
+.yolo-whiteboard-prompt-drop {
+  padding: var(--size-4-4, 16px) var(--size-4-2, 8px);
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-faint);
+  text-align: center;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+
+.yolo-whiteboard-prompt-drop.yolo-whiteboard-prompt-drop-active {
+  color: var(--text-normal);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 8%,
+    transparent
+  );
+  border-color: var(--interactive-accent);
+}

@@ -1,0 +1,48 @@
+/* --- cards --------------------------------------------------------------- */
+
+.yolo-whiteboard-card {
+  position: absolute;
+  /* The card does not clip: its title hangs above it (see
+   * .yolo-whiteboard-card-title). Clipping moved to the two children that
+   * fill the box, which is where it was doing the work anyway — the body and
+   * the degraded block both take the card's radius so content still stops at
+   * the rounded corners. */
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 6px);
+  /* background-color rather than the shorthand: a coloured card adds a wash
+   * as a background-image layer on top of it (see .yolo-whiteboard-themed
+   * below), and the shorthand would reset that layer. */
+  background-color: var(--background-primary);
+  /* No resting shadow: against the dot grid a card reads as a card from its
+   * opaque fill and border alone, and --shadow-s at card scale is a heavy
+   * halo that turns a dense board into visual noise. box-shadow stays
+   * reserved for the selected/editing/dragging rings below. */
+  /* `paint` would clip to the border box exactly as overflow did, title
+   * included; layout and style containment are what the dense-board budget
+   * actually wanted. */
+  contain: layout style;
+  cursor: grab;
+}
+
+/* One accent ring, at one weight, for both states. Editing used to draw a
+ * heavier one, which made the band 3px against a 260px card — Obsidian's own
+ * 3px sits on a 400px card, so ours read half again as thick at the same
+ * apparent card size. A ring is chrome: what matters is its share of the
+ * card's width, not its pixel count, exactly as with the dot grid.
+ *
+ * The two states are not told apart by weight because they never were:
+ * Obsidian has no separate editing ring either. Editing is already
+ * unmistakable from the caret, the live-preview markup and the text cursor,
+ * and a second thickness tier only competes with them. */
+.yolo-whiteboard-card.yolo-whiteboard-card-editing,
+.yolo-whiteboard-card.yolo-whiteboard-card-selected {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-card-editing {
+  cursor: text;
+}

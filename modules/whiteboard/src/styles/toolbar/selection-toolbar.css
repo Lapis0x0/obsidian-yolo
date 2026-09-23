@@ -1,0 +1,49 @@
+/* --- selection toolbar ----------------------------------------------------
+ * Screen-space chrome over the canvas: the floating toolbar for the current
+ * selection, its colour popover, and the inline field that types an edge
+ * label. All of it lives in one overlay so a single `contains` check in
+ * ui/canvas.ts can keep a click on a button from also being a click on the
+ * board (the pointer listeners are on the viewport these are children of).
+ *
+ * The overlay itself is transparent to the pointer; its contents take pointer
+ * events back, exactly like Obsidian Canvas's own `.canvas-menu-container`. */
+
+.yolo-whiteboard-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Positioned with `transform` (written per camera frame by canvas.ts's
+ * positionToolbar) rather than left/top: it moves every frame during a zoom,
+ * and transform is the property that costs nothing to animate. */
+.yolo-whiteboard-toolbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 1px;
+  width: fit-content;
+  height: fit-content;
+  padding: var(--size-2-1, 2px);
+  line-height: 1;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-toolbar.yolo-whiteboard-toolbar-hidden {
+  display: none;
+}
+
+/* `clickable-icon` (Obsidian's own) carries the hover/active treatment; this
+ * only sets the padding, matching what Canvas gives its menu's buttons. */
+button.yolo-whiteboard-toolbar-button {
+  padding: var(--size-2-3, 6px) var(--size-4-2, 8px);
+}
+
+button.yolo-whiteboard-toolbar-button.is-active {
+  background-color: var(--background-modifier-hover);
+}

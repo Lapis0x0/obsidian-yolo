@@ -1,0 +1,46 @@
+/* --- coloured cards (JSON Canvas `color`) ---------------------------------
+ * Every declaration here is Obsidian Canvas's, read off the running app:
+ *
+ *   .canvas-node.is-themed .canvas-node-container {
+ *     border-color: color-mix(in oklch, var(--canvas-color) 70%, transparent);
+ *     box-shadow: inset 0 0 0 1px color-mix(… 70% …), var(--shadow-stationary);
+ *   }
+ *   .canvas-node.is-themed .canvas-node-content {
+ *     background-color: color-mix(in oklch, var(--canvas-color) 7%, transparent);
+ *   }
+ *   .canvas-node.is-selected.is-themed .canvas-node-container {
+ *     border-color: var(--canvas-color);  box-shadow: inset 0 0 0 1px …, 0 0 0 2px …;
+ *   }
+ *
+ * Two differences, both to stay consistent with this stylesheet's own
+ * decisions rather than to depart from Canvas: no resting shadow (see
+ * .yolo-whiteboard-card), and a 1px selection ring rather than 2px (the ring
+ * weight the accent selection already uses — see the block above).
+ *
+ * The 7% wash rides as a background-image layer over the card's opaque
+ * background-color, which is the same two-layer result Canvas gets from
+ * washing a child element, without needing one. */
+.yolo-whiteboard-card.yolo-whiteboard-themed {
+  border-color: color-mix(
+    in oklch,
+    var(--yolo-whiteboard-color) 70%,
+    transparent
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--yolo-whiteboard-color) 70%, transparent);
+  background-image: linear-gradient(
+    color-mix(in oklch, var(--yolo-whiteboard-color) 7%, transparent),
+    color-mix(in oklch, var(--yolo-whiteboard-color) 7%, transparent)
+  );
+}
+
+/* A coloured card keeps its own colour when selected instead of turning
+ * accent — the colour is what tells it apart from its neighbours, and losing
+ * it at the moment you act on it is exactly backwards. */
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-selected,
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-editing {
+  border-color: var(--yolo-whiteboard-color);
+  box-shadow:
+    inset 0 0 0 1px var(--yolo-whiteboard-color),
+    0 0 0 1px var(--yolo-whiteboard-color);
+}
