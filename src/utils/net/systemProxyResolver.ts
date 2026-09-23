@@ -45,8 +45,9 @@ const loadElectronRemote = async (): Promise<ElectronRemote | null> => {
 //   SOCKS4 host:port  → socks4://host:port
 //   SOCKS5 host:port  → socks5://host:port
 // Multiple tokens are separated by `;`; Chromium lists them in preference
-// order. We only use the first token because `proxy-agent` does not chain
-// fallbacks and DIRECT as the primary choice must win.
+// order. We only use the first token because the proxy dispatcher
+// (`core/llm/proxyDispatcherAgent.ts`) does not chain fallbacks and DIRECT
+// as the primary choice must win.
 const PAC_TOKEN_REGEX =
   /^(DIRECT|PROXY|HTTPS|SOCKS5|SOCKS4|SOCKS)(?:\s+(\S+))?$/i
 

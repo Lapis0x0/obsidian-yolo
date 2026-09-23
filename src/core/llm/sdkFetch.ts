@@ -48,24 +48,23 @@ export const getDesktopProxyAgent = async (): Promise<
     return desktopProxyAgent ?? undefined
   }
 
-  const [{ ProxyAgent }, { getProxyForUrl }] = await Promise.all([
-    import('proxy-agent'),
+  const [{ ProxyDispatcherAgent }, { getProxyForUrl }] = await Promise.all([
+    import('./proxyDispatcherAgent'),
     import('proxy-from-env'),
   ])
 
-  // proxy-agent@6.5.0 accepts `Promise<string>` from getProxyForUrl.
   // Decision order per URL:
   //   1. Local/private destinations — always DIRECT (matches curl/VS Code).
   //   2. Explicit HTTP(S)_PROXY/NO_PROXY env — honor the user's override.
   //   3. Otherwise delegate to Chromium via @electron/remote, giving parity
   //      with Obsidian's requestUrl and globalThis.fetch on all 3 OSes.
-  desktopProxyAgent = new ProxyAgent({
-    getProxyForUrl: async (url: string): Promise<string> => {
+  desktopProxyAgent = new ProxyDispatcherAgent(
+    async (url: string): Promise<string> => {
       if (shouldBypassProxy(url)) return ''
       if (envHasProxy(process.env)) return getProxyForUrl(url)
       return resolveSystemProxy(url)
     },
-  })
+  )
   return desktopProxyAgent
 }
 

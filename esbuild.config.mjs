@@ -41,6 +41,13 @@ const context = await esbuild.context({
   ],
   format: 'cjs',
   inject: [path.resolve('import-meta-url-shim.js')],
+  // node-fetch 2.x imports whatwg-url only as `Url.URL || whatwgUrl.URL`, and
+  // Electron's Node always has `url.URL`; the shim drops ~280KB (whatwg-url +
+  // tr46) that can never execute. Host bundle only — tests and runtime
+  // components resolve the real package.
+  alias: {
+    'whatwg-url': path.resolve('whatwg-url-shim.js'),
+  },
   define: {
     'import.meta.url': 'import_meta_url',
     'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
