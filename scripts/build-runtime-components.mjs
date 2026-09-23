@@ -20,6 +20,7 @@ const allowedIds = new Set([
   'pdf-engine',
   'bash-engine',
   'embedding-engine',
+  'claude-agent-sdk',
 ])
 const nodeBuiltins = new Set([
   ...builtinModules,
@@ -49,6 +50,7 @@ for (const entry of entries.sort((left, right) =>
   const outputPath = path.join(componentDir, 'dist', 'entry.js')
   await mkdir(path.dirname(outputPath), { recursive: true })
   const workerMetafiles = []
+  const usesNode = config.node === true
   const result = await esbuild.build({
     entryPoints: [path.join(componentDir, 'src', 'entry.ts')],
     outfile: outputPath,
@@ -64,13 +66,15 @@ for (const entry of entries.sort((left, right) =>
       'process.env.NODE_ENV': JSON.stringify(
         production ? 'production' : 'development',
       ),
+      ...(usesNode ? { 'import.meta.url': 'import_meta_url' } : {}),
     },
+    ...(usesNode ? nodeComponentBuildOptions() : {}),
     plugins: componentPlugins(entry.name, workerMetafiles),
     logLevel: 'silent',
   })
-  verifyBoundary(entry.name, result.metafile)
+  verifyBoundary(entry.name, result.metafile, usesNode)
   for (const workerMetafile of workerMetafiles) {
-    verifyBoundary(entry.name, workerMetafile)
+    verifyBoundary(entry.name, workerMetafile, usesNode)
   }
   const output = result.outputFiles?.[0]?.contents
   const bytes = output ?? new Uint8Array(await readFile(outputPath))
@@ -236,6 +240,7 @@ if (check) {
 function validateConfig(value, directoryName) {
   const keys = Object.keys(value)
   const hasAssets = keys.includes('assets')
+  const hasNode = keys.includes('node')
   const expected = [
     'descriptionKey',
     'entry',
@@ -245,6 +250,7 @@ function validateConfig(value, directoryName) {
     'platforms',
     'schemaVersion',
     ...(hasAssets ? ['assets'] : []),
+    ...(hasNode ? ['node'] : []),
   ].sort()
   if (JSON.stringify([...keys].sort()) !== JSON.stringify(expected)) {
     throw new Error(
@@ -278,6 +284,36 @@ function validateConfig(value, directoryName) {
     throw new Error(
       `Runtime component config has an invalid assets list: ${directoryName}`,
     )
+  }
+  // Node builtins only exist in Obsidian's desktop renderer, so a component
+  // that uses them must never be offered to mobile.
+  if (
+    hasNode &&
+    (value.node !== true ||
+      JSON.stringify(value.platforms) !== JSON.stringify(['desktop']))
+  ) {
+    throw new Error(
+      `Runtime component config may only declare "node": true for a desktop-only component: ${directoryName}`,
+    )
+  }
+}
+
+/**
+ * Build options for a desktop-only component that declares `"node": true`.
+ * Node builtins stay external: esbuild turns each import of one into a call
+ * to its `__require` helper, which the component resolves at run time through
+ * the global `require` of Obsidian's desktop renderer (the component executes
+ * in the host's realm via a Blob `<script>`). Dynamic `import("node:fs")` is
+ * lowered to the same `require` instead of a native `import()` that Chromium
+ * would try to fetch, and `import.meta.url`, which has no meaning in a Blob
+ * script, becomes a file URL from the shim — the same treatment
+ * `esbuild.config.mjs` gives the host bundle.
+ */
+function nodeComponentBuildOptions() {
+  return {
+    external: [...nodeBuiltins],
+    inject: [path.resolve('scripts/runtimeComponentImportMetaUrlShim.mjs')],
+    supported: { 'dynamic-import': false },
   }
 }
 
@@ -456,7 +492,13 @@ function bashEngineZlibStubPlugin() {
   }
 }
 
-function verifyBoundary(componentId, metafile) {
+/**
+ * `usesNode` is true only for a component whose config declares
+ * `"node": true` (validated to be desktop-only). It lifts the Node-builtin
+ * ban and lets the output reference builtins as externals; every other rule
+ * applies unchanged.
+ */
+function verifyBoundary(componentId, metafile, usesNode) {
   const componentPrefix = `runtime-components/${componentId}/`
   for (const [input, data] of Object.entries(metafile.inputs)) {
     const normalized = input.replaceAll('\\', '/')
@@ -466,17 +508,21 @@ function verifyBoundary(componentId, metafile) {
       normalized.includes('/obsidian/') ||
       normalized.endsWith('/obsidian') ||
       normalized === 'obsidian' ||
-      [...nodeBuiltins].some(
-        (builtin) =>
-          normalized === builtin || normalized.endsWith(`/${builtin}`),
-      )
+      (!usesNode &&
+        [...nodeBuiltins].some(
+          (builtin) =>
+            normalized === builtin || normalized.endsWith(`/${builtin}`),
+        ))
     ) {
       throw new Error(
         `Runtime component ${componentId} crosses a forbidden build boundary: ${input}`,
       )
     }
     for (const imported of data.imports ?? []) {
-      if (nodeBuiltins.has(imported.path) || imported.path === 'obsidian') {
+      if (
+        (!usesNode && nodeBuiltins.has(imported.path)) ||
+        imported.path === 'obsidian'
+      ) {
         throw new Error(
           `Runtime component ${componentId} imports forbidden dependency ${imported.path}`,
         )
@@ -498,7 +544,11 @@ function verifyBoundary(componentId, metafile) {
     }
   }
   for (const output of Object.values(metafile.outputs)) {
-    if ((output.imports ?? []).length > 0) {
+    const imports = (output.imports ?? []).filter(
+      (imported) =>
+        !(usesNode && imported.external && nodeBuiltins.has(imported.path)),
+    )
+    if (imports.length > 0) {
       throw new Error(
         `Runtime component ${componentId} output is not standalone`,
       )

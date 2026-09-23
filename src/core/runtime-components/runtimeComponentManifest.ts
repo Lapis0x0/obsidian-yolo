@@ -41,6 +41,7 @@ const IDS = new Set<RuntimeComponentId>([
   'pdf-engine',
   'bash-engine',
   'embedding-engine',
+  'claude-agent-sdk',
 ])
 export const MAX_RUNTIME_COMPONENT_BYTES = 16 * 1024 * 1024
 /** WASM assets (e.g. ONNX Runtime) run much larger than a component's own entry.js. */

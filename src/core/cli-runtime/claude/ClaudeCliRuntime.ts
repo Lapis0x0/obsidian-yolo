@@ -896,7 +896,12 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private getSdk(): Promise<ClaudeSdkModule> {
     assertCliRuntimeAvailable('claude-code')
-    this.sdkPromise ??= this.loadSdk()
+    // Loading can fail (the SDK component may still be downloading, be
+    // offline, or be turned off); forget the failure so the next turn retries.
+    this.sdkPromise ??= this.loadSdk().catch((error: unknown) => {
+      this.sdkPromise = undefined
+      throw error
+    })
     return this.sdkPromise
   }
 

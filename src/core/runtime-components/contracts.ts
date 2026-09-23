@@ -1,8 +1,11 @@
+import type { ClaudeSdkModule } from '../cli-runtime/claude/types'
+
 export type RuntimeComponentId =
   | 'tokenizer'
   | 'pdf-engine'
   | 'bash-engine'
   | 'embedding-engine'
+  | 'claude-agent-sdk'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -473,6 +476,12 @@ export type RuntimeComponentApiMap = {
   'pdf-engine': PdfEngineComponentApi
   'bash-engine': BashEngineComponentApi
   'embedding-engine': EmbeddingEngineComponentApi
+  /**
+   * Desktop-only: the Claude Agent SDK's entry points, exactly as the SDK
+   * package exports them. Stateless — the child process a `query` spawns
+   * belongs to the query object, which its caller closes.
+   */
+  'claude-agent-sdk': ClaudeSdkModule
 }
 
 export type RuntimeComponentDefinition<

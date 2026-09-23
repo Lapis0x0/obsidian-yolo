@@ -372,6 +372,13 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, i modelli di embedding locali non sono disponibili; il RAG utilizza un provider di embedding remoto.',
         },
+        claudeAgentSdk: {
+          name: 'Claude Agent SDK',
+          description:
+            'Collega YOLO al Claude Code locale per l’agente Claude Code e il provider di accesso Claude Code.',
+          impact:
+            'Disattivandolo, l’agente Claude Code e i modelli che usano l’accesso Claude Code non sono disponibili.',
+        },
         statuses: {
           missing: 'In attesa di installazione',
           downloading: 'Download in corso',

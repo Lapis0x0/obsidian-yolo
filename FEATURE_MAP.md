@@ -79,6 +79,7 @@
 ## 运行时组件（Runtime Components）
 - 核心代码：`src/core/runtime-components/` 负责发现、下载、安装、生命周期（`runtimeComponentDownloader.ts`/`runtimeComponentInstaller.ts`/`runtimeComponentLoader.ts`/`runtimeComponentService.ts`）。仓库根 `runtime-components/<id>/` 存放各组件自己的源码与构建产物，`runtime-components/sdk.d.ts` 是组件侧契约。
 - 已知组件目录（仓库根）：`tokenizer/`、`pdf-engine/`、`bash-engine/`、`embedding-engine/`、`pglite-engine/`——重量级 native/WASM 依赖闭包只能进这里，不能被 host 或普通模块静态 import（`npm run runtime:verify` 会在 host bundle 意外拉入组件依赖时失败）。
+- `claude-agent-sdk/` 是唯一可用 Node 内置模块的组件：`component.config.json` 声明 `"node": true`（构建脚本只允许 `platforms` 恰为 `["desktop"]` 时声明），内置模块保持外部依赖，运行时经桌面渲染进程的全局 `require` 解析。SDK 包 `@yolo/claude-agent-sdk-runtime` 就放在它的 `sdk-runtime/` 下，宿主只做 `import type`，值经 `src/core/cli-runtime/claude/sdk-loader.ts` 取组件。
 - 验证路径：`npm run runtime:typecheck`、组件目录内测试（如 `bashEngineReadOnly.test.ts`、`embeddingEngineRequestQueue.test.ts`）、`npm run runtime:build` + `npm run runtime:verify`。
 
 ## Settings

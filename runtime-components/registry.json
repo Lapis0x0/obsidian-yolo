@@ -15,6 +15,18 @@
       "sha256": "a980c278135e905bab64c4603dc15857c3ba87ee98ae822c45a85188fbbf96c8"
     },
     {
+      "id": "claude-agent-sdk",
+      "platforms": [
+        "desktop"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.claudeAgentSdk.name",
+      "descriptionKey": "settings.modules.runtimeComponents.claudeAgentSdk.description",
+      "impactKey": "settings.modules.runtimeComponents.claudeAgentSdk.impact",
+      "entry": "runtime-components/claude-agent-sdk/dist/entry.js",
+      "byteSize": 1134699,
+      "sha256": "85271e1c08518288f6625c15f3f4acd4d5329235c9db19582cbc66d85ec56985"
+    },
+    {
       "id": "embedding-engine",
       "platforms": [
         "desktop"

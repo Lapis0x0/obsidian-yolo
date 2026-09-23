@@ -17,7 +17,7 @@ function sha256(bytes) {
 
 /**
  * Builds a minimal but complete runtime-components tree under `root`: the
- * 3 asset-less components plus `embedding-engine` with one declared asset,
+ * 4 asset-less components plus `embedding-engine` with one declared asset,
  * mirroring exactly what `npm run runtime:build` produces (registry.json,
  * each component.config.json, each dist/entry.js, and the asset's local
  * source file at the same path `runtimeComponentAssetSources.mjs` maps
@@ -26,7 +26,12 @@ function sha256(bytes) {
  * reads.
  */
 async function writeRuntimeComponentFixture(root) {
-  const entryBytes = { tokenizer: 't', 'pdf-engine': 'p', 'bash-engine': 'b' }
+  const entryBytes = {
+    tokenizer: 't',
+    'pdf-engine': 'p',
+    'bash-engine': 'b',
+    'claude-agent-sdk': 'c',
+  }
   const assetBytes = Buffer.from('fixture wasm bytes')
   const components = []
   for (const [id, content] of Object.entries(entryBytes)) {

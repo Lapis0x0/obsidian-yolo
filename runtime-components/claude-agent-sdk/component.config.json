@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "id": "claude-agent-sdk",
+  "platforms": ["desktop"],
+  "node": true,
+  "nameKey": "settings.modules.runtimeComponents.claudeAgentSdk.name",
+  "descriptionKey": "settings.modules.runtimeComponents.claudeAgentSdk.description",
+  "impactKey": "settings.modules.runtimeComponents.claudeAgentSdk.impact",
+  "entry": "dist/entry.js"
+}

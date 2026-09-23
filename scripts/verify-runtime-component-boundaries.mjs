@@ -12,6 +12,7 @@ const forbidden = [
   'node_modules/@huggingface/transformers/',
   'node_modules/onnxruntime-web/',
   'node_modules/onnxruntime-common/',
+  'node_modules/@anthropic-ai/claude-agent-sdk/',
   'inline-pdfjs-worker',
 ]
 for (const dependency of forbidden) {
@@ -43,6 +44,10 @@ const expectedClosures = {
       'node_modules/@huggingface/transformers/',
       'node_modules/onnxruntime-web/',
     ],
+  },
+  'claude-agent-sdk': {
+    metafile: 'runtime-components/claude-agent-sdk/dist/meta.json',
+    dependencies: ['node_modules/@anthropic-ai/claude-agent-sdk/'],
   },
 }
 for (const [

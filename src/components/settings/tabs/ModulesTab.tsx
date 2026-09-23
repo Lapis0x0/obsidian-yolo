@@ -562,6 +562,8 @@ function runtimeComponentIcon(componentId: string): string {
       return 'terminal'
     case 'embedding-engine':
       return 'vector-square'
+    case 'claude-agent-sdk':
+      return 'bot'
     default:
       return 'component'
   }

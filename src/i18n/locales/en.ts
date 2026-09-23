@@ -349,6 +349,13 @@ export const en: TranslationKeys = {
           impact:
             'Turning this off disables local embedding models; RAG falls back to a remote embedding provider.',
         },
+        claudeAgentSdk: {
+          name: 'Claude Agent SDK',
+          description:
+            'Connects YOLO to your local Claude Code for the Claude Code agent and the Claude Code login provider.',
+          impact:
+            'Turning this off disables the Claude Code agent and models that use the Claude Code login.',
+        },
         statuses: {
           missing: 'Waiting to install',
           downloading: 'Downloading',

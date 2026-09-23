@@ -310,6 +310,13 @@ export const zh: TranslationKeys = {
           description: '在本地设备上运行嵌入模型，实现私密、离线的索引构建。',
           impact: '关闭后本地嵌入模型将不可用，RAG 将回退到远程嵌入服务。',
         },
+        claudeAgentSdk: {
+          name: 'Claude Agent SDK',
+          description:
+            '连接本机的 Claude Code，供 Claude Code Agent 与 Claude Code 登录提供商使用。',
+          impact:
+            '关闭后 Claude Code Agent 与使用 Claude Code 登录的模型将不可用。',
+        },
         statuses: {
           missing: '等待安装',
           downloading: '正在下载',

@@ -292,6 +292,7 @@ export type TranslationKeys = {
         pdfEngine: { name: string; description: string; impact: string }
         bashEngine: { name: string; description: string; impact: string }
         embeddingEngine: { name: string; description: string; impact: string }
+        claudeAgentSdk: { name: string; description: string; impact: string }
         statuses: {
           missing: string
           downloading: string

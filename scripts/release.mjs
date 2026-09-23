@@ -82,6 +82,7 @@ const RUNTIME_COMPONENT_IDS = new Set([
   'pdf-engine',
   'bash-engine',
   'embedding-engine',
+  'claude-agent-sdk',
 ])
 
 export async function validateRuntimeComponentArtifacts(root) {

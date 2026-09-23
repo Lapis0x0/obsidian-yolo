@@ -3,6 +3,7 @@ export type RuntimeComponentId =
   | 'pdf-engine'
   | 'bash-engine'
   | 'embedding-engine'
+  | 'claude-agent-sdk'
 
 export type RuntimeComponentDefinition<TApi = unknown> = Readonly<{
   id: RuntimeComponentId
