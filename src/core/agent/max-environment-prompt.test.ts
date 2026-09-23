@@ -37,11 +37,6 @@ describe('buildMaxEnvironmentPrompt', () => {
   it('carries the tool discipline the mode depends on being followed', () => {
     const prompt = buildMaxEnvironmentPrompt(facts)
 
-    // Prefer the reviewable edit over shell text substitution.
-    expect(prompt).toContain('Prefer edit_file over')
-    expect(prompt).toContain('sed')
-    // Read before edit — edit_file requires an exact unique match.
-    expect(prompt).toContain('Read a file before you edit it')
     // Out-of-vault reach pauses for approval, and that approval can be held
     // for the rest of the chat (`AgentToolGateway`'s boundary gate plus
     // `OUTSIDE_VAULT_ALLOWANCE_KEY`). "may pause" rather than "does", because

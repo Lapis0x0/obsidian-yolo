@@ -48,8 +48,6 @@ export const buildMaxEnvironmentPrompt = ({
 - Shell: ${shell}
 - Today: ${date}
 
-- Prefer edit_file over rewriting a file through the shell (sed, awk, output redirection): the edit is exact and fails loudly instead of silently mangling the file.
-- Read a file before you edit it. edit_file replaces text that must match exactly and occur once.
 - Paths may be absolute, start with ~, or be relative to the working directory.
 - A file path or a terminal cwd outside the working directory may pause for the user's approval, which they can then grant for the rest of this chat. Stay inside unless the task is genuinely about a path elsewhere.
 - Shell output is truncated before you see it. Narrow it at the source (| head, | rg, | wc -l) instead of printing everything.

@@ -30,7 +30,7 @@ const EDIT_FILE_DESCRIPTION = [
   '',
   'Unrelated to fs_edit: this never touches the Obsidian vault index, so it edits any extension and any path, inside the vault or outside it.',
   '',
-  'oldText must match the file exactly, whitespace included, and must match exactly once unless replaceAll is true — include enough surrounding context to make it unique. Prefer this over shell text surgery (sed/awk/python one-liners): those silently rewrite the wrong lines and leave no diff. The file must already exist; use write_file to create one.',
+  'Read the file first: oldText must match the file exactly, whitespace included, and must match exactly once unless replaceAll is true — include enough surrounding context to make it unique. Prefer this over shell text surgery (sed/awk/python one-liners): those silently rewrite the wrong lines and leave no diff. The file must already exist; use write_file to create one.',
 ].join('\n')
 
 export const editFileDefinition = defineTool({
