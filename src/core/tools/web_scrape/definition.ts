@@ -9,7 +9,7 @@ import { formatJsonResult, getTextArg } from '../tool-args'
 const WEB_SCRAPE_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
     'Fetch the full content of a single web page (markdown when the provider supports it). ' +
-    'Use this only when search snippets are insufficient. Returns { url, title?, content }.',
+    'Use it for a URL the user gives, or when search snippets are not enough. Returns { url, title?, content }.',
   inputSchema: {
     type: 'object',
     properties: {
