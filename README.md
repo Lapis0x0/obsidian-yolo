@@ -73,7 +73,7 @@
   </a>
 </td>
 <td valign="middle">
-  Thanks to <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> for sponsoring this project! Fluxion AI is an API relay that helps individual developers and businesses access and manage the world's leading AI models through one unified API. Multi-route dynamic scheduling keeps requests available, and model performance, response times, and costs are all transparent. With Fable 5.1, Fluxion AI can save you up to about 90% compared with Claude's official API pricing.
+  Thanks to <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> for sponsoring this project! Fluxion AI is an API relay that helps individual developers and businesses access and manage the world's leading AI models through one unified API. Multi-route dynamic scheduling keeps requests available, and model performance, response times, and costs are all transparent. With Fable 5.1, Fluxion AI can save you up to about 90% compared with Claude's official API pricing. Sign up through this link to get $3 in free API credit.
   <br><br>
   <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO"><b>Sign up for Fluxion AI →</b></a>
 </td>

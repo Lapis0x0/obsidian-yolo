@@ -73,7 +73,7 @@
   </a>
 </td>
 <td valign="middle">
-  ¡Gracias a <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> por patrocinar este proyecto! Fluxion AI es un servicio de retransmisión de API que ayuda a desarrolladores individuales y empresas a acceder y gestionar los principales modelos de IA del mundo mediante una API unificada. La planificación dinámica en varias rutas mejora la disponibilidad, y el rendimiento de los modelos, los tiempos de respuesta y los costes son transparentes. Con Fable 5.1, Fluxion AI permite ahorrar hasta aproximadamente un 90 % frente a los precios de la API oficial de Claude.
+  ¡Gracias a <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> por patrocinar este proyecto! Fluxion AI es un servicio de retransmisión de API que ayuda a desarrolladores individuales y empresas a acceder y gestionar los principales modelos de IA del mundo mediante una API unificada. La planificación dinámica en varias rutas mejora la disponibilidad, y el rendimiento de los modelos, los tiempos de respuesta y los costes son transparentes. Con Fable 5.1, Fluxion AI permite ahorrar hasta aproximadamente un 90 % frente a los precios de la API oficial de Claude. Regístrate a través de este enlace y recibe 3 $ en crédito de API gratuito.
   <br><br>
   <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO"><b>Regístrate en Fluxion AI →</b></a>
 </td>
