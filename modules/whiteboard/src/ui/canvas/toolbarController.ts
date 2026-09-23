@@ -107,6 +107,10 @@ export type ToolbarControllerCallbacks = Readonly<{
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
   isEditableNode: (node: BoardNode) => boolean
+  /** A file card showing a PDF — what "open in the reading panel" applies
+   * to. */
+  isPdfNode: (node: BoardNode) => boolean
+  openReader: (id: NodeId) => void
   /** World point an edge's toolbar anchors to — canvas.ts's own
    * `edgeAnchorPoint`, which needs the edge layer's live geometry this class
    * does not own. */
@@ -318,6 +322,15 @@ export class ToolbarController {
         label: this.callbacks.t('toolbar.edit'),
         icon: 'pencil',
         onSelect: () => this.callbacks.editCard(single.id),
+      })
+    }
+    // A PDF card's own button: read it in the panel beside the board. Offered
+    // in the overview tier too — the panel needs no card element.
+    if (single && this.callbacks.isPdfNode(single)) {
+      items.push({
+        label: this.callbacks.t('toolbar.openReader'),
+        icon: 'book-open',
+        onSelect: () => this.callbacks.openReader(single.id),
       })
     }
     // A group has no content to edit, so the pencil in its place renames it —

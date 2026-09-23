@@ -126,6 +126,7 @@ import {
 } from '../domain/virtualization'
 import { resolveCardContext } from '../host/cardContext'
 import { takePendingFit } from '../host/pendingFit'
+import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
 
 import { CameraController } from './canvas/cameraController'
@@ -183,6 +184,7 @@ import {
 } from './constants'
 import { asElement, asNode } from './eventTarget'
 import { blockStartLine, nextOverviewState } from './lod'
+import { READER_PANEL_DEFAULT_WIDTH, ReaderPanel } from './pdf/readerPanel'
 import {
   PromptOverlay,
   type PromptOverlayOptions,
@@ -263,6 +265,15 @@ const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
 const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
 const ERROR_HINT_CLASS = 'yolo-whiteboard-error-hint'
 const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
+
+/** How much of the view the board keeps however wide the reading panel is
+ * dragged. */
+const READER_PANEL_MIN_BOARD_WIDTH = 240
+/** How often a position read in the panel is written to its card's node.
+ * The node is the position's only persistent home — the card's own reader
+ * may be parked, evicted or never built — but writing it on every scroll
+ * frame would rebuild the board index at scroll rate. */
+const READER_PANEL_COMMIT_MS = 800
 
 // `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
 // type), which owns the mounted-card map it describes.
@@ -690,9 +701,22 @@ export class WhiteboardCanvas {
    * it runs at full rate. */
   private interacting = false
 
+  // Reading panel: one PDF card read at full height beside the board
+  // (./pdf/readerPanel.ts). The panel is a second reader over the card's
+  // file; this class owns which card that is and keeps the two readers, and
+  // the node's `startPage`, at the same place.
+  private readerPanel: ReaderPanel | null = null
+  /** The card the panel is reading, whenever the panel is open. */
+  private readerPanelNodeId: NodeId | null = null
+  private readerPanelCommitTimer: number | null = null
+  /** Mod+F, bound only while there is a reader to search (see
+   * `syncReaderKeymap`). */
+  private readerKeymapDisposer: (() => void) | null = null
+
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly host: YoloModuleHostApiV1,
+    private readonly readerPanelPrefs: ReaderPanelPrefs,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -792,6 +816,12 @@ export class WhiteboardCanvas {
         board = boardWithPageWindow(board, this.focusedNodeId, page)
       }
     }
+    // The panel's position is written to its card on a timer; the last
+    // stretch of reading must not wait for it.
+    const panelPage = this.readerPanel?.getPosition() ?? null
+    if (this.readerPanelNodeId !== null && panelPage !== null) {
+      board = boardWithPageWindow(board, this.readerPanelNodeId, panelPage)
+    }
     if (this.editing) {
       const liveText = this.editing.editor.getValue()
       const action = planNodeCommit(board, this.editing.nodeId, liveText)
@@ -808,6 +838,8 @@ export class WhiteboardCanvas {
 
   /** About to load a different file into this leaf. */
   clear(): void {
+    // The panel reads a card of the board that is leaving.
+    this.closeReaderPanel(false)
     this.teardownAllCards()
     this.board = emptyBoard()
     this.syncBoardIndex()
@@ -816,6 +848,9 @@ export class WhiteboardCanvas {
   }
 
   onResize(): void {
+    // A narrower view may leave the panel wider than it may be; giving the
+    // difference back lays the board out again (`layoutForReaderPanel`).
+    this.readerPanel?.refit()
     if (this.parseFailed) return
     // How far out the wheel may zoom is derived from the viewport's size.
     this.cameraController.invalidateScaleFloor()
@@ -858,6 +893,13 @@ export class WhiteboardCanvas {
     this.vaultSubscriptionDisposer = null
     this.viewKeymapDisposer?.()
     this.viewKeymapDisposer = null
+    // Its position is already in what the host saved (`getViewData` runs
+    // first), so it closes without writing it again.
+    this.closeReaderPanel(false)
+    // Still armed if a PDF card is focused; the scope outlives this canvas
+    // (a popout migration builds a new one on the same view).
+    this.readerKeymapDisposer?.()
+    this.readerKeymapDisposer = null
 
     this.endRename(true)
     this.prompt?.close()
@@ -1142,6 +1184,9 @@ export class WhiteboardCanvas {
       purgeNode: (id) => this.purgeNodeRuntime(id),
       getSourcePath: () => this.sourcePathForBoard(),
       getViewScale: () => this.cameraController.view.scale,
+      getPdfStartPosition: (id) => this.pdfStartPosition(id),
+      onPdfPositionChange: (id, position) =>
+        this.onCardPdfPosition(id, position),
       pdfPageLabel: this.pdfPageLabel,
       reportError: (stage, error) => this.reportError(stage, error),
       t: (key, fallback) => this.t(key, fallback),
@@ -1164,6 +1209,8 @@ export class WhiteboardCanvas {
       getSelectedEdgeIds: () => this.selectedEdgeIds,
       getEdge: (id) => this.boardEdgesById.get(id),
       isEditableNode: (node) => this.isEditableNode(node),
+      isPdfNode: (node) => isPdfNode(node),
+      openReader: (id) => this.openReaderPanel(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
       getView: () => this.cameraController.view,
       getViewportSize: () => ({
@@ -1315,6 +1362,16 @@ export class WhiteboardCanvas {
    * pointer listeners; released in `dispose()`. */
   private setupVaultSubscription(): void {
     this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
+      // The panel's file is gone: there is nothing left to read. (A rename
+      // reaches the panel through the board instead — the rename rewriter
+      // updates the card, and `syncReaderPanelWithBoard` follows it.)
+      if (
+        event.type === 'delete' &&
+        event.entry.path === this.readerPanel?.path
+      ) {
+        this.closeReaderPanel(false)
+        return
+      }
       if (event.type !== 'modify') return
       this.handleBackingFileModified(event.entry.path)
     })
@@ -1615,6 +1672,13 @@ export class WhiteboardCanvas {
     const single = ids.length === 1 ? this.nodesById.get(ids[0]) : null
     const items: YoloModuleHostMenuItemV1[] = []
 
+    if (single && isPdfNode(single)) {
+      items.push({
+        title: this.t('menu.openReader'),
+        icon: 'book-open',
+        onSelect: () => this.openReaderPanel(single.id),
+      })
+    }
     if (this.canEdit && single?.type === 'text') {
       items.push({
         title: this.t('menu.convertToNote'),
@@ -1915,6 +1979,12 @@ export class WhiteboardCanvas {
   private updateHover(e: PointerEvent): void {
     if (this.parseFailed) return
     const target = asElement(e.target)
+    // The panel covers the right of the viewport; a pointer on it is not on
+    // the board behind it, whatever the overview tier's geometry says.
+    if (this.readerPanel?.contains(target)) {
+      this.setHoveredNode(null)
+      return
+    }
     const onLayer =
       target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
@@ -3054,8 +3124,11 @@ export class WhiteboardCanvas {
    * the caret, they belong to that editor — CodeMirror has its own history,
    * and the text being typed is not a board change yet. */
   private registerViewKeymap(): void {
+    // A key typed into a field — a PDF reader's page or search box — is the
+    // field's: Mod+Z undoes the typing, Shift+1 types "!".
+    const busy = () => this.editing !== null || this.isTypingIntoField()
     const run = (action: () => void) => () => {
-      if (this.editing) return false
+      if (busy()) return false
       action()
       return true
     }
@@ -3064,11 +3137,11 @@ export class WhiteboardCanvas {
     // Obsidian Canvas's camera keys. Zoom-to-selection declines (falls
     // through to Obsidian) when nothing is selected, same as Canvas.
     const fitAll = () => {
-      if (this.editing) return false
+      if (busy()) return false
       return this.cameraController.fitCameraToNodes(this.board.nodes)
     }
     const fitSelection = () => {
-      if (this.editing) return false
+      if (busy()) return false
       return this.cameraController.zoomToSelection()
     }
     // Back to the origin at 1:1. Obsidian Canvas binds no key to its own
@@ -3077,7 +3150,7 @@ export class WhiteboardCanvas {
     // family as the two fits while reading as the "100%" that Mod+0 means in
     // every browser.
     const home = () => {
-      if (this.editing) return false
+      if (busy()) return false
       this.cameraController.resetCamera()
       return true
     }
@@ -3242,6 +3315,8 @@ export class WhiteboardCanvas {
     // An empty card offers its AI hint only while it is the focused one.
     if (previous !== null) this.cardGeneration.syncChips(previous)
     if (next !== null) this.cardGeneration.syncChips(next)
+    // A focused PDF card is a reader Mod+F can search.
+    this.syncReaderKeymap()
   }
 
   private setEdgeSelection(ids: readonly EdgeId[]): void {
@@ -3329,9 +3404,13 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Escape',
         handler: () => {
+          // A field inside a card or the panel (a page or search box)
+          // handles its own Escape.
+          if (this.isTypingIntoField()) return false
           // Steps out one layer at a time, the way Escape does out of an
-          // editor: first back out of the card's content, and only a second
-          // press lets go of the card itself.
+          // editor: first a PDF reader's open search, then out of the card's
+          // content, and only a last press lets go of the card itself.
+          if (this.closeReaderSearchForEscape()) return true
           if (this.enteredNodeId !== null) {
             this.exitLiveContent()
             return true
@@ -4779,6 +4858,235 @@ export class WhiteboardCanvas {
     this.enteredNodeId = null
   }
 
+  // -----------------------------------------------------------------------
+  // Reading panel. One PDF card at a time is read in a column beside the
+  // board (./pdf/readerPanel.ts) — a second reader over the card's file.
+  //
+  // Position flows both ways without bouncing: the panel's reader reports
+  // every move and the card's reader follows it silently (`setPosition`
+  // reports nothing back), and the card's reader is followed only while it is
+  // the focused card — the only state in which someone can be scrolling it.
+  // A card reader built or rebuilt meanwhile opens where the panel is
+  // (`pdfStartPosition`), so its first report is the panel's own position.
+  //
+  // The node's `startPage` is where the position persists: written on a
+  // short timer while the panel is read, on close, and folded into every save
+  // (`getViewData`).
+  //
+  // The board makes room rather than being covered: its viewport's right edge
+  // moves in by the panel's width, and everything measured against the
+  // viewport — the camera's zoom floor, virtualization, the toolbar's clamp,
+  // the overview canvas — is re-measured through `onResize`. Hit-testing reads
+  // the viewport's own client rect, whose left edge never moves.
+  // -----------------------------------------------------------------------
+
+  /** Opens the panel on a PDF card, or moves it there from another card. */
+  private openReaderPanel(id: NodeId): void {
+    const node = this.nodesById.get(id)
+    if (!node || !isPdfNode(node) || !this.rootEl) return
+    if (this.readerPanelNodeId !== null && this.readerPanelNodeId !== id) {
+      this.commitReaderPanelPosition()
+    }
+    const position = this.cardRenderer.getPdfPosition(id) ?? node.startPage
+    if (!this.readerPanel) {
+      const rootEl = this.rootEl
+      this.readerPanel = new ReaderPanel({
+        pdf: this.host.pdf,
+        parent: rootEl,
+        t: (key) => this.t(key),
+        width: this.readerPanelPrefs.getWidth(READER_PANEL_DEFAULT_WIDTH),
+        maxWidth: () => rootEl.clientWidth - READER_PANEL_MIN_BOARD_WIDTH,
+        onResize: (width, done) => {
+          this.layoutForReaderPanel()
+          if (done) this.readerPanelPrefs.setWidth(width)
+        },
+        onClose: () => this.closeReaderPanel(true),
+        onPositionChange: (next) => this.onReaderPanelPosition(next),
+        reportError: (stage, error) => this.reportError(stage, error),
+      })
+    }
+    this.readerPanelNodeId = id
+    this.readerPanel.show(
+      node.file,
+      basenameWithoutExtension(node.file),
+      position,
+    )
+    this.layoutForReaderPanel()
+    this.syncReaderKeymap()
+  }
+
+  /** Closes the panel, writing where it was to its card unless the board it
+   * belongs to is going away (`commit` false). */
+  private closeReaderPanel(commit: boolean): void {
+    if (!this.readerPanel) return
+    if (commit) this.commitReaderPanelPosition()
+    this.clearReaderPanelCommitTimer()
+    this.readerPanel.destroy()
+    this.readerPanel = null
+    this.readerPanelNodeId = null
+    this.layoutForReaderPanel()
+    this.syncReaderKeymap()
+  }
+
+  /** Gives the board the width the panel does not take. */
+  private layoutForReaderPanel(): void {
+    if (!this.viewportEl) return
+    this.viewportEl.setCssProps({
+      right: this.readerPanel ? `${this.readerPanel.width}px` : '',
+    })
+    this.onResize()
+  }
+
+  /** Keeps the panel pointed at a card that still exists and still is the
+   * PDF it was — and at its new path, when the file was renamed. */
+  private syncReaderPanelWithBoard(): void {
+    const id = this.readerPanelNodeId
+    const panel = this.readerPanel
+    if (id === null || !panel) return
+    const node = this.nodesById.get(id)
+    if (!node || !isPdfNode(node)) {
+      this.closeReaderPanel(false)
+      return
+    }
+    if (node.file !== panel.path) {
+      panel.show(
+        node.file,
+        basenameWithoutExtension(node.file),
+        panel.getPosition() ?? node.startPage,
+      )
+    }
+  }
+
+  /** The panel moved: the card's reader follows, and the node hears soon. */
+  private onReaderPanelPosition(position: number): void {
+    const id = this.readerPanelNodeId
+    if (id === null) return
+    this.cardRenderer.getRuntime(id)?.pdfReader?.setPosition(position)
+    this.scheduleReaderPanelCommit()
+  }
+
+  /** A card's reader moved. Only the focused card is one someone can be
+   * scrolling; any other report is a reader settling where it was put. */
+  private onCardPdfPosition(id: NodeId, position: number): void {
+    if (id !== this.readerPanelNodeId || id !== this.focusedNodeId) return
+    this.readerPanel?.setPosition(position)
+    this.scheduleReaderPanelCommit()
+  }
+
+  /** Where a PDF card's reader should open: the panel's place when the panel
+   * is reading that card, which is newer than the node's. */
+  private pdfStartPosition(id: NodeId): number | undefined {
+    if (id === this.readerPanelNodeId) {
+      const position = this.readerPanel?.getPosition()
+      if (position !== null && position !== undefined) return position
+    }
+    const node = this.nodesById.get(id)
+    return node?.type === 'file' ? node.startPage : undefined
+  }
+
+  private scheduleReaderPanelCommit(): void {
+    if (this.readerPanelCommitTimer !== null) return
+    this.readerPanelCommitTimer = this.context.getWindow().setTimeout(() => {
+      this.readerPanelCommitTimer = null
+      this.commitReaderPanelPosition()
+    }, READER_PANEL_COMMIT_MS)
+  }
+
+  private clearReaderPanelCommitTimer(): void {
+    if (this.readerPanelCommitTimer === null) return
+    this.context.getWindow().clearTimeout(this.readerPanelCommitTimer)
+    this.readerPanelCommitTimer = null
+  }
+
+  /** Written like `commitReadingWindow`: straight to the board, not a step
+   * anyone would undo. */
+  private commitReaderPanelPosition(): void {
+    this.clearReaderPanelCommitTimer()
+    const id = this.readerPanelNodeId
+    const position = this.readerPanel?.getPosition() ?? null
+    if (id === null || position === null || this.parseFailed) return
+    const next = boardWithPageWindow(this.board, id, position)
+    if (next === this.board) return
+    this.board = next
+    this.syncBoardIndex()
+    this.context.requestSave()
+  }
+
+  /** The focused card, when it is a PDF card. */
+  private focusedPdfNodeId(): NodeId | null {
+    const id = this.focusedNodeId
+    if (id === null) return null
+    const node = this.nodesById.get(id)
+    return node && isPdfNode(node) ? id : null
+  }
+
+  /**
+   * Binds Mod+F while there is a reader to search — the panel, or a focused
+   * PDF card — and only then. A binding on the view's scope that declines
+   * still ends the key's journey there (Obsidian's `Scope.handleKey` returns
+   * on the first binding for a key), so one left armed all the time would
+   * swallow the user's own Mod+F hotkey on every board.
+   */
+  private syncReaderKeymap(): void {
+    const wanted = this.readerPanel !== null || this.focusedPdfNodeId() !== null
+    if (wanted && !this.readerKeymapDisposer) {
+      this.readerKeymapDisposer = this.context.registerKeymap([
+        {
+          modifiers: ['Mod'],
+          key: 'F',
+          handler: () => this.openReaderSearch(),
+        },
+      ])
+    } else if (!wanted && this.readerKeymapDisposer) {
+      this.readerKeymapDisposer()
+      this.readerKeymapDisposer = null
+    }
+  }
+
+  /**
+   * Mod+F: searches the reader being read. That is the panel when focus is
+   * in it (a press anywhere in the panel gives it focus) or when no PDF card
+   * is focused; otherwise the focused card's reader.
+   */
+  private openReaderSearch(): boolean {
+    const active = this.context.getDocument().activeElement
+    const panel = this.readerPanel
+    const cardId = this.focusedPdfNodeId()
+    const cardEl =
+      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.el
+    // Typing somewhere else — a label, a prompt — is not reading.
+    if (
+      this.isTypingIntoField() &&
+      !panel?.contains(active) &&
+      !(active && cardEl?.contains(active))
+    ) {
+      return false
+    }
+    if (panel && (panel.contains(active) || cardId === null)) {
+      panel.openSearch()
+      return true
+    }
+    const reader =
+      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.pdfReader
+    if (!reader) return false
+    reader.openSearch()
+    return true
+  }
+
+  /** Escape's first layer: closes the search of the reader being read. */
+  private closeReaderSearchForEscape(): boolean {
+    const active = this.context.getDocument().activeElement
+    if (this.readerPanel?.contains(active)) {
+      return this.readerPanel.closeSearch()
+    }
+    const cardId = this.focusedPdfNodeId()
+    const reader =
+      cardId === null ? null : this.cardRenderer.getRuntime(cardId)?.pdfReader
+    if (!reader?.isSearchOpen()) return false
+    reader.closeSearch()
+    return true
+  }
+
   // ---- rung one: generating into a card ----------------------------------
   //
   // The two halves of handing a card's body to `./canvas/cardGeneration.ts`
@@ -5132,6 +5440,9 @@ export class WhiteboardCanvas {
     // every board change is a redraw — this is the one place they all pass
     // through.
     this.overviewLayer?.markDirty()
+    // And the one place the panel can learn its card was deleted, undone
+    // away, or pointed at another file.
+    this.syncReaderPanelWithBoard()
   }
 
   // ---------------------------------------------------------------------
@@ -5265,6 +5576,11 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
+}
+
+/** A file card showing a PDF — the cards the reading panel can open. */
+function isPdfNode(node: BoardNode): node is FileNode {
+  return node.type === 'file' && fileNodeKind(node.file) === 'pdf'
 }
 
 /**

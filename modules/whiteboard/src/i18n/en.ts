@@ -39,6 +39,7 @@ export const en = {
     distributeHorizontal: 'Distribute horizontally',
     distributeVertical: 'Distribute vertically',
     tidy: 'Tidy up',
+    openReader: 'Open in reader',
   },
   // The creation bar along the bottom of the canvas.
   controls: {
@@ -73,6 +74,7 @@ export const en = {
     tidy: 'Tidy up',
     arrows: 'Arrows',
     edgeLabel: 'Label',
+    openReader: 'Open in reader',
   },
   // The six preset names are Obsidian's own canvas palette.
   color: {
@@ -139,6 +141,13 @@ export const en = {
     openFailed: 'Could not open this PDF',
     pageInput: 'Page',
     pageTitle: '{name} · p. {page}',
+    search: 'Find in document',
+    searchPlaceholder: 'Find…',
+    searchPrevious: 'Previous (Shift+Enter)',
+    searchNext: 'Next (Enter)',
+    searchClose: 'Close find (Esc)',
+    searchNoResults: 'No results',
+    closePanel: 'Close reader',
   },
   error: {
     title: 'Could not read this whiteboard',

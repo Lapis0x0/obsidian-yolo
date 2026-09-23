@@ -36,6 +36,7 @@ export const zh = {
     distributeHorizontal: '水平等距分布',
     distributeVertical: '垂直等距分布',
     tidy: '整理',
+    openReader: '展开阅读',
   },
   controls: {
     zoomIn: '放大',
@@ -68,6 +69,7 @@ export const zh = {
     tidy: '整理',
     arrows: '箭头',
     edgeLabel: '标签',
+    openReader: '展开阅读',
   },
   color: {
     default: '不设颜色',
@@ -131,6 +133,13 @@ export const zh = {
     openFailed: '无法打开这个 PDF',
     pageInput: '页码',
     pageTitle: '{name} · 第 {page} 页',
+    search: '在文档中查找',
+    searchPlaceholder: '查找…',
+    searchPrevious: '上一个（Shift+Enter）',
+    searchNext: '下一个（Enter）',
+    searchClose: '关闭查找（Esc）',
+    searchNoResults: '无结果',
+    closePanel: '关闭阅读面板',
   },
   error: {
     title: '无法读取此白板',

@@ -37,6 +37,7 @@ export const it = {
     distributeHorizontal: 'Distribuisci orizzontalmente',
     distributeVertical: 'Distribuisci verticalmente',
     tidy: 'Riordina',
+    openReader: 'Apri nel lettore',
   },
   controls: {
     zoomIn: 'Ingrandisci',
@@ -69,6 +70,7 @@ export const it = {
     tidy: 'Riordina',
     arrows: 'Frecce',
     edgeLabel: 'Etichetta',
+    openReader: 'Apri nel lettore',
   },
   color: {
     default: 'Nessun colore',
@@ -135,6 +137,13 @@ export const it = {
     openFailed: 'Impossibile aprire questo PDF',
     pageInput: 'Pagina',
     pageTitle: '{name} · p. {page}',
+    search: 'Trova nel documento',
+    searchPlaceholder: 'Trova…',
+    searchPrevious: 'Precedente (Maiusc+Invio)',
+    searchNext: 'Successivo (Invio)',
+    searchClose: 'Chiudi ricerca (Esc)',
+    searchNoResults: 'Nessun risultato',
+    closePanel: 'Chiudi il lettore',
   },
   error: {
     title: 'Impossibile leggere questa lavagna',

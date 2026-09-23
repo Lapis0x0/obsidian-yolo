@@ -26,7 +26,14 @@
 //
 // Every DOM object comes from the container's own document and window, so a
 // reader in a popout window draws, observes and schedules in that window.
+//
+// Two readers over one file — a card and the view's reading panel — follow
+// each other through `onPositionChange` and `setPosition`. `setPosition` is
+// the follower's half and is silent: the scroll it causes is not reported
+// back, so the two cannot bounce a position between them.
 
+import { createReaderIconButton } from './icons'
+import { PdfSearch } from './pdfSearch'
 import {
   type PageSize,
   READER_METRICS,
@@ -60,7 +67,8 @@ export type PdfReaderOptions = Readonly<{
    * back while frames are late. Always yes when omitted. */
   canStartWork?: () => boolean
   /** Called when the reading position changes — by scrolling, a page jump,
-   * or a relayout that moved the column under it. */
+   * a search hit, or a relayout that moved the column under it. Not called
+   * for a `setPosition`. */
   onPositionChange?: (position: number) => void
   reportError?: (stage: string, error: unknown) => void
 }>
@@ -90,6 +98,7 @@ const PAGE_COUNT_CLASS = 'yolo-whiteboard-pdf-page-count'
 const STATUS_CLASS = 'yolo-whiteboard-pdf-status'
 const STATUS_ERROR_CLASS = 'yolo-whiteboard-pdf-status-error'
 const STATUS_HINT_CLASS = 'yolo-whiteboard-pdf-status-hint'
+const SEARCH_BUTTON_CLASS = 'yolo-whiteboard-pdf-search-open'
 
 type Slot = {
   readonly index: number
@@ -123,6 +132,7 @@ export class PdfReader {
   private readonly countEl: HTMLElement
   private readonly statusEl: HTMLElement
   private readonly resizeObserver: ResizeObserver | null
+  private readonly search: PdfSearch
 
   private handle: YoloModuleHostPdfDocumentV1 | null = null
   private unsubscribeStale: (() => void) | null = null
@@ -147,6 +157,9 @@ export class PdfReader {
    * the top of the document and save that.
    */
   private pendingPosition: number | null = null
+  /** The pending position came from `setPosition`, so applying it is not
+   * news to report. */
+  private pendingSilently = false
   private reportedPosition: number | null = null
 
   private viewScale: number
@@ -186,7 +199,17 @@ export class PdfReader {
     this.inputEl.setAttribute('aria-label', options.t('pdf.pageInput'))
     this.countEl = doc.createElement('span')
     this.countEl.className = PAGE_COUNT_CLASS
-    this.indicatorEl.append(this.inputEl, this.countEl)
+    this.indicatorEl.append(
+      createReaderIconButton(
+        doc,
+        SEARCH_BUTTON_CLASS,
+        'search',
+        options.t('pdf.search'),
+        () => this.openSearch(),
+      ),
+      this.inputEl,
+      this.countEl,
+    )
     this.indicatorEl.hidden = true
 
     this.statusEl = doc.createElement('div')
@@ -194,6 +217,16 @@ export class PdfReader {
 
     this.rootEl.append(this.scrollerEl, this.indicatorEl, this.statusEl)
     options.container.replaceChildren(this.rootEl)
+
+    this.search = new PdfSearch({
+      root: this.rootEl,
+      t: options.t,
+      getDocument: () => this.handle,
+      getPosition: () => this.getPosition(),
+      getTextLayer: (index) => this.slots[index]?.textLayer ?? null,
+      reveal: (index, range) => this.revealSearchHit(index, range),
+      reportError: options.reportError,
+    })
 
     this.scrollerEl.addEventListener('scroll', this.onScroll, { passive: true })
     this.inputEl.addEventListener('focus', this.onInputFocus)
@@ -221,18 +254,58 @@ export class PdfReader {
     return positionAt(this.layout, this.scrollerEl.scrollTop)
   }
 
-  /** Scrolls to a 1-based fractional page. */
+  /**
+   * Scrolls to a 1-based fractional page, without reporting it: this is how
+   * a reader is made to follow another one, and the other one already knows
+   * where it is. A reader that is hidden (parked) holds the position until
+   * it is shown, since its scroller cannot be scrolled while out of layout.
+   */
   setPosition(position: number): void {
+    this.moveTo(position, true)
+  }
+
+  /** A page jump someone asked this reader for — reported like a scroll. */
+  goToPage(page: number): void {
+    this.moveTo(Math.floor(page), false)
+  }
+
+  private moveTo(position: number, silent: boolean): void {
     if (!Number.isFinite(position)) return
     this.position = position
     this.pendingPosition = null
-    if (!this.layout) return
-    this.applyScroll(this.layout, position)
+    this.pendingSilently = silent
+    if (this.layout && this.visible) {
+      this.applyScroll(this.layout, position)
+      if (silent && this.pendingPosition === null) {
+        this.pendingSilently = false
+        this.markReported()
+      }
+    } else if (this.layout) {
+      this.pendingPosition = position
+    }
+    this.syncIndicator()
     this.schedule()
   }
 
-  goToPage(page: number): void {
-    this.setPosition(Math.floor(page))
+  /** Takes where the scroller now is as already reported. */
+  private markReported(): void {
+    if (!this.layout) return
+    this.reportedPosition = positionAt(this.layout, this.scrollerEl.scrollTop)
+    this.position = this.reportedPosition
+  }
+
+  /** Opens the search bar, with the caret in it. */
+  openSearch(): void {
+    if (this.destroyed || !this.handle) return
+    this.search.open()
+  }
+
+  closeSearch(): void {
+    this.search.close()
+  }
+
+  isSearchOpen(): boolean {
+    return this.search.isOpen()
   }
 
   /**
@@ -271,6 +344,9 @@ export class PdfReader {
     if (interactive === this.interactive) return
     this.interactive = interactive
     if (!interactive) {
+      // Search paints on text layers; a reader without them has nothing to
+      // show its hits on.
+      this.search.close()
       for (const slot of this.active) this.releaseTextLayer(slot)
     }
     this.schedule()
@@ -305,6 +381,7 @@ export class PdfReader {
     this.inputEl.removeEventListener('focus', this.onInputFocus)
     this.inputEl.removeEventListener('blur', this.onInputBlur)
     this.inputEl.removeEventListener('keydown', this.onInputKeyDown)
+    this.search.destroy()
     for (const slot of this.slots) this.releaseSlot(slot)
     this.slots = []
     this.unsubscribeStale?.()
@@ -360,6 +437,7 @@ export class PdfReader {
     this.layout = null
     this.relayout(position)
     this.schedule()
+    this.search.reset()
   }
 
   private fail(error: unknown): void {
@@ -511,6 +589,12 @@ export class PdfReader {
       // when it gets its real size; a document that simply fits never
       // scrolls, so there is nothing to wait for in a loop.
       if (this.pendingPosition !== null) return
+    }
+    // Put here by `setPosition`: where the scroller landed is the position
+    // the other reader already has, not news.
+    if (this.pendingSilently) {
+      this.pendingSilently = false
+      this.markReported()
     }
     const scrollTop = scroller.scrollTop
     const height = scroller.clientHeight
@@ -717,6 +801,7 @@ export class PdfReader {
           slot.textScale = current
           layer.setScale(current)
         }
+        this.search.onTextLayer(slot.index)
       },
       (error: unknown) => {
         if (slot.textTask === task) slot.textTask = null
@@ -727,6 +812,7 @@ export class PdfReader {
   }
 
   private releaseTextLayer(slot: Slot): void {
+    if (slot.textLayer) this.search.onTextLayerGone(slot.index)
     slot.textTask?.cancel()
     slot.textTask = null
     slot.textLayer?.destroy()
@@ -760,6 +846,39 @@ export class PdfReader {
       this.options.reportError?.('pdf page cleanup', error)
     }
     if (!slot.loading) this.active.delete(slot)
+  }
+
+  /**
+   * Brings a search hit into view. With its range (its page has a text
+   * layer), scrolls so the hit sits a third of the way down unless it is
+   * already comfortably on screen; without one, goes to its page, and the
+   * search finishes the jump when that page's layer is built.
+   *
+   * Measured with client rects, which a board's camera scales, and brought
+   * back into the reader's own pixels by the scroller's ratio of layout
+   * height to on-screen height — the same correction selection geometry uses.
+   */
+  private revealSearchHit(pageIndex: number, range: Range | null): void {
+    if (!this.layout) return
+    if (!range) {
+      this.goToPage(pageIndex + 1)
+      return
+    }
+    const scroller = this.scrollerEl
+    const box = scroller.getBoundingClientRect()
+    const rect = range.getBoundingClientRect()
+    const height = scroller.clientHeight
+    if (!(box.height > 0) || !(height > 0)) return
+    const factor = height / box.height
+    const top = (rect.top - box.top) * factor
+    const bottom = (rect.bottom - box.top) * factor
+    if (top >= height * 0.1 && bottom <= height * 0.9) return
+    const room = scroller.scrollHeight - height
+    this.pendingPosition = null
+    scroller.scrollTop = Math.max(
+      0,
+      Math.min(room, scroller.scrollTop + top - height / 3),
+    )
   }
 
   // -----------------------------------------------------------------------

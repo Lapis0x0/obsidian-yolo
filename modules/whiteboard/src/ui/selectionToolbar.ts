@@ -111,6 +111,7 @@ export type ToolbarIconName =
   | 'align-end-horizontal'
   | 'align-horizontal-distribute-center'
   | 'align-vertical-distribute-center'
+  | 'book-open'
 
 export type ToolbarAction = Readonly<{
   kind?: 'action'
@@ -303,6 +304,13 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     { kind: 'path', d: 'M7 21H5a2 2 0 0 1-2-2v-2' },
     { kind: 'ring', cx: 12, cy: 12, r: 3 },
     { kind: 'path', d: 'm16 16-1.9-1.9' },
+  ],
+  'book-open': [
+    { kind: 'path', d: 'M12 7v14' },
+    {
+      kind: 'path',
+      d: 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z',
+    },
   ],
   trash: [
     { kind: 'path', d: 'M3 6h18' },

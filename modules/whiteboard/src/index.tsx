@@ -18,6 +18,7 @@ import {
   importCanvasFileAndOpen,
 } from './host/importCanvasFile'
 import { OpenBoards } from './host/openBoards'
+import { ReaderPanelPrefs } from './host/readerPanelPrefs'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import { createWhiteboardLocalizedText } from './i18n'
 import { WhiteboardCanvas } from './ui/canvas'
@@ -37,6 +38,11 @@ yolo.registerModule({
     // Per-activation, not module scope: a deactivate must leave no view
     // behind for the next one to find.
     const openBoards = new OpenBoards()
+    const readerPanelPrefs = new ReaderPanelPrefs(
+      host.privateStorage.deviceLocal,
+      (stage, error) =>
+        console.error(`[YOLO Whiteboard] ${stage} failed`, error),
+    )
 
     host.workspace.registerFileView({
       viewType: VIEW_TYPE,
@@ -44,7 +50,10 @@ yolo.registerModule({
       name: createWhiteboardLocalizedText('module.name'),
       icon: WHITEBOARD_ICON,
       factory: (context) => {
-        const canvas = new WhiteboardCanvas(context, host)
+        // Read on the first board opened, not at activation: private
+        // storage only answers once the module is active.
+        readerPanelPrefs.load()
+        const canvas = new WhiteboardCanvas(context, host, readerPanelPrefs)
         const forgetOpenBoard = openBoards.add(canvas)
         return {
           setViewData: (data, clear) => canvas.setViewData(data, clear),

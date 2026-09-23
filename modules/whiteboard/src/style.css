@@ -1005,6 +1005,161 @@ input.yolo-whiteboard-pdf-page-input:focus {
   overflow-wrap: anywhere;
 }
 
+/* The reader's own chrome: the search button in the page pill, and the find
+ * bar. Icon buttons borrow Obsidian's `clickable-icon`; only their size is
+ * ours. */
+button.yolo-whiteboard-pdf-search-open,
+button.yolo-whiteboard-pdf-search-button,
+button.yolo-whiteboard-reader-panel-button {
+  --icon-size: 14px;
+  width: auto;
+  height: auto;
+  padding: 3px;
+  box-shadow: none;
+}
+
+button.yolo-whiteboard-pdf-search-open {
+  align-self: center;
+  margin-right: 2px;
+  padding: 1px;
+  --icon-size: 12px;
+}
+
+/* The find bar. Exempt from the content mask the way the chips are: a card
+ * that is only selected can be searched (Mod+F), and the bar's buttons have
+ * to answer the pointer for that to be usable. A press on it still never
+ * drags the card — canvas.ts treats a live body's contents as the content's. */
+.yolo-whiteboard-pdf-search {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 12px);
+  padding: 2px 2px 2px 4px;
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow:
+    var(--shadow-s),
+    0 0 0 1px var(--background-modifier-border);
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-pdf-search[hidden] {
+  display: none;
+}
+
+input.yolo-whiteboard-pdf-search-input {
+  flex: 1 1 12em;
+  min-width: 4em;
+  width: 12em;
+  height: 24px;
+  padding: 0 6px;
+  font-size: var(--font-ui-small);
+}
+
+.yolo-whiteboard-pdf-search-count {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Search hits (ui/pdf/pdfSearch.ts), painted through the Custom Highlight
+ * API on the text layer's transparent spans — the colours Obsidian's own
+ * search uses for a match and for the current one. */
+::highlight(yolo-whiteboard-pdf-search) {
+  background-color: var(--text-highlight-bg);
+}
+
+::highlight(yolo-whiteboard-pdf-search-current) {
+  background-color: var(--text-highlight-bg-active, rgba(255, 128, 0, 0.4));
+}
+
+/* --- reading panel -----------------------------------------------------------
+ * A column on the right of the view (ui/pdf/readerPanel.ts). The board does
+ * not slide under it: canvas.ts moves the viewport's right edge in by the
+ * panel's width, so nothing on the board is ever hidden behind it. */
+
+.yolo-whiteboard-reader-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  outline: none;
+}
+
+/* Wider than the line it draws, so it is easy to catch; centred on the
+ * panel's edge. */
+.yolo-whiteboard-reader-panel-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 2;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.yolo-whiteboard-reader-panel-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 3px;
+  background: var(--interactive-accent);
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+.yolo-whiteboard-reader-panel-divider:hover::after,
+.yolo-whiteboard-reader-panel-divider-active::after {
+  opacity: 1;
+}
+
+.yolo-whiteboard-reader-panel-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-whiteboard-reader-panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-whiteboard-reader-panel-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Out from under the board's camera, the panel's reader scrolls the ordinary
+ * way: the wheel reaches its scroller directly, and so does a scrollbar. */
+.yolo-whiteboard-reader-panel-body .yolo-whiteboard-pdf-scroller {
+  overflow: auto;
+}
+
 /* A web card's frame. Sandbox flags and the http(s)-only rule live in
  * ui/canvas.ts (WEB_FRAME_SANDBOX) — this is only its geometry. */
 .yolo-whiteboard-card-web-frame {

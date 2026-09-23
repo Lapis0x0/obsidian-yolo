@@ -188,6 +188,11 @@ export type CardRendererCallbacks = Readonly<{
   getSourcePath: () => string
   /** The camera's current zoom — what a PDF card's pages are drawn for. */
   getViewScale: () => number
+  /** Where a PDF card's reader opens: the node's `startPage`, or the reading
+   * panel's place when the panel is reading this card. */
+  getPdfStartPosition: (id: NodeId) => number | undefined
+  /** A PDF card's reader moved (see PdfReader's `onPositionChange`). */
+  onPdfPositionChange: (id: NodeId, position: number) => void
   /** "name · p. N", localized: what a PDF card's title block says once it
    * has been read past page 1 (ui/lod.ts's `nodeTitleText`). */
   pdfPageLabel: (name: string, page: number) => string
@@ -1169,16 +1174,17 @@ export class CardRenderer {
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl
     if (!bodyEl) return
-    const node = this.callbacks.getNode(id)
     const reader = new PdfReader({
       pdf: this.host.pdf,
       path,
       container: bodyEl,
-      position: node?.type === 'file' ? node.startPage : undefined,
+      position: this.callbacks.getPdfStartPosition(id),
       viewScale: this.callbacks.getViewScale(),
       interactive: this.callbacks.isFocused(id),
       t: (key) => this.callbacks.t(key),
       canStartWork: () => this.callbacks.canBuildContent(),
+      onPositionChange: (position) =>
+        this.callbacks.onPdfPositionChange(id, position),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
     })
     runtime.pdfReader = reader
