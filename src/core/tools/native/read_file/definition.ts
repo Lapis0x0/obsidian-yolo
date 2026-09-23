@@ -18,6 +18,11 @@ import {
   PDF_READ_MAX_PAGES,
   extractPdfTextFromBase64,
 } from '../../../../utils/pdf/extractPdfText'
+import {
+  buildAllowedSkillPathSet,
+  normalizeExemptPath,
+} from '../../../agent/workspaceScope'
+import { getLiteSkillDocumentByPath } from '../../../skills/liteSkills'
 import { defineTool } from '../../define'
 import { sliceLines } from '../../line-slicing'
 import { getVaultPathExtension } from '../../structured-vault-formats'
@@ -25,6 +30,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   formatJsonResult,
   getOptionalBoundedIntegerArg,
+  getTextArg,
 } from '../../tool-args'
 import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
 import { assertDecodableAsText } from '../text'
@@ -34,7 +40,7 @@ const MAX_LINE_INDEX = 1_000_000
 const READ_FILE_DESCRIPTION = [
   'Read a file straight from the local filesystem. Desktop-only.',
   '',
-  'Unrelated to fs_read: this never touches the Obsidian vault index, so it reads any extension, hidden directories, and paths outside the vault — but it also resolves no wikilinks, skills, or browser:// pages.',
+  'Also reads a skill from its path exactly as listed in <available_skills>.',
   '',
   'Text files come back line-numbered with the total line count. Omit startLine/endLine to read the whole file; pass startLine (optionally with endLine) to read a window of a large one. A PDF is extracted to text and its line numbers are page numbers. An image is attached for the model to look at.',
 ].join('\n')
@@ -77,10 +83,31 @@ export const readFileDefinition = defineTool({
   isAvailable: () => Platform.isDesktop,
   filesystemPathArg: 'path',
   execute: async (args, ctx) => {
-    const { app, settings, signal, chatModelId } = ctx
+    const { app, settings, signal, chatModelId, allowedSkillPaths } = ctx
+
+    const range = getReadRange(args)
+
+    // A listed skill path is read through the skill registry, the same way
+    // `fs_read` does: a builtin skill (`builtin://`) has no file on disk.
+    const skillPath = getTextArg(args, 'path').trim()
+    if (
+      allowedSkillPaths &&
+      buildAllowedSkillPathSet(allowedSkillPaths).has(
+        normalizeExemptPath(skillPath),
+      )
+    ) {
+      const skill = await getLiteSkillDocumentByPath({
+        app,
+        path: skillPath,
+        settings,
+      })
+      if (!skill) {
+        throw new Error(`Skill not found: ${skillPath}`)
+      }
+      return textResult({ path: skillPath, content: skill.content, range })
+    }
 
     const absolutePath = await resolveNativeFilePathArg(app, args)
-    const range = getReadRange(args)
 
     // eslint-disable-next-line import/no-nodejs-modules -- desktop-only tool, dynamically imported so mobile never loads it
     const fs = await import('node:fs/promises')
@@ -134,31 +161,45 @@ export const readFileDefinition = defineTool({
 
     const bytes = new Uint8Array(await fs.readFile(absolutePath))
     assertDecodableAsText(bytes, absolutePath)
-    const content = new TextDecoder().decode(bytes)
-    const lines = content.length === 0 ? [] : content.split('\n')
-    const sliced = sliceLines(lines, range)
-
-    return {
-      status: ToolCallResponseStatus.Success,
-      text: formatJsonResult({
-        tool: 'read_file',
-        path: absolutePath,
-        kind: 'text',
-        totalLines: sliced.totalLines,
-        returnedRange:
-          range.type === 'lines'
-            ? {
-                startLine: sliced.returnedStartLine,
-                endLine: sliced.returnedEndLine,
-              }
-            : undefined,
-        hasMoreBelow: sliced.hasMoreBelow,
-        nextStartLine: sliced.nextStartLine,
-        content: sliced.outputContent,
-      }),
-    }
+    return textResult({
+      path: absolutePath,
+      content: new TextDecoder().decode(bytes),
+      range,
+    })
   },
 })
+
+const textResult = ({
+  path,
+  content,
+  range,
+}: {
+  path: string
+  content: string
+  range: ReturnType<typeof getReadRange>
+}) => {
+  const lines = content.length === 0 ? [] : content.split('\n')
+  const sliced = sliceLines(lines, range)
+  return {
+    status: ToolCallResponseStatus.Success as const,
+    text: formatJsonResult({
+      tool: 'read_file',
+      path,
+      kind: 'text',
+      totalLines: sliced.totalLines,
+      returnedRange:
+        range.type === 'lines'
+          ? {
+              startLine: sliced.returnedStartLine,
+              endLine: sliced.returnedEndLine,
+            }
+          : undefined,
+      hasMoreBelow: sliced.hasMoreBelow,
+      nextStartLine: sliced.nextStartLine,
+      content: sliced.outputContent,
+    }),
+  }
+}
 
 const getReadRange = (
   args: Record<string, unknown>,

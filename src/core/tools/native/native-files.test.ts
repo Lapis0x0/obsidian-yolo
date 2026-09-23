@@ -1,4 +1,7 @@
 jest.mock('obsidian')
+jest.mock('../../skills/liteSkills', () => ({
+  getLiteSkillDocumentByPath: jest.fn(),
+}))
 
 /* eslint-disable import/no-nodejs-modules -- real filesystem round-trip against a temp directory, see the file note below */
 import * as fs from 'node:fs/promises'
@@ -15,11 +18,14 @@ import type { App } from 'obsidian'
 import { readEditReviewSnapshot } from '../../../database/edit-review/editReviewSnapshotStore'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../../utils/chat/editUndoSnapshotStore'
+import { getLiteSkillDocumentByPath } from '../../skills/liteSkills'
 import { executeBuiltinTool } from '../dispatcher'
 import type { ToolContext } from '../types'
 
 // Real filesystem, real temp directory: these three tools exist precisely to
 // bypass every Obsidian abstraction, so a mocked fs would test nothing.
+
+const getLiteSkillDocumentByPathMock = jest.mocked(getLiteSkillDocumentByPath)
 
 let vaultRoot: string
 let outsideRoot: string
@@ -230,6 +236,29 @@ describe('read_file', () => {
     expect(await expectError('read_file', { path: 'dir' })).toContain(
       'Not a file',
     )
+  })
+
+  it('reads a listed skill path through the skill registry', async () => {
+    getLiteSkillDocumentByPathMock.mockResolvedValueOnce({
+      entry: {
+        name: 'demo',
+        description: 'Demo skill',
+        mode: 'lazy',
+        path: 'builtin://skills/demo.md',
+        isReadOnly: true,
+      },
+      content: 'line 1\nline 2',
+    })
+    ctx = { ...ctx, allowedSkillPaths: ['builtin://skills/demo.md'] }
+
+    const payload = await expectSuccessPayload('read_file', {
+      path: 'builtin://skills/demo.md',
+    })
+    expect(payload).toMatchObject({
+      path: 'builtin://skills/demo.md',
+      totalLines: 2,
+    })
+    expect(payload.content).toContain('line 2')
   })
 
   it('rejects endLine without startLine and an inverted range', async () => {

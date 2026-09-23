@@ -207,8 +207,7 @@ const normalizeAbsolutePath = (value: string): string => {
 export const NATIVE_PATH_ARG_DESCRIPTION =
   'Filesystem path. Absolute ("/Users/me/x.md", "C:\\\\work\\\\x.md"), home-relative ("~/x.md"), ' +
   'or relative to the vault root. Any extension, hidden directories, and locations outside the ' +
-  'vault are all allowed. This is a real path on disk — never a wikilink, a skill path, or a ' +
-  'browser:// page id.'
+  'vault are all allowed. Wikilinks and browser:// page ids are not resolved.'
 
 /** Reads the `path` argument and resolves it to an absolute path. */
 export const resolveNativeFilePathArg = async (
