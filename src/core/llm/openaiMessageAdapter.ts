@@ -414,7 +414,7 @@ export class OpenAIMessageAdapter {
     return this.streamResponseGenerator(stream)
   }
 
-  private async *streamResponseGenerator(
+  protected async *streamResponseGenerator(
     stream: AsyncIterable<ChatCompletionChunk>,
   ): AsyncIterable<LLMResponseStreaming> {
     const guard = createStreamingChoicesGuard({

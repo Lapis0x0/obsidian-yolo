@@ -23,7 +23,7 @@ import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
 
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { OpenRouterMessageAdapter } from './openRouterMessageAdapter'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
@@ -35,7 +35,7 @@ import {
 import { createTransportClients } from './transportClients'
 
 export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
-  private adapter: OpenAIMessageAdapter
+  private adapter: OpenRouterMessageAdapter
   private browserClient: OpenAI
   private obsidianClient: OpenAI
   private nodeClient: OpenAI
@@ -64,7 +64,7 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     },
   ) {
     super(provider)
-    this.adapter = new OpenAIMessageAdapter()
+    this.adapter = new OpenRouterMessageAdapter()
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
