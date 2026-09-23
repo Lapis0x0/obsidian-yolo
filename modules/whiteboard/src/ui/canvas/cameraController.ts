@@ -593,8 +593,8 @@ export class CameraController {
   // -----------------------------------------------------------------------
   // Pan gesture (middle-drag anywhere, or Alt+left-drag from empty canvas).
   // The gesture's own state machine (which `Interaction` is active, whether a
-  // press has crossed the drag threshold) stays in canvas.ts alongside the
-  // other pointer gestures it dispatches; only the camera math and the DOM
+  // press has crossed the drag threshold) stays in ./interactionController.ts
+  // alongside the other pointer gestures it dispatches; only the camera math and the DOM
   // writes that follow from it live here.
   // -----------------------------------------------------------------------
 

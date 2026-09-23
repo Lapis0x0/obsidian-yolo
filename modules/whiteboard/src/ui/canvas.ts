@@ -25,28 +25,13 @@ import {
   alignRects,
   distributeRects,
 } from '../domain/arrange'
-import {
-  cameraFromView,
-  distanceBetween,
-  gridStepForScale,
-  screenDeltaToWorld,
-  screenToWorld,
-} from '../domain/camera'
+import { cameraFromView, screenToWorld } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
 import {
   type ArrowDirection,
-  NODE_SIDES,
-  type SideAnchor,
-  anchorPoint,
   arrowEnds,
-  buildEdge,
-  buildEdgePathD,
   computeEdgeGeometry,
-  edgeAtPoint,
-  findConnectTarget,
-  oppositeSide,
-  rectAnchoredAt,
   resolveEdgeSides,
 } from '../domain/edges'
 import {
@@ -58,8 +43,6 @@ import {
   type GroupNode,
   type NodeColor,
   type NodeId,
-  type NodeSide,
-  type TextNode,
   emptyBoard,
   parseBoard,
   serializeBoard,
@@ -68,46 +51,25 @@ import {
   arrangeTargets,
   carryGroupMembers,
   groupRectForNodes,
-  nodesToDragWith,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
 import { isMarkdownPath } from '../domain/naming'
 import {
-  addEdge,
-  addNode,
   boardWithPageWindow,
   boardWithReadingWindow,
-  moveNodes,
   removeEdge,
   removeNode,
   setNodePositions,
   updateEdge,
   updateNode,
 } from '../domain/operations'
-import {
-  type CardRect,
-  type CardSize,
-  RESIZE_HANDLES,
-  type ResizeHandle,
-  rectOfCard,
-  resizeRect,
-} from '../domain/resize'
-import {
-  marqueeRectFromPoints,
-  nodeAtPoint,
-  nodesInMarquee,
-} from '../domain/selection'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
-import { type SnapGuide, snapMove, snapResize } from '../domain/snapping'
 import { tidyRects } from '../domain/tidy'
 import {
-  type CanvasView,
-  type VirtualCardRect,
   VirtualizationEngine,
   type WorldRect,
   computeWorldViewportRect,
-  intersectsViewport,
 } from '../domain/virtualization'
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
@@ -122,6 +84,11 @@ import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
+import {
+  InteractionController,
+  buildInteractionLayer,
+  nodeIdFromEventTarget,
+} from './canvas/interactionController'
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
@@ -131,35 +98,23 @@ import { CanvasControls } from './canvasControls'
 import {
   ARRANGE_ANIMATION_EASING,
   ARRANGE_ANIMATION_MS,
-  CARD_BODY_LIVE_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
-  CONNECT_SNAP_WORLD_PX,
   CONTENT_BUILD_START_CAP_PER_FRAME,
-  DRAG_THRESHOLD_PX,
   EDGE_HIDDEN_CLASS,
-  EDGE_HIT_CLASS,
-  EDGE_HIT_STROKE_WORLD_PX,
-  EDGE_LABEL_CLASS,
   FRAME_ON_TIME_MS,
-  GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
-  GROUP_LABEL_CLASS,
   GROUP_LABEL_WORLD_FONT_PX,
-  MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
-  NEW_CARD_SIZE,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
-  SNAP_SCREEN_PX,
   SVG_NS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
 } from './constants'
-import { asElement } from './eventTarget'
 import { blockStartLine, nextOverviewState } from './lod'
 import { applyColorToElement } from './selectionToolbar'
 
@@ -196,9 +151,6 @@ const NO_PINS: ReadonlySet<NodeId> = new Set()
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const PAN_CAPTURE_CLASS = 'yolo-whiteboard-pan-capture'
-/** On the pan capture while Space is held: it takes the pointer over the whole
- * viewport and shows the grab cursor, so a left press anywhere is a pan. */
-const PAN_CAPTURE_ARMED_CLASS = 'yolo-whiteboard-pan-capture-armed'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const WORLD_CLASS = 'yolo-whiteboard-world'
 /** On the world layer while the overview tier is drawing the board: what the
@@ -207,15 +159,6 @@ const WORLD_CLASS = 'yolo-whiteboard-world'
  * rather than the world's whole subtree (see CameraController's
  * applyZoomScale for what the other choice costs). */
 const WORLD_OVERVIEW_CLASS = 'yolo-whiteboard-world-overview'
-const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
-const INTERACTION_LAYER_HIDDEN_CLASS =
-  'yolo-whiteboard-interaction-layer-hidden'
-const RESIZER_CLASS = 'yolo-whiteboard-resizer'
-const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
-const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
-const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
-const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
-const CREATE_GHOST_CLASS = 'yolo-whiteboard-create-ghost'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
 const EDGES_GROUP_CLASS = 'yolo-whiteboard-edges-group'
 const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
@@ -230,152 +173,6 @@ const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
 
 // `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
 // type), which owns the mounted-card map it describes.
-
-// -- pointer interaction state --------------------------------------------
-// One of three mutually-exclusive gestures a left-button (or middle-button)
-// press can start, decided at pointerdown by where it landed (canvas.ts's
-// onPointerDown): panning the camera, marquee-selecting cards, or
-// pressing-and-maybe-dragging a card. `interaction` holds whichever is
-// active; `null` when the pointer is up.
-//
-// Every one of them carries the `pointerId` of the press that started it, and
-// every one of them captures that pointer on the viewport. Capture routes that
-// pointer's events here, but it does not stop a *second* pointer from being
-// reported: a touch screen or a pen reports each contact separately, and with
-// the moves coalesced into one slot (`pendingPointerMove`) whichever arrived
-// last would be the position the gesture is updated from — a drag that jumps to
-// a second finger. So a move or an up is only the gesture's if it names the
-// gesture's pointer.
-
-type PanInteraction = Readonly<{
-  kind: 'pan'
-  /** The press that started this gesture; see the section comment. */
-  pointerId: number
-  origin: CanvasView
-  startX: number
-  startY: number
-}>
-
-/** Screen-space (viewport-local) coordinates — see startMarquee()'s doc
- * comment for why both `originLocal` and `originClient` are tracked. */
-type MarqueeInteraction = Readonly<{
-  kind: 'marquee'
-  pointerId: number
-  originLocal: ScreenPoint
-  originClient: ScreenPoint
-  /** Shift was held at press: the band adds to the selection rather than
-   * replacing it, and `baseIds` is what it adds to. Snapshotted here because
-   * the live selection is cleared as the band is drawn. */
-  additive: boolean
-  baseIds: readonly NodeId[]
-}>
-
-/**
- * A press on a card that hasn't yet crossed `DRAG_THRESHOLD_PX`: still
- * ambiguous between "click to edit" (pointerup with `dragging === false`)
- * and "drag to move" (crossed the threshold, `dragging === true`). `ids`/
- * `startPositions` are populated only once dragging begins (see
- * `beginNodeDrag`) — they cover every currently-selected card (a group
- * drag), or just `nodeId` alone if it wasn't already selected.
- */
-type NodeInteraction = {
-  readonly kind: 'card'
-  readonly pointerId: number
-  readonly nodeId: NodeId
-  readonly startClient: ScreenPoint
-  /** Shift was held: a press that never moves toggles this card in and out of
-   * the selection instead of replacing it. */
-  readonly additive: boolean
-  dragging: boolean
-  ids: NodeId[]
-  readonly startPositions: Map<NodeId, Readonly<{ x: number; y: number }>>
-  /** What this drag may line up with, frozen when it becomes a drag for the
-   * same reason `ids` is (see `beginNodeDrag`). */
-  snapCandidates: readonly CardRect[]
-}
-
-/**
- * A press on one of the eight resize handles. Like `NodeInteraction` it stays
- * ambiguous until `DRAG_THRESHOLD_PX`: the handles straddle the card's border,
- * so their inner half sits on top of the card, and a plain click there has to
- * still mean what a click on the card means (enter edit) rather than landing
- * in a dead zone. `startRect` is the card's rect at press time — every frame
- * is computed from it, never from the previous frame (see `resizeRect`).
- */
-type ResizeInteraction = {
-  readonly kind: 'resize'
-  readonly pointerId: number
-  readonly nodeId: NodeId
-  readonly handle: ResizeHandle
-  readonly startClient: ScreenPoint
-  readonly startRect: CardRect
-  dragging: boolean
-  /** As `NodeInteraction.snapCandidates`, frozen when the press becomes a
-   * drag rather than at press time — most presses on a handle are clicks. */
-  snapCandidates: readonly CardRect[]
-}
-
-/**
- * A connection being dragged: either a new edge pulled out of a card's
- * connection point, or an existing edge's endpoint pulled off the card it was
- * attached to. One gesture, because they differ in nothing a pointer can
- * tell — one end is pinned, the other follows the pointer and snaps to
- * whatever it lands on — and only in what the drop commits.
- *
- * Ambiguous below `DRAG_THRESHOLD_PX` like the other two press gestures: on
- * an existing edge a press that never moves selects it (Obsidian Canvas puts
- * both on the line the same way), and on a connection point it is a fumbled
- * grab that should leave no trace.
- *
- * `candidates` is snapshotted at press time: cards cannot move during a
- * connection drag, so the drop target is searched over a fixed set rather
- * than re-derived from the board on every pointermove.
- */
-type ConnectInteraction = {
-  readonly kind: 'connect'
-  readonly pointerId: number
-  /** The end that stays put, and the side it is anchored to. */
-  readonly anchor: SideAnchor
-  /** Which end of the edge is following the pointer. A new edge always
-   * drags its `to` end — you pull the arrow out towards where it points. */
-  readonly movingEnd: 'from' | 'to'
-  /** The edge being re-attached, or null when this drag is creating one. */
-  readonly edgeId: EdgeId | null
-  readonly startClient: ScreenPoint
-  readonly candidates: readonly VirtualCardRect[]
-  dragging: boolean
-  target: SideAnchor | null
-}
-
-/**
- * A press on one of the creation bar's buttons, which is a card being pulled
- * off the bar and has not yet decided whether it is going anywhere: below
- * `DRAG_THRESHOLD_PX` it is the click that creates in the middle of the
- * screen, past it the card is placed where the pointer lets go.
- *
- * `create` is the whole difference between the four buttons — the ghost, the
- * snapping and the drop are one gesture whatever is about to be made.
- */
-type CreateInteraction = {
-  readonly kind: 'create'
-  readonly pointerId: number
-  readonly startClient: ScreenPoint
-  /** The card's size, carried so the ghost is the card: one table feeds both
-   * (see `creationAction`), and they cannot disagree. */
-  readonly size: CardSize
-  readonly create: (at: ScreenPoint) => void
-  dragging: boolean
-  /** As the other drags: frozen when the press becomes one. */
-  snapCandidates: readonly CardRect[]
-}
-
-type Interaction =
-  | PanInteraction
-  | MarqueeInteraction
-  | NodeInteraction
-  | ResizeInteraction
-  | ConnectInteraction
-  | CreateInteraction
 
 /**
  * One instance per open leaf (and re-created on popout window migration —
@@ -423,10 +220,6 @@ export class WhiteboardCanvas {
   private preheatRenderer: ReturnType<
     YoloModuleHostApiV1['ui']['createMarkdownRenderer']
   > | null = null
-  /** The element a pan captures the pointer on (see CameraController). */
-  private panCaptureEl!: HTMLElement
-  /** Space is held on this board: a left press pans, like a middle press. */
-  private spacePanArmed = false
 
   /** Camera (pan/zoom) state and its glide animation. Constructed once in
    * `ensureDom` (see ./canvas/cameraController.ts's own doc comment). Gesture
@@ -434,21 +227,6 @@ export class WhiteboardCanvas {
    * `viewportPointFromEvent`/`worldPointFromEvent`; it never writes the
    * camera directly. */
   private cameraController!: CameraController
-  /**
-   * What the last press landed on — the only trustworthy answer to "what was
-   * clicked" this canvas has.
-   *
-   * Every drag it starts captures the pointer on the viewport, and capture
-   * retargets the mouse events synthesised afterwards: measured in a real
-   * window, `click` and `dblclick` arrive naming `.yolo-whiteboard-viewport`
-   * and never the element that was actually pressed. `pointerdown` is the
-   * last event that still names it. (Obsidian Canvas keeps no such record
-   * because it never captures — it tracks its drags on the window instead —
-   * which is why its own double-click can simply ask whether `e.target` is
-   * the canvas surface.)
-   */
-  private pressedTarget: EventTarget | null = null
-  private interaction: Interaction | null = null
 
   // Selection: UI state, not board data — never serialized. A
   // non-empty selection pushes a keymap scope (Delete/Backspace/Escape);
@@ -478,7 +256,6 @@ export class WhiteboardCanvas {
    * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
-  private marqueeEl: HTMLElement | null = null
 
   // Selection toolbar: one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
@@ -500,17 +277,9 @@ export class WhiteboardCanvas {
   /** The board's keys and the layered Escape/Delete/undo chains
    * (./canvas/keymapController.ts). Built in `ensureDom`. */
   private keymap!: KeymapController
-
-  // Resize: one shared handle layer for the whole board, parked over
-  // whichever card the pointer is on, rather than eight handles per mounted
-  // card — at a few hundred mounted cards that would be thousands of nodes
-  // that only ever matter for one of them. Obsidian Canvas's own
-  // `.canvas-node-interaction-layer` works the same way.
-  private interactionLayerEl: HTMLElement | null = null
-  private hoveredNodeId: NodeId | null = null
-  /** The card the layer is currently parked on — `interactionLayerTarget()`
-   * as last applied, which is what a press on a handle resizes. */
-  private layerNodeId: NodeId | null = null
+  /** Pointer input: which gesture a press starts, and the gestures
+   * themselves (./canvas/interactionController.ts). Built in `ensureDom`. */
+  private interaction!: InteractionController
 
   // Edges: a single SVG overlay drawn into the world layer, redrawn
   // wholesale on structural change (rebuildEdgesSvg) and per-path on card
@@ -544,34 +313,11 @@ export class WhiteboardCanvas {
   private get overviewChromeHidden(): boolean {
     return this.overview || this.overviewLingering
   }
-  /**
-   * Uncommitted geometry for the nodes a drag or a resize is moving, or null.
-   *
-   * In the DOM tiers the live feedback *is* the `transform` written on each
-   * card's element, and this is only the map those writes were computed from.
-   * In the overview tier there are no elements, so this is the feedback: the
-   * canvas draws from it (`OverviewLayerCallbacks.getLiveRects`). Published
-   * from one place either way, so the two tiers cannot disagree about where a
-   * card is being dragged to.
-   */
-  private liveNodeRects: ReadonlyMap<NodeId, CardRect> | null = null
-  /** The outline of the card a creation-bar drag is about to make. Built for
-   * the gesture and removed with it — one element per drag is cheaper than a
-   * permanent one to keep in step with a world layer that is rebuilt on every
-   * reload. */
-  private createGhostEl: HTMLElement | null = null
-  /** Resolved once, on first use (see `onMacOS`). */
-  private isMacOS: boolean | null = null
   /** canvas.ts's own copy of the board's edges by id, kept in step by
    * `syncBoardIndex` — the lookup every edge-*gesture* and label-editing path
    * here uses; `edgeLayer` keeps a separate copy scoped to its own drawing
    * (see that file's doc comment on why the two are not merged). */
   private boardEdgesById = new Map<EdgeId, Edge>()
-  /** The in-flight connection's curve. A sibling of the edges group rather
-   * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
-   * takes it out from under a live gesture. */
-  private previewPathEl: SVGPathElement | null = null
-  private connectTargetNodeId: NodeId | null = null
   private readonly arrowMarkerId = `yolo-whiteboard-edge-arrow-${Math.random().toString(36).slice(2)}`
 
   private lastRawData = ''
@@ -688,7 +434,7 @@ export class WhiteboardCanvas {
       this.parseFailed = true
       this.board = emptyBoard()
       this.syncBoardIndex()
-      this.setHoveredNode(null)
+      this.interaction.setHoveredNode(null)
       this.showError(result.issues)
       return
     }
@@ -706,7 +452,7 @@ export class WhiteboardCanvas {
     this.cameraController.loadCamera(this.board.camera)
     // Cards were all torn down above: whatever the layer was parked on is
     // either gone or somewhere else now.
-    this.refreshInteractionLayer()
+    this.interaction.refreshInteractionLayer()
     this.showCanvas()
     // A board that has just been imported has never been framed against a real
     // viewport; this is the one open where its stored camera is a placeholder
@@ -810,15 +556,8 @@ export class WhiteboardCanvas {
       this.rafId = null
     }
     this.cameraController.dispose()
-    this.viewportEl?.removeEventListener('pointerdown', this.onPointerDown)
+    this.interaction.destroy()
     this.viewportEl?.removeEventListener('wheel', this.cameraController.onWheel)
-    this.viewportEl?.removeEventListener('dblclick', this.onDoubleClick)
-    this.viewportEl?.removeEventListener('contextmenu', this.onContextMenu)
-    win.removeEventListener('pointermove', this.onPointerMove)
-    win.removeEventListener('pointerup', this.onPointerUp)
-    win.removeEventListener('keyup', this.onKeyUp)
-    win.removeEventListener('blur', this.disarmSpacePan)
-    this.disarmSpacePan()
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
     this.keymap.destroy()
@@ -922,33 +661,12 @@ export class WhiteboardCanvas {
     edgeLabels.className = EDGE_LABELS_CLASS
     world.appendChild(edgeLabels)
 
-    // Built once and reused: mounted last so it sits above every card, and
-    // parked (hidden) until the pointer is actually on a card.
-    const interactionLayer = doc.createElement('div')
-    interactionLayer.className = `${INTERACTION_LAYER_CLASS} ${INTERACTION_LAYER_HIDDEN_CLASS}`
-    for (const handle of RESIZE_HANDLES) {
-      const resizer = doc.createElement('div')
-      resizer.className = RESIZER_CLASS
-      resizer.dataset.resize = handle
-      // The four side handles carry the connection point for that side,
-      // nested inside them rather than laid out separately — the dot and the
-      // handle want the same spot, so the only way for both to be reachable
-      // is for one to sit on the other. Which of the two a press means is
-      // then decided by the element it actually landed on (Obsidian Canvas
-      // nests `.canvas-node-connection-point` in its resizers for exactly
-      // this reason).
-      const side = NODE_SIDES.find((candidate) => candidate === handle)
-      if (side) {
-        const connectionPoint = doc.createElement('div')
-        connectionPoint.className = CONNECTION_POINT_CLASS
-        connectionPoint.dataset.side = side
-        resizer.appendChild(connectionPoint)
-      }
-      interactionLayer.appendChild(resizer)
-    }
+    // Mounted last so it sits above every card.
+    const interactionLayer = buildInteractionLayer(doc)
     world.appendChild(interactionLayer)
     this.snapGuideLayer?.destroy()
-    this.snapGuideLayer = new SnapGuideLayer(doc, world)
+    const snapGuides = new SnapGuideLayer(doc, world)
+    this.snapGuideLayer = snapGuides
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
@@ -962,7 +680,7 @@ export class WhiteboardCanvas {
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
-      getLiveRects: () => this.liveNodeRects,
+      getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabel: this.pdfPageLabel,
     })
     viewport.appendChild(world)
@@ -972,7 +690,6 @@ export class WhiteboardCanvas {
     const panCapture = doc.createElement('div')
     panCapture.className = PAN_CAPTURE_CLASS
     viewport.appendChild(panCapture)
-    this.panCaptureEl = panCapture
     root.appendChild(viewport)
 
     const error = doc.createElement('div')
@@ -985,8 +702,6 @@ export class WhiteboardCanvas {
     this.viewportEl = viewport
     this.worldEl = world
     this.errorEl = error
-    this.previewPathEl = preview
-    this.interactionLayerEl = interactionLayer
     this.cameraController = new CameraController(
       this.context,
       viewport,
@@ -997,17 +712,17 @@ export class WhiteboardCanvas {
       // variable on each of these rather than once on `world`, because a
       // custom property written on `world` restyles every card under it (see
       // CameraController's applyZoomScale).
-      [interactionLayer, this.snapGuideLayer.element],
+      [interactionLayer, snapGuides.element],
       // The two of them the overview tier takes out of the document, which is
       // why they are handed over separately — see the same method.
       [edgesSvg, edgeLabels],
       {
         isParseFailed: this.core.isParseFailed,
         isEditingWheelTarget: (target) =>
-          this.editing.isEditing(this.nodeIdFromEventTarget(target)),
+          this.editing.isEditing(nodeIdFromEventTarget(target)),
         scrollFocusedCardBy: (target, deltaX, deltaY) =>
           this.focusedNodeId !== null &&
-          this.nodeIdFromEventTarget(target) === this.focusedNodeId &&
+          nodeIdFromEventTarget(target) === this.focusedNodeId &&
           this.cardRenderer.scrollCardContent(
             this.focusedNodeId,
             deltaX,
@@ -1119,7 +834,7 @@ export class WhiteboardCanvas {
       fitAll: () => this.cameraController.fitCameraToNodes(this.board.nodes),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       resetCamera: () => this.cameraController.resetCamera(),
-      armSpacePan: this.armSpacePan,
+      armSpacePan: () => this.interaction.armSpacePan(),
     })
     this.registerBoardKeyLayers()
     this.editing = new EditingController({
@@ -1208,9 +923,9 @@ export class WhiteboardCanvas {
       overlay: this.toolbarController.overlay,
       closePopover: () => this.toolbarController.closePopover(),
       onPromptChange: () => this.keymap.syncSelectionScope(),
-      nodeIdAtPointer: (e) => this.nodeIdAtPointer(e),
+      nodeIdAtPointer: (e) => this.interaction.nodeIdAtPointer(e),
       beginCreateDrag: (e, size, create) =>
-        this.beginCreateDrag(e, size, create),
+        this.interaction.beginCreateDrag(e, size, create),
       enterEditMode: (id) => this.editing.enterEditMode(id),
       commitEditOn: (id) => this.editing.blurEditor([id]),
       purgeNodeRuntime: (id) => this.purgeNodeRuntime(id),
@@ -1227,6 +942,34 @@ export class WhiteboardCanvas {
       deleteNodes: (ids) => this.deleteNodes(ids),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       resetCamera: () => this.cameraController.resetCamera(),
+    })
+    this.interaction = new InteractionController({
+      core: this.core,
+      viewportEl: viewport,
+      worldEl: world,
+      panCaptureEl: panCapture,
+      interactionLayerEl: interactionLayer,
+      previewPathEl: preview,
+      getNodesById: () => this.nodesById,
+      camera: this.cameraController,
+      edges: this.edgeLayer,
+      snapGuides,
+      toolbar: this.toolbarController,
+      editing: this.editing,
+      generation: this.cardGeneration,
+      menus: this.dropImport,
+      pdf: this.pdf,
+      pin: (id) => {
+        this.pinnedIds.add(id)
+      },
+      unpin: (id) => {
+        this.pinnedIds.delete(id)
+      },
+      queueContentSync: (id) => {
+        this.contentSyncQueue.add(id)
+      },
+      onLiveRectsChange: () => this.overviewLayer?.markDirty(),
+      rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
     // Obsidian Canvas's top-right column, in the same overlay for the same
     // reason. The buttons act on the board, so an open card edit is ended
@@ -1252,7 +995,7 @@ export class WhiteboardCanvas {
           },
           {
             // Canvas's own tooltip names the key, spelled the platform's way.
-            label: `${this.t('controls.zoomToFit')}\n(${this.onMacOS() ? '⇧ 1' : 'Shift + 1'})`,
+            label: `${this.t('controls.zoomToFit')}\n(${this.interaction.onMacOS() ? '⇧ 1' : 'Shift + 1'})`,
             icon: 'maximize',
             onSelect: () =>
               this.cameraController.fitCameraToNodes(this.board.nodes),
@@ -1306,17 +1049,10 @@ export class WhiteboardCanvas {
   }
 
   private setupInteraction(): void {
-    const win = this.context.getWindow()
-    this.viewportEl.addEventListener('pointerdown', this.onPointerDown)
-    win.addEventListener('pointermove', this.onPointerMove)
-    win.addEventListener('pointerup', this.onPointerUp)
-    win.addEventListener('keyup', this.onKeyUp)
-    win.addEventListener('blur', this.disarmSpacePan)
+    this.interaction.bind()
     this.viewportEl.addEventListener('wheel', this.cameraController.onWheel, {
       passive: false,
     })
-    this.viewportEl.addEventListener('dblclick', this.onDoubleClick)
-    this.viewportEl.addEventListener('contextmenu', this.onContextMenu)
   }
 
   /** Content-freshness: scoped to the whole vault ('' —
@@ -1365,1261 +1101,6 @@ export class WhiteboardCanvas {
     // unloading is what cancels an in-flight render, and one empty off-screen
     // element costs nothing next to racing the thing it exists to warm.
     // Released in `dispose()`.
-  }
-
-  // -----------------------------------------------------------------------
-  // Pointer interaction dispatch. A left-button press decides its gesture
-  // at pointerdown by where it landed:
-  //   - on a card not currently being edited -> a `NodeInteraction`,
-  //     ambiguous between click-to-edit and drag-to-move until it crosses
-  //     DRAG_THRESHOLD_PX (see `updateNodeInteraction`/`beginNodeDrag`);
-  //   - on empty canvas with Alt held -> pan (an alt+left-drag path for
-  //     trackpad users with no middle button);
-  //   - on empty canvas otherwise -> marquee selection.
-  // Middle-button always pans, from anywhere (including over a card).
-  // Wheel handles both plain two-axis pan and ctrl/cmd-anchored zoom (the
-  // ctrl/cmd-wheel signature is also how Chrome/Safari report trackpad
-  // pinch). All three gestures only ever touch `this.cameraController.view` + per-element
-  // `transform`/`left`/`top` directly (no reflow); the camera is folded
-  // into `board` and persisted only once a pan/zoom gesture settles (see
-  // `scheduleCameraSettle`); a card drag/marquee commits immediately on
-  // pointerup instead (no settle debounce — those are already discrete,
-  // single-shot gestures, unlike the continuous wheel/pointer-pan stream).
-  // -----------------------------------------------------------------------
-
-  private readonly onPointerDown = (e: PointerEvent): void => {
-    // Recorded before any early return: this is the record of what was
-    // pressed, not of what the press went on to do (see `pressedTarget`).
-    this.pressedTarget = e.target
-    // A hover move that the last frame has not consumed yet belongs to no
-    // gesture, and the gesture about to start must not be updated from it: it
-    // is wherever the pointer was travelling before the press, which the drag
-    // threshold below would read as movement the user never made after it.
-    this.pendingPointerMove = null
-    if (this.parseFailed) return
-    // The toolbar and the edge-label field sit above the canvas in the same
-    // viewport element these listeners are on: a press on one of them is not
-    // also a press on the board behind it.
-    if (this.toolbarController.isOverlayTarget(e.target)) return
-    // A press anywhere else dismisses the colour popover, the same way one
-    // dismisses a menu.
-    this.toolbarController.closePopover()
-    const nodeId = this.nodeIdAtPointer(e)
-
-    if (e.button === 1 || (e.button === 0 && this.spacePanArmed)) {
-      // Middle-click always pans, even starting from a card; so does a left
-      // press while Space is held.
-      e.preventDefault()
-      this.startPan(e)
-      return
-    }
-    if (e.button !== 0) return
-
-    // The interaction layer sits above the cards, so it has to come first —
-    // the press that starts a resize or a connection lands on it, never on
-    // the card. Connection points are nested inside the side handles, so
-    // they have to be asked about first in turn.
-    const side = this.connectionSideFromEventTarget(e.target)
-    if (side !== null && this.startConnect(side, e)) return
-    const handle = this.resizeHandleFromEventTarget(e.target)
-    if (handle !== null && this.startResize(handle, e)) return
-
-    if (nodeId !== null) {
-      // The card currently being edited owns its own pointer handling
-      // (native text selection/cursor placement inside its CM6 editor) —
-      // don't intercept. A group whose label is being renamed owns it for the
-      // same reason: that label is the only part of a group a press can
-      // reach, and while it holds the caret a press in it places the caret.
-      if (this.editing.isEditing(nodeId)) return
-      if (this.editing.isRenaming({ kind: 'group', id: nodeId })) return
-      // Same rule for a body the content mask has been lifted from: a press
-      // that reached a media element or an embedded page belongs to it, and
-      // the pointer capture below would take the rest of the gesture away
-      // from the transport control being dragged. (Obsidian Canvas gets there
-      // differently — it never captures the pointer, tracking the drag on the
-      // window instead — but arrives at the same place: content that is live
-      // stays usable.) The card's title row remains its drag handle.
-      if (this.isLiveContentTarget(e.target)) return
-      this.interaction = {
-        kind: 'card',
-        pointerId: e.pointerId,
-        nodeId,
-        startClient: { x: e.clientX, y: e.clientY },
-        additive: e.shiftKey,
-        dragging: false,
-        ids: [],
-        startPositions: new Map(),
-        snapCandidates: [],
-      }
-      this.viewportEl.setPointerCapture(e.pointerId)
-      return
-    }
-
-    // Edges paint behind the cards, so a press only reaches one where no
-    // card covers it — which is exactly where pressing it can mean the edge.
-    const edgeId = this.edgeIdAtPointer(e)
-    if (edgeId !== null) {
-      // Its label is being typed: a press in it places the caret, the same
-      // rule a group being renamed follows above.
-      if (this.editing.isRenaming({ kind: 'edge', id: edgeId })) return
-      if (this.startEdgeReattach(edgeId, e)) return
-    }
-
-    if (e.altKey) {
-      this.startPan(e)
-      return
-    }
-
-    this.startMarquee(e)
-  }
-
-  /**
-   * Double-click opens whatever was double-clicked: a card's editor, a group's
-   * or an edge's label field — and only on the board's own surface, a new card.
-   *
-   * `dblclick` rather than a click counter read off `pointerdown`: measured
-   * in a real Obsidian window, `pointerdown.detail` is 0 on both presses of
-   * a double-click (only `mousedown` carries the count), while `dblclick`
-   * arrives intact — the marquee's pointer capture, the reason for doubting
-   * it, does not suppress it. What it does suppress is the event's own
-   * `target`, so every question below is asked of `pressedTarget` instead.
-   */
-  private readonly onDoubleClick = (e: MouseEvent): void => {
-    if (this.parseFailed) return
-    const target = this.pressedTarget
-    if (this.toolbarController.isOverlayTarget(target)) return
-    // A group's label is the one part of a group a pointer can reach (the
-    // frame itself is pointer-transparent — see style.css), and double-clicking
-    // it renames the group. Obsidian Canvas puts the same gesture on the same
-    // element, wiring its label's `dblclick` straight to `focusLabel`.
-    const groupId = this.groupLabelIdFromEventTarget(target)
-    if (groupId !== null) {
-      this.editing.beginRename({ kind: 'group', id: groupId })
-      return
-    }
-    // An edge carries its label on the line, so the line is where one asks
-    // for it — the same gesture the toolbar's "label" button performs.
-    const edgeId = this.edgeIdFromEventTarget(target)
-    if (edgeId !== null) {
-      this.editing.beginRename({ kind: 'edge', id: edgeId })
-      return
-    }
-    const world = this.worldPointFromEvent(e)
-    // Geometry first, DOM second: the interaction layer stands in front of
-    // the card it is parked on, so a double-click over a resize handle or a
-    // connection point names the layer and only the point resolves it; and a
-    // card's title hangs above its frame, outside the rect geometry knows
-    // about, so only the DOM resolves that.
-    const nodeId =
-      nodeAtPoint(this.cardNodes, world) ?? this.nodeIdFromEventTarget(target)
-    if (nodeId !== null) {
-      // Inside the editor this is a word selection, not a request to open
-      // what is already open.
-      if (this.editing.isEditing(nodeId)) return
-      // A card being generated into has its text in the DOM and its body
-      // under the stream; asking to type in it is asking to stop. The
-      // editor opens on what has arrived, from `endCardGeneration`.
-      if (this.cardGeneration.isGenerating(nodeId)) {
-        this.cardGeneration.stop(nodeId, { edit: true })
-        return
-      }
-      this.editing.editCard(nodeId)
-      return
-    }
-    // Creating is what a double-click on *nothing* means, so it needs the
-    // press to have landed on the board itself — Obsidian Canvas's own guard
-    // (`if (e.targetNode !== this.wrapperEl) return`). Without it every
-    // element this method declined to handle would fall through to creating
-    // a stray card.
-    if (target !== this.viewportEl && target !== this.worldEl) return
-    this.dropImport.createTextCardAt(world)
-  }
-
-  private readonly onContextMenu = (e: MouseEvent): void => {
-    if (this.parseFailed) return
-    if (this.toolbarController.isOverlayTarget(e.target)) return
-    const nodeId = this.nodeIdAtPointer(e)
-    // The card being edited owns its own context menu (CM6's, with the text
-    // actions that belong to an editor).
-    if (nodeId !== null && this.editing.isEditing(nodeId)) return
-    e.preventDefault()
-
-    if (nodeId === null) {
-      this.host.ui.showMenu(
-        e,
-        this.dropImport.canvasMenuItems(this.worldPointFromEvent(e)),
-      )
-      return
-    }
-
-    const card = this.nodesById.get(nodeId)
-    if (!card) return
-    // A right-click on a card that is already part of the selection acts on
-    // the whole selection; on one that is not, it takes over the selection
-    // first, so what the menu will do is what the user can see is selected.
-    if (!this.selectedIds.has(nodeId)) this.setSelection([nodeId])
-    this.host.ui.showMenu(e, this.dropImport.selectionMenuItems())
-  }
-
-  /**
-   * Latest un-consumed pointermove of the gesture in flight, or null.
-   *
-   * A pointer reports at its own rate, not the display's: a 1000Hz mouse
-   * emits sixteen moves per 60Hz frame, and every one of them used to run a
-   * whole drag update — snapping over the on-screen candidates, a transform
-   * write per moved card, an edge redraw, the handle layer. Fifteen sixteenths
-   * of that work is overwritten before anything is painted.
-   *
-   * So a move now only records where the pointer is, and the rAF loop consumes
-   * the last one once per frame (`consumePointerMove`) — the same shape the
-   * camera glide already has, and the reason the glide could be driven from the
-   * frame loop in the first place: what a gesture means is a position, not a
-   * stream of deltas. Every `update*` method already computes its result from
-   * the gesture's start and the event's *absolute* position, so dropping the
-   * intermediate events changes nothing they would have produced.
-   */
-  private pendingPointerMove: PointerEvent | null = null
-
-  private readonly onPointerMove = (e: PointerEvent): void => {
-    // While a gesture is in flight the slot is that gesture's: a second
-    // pointer (a finger, a pen) reports its own moves, and the one slot would
-    // otherwise hand the drag whichever pointer moved last. With none in
-    // flight every pointer is a candidate for the hover.
-    const interaction = this.interaction
-    if (interaction !== null && e.pointerId !== interaction.pointerId) return
-    this.pendingPointerMove = e
-  }
-
-  /** Applies the latest pointer position to the gesture in flight, or — when
-   * there is none — to the hover. Called once per frame, and again from
-   * `onPointerUp` so the gesture's last position is never left unapplied when
-   * it commits. */
-  private consumePointerMove(): void {
-    const e = this.pendingPointerMove
-    this.pendingPointerMove = null
-    if (!e) return
-    const interaction = this.interaction
-    if (!interaction) {
-      // Hover is coalesced for the same reason a drag is, and in the overview
-      // tier for one more: with no card elements to hit, resolving it is a
-      // pass over the board rather than a DOM lookup.
-      this.updateHover(e)
-      return
-    }
-    // A gesture that has actually moved takes the toolbar off screen until it
-    // ends. A press that never moves leaves it alone, so clicking a card that
-    // is already selected does not make its toolbar blink.
-    this.toolbarController.setToolbarSuppressed(true)
-    switch (interaction.kind) {
-      case 'pan':
-        this.updatePan(interaction, e)
-        break
-      case 'marquee':
-        this.updateMarquee(interaction, e)
-        break
-      case 'card':
-        this.updateNodeInteraction(interaction, e)
-        break
-      case 'resize':
-        this.updateResize(interaction, e)
-        break
-      case 'connect':
-        this.updateConnect(interaction, e)
-        break
-      case 'create':
-        this.updateCreateDrag(interaction, e)
-        break
-    }
-  }
-
-  /**
-   * Parks the handle layer on whichever card the pointer is over.
-   *
-   * Only runs when no gesture is in flight: during one, the layer is either
-   * the thing being dragged (resize) or deliberately out of the way, and
-   * re-deciding which card is hovered from a pointer that has been captured
-   * would fight the gesture.
-   *
-   * The layer itself counts as "still on the card" — its handles overhang
-   * the card's border and its connection points sit on it, so a pointer
-   * travelling out onto one must not be read as having left, or the layer
-   * would vanish from under the pointer on its way to grab it.
-   */
-  private updateHover(e: PointerEvent): void {
-    if (this.parseFailed) return
-    const target = asElement(e.target)
-    // The panel covers the right of the viewport; a pointer on it is not on
-    // the board behind it, whatever the overview tier's geometry says.
-    if (this.pdf.panelContains(target)) {
-      this.setHoveredNode(null)
-      return
-    }
-    const onLayer =
-      target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
-    this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
-  }
-
-  /**
-   * Which node a pointer event landed on.
-   *
-   * In the DOM tiers that is the element under it. In the overview tier the
-   * cards have no elements, so the same question is asked of the board data
-   * the canvas drew from — a point-in-rectangle test per card, linear over the
-   * board (no spatial index; a pass over a few thousand rectangles is not
-   * what costs anything here). Groups keep their DOM at
-   * every tier, so they keep answering the first way.
-   */
-  private nodeIdAtPointer(e: MouseEvent): NodeId | null {
-    const fromDom = this.nodeIdFromEventTarget(e.target)
-    if (fromDom !== null || !this.overview) return fromDom
-    return nodeAtPoint(this.cardNodes, this.worldPointFromEvent(e))
-  }
-
-  /**
-   * Which edge a pointer event landed on — the same two answers, for the same
-   * reason as `nodeIdAtPointer` above. In the overview tier an edge is a curve
-   * on a canvas with no element to hit, so the press is measured against the
-   * geometry the canvas drew from (domain/edges.ts's `edgeAtPoint`).
-   *
-   * The tolerance is the DOM tiers' own: half of their transparent hit
-   * stroke, under the same 1/sqrt(scale) counter-scale the stylesheet gives
-   * it. Aiming at a line is therefore exactly as forgiving here as it is one
-   * tier up — and no more, which matters on a board of a few thousand edges,
-   * where a generous tolerance would leave the empty space a marquee starts
-   * in belonging to whichever line ran nearest.
-   *
-   * Only the press path asks this. A double-click on an edge in this tier
-   * would open its label, which the tier does not draw and the stylesheet has
-   * hidden: nothing to type into, and no blur to end the rename with. The
-   * label is a thing you edit where you can read it.
-   */
-  private edgeIdAtPointer(e: MouseEvent): EdgeId | null {
-    const fromDom = this.edgeIdFromEventTarget(e.target)
-    if (fromDom !== null || !this.overview) return fromDom
-    return edgeAtPoint(
-      this.board.edges,
-      this.nodesById,
-      this.worldPointFromEvent(e),
-      EDGE_HIT_STROKE_WORLD_PX /
-        2 /
-        Math.sqrt(this.cameraController.view.scale),
-    )
-  }
-
-  private setHoveredNode(nodeId: NodeId | null): void {
-    if (nodeId === this.hoveredNodeId) return
-    this.hoveredNodeId = nodeId
-    this.updateInteractionLayer()
-  }
-
-  /**
-   * The card whose handles are showing.
-   *
-   * Two sources, in this order: the card under the pointer, and — when the
-   * pointer is not on one — the card that is selected. Hover alone was not
-   * enough. A selected card is the one the user has said they are working on,
-   * and half of every handle overhangs its border, so with hover as the only
-   * trigger that outer half could never be approached from outside the card:
-   * the handles only existed once the pointer was already past them. Hover
-   * still wins where the two disagree, so a card can be resized without
-   * selecting it first.
-   *
-   * Only a lone selection counts. With several cards selected there is no
-   * single rectangle for the handles to belong to, and resizing a
-   * multi-selection is a different gesture with its own semantics that the
-   * board does not have yet.
-   *
-   * A card being edited is not excluded. It was at first, to keep the handles
-   * from swallowing a click meant to place the caret near an edge — but that
-   * trade is the wrong way round: it costs the ability to resize the one card
-   * the user is actually working on, to protect a gesture that has the whole
-   * rest of the card to land in. Obsidian Canvas keeps all eight handles live
-   * on a node being edited too.
-   */
-  private interactionLayerTarget(): NodeId | null {
-    return (
-      this.hoveredNodeId ??
-      (this.selectedIds.size === 1
-        ? (this.selectedIds.values().next().value ?? null)
-        : null)
-    )
-  }
-
-  /**
-   * Parks the layer on whatever `interactionLayerTarget` now resolves to.
-   *
-   * `force` re-reads the target's rect even when the target is unchanged, for
-   * the callers that moved the card rather than changed which one it is.
-   * Without that distinction this would be a no-op for the overwhelming
-   * majority of calls — a pointer crossing one card fires hundreds of moves
-   * that all resolve to it, and each would otherwise rewrite four inline
-   * styles.
-   */
-  private updateInteractionLayer(force = false): void {
-    const id = this.interactionLayerTarget()
-    const card = id === null ? null : this.nodesById.get(id)
-    const next = card ? id : null
-    if (next === this.layerNodeId && !force) return
-    this.layerNodeId = next
-    const layer = this.interactionLayerEl
-    if (!layer) return
-    layer.classList.toggle(INTERACTION_LAYER_HIDDEN_CLASS, !card)
-    if (card) this.placeInteractionLayer(rectOfCard(card))
-  }
-
-  /** Re-parks the layer after something other than hover or selection moved
-   * the card it is on (a drag, a board reload, a card removal). */
-  private refreshInteractionLayer(): void {
-    this.updateInteractionLayer(true)
-  }
-
-  private placeInteractionLayer(rect: CardRect): void {
-    const layer = this.interactionLayerEl
-    if (!layer) return
-    layer.style.left = `${rect.x}px`
-    layer.style.top = `${rect.y}px`
-    layer.style.width = `${rect.w}px`
-    layer.style.height = `${rect.h}px`
-  }
-
-  private readonly onPointerUp = (e: PointerEvent): void => {
-    // The frame that would have applied the gesture's last move may not have
-    // run yet; every commit below reads the board's live state, so it has to.
-    this.consumePointerMove()
-    const interaction = this.interaction
-    if (!interaction) return
-    // Another pointer lifting is not this gesture ending — the one that
-    // started it is the one that can finish it.
-    if (e.pointerId !== interaction.pointerId) return
-    this.interaction = null
-    switch (interaction.kind) {
-      case 'pan':
-        this.finishPan()
-        break
-      case 'marquee':
-        this.finishMarquee(interaction, e)
-        break
-      case 'card':
-        this.finishNodeInteraction(interaction, e)
-        break
-      case 'resize':
-        this.finishResize(interaction, e)
-        break
-      case 'connect':
-        this.finishConnect(interaction, e)
-        break
-      case 'create':
-        this.finishCreateDrag(interaction, e)
-        break
-    }
-    // Whatever the gesture was, it is over: nothing is lining up any more.
-    this.snapGuideLayer?.clear()
-    this.toolbarController.setToolbarSuppressed(false)
-  }
-
-  // -----------------------------------------------------------------------
-  // Pan gesture (middle-drag anywhere, or Alt+left-drag from empty canvas).
-  // The gesture's own state machine lives here (which `Interaction` is
-  // active); the camera math and DOM writes it drives are
-  // `cameraController`'s (see ./canvas/cameraController.ts).
-  // -----------------------------------------------------------------------
-
-  private startPan(e: PointerEvent): void {
-    this.interaction = {
-      kind: 'pan',
-      pointerId: e.pointerId,
-      origin: { ...this.cameraController.view },
-      startX: e.clientX,
-      startY: e.clientY,
-    }
-    this.cameraController.beginPan(e.pointerId)
-  }
-
-  private updatePan(interaction: PanInteraction, e: PointerEvent): void {
-    this.cameraController.updatePan(
-      interaction.origin,
-      { x: interaction.startX, y: interaction.startY },
-      { x: e.clientX, y: e.clientY },
-    )
-  }
-
-  private finishPan(): void {
-    this.cameraController.finishPan()
-  }
-
-  // -----------------------------------------------------------------------
-  // Marquee selection (left-drag from empty canvas). The overlay div lives
-  // in the *viewport* layer (a sibling of the scaled/panned world layer),
-  // so it's drawn in plain screen coordinates and never needs to account
-  // for the camera transform itself — only its two corner points get
-  // converted to world space, once, at pointerup (rather than a live
-  // per-move highlight — repainting a dashed-rectangle overlay already gives
-  // the user drag feedback, and hit-testing every card on every pointermove
-  // has no payoff).
-  // -----------------------------------------------------------------------
-
-  private startMarquee(e: PointerEvent): void {
-    const rect = this.viewportEl.getBoundingClientRect()
-    const originLocal = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-    this.interaction = {
-      kind: 'marquee',
-      pointerId: e.pointerId,
-      originLocal,
-      originClient: { x: e.clientX, y: e.clientY },
-      additive: e.shiftKey,
-      baseIds: Array.from(this.selectedIds),
-    }
-    this.viewportEl.setPointerCapture(e.pointerId)
-    const doc = this.context.getDocument()
-    const el = doc.createElement('div')
-    el.className = MARQUEE_CLASS
-    this.viewportEl.appendChild(el)
-    this.marqueeEl = el
-    this.applyMarqueeRect(originLocal, originLocal)
-  }
-
-  /** `originClient` is the raw pointerdown screen position (page-relative,
-   * comparable across pointermove events without re-querying
-   * getBoundingClientRect on every one); `originLocal` is that same instant
-   * converted once to viewport-local coordinates. Since the viewport itself
-   * doesn't move mid-gesture, the current local position is just
-   * `originLocal` plus how far the pointer has moved since. */
-  private currentMarqueePoint(
-    interaction: MarqueeInteraction,
-    e: PointerEvent,
-  ): ScreenPoint {
-    return {
-      x: interaction.originLocal.x + (e.clientX - interaction.originClient.x),
-      y: interaction.originLocal.y + (e.clientY - interaction.originClient.y),
-    }
-  }
-
-  private updateMarquee(
-    interaction: MarqueeInteraction,
-    e: PointerEvent,
-  ): void {
-    this.applyMarqueeRect(
-      interaction.originLocal,
-      this.currentMarqueePoint(interaction, e),
-    )
-  }
-
-  private applyMarqueeRect(a: ScreenPoint, b: ScreenPoint): void {
-    if (!this.marqueeEl) return
-    this.marqueeEl.style.transform = `translate(${Math.min(a.x, b.x)}px, ${Math.min(a.y, b.y)}px)`
-    this.marqueeEl.style.width = `${Math.abs(a.x - b.x)}px`
-    this.marqueeEl.style.height = `${Math.abs(a.y - b.y)}px`
-  }
-
-  private finishMarquee(
-    interaction: MarqueeInteraction,
-    e: PointerEvent,
-  ): void {
-    const current = this.currentMarqueePoint(interaction, e)
-    this.marqueeEl?.remove()
-    this.marqueeEl = null
-    const worldA = screenToWorld(
-      this.cameraController.view,
-      interaction.originLocal,
-    )
-    const worldB = screenToWorld(this.cameraController.view, current)
-    // A zero-size marquee (a plain click on empty canvas, no movement)
-    // naturally selects nothing here, subsuming "click empty clears
-    // selection" without a separate code path. Edges are not marquee-
-    // selectable (a band drawn across the canvas is about the cards it
-    // covers), but a marquee still ends whatever edge selection was up.
-    this.setEdgeSelection([])
-    const hits = nodesInMarquee(
-      this.board.nodes,
-      marqueeRectFromPoints(worldA, worldB),
-    )
-    // Shift makes the band add rather than replace — a union, not a toggle:
-    // dragging over something already selected must not deselect it, or a
-    // second band drawn across the same area would undo the first.
-    this.setSelection(
-      interaction.additive ? [...interaction.baseIds, ...hits] : hits,
-    )
-  }
-
-  // -----------------------------------------------------------------------
-  // Card press: click-to-select vs. drag-to-move, disambiguated by
-  // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) selects
-  // the card; editing is a second, deliberate step — double-click, or Enter
-  // on the selection (matching Obsidian Canvas). Selecting first is
-  // what makes a single click safe: the card can then be dragged, deleted,
-  // resized or wired up without a caret landing in it and an editor
-  // mounting on every glance. A brand-new card is the exception and opens
-  // straight into editing — there is nothing in it to select.
-  // A drag moves either just the pressed card, or the whole
-  // current selection if the pressed card was already part of it (and
-  // never enters edit mode). Position updates during drag write only
-  // `transform` on the affected card elements (compositor-friendly, no
-  // layout write) — `left`/`top` are reconciled to the final board values
-  // once on drop, matching how a freshly-mounted card is positioned.
-  // -----------------------------------------------------------------------
-
-  // -----------------------------------------------------------------------
-  // Resize: eight handles on one shared layer that follows the
-  // pointer's card. A press on a handle is ambiguous exactly the way a press
-  // on a card is — the handles straddle the border, so their inner half
-  // overlaps the card, and a click there that never moves must still open
-  // the editor rather than do nothing. Once it does move, every frame writes
-  // `left`/`top`/`width`/`height` on the one card being resized: unlike a
-  // drag (which can ride on `transform`), a resize changes layout by
-  // definition, and one card's layout is a cost worth paying for the card
-  // showing its real content the whole way. The board is written once, on
-  // pointerup.
-  // -----------------------------------------------------------------------
-
-  /** The handle a press landed on, or null if it landed anywhere else. */
-  private resizeHandleFromEventTarget(
-    target: EventTarget | null,
-  ): ResizeHandle | null {
-    const el = asElement(target)
-    if (!el?.classList.contains(RESIZER_CLASS)) return null
-    const handle = (el as HTMLElement).dataset.resize
-    return RESIZE_HANDLES.find((candidate) => candidate === handle) ?? null
-  }
-
-  /** False when there is nothing to resize (the hovered card went away
-   * between hover and press), so the caller can fall through. */
-  private startResize(handle: ResizeHandle, e: PointerEvent): boolean {
-    if (!this.canEdit) return false
-    const nodeId = this.layerNodeId
-    const card = nodeId === null ? null : this.nodesById.get(nodeId)
-    if (!card || nodeId === null) return false
-    // Keeps the press from moving focus. Without it, grabbing a handle on the
-    // card you are writing in blurs its editor, which commits and closes it —
-    // adjusting a card's width should not cost you the caret you were at.
-    e.preventDefault()
-    this.interaction = {
-      kind: 'resize',
-      pointerId: e.pointerId,
-      nodeId,
-      handle,
-      startClient: { x: e.clientX, y: e.clientY },
-      startRect: rectOfCard(card),
-      dragging: false,
-      snapCandidates: [],
-    }
-    this.viewportEl.setPointerCapture(e.pointerId)
-    return true
-  }
-
-  private updateResize(interaction: ResizeInteraction, e: PointerEvent): void {
-    if (!interaction.dragging) {
-      const dx = e.clientX - interaction.startClient.x
-      const dy = e.clientY - interaction.startClient.y
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-      interaction.dragging = true
-      interaction.snapCandidates = this.snapCandidates(
-        new Set([interaction.nodeId]),
-      )
-      // Exempt from virtualization unmount for the gesture's duration, the
-      // same way a dragged card is: a card being resized must not vanish
-      // because a corner of it wandered out of the buffer band.
-      this.pinnedIds.add(interaction.nodeId)
-    }
-    const resized = this.resizedRect(interaction, e)
-    this.snapGuideLayer?.show(resized.guides)
-    this.applyResizeRect(interaction, resized.rect)
-  }
-
-  /**
-   * The rectangle this resize has reached, and what it lined up with on the
-   * way. The alignment correction is applied to the *delta* rather than to
-   * the rectangle it produces, because that is what keeps the minimum-size
-   * clamp in charge: a snapped edge that would take the card below its
-   * minimum stops at the minimum like any other (domain/resize.ts).
-   */
-  private resizedRect(
-    interaction: ResizeInteraction,
-    e: PointerEvent,
-  ): Readonly<{ rect: CardRect; guides: readonly SnapGuide[] }> {
-    const { scale } = this.cameraController.view
-    const dx = (e.clientX - interaction.startClient.x) / scale
-    const dy = (e.clientY - interaction.startClient.y) / scale
-    const rect = resizeRect(
-      interaction.startRect,
-      interaction.handle,
-      dx,
-      dy,
-      MIN_CARD_SIZE,
-    )
-    if (!this.snappingWanted(e)) return { rect, guides: [] }
-    const snap = snapResize(
-      rect,
-      interaction.handle,
-      interaction.snapCandidates,
-      this.snapOptions(),
-    )
-    return {
-      rect: resizeRect(
-        interaction.startRect,
-        interaction.handle,
-        dx + snap.dx,
-        dy + snap.dy,
-        MIN_CARD_SIZE,
-      ),
-      guides: snap.guides,
-    }
-  }
-
-  /** Live (uncommitted) geometry for the card, its handles and its edges. */
-  private applyResizeRect(
-    interaction: ResizeInteraction,
-    rect: CardRect,
-  ): void {
-    const el = this.cardRenderer.getRuntime(interaction.nodeId)?.el
-    if (el) {
-      el.style.left = `${rect.x}px`
-      el.style.top = `${rect.y}px`
-      el.style.width = `${rect.w}px`
-      el.style.height = `${rect.h}px`
-    }
-    const live = new Map([[interaction.nodeId, rect]])
-    // As in a drag: with no element to write to, this is what the overview
-    // tier draws the card being resized from.
-    this.setLiveNodeRects(live)
-    this.placeInteractionLayer(rect)
-    this.edgeLayer.redrawEdgesForNodes(new Set([interaction.nodeId]), live)
-  }
-
-  /** Publishes (or, with null, retires) the geometry a gesture has reached but
-   * not committed. One setter because the overview layer redraws from it and
-   * would otherwise have to be told separately by every caller. */
-  private setLiveNodeRects(rects: ReadonlyMap<NodeId, CardRect> | null): void {
-    this.liveNodeRects = rects
-    this.overviewLayer?.markDirty()
-  }
-
-  private finishResize(interaction: ResizeInteraction, e: PointerEvent): void {
-    if (!interaction.dragging) {
-      // A click, not a drag: the handle overlaps the card, so this means
-      // what the same click on the card means.
-      this.setSelection([interaction.nodeId])
-      return
-    }
-
-    this.pinnedIds.delete(interaction.nodeId)
-    const { rect } = this.resizedRect(interaction, e)
-    // A group's contents deliberately stay where they are: growing a frame is
-    // how more cards are taken in and shrinking it is how they are let go,
-    // which is only possible if resizing moves nothing (Obsidian Canvas's
-    // group resize behaves identically).
-    this.applyBoardChange(updateNode(this.board, interaction.nodeId, rect))
-    this.applyResizeRect(interaction, rect)
-    // The board holds this rectangle now; the gesture's copy of it retires.
-    this.setLiveNodeRects(null)
-    // How much of a card's markdown is worth building is derived from the
-    // card's height (`cardMarkdownPrefix`), so a card that just grew may have
-    // room for source it was never given. Queued rather than rendered here so
-    // it answers to the same frame gate as every other build; a resize that
-    // does not change the prefix costs the comparison and nothing else.
-    this.contentSyncQueue.add(interaction.nodeId)
-    // The card's footprint changed, so its mount state may have too.
-    this.recomputeVisibility()
-  }
-
-  // -----------------------------------------------------------------------
-  // Connections: drag a card's connection point to another card to wire
-  // them up, or drag an existing edge's endpoint to re-wire it
-  // ("锚定边默认按两卡相对位置自动选，拖动连线端点可手动改").
-  //
-  // Both ends are written explicitly on an edge made this way. The format
-  // allows omitting a side (= re-picked from relative position at render
-  // time), but that is the right default for an edge nobody placed by hand —
-  // one the user pulled out of a specific dot onto a specific side should
-  // keep the shape they drew, not re-route itself the next time a card moves.
-  //
-  // The drop target is found geometrically (domain/edges.ts's
-  // `findConnectTarget`), not by hit-testing the DOM: a target card may not
-  // be mounted at all, and the snap band reaches past a card's border where
-  // there is no element to hit.
-  //
-  // Dropping on open canvas creates a text card there and connects it —
-  // Obsidian offers a menu at this point, but its three options are its three
-  // node types; ours has one, and a menu with one item is a speed bump in
-  // front of the gesture's whole purpose.
-  // -----------------------------------------------------------------------
-
-  /** The connection point a press landed on, or null for anything else. */
-  private connectionSideFromEventTarget(
-    target: EventTarget | null,
-  ): NodeSide | null {
-    const el = asElement(target)
-    if (!el?.classList.contains(CONNECTION_POINT_CLASS)) return null
-    const side = (el as HTMLElement).dataset.side
-    return NODE_SIDES.find((candidate) => candidate === side) ?? null
-  }
-
-  /** The edge a press landed on — its hit path, or the label riding on it.
-   * The label is part of the edge and answers as one: pressing it selects and
-   * drags that edge, double-clicking it edits the label it already shows. */
-  private edgeIdFromEventTarget(target: EventTarget | null): EdgeId | null {
-    const el = asElement(target)
-    if (
-      el === null ||
-      (!el.classList.contains(EDGE_HIT_CLASS) &&
-        !el.classList.contains(EDGE_LABEL_CLASS))
-    ) {
-      return null
-    }
-    return (el as SVGElement | HTMLElement).dataset.edgeId ?? null
-  }
-
-  /** False when the card the layer was parked on is gone, so the caller can
-   * fall through to the gesture the press would otherwise have been. */
-  private startConnect(side: NodeSide, e: PointerEvent): boolean {
-    if (!this.canEdit) return false
-    const nodeId = this.layerNodeId
-    if (nodeId === null || !this.nodesById.has(nodeId)) return false
-    // Same reason as startResize: a press on the layer must not blur the
-    // editor of the card it is parked on.
-    e.preventDefault()
-    // Pointer capture moves :hover off the dot for the rest of the drag, and
-    // a connection visibly starting from nothing reads as a glitch.
-    if (this.interactionLayerEl)
-      this.interactionLayerEl.dataset.connecting = side
-    this.beginConnect({ nodeId, side }, 'to', null, e)
-    return true
-  }
-
-  /**
-   * A press on an edge grabs whichever of its two ends is nearer — the same
-   * press that, without movement, selects it. There is no separate endpoint
-   * handle to aim at: the end you meant is the one you pressed next to.
-   */
-  private startEdgeReattach(edgeId: EdgeId, e: PointerEvent): boolean {
-    const edge = this.boardEdgesById.get(edgeId)
-    const from = edge && this.nodesById.get(edge.fromNode)
-    const to = edge && this.nodesById.get(edge.toNode)
-    if (!edge || !from || !to) return false
-    const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
-    const world = this.worldPointFromEvent(e)
-    const toFrom = distanceBetween(world, anchorPoint(from, sides.fromSide))
-    const toTo = distanceBetween(world, anchorPoint(to, sides.toSide))
-    const movingEnd = toFrom <= toTo ? 'from' : 'to'
-    const anchor: SideAnchor =
-      movingEnd === 'from'
-        ? { nodeId: edge.toNode, side: sides.toSide }
-        : { nodeId: edge.fromNode, side: sides.fromSide }
-    this.beginConnect(anchor, movingEnd, edgeId, e)
-    return true
-  }
-
-  private beginConnect(
-    anchor: SideAnchor,
-    movingEnd: 'from' | 'to',
-    edgeId: EdgeId | null,
-    e: PointerEvent,
-  ): void {
-    this.interaction = {
-      kind: 'connect',
-      pointerId: e.pointerId,
-      anchor,
-      movingEnd,
-      edgeId,
-      startClient: { x: e.clientX, y: e.clientY },
-      candidates: this.board.nodes.filter((node) => node.id !== anchor.nodeId),
-      dragging: false,
-      target: null,
-    }
-    this.viewportEl.setPointerCapture(e.pointerId)
-  }
-
-  private updateConnect(
-    interaction: ConnectInteraction,
-    e: PointerEvent,
-  ): void {
-    if (!interaction.dragging) {
-      const dx = e.clientX - interaction.startClient.x
-      const dy = e.clientY - interaction.startClient.y
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-      interaction.dragging = true
-      // The edge being re-attached is replaced by the preview for the
-      // duration, so its old shape doesn't hang there contradicting it.
-      if (interaction.edgeId !== null) {
-        this.edgeLayer.setEdgeHidden(interaction.edgeId, true)
-      }
-    }
-    const world = this.worldPointFromEvent(e)
-    interaction.target = findConnectTarget(
-      world,
-      interaction.candidates,
-      CONNECT_SNAP_WORLD_PX,
-    )
-    this.setConnectTarget(interaction.target?.nodeId ?? null)
-    this.drawConnectPreview(interaction, world)
-  }
-
-  /** The in-flight curve: from the pinned end to the snapped target, or to a
-   * zero-size rect at the pointer when there is nothing to snap to (whose
-   * anchor point is the pointer itself, whatever side it is asked for). */
-  private drawConnectPreview(
-    interaction: ConnectInteraction,
-    world: ScreenPoint,
-  ): void {
-    const preview = this.previewPathEl
-    const anchorCard = this.nodesById.get(interaction.anchor.nodeId)
-    if (!preview || !anchorCard) return
-    const target = interaction.target
-    const targetCard = target ? this.nodesById.get(target.nodeId) : null
-    const free: VirtualCardRect =
-      target && targetCard
-        ? targetCard
-        : { id: '', x: world.x, y: world.y, w: 0, h: 0 }
-    const freeSide =
-      target && targetCard ? target.side : oppositeSide(interaction.anchor.side)
-    const geometry =
-      interaction.movingEnd === 'to'
-        ? computeEdgeGeometry(
-            anchorCard,
-            free,
-            interaction.anchor.side,
-            freeSide,
-          )
-        : computeEdgeGeometry(
-            free,
-            anchorCard,
-            freeSide,
-            interaction.anchor.side,
-          )
-    preview.setAttribute('d', buildEdgePathD(geometry))
-    preview.classList.remove(EDGE_HIDDEN_CLASS)
-  }
-
-  private setConnectTarget(nodeId: NodeId | null): void {
-    if (nodeId === this.connectTargetNodeId) return
-    const previous = this.connectTargetNodeId
-    if (previous !== null) {
-      this.cardRenderer
-        .getRuntime(previous)
-        ?.el?.classList.remove(CARD_CONNECT_TARGET_CLASS)
-    }
-    this.connectTargetNodeId = nodeId
-    if (nodeId !== null) {
-      this.cardRenderer
-        .getRuntime(nodeId)
-        ?.el?.classList.add(CARD_CONNECT_TARGET_CLASS)
-    }
-  }
-
-  private finishConnect(
-    interaction: ConnectInteraction,
-    e: PointerEvent,
-  ): void {
-    this.setConnectTarget(null)
-    this.previewPathEl?.classList.add(EDGE_HIDDEN_CLASS)
-    if (this.interactionLayerEl) {
-      delete this.interactionLayerEl.dataset.connecting
-    }
-    if (interaction.edgeId !== null) {
-      this.edgeLayer.setEdgeHidden(interaction.edgeId, false)
-    }
-
-    if (!interaction.dragging) {
-      // A press that never moved: on an edge that means selecting it, and on
-      // a connection point it means nothing at all.
-      if (interaction.edgeId !== null) {
-        this.setEdgeSelection([interaction.edgeId])
-      }
-      return
-    }
-
-    const created =
-      interaction.target === null
-        ? this.createNodeForConnection(interaction, this.worldPointFromEvent(e))
-        : null
-    const target = interaction.target ?? created
-    if (!target) return
-
-    // One history step for the whole gesture: `createNodeForConnection` has
-    // already put its card on `this.board` without committing, so the card
-    // and the edge that justified it are undone together.
-    this.applyBoardChange(
-      interaction.edgeId === null
-        ? addEdge(
-            this.board,
-            buildEdge(
-              this.nextEdgeId(),
-              interaction.anchor,
-              interaction.movingEnd,
-              target,
-            ),
-          )
-        : updateEdge(
-            this.board,
-            interaction.edgeId,
-            interaction.movingEnd === 'from'
-              ? { fromNode: target.nodeId, fromSide: target.side }
-              : { toNode: target.nodeId, toSide: target.side },
-          ),
-    )
-    this.rebuildEdgesSvg()
-
-    if (created) {
-      this.recomputeVisibility()
-      this.drainQueues()
-      this.editing.enterEditMode(created.nodeId)
-    }
-  }
-
-  /** The card a connection dropped on open canvas lands on, placed so the
-   * incoming edge meets its facing side. Added to the board here; the edge
-   * to it, and the editor on it, follow in `finishConnect`. */
-  private createNodeForConnection(
-    interaction: ConnectInteraction,
-    drop: ScreenPoint,
-  ): SideAnchor | null {
-    if (!this.canEdit) return null
-    const side = oppositeSide(interaction.anchor.side)
-    const rect = rectAnchoredAt(drop, side, NEW_CARD_SIZE)
-    const node: TextNode = {
-      id: this.nextNodeId(),
-      type: 'text',
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      w: rect.w,
-      h: rect.h,
-      text: '',
-      extra: {},
-    }
-    this.board = addNode(this.board, node)
-    return { nodeId: node.id, side }
-  }
-
-  private updateNodeInteraction(
-    interaction: NodeInteraction,
-    e: PointerEvent,
-  ): void {
-    if (!interaction.dragging) {
-      const dx = e.clientX - interaction.startClient.x
-      const dy = e.clientY - interaction.startClient.y
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-      this.beginNodeDrag(interaction)
-    }
-    this.updateNodeDragPositions(interaction, e)
-  }
-
-  /**
-   * Freezes what this drag moves.
-   *
-   * Resolved once, here, rather than per frame: a group carries whatever sits
-   * inside it (domain/groups.ts), and re-asking as the group travels would
-   * pick up every card it passed over and drop the ones it had left behind.
-   * Obsidian Canvas takes the same snapshot at the same moment.
-   */
-  private beginNodeDrag(interaction: NodeInteraction): void {
-    interaction.dragging = true
-    if (!this.selectedIds.has(interaction.nodeId)) {
-      this.setSelection([interaction.nodeId])
-    }
-    interaction.ids = nodesToDragWith(this.selectedIds, this.board.nodes)
-    interaction.snapCandidates = this.snapCandidates(new Set(interaction.ids))
-    for (const id of interaction.ids) {
-      const card = this.nodesById.get(id)
-      if (!card) continue
-      interaction.startPositions.set(id, { x: card.x, y: card.y })
-      // Exempt every dragged card from virtualization unmount for the
-      // duration of the drag (mirrors the existing editing-card pin).
-      this.pinnedIds.add(id)
-      this.cardRenderer.getRuntime(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Alignment (drag and resize). What lines up with what is
-  // domain/snapping.ts's; what lives here is the gesture's side of it —
-  // which rectangles are on offer, how big the offer is at this zoom, and
-  // when the user has waved it away.
-  // -----------------------------------------------------------------------
-
-  /**
-   * The drag's world delta with alignment folded in, and the guides to draw
-   * for it.
-   *
-   * One method for the live frame and for the commit both, because the two
-   * have to agree exactly: recomputing from the same event is a few hundred
-   * comparisons, and any drift between them would move the card on release.
-   */
-  private draggedDelta(
-    interaction: NodeInteraction,
-    e: PointerEvent,
-  ): Readonly<{ dx: number; dy: number; guides: readonly SnapGuide[] }> {
-    const raw = screenDeltaToWorld(
-      this.cameraController.view,
-      e.clientX - interaction.startClient.x,
-      e.clientY - interaction.startClient.y,
-    )
-    if (!this.snappingWanted(e)) return { ...raw, guides: [] }
-    const moving: CardRect[] = []
-    for (const id of interaction.ids) {
-      const start = interaction.startPositions.get(id)
-      const card = this.nodesById.get(id)
-      if (!start || !card) continue
-      moving.push({
-        x: start.x + raw.dx,
-        y: start.y + raw.dy,
-        w: card.w,
-        h: card.h,
-      })
-    }
-    const snap = snapMove(moving, interaction.snapCandidates, {
-      ...this.snapOptions(),
-      movedX: raw.dx !== 0,
-      movedY: raw.dy !== 0,
-    })
-    return { dx: raw.dx + snap.dx, dy: raw.dy + snap.dy, guides: snap.guides }
-  }
-
-  /**
-   * What a gesture may line up with: what is on screen, minus what the
-   * gesture is moving, minus everything of the other kind.
-   *
-   * Cards line up with cards and groups with groups (Obsidian Canvas draws
-   * the same line): a card dragged at a group is being dropped *into* it, and
-   * one that jumped to the frame's edge on the way in would be fighting the
-   * drop rather than helping it.
-   *
-   * Off-screen cards are left out because an alignment the user cannot see is
-   * not an offer — and because it keeps the comparison bounded by the
-   * viewport rather than by the size of the board.
-   */
-  private snapCandidates(moving: ReadonlySet<NodeId>): readonly CardRect[] {
-    // Nothing is on offer in the overview tier (`snappingWanted`), and at that
-    // zoom "what is on screen" is most of the board — so this is also the one
-    // place the gesture would have paid for it.
-    if (this.overview) return []
-    const groups = this.board.nodes.some(
-      (node) => moving.has(node.id) && node.type === 'group',
-    )
-    const view = computeWorldViewportRect(
-      this.viewportEl.clientWidth,
-      this.viewportEl.clientHeight,
-      this.cameraController.view,
-      0,
-    )
-    return this.board.nodes
-      .filter(
-        (node) =>
-          !moving.has(node.id) &&
-          (node.type === 'group') === groups &&
-          intersectsViewport(node, view),
-      )
-      .map(rectOfCard)
-  }
-
-  /** The offer's size and the lattice it falls back to, both of which are
-   * facts about the current zoom: the tolerance is a screen distance divided
-   * by the scale, and the grid is whichever lattice is currently drawn. */
-  private snapOptions(): Readonly<{ tolerance: number; gridStep: number }> {
-    const { scale } = this.cameraController.view
-    return {
-      tolerance: SNAP_SCREEN_PX / scale,
-      gridStep: gridStepForScale(
-        scale,
-        GRID_WORLD_STEP_PX,
-        GRID_MIN_SCREEN_STEP_PX,
-      ),
-    }
-  }
-
-  /**
-   * Alignment is on unless the user holds the key that says otherwise, which
-   * is Obsidian Canvas's arrangement down to the key: Ctrl on macOS — where
-   * Alt already pans this canvas, as it does theirs — and Alt everywhere
-   * else. Read off the event, so it can be pressed and released mid-drag.
-   */
-  private snappingWanted(e: PointerEvent): boolean {
-    // Off below the overview threshold. Alignment is an offer measured
-    // in screen pixels, and down there the tolerance covers a screenful of
-    // board: the card would jump to a neighbour the user cannot see, and the
-    // guide drawn for it would be a line across the whole viewport.
-    if (this.overview) return false
-    return this.onMacOS() ? !e.ctrlKey : !e.altKey
-  }
-
-  /** Which modifier waves alignment away, and how a shortcut is spelled. */
-  private onMacOS(): boolean {
-    this.isMacOS ??= /Mac|iPhone|iPad/.test(
-      this.context.getWindow().navigator.userAgent,
-    )
-    return this.isMacOS
-  }
-
-  private updateNodeDragPositions(
-    interaction: NodeInteraction,
-    e: PointerEvent,
-  ): void {
-    const { dx, dy, guides } = this.draggedDelta(interaction, e)
-    this.snapGuideLayer?.show(guides)
-    const overrides = new Map<NodeId, CardRect>()
-    for (const id of interaction.ids) {
-      const start = interaction.startPositions.get(id)
-      const card = this.nodesById.get(id)
-      if (!start || !card) continue
-      overrides.set(id, {
-        x: start.x + dx,
-        y: start.y + dy,
-        w: card.w,
-        h: card.h,
-      })
-      const el = this.cardRenderer.getRuntime(id)?.el
-      if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
-    }
-    // In the overview tier those elements do not exist and this map is the
-    // drag's only feedback — see `liveNodeRects`.
-    this.setLiveNodeRects(overrides)
-    this.edgeLayer.redrawEdgesForNodes(new Set(interaction.ids), overrides)
-    // The handle layer sits in the same world space as the cards but is not
-    // one of them, so a drag has to carry it along explicitly.
-    const dragged = overrides.get(this.layerNodeId ?? '')
-    if (dragged) this.placeInteractionLayer(dragged)
-  }
-
-  private finishNodeInteraction(
-    interaction: NodeInteraction,
-    e: PointerEvent,
-  ): void {
-    if (!interaction.dragging) {
-      if (interaction.additive) {
-        this.toggleSelection(interaction.nodeId)
-      } else {
-        this.setSelection([interaction.nodeId])
-        this.pdf.followPdfLinkAt(interaction.nodeId, e)
-      }
-      return
-    }
-
-    const { dx, dy } = this.draggedDelta(interaction, e)
-    if (dx !== 0 || dy !== 0) {
-      this.applyBoardChange(moveNodes(this.board, interaction.ids, dx, dy))
-    }
-    // The board holds these positions now; the drag's copy of them retires.
-    this.setLiveNodeRects(null)
-    for (const id of interaction.ids) {
-      this.pinnedIds.delete(id)
-      const el = this.cardRenderer.getRuntime(id)?.el
-      if (!el) continue
-      el.classList.remove(CARD_DRAGGING_CLASS)
-      // A literal-string style assignment is disallowed (obsidianmd/
-      // no-static-styles-assignment) even for a reset; setCssProps is the
-      // sanctioned escape hatch (Obsidian and Style Constraints, CLAUDE.md).
-      el.setCssProps({ transform: '' })
-      const card = this.nodesById.get(id)
-      if (card) {
-        el.style.left = `${card.x}px`
-        el.style.top = `${card.y}px`
-      }
-    }
-    this.edgeLayer.redrawEdgesForNodes(new Set(interaction.ids))
-    this.refreshInteractionLayer()
-    // Dragged cards may have moved on/off screen — re-evaluate mount state
-    // immediately rather than waiting for the next throttled recompute
-    // (mirrors onResize()'s direct call).
-    this.recomputeVisibility()
-    this.drainQueues()
   }
 
   // -----------------------------------------------------------------------
@@ -2740,7 +1221,7 @@ export class WhiteboardCanvas {
     }
     this.clearSelection()
     this.rebuildEdgesSvg()
-    this.refreshInteractionLayer()
+    this.interaction.refreshInteractionLayer()
     this.recomputeVisibility()
     this.drainQueues()
     this.context.requestSave()
@@ -2825,39 +1306,6 @@ export class WhiteboardCanvas {
     })
   }
 
-  // -----------------------------------------------------------------------
-  // Space + left drag pans, the whiteboard convention (Obsidian Canvas,
-  // Figma, Excalidraw) for everyone without a middle button to spare.
-  //
-  // Pressing Space is a keymap binding, so it only arms on the active board
-  // and in whichever window it lives in. Releasing it is not something a
-  // keymap can say — Obsidian's scopes see keydown only — so the release is a
-  // `keyup` on this view's own window, plus `blur` for a release that
-  // happens while the window is not listening.
-  // -----------------------------------------------------------------------
-
-  private readonly armSpacePan = (): boolean => {
-    // A space typed into something is a space.
-    if (this.keymap.isTypingIntoField()) return false
-    // Consumed even while already armed: the key auto-repeats, and each
-    // repeat left through would scroll whatever Obsidian scrolls on Space.
-    if (!this.spacePanArmed) {
-      this.spacePanArmed = true
-      this.panCaptureEl.classList.add(PAN_CAPTURE_ARMED_CLASS)
-    }
-    return true
-  }
-
-  private readonly disarmSpacePan = (): void => {
-    if (!this.spacePanArmed) return
-    this.spacePanArmed = false
-    this.panCaptureEl.classList.remove(PAN_CAPTURE_ARMED_CLASS)
-  }
-
-  private readonly onKeyUp = (e: KeyboardEvent): void => {
-    if (e.code === 'Space' || e.key === ' ') this.disarmSpacePan()
-  }
-
   /** Whether the board can be changed at all — the single test every mutating
    * path starts with, so a new one cannot forget half of it. */
   private get canEdit(): boolean {
@@ -2893,16 +1341,8 @@ export class WhiteboardCanvas {
     this.applyFocusedNode()
     this.keymap.syncSelectionScope()
     // Selection is one of the two things that decides where the handles are.
-    this.updateInteractionLayer()
+    this.interaction.updateInteractionLayer()
     this.toolbarController.refreshToolbar()
-  }
-
-  /** Adds a node to the selection, or takes it out if it was already in —
-   * what Shift+click on a card means. */
-  private toggleSelection(id: NodeId): void {
-    const next = new Set(this.selectedIds)
-    if (!next.delete(id)) next.add(id)
-    this.setSelection(Array.from(next))
   }
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
@@ -3097,7 +1537,7 @@ export class WhiteboardCanvas {
     this.applyBoardChange(board)
     for (const id of ids) this.purgeNodeRuntime(id)
     this.clearSelection()
-    this.refreshInteractionLayer()
+    this.interaction.refreshInteractionLayer()
     // Deleting cards cascades edge removal (operations.ts's removeCard) —
     // the edge *set* changed, not just endpoint positions, so a full
     // rebuild (rather than redrawEdgesForNodes) is the correct response.
@@ -3110,134 +1550,6 @@ export class WhiteboardCanvas {
    * a rectangle on the canvas and no editor to type into. */
   private get canCreate(): boolean {
     return this.canEdit && !this.overview
-  }
-
-  // -- creating from the bar ----------------------------------------------
-  // Obsidian Canvas's `dragTempNode`: each button is also a handle, and what
-  // comes off it is a ghost of the card about to exist — the same size, in the
-  // same place, lining up with the same neighbours. A drop is a placement like
-  // any other, so it runs through domain/snapping.ts and draws the same
-  // guides.
-  //
-  // Canvas also pans the board when the ghost reaches the edge of the
-  // viewport. We have that nowhere — not for card drags, not for the marquee,
-  // not for connections — and it is a property of dragging on a canvas rather
-  // than of this gesture, so it belongs to all of them at once or to none.
-
-  private beginCreateDrag(
-    e: PointerEvent,
-    size: CardSize,
-    create: (at: ScreenPoint) => void,
-  ): void {
-    if (!this.canCreate) return
-    this.interaction = {
-      kind: 'create',
-      pointerId: e.pointerId,
-      startClient: { x: e.clientX, y: e.clientY },
-      size,
-      create,
-      dragging: false,
-      snapCandidates: [],
-    }
-    // Captured on the viewport rather than left on the button: the ghost is
-    // dragged across cards and over live content (an embedded page swallows
-    // pointer events), and the button must not receive the pointerup either —
-    // its click is the keyboard's alone.
-    this.viewportEl.setPointerCapture(e.pointerId)
-  }
-
-  private updateCreateDrag(
-    interaction: CreateInteraction,
-    e: PointerEvent,
-  ): void {
-    if (!interaction.dragging) {
-      const dx = e.clientX - interaction.startClient.x
-      const dy = e.clientY - interaction.startClient.y
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-      interaction.dragging = true
-      // Nothing of the board is moving, so everything on screen is something
-      // to line up with.
-      interaction.snapCandidates = this.snapCandidates(new Set())
-      this.showCreateGhost()
-    }
-    const { rect, guides } = this.createGhostRect(interaction, e)
-    this.placeCreateGhost(rect)
-    this.snapGuideLayer?.show(guides)
-  }
-
-  private finishCreateDrag(
-    interaction: CreateInteraction,
-    e: PointerEvent,
-  ): void {
-    this.hideCreateGhost()
-    // Never moved: the press was a click, and a click on the bar creates in
-    // the middle of the screen as it always has.
-    if (!interaction.dragging) {
-      interaction.create(this.dropImport.viewportCenterWorld())
-      return
-    }
-    // Let go off the board — over the sidebar, or outside the window
-    // entirely. Canvas drops the gesture here too: a card placed where the
-    // pointer is not would be a card the user cannot see arriving.
-    const local = this.cameraController.viewportPointFromEvent(e)
-    if (
-      local.x < 0 ||
-      local.y < 0 ||
-      local.x > this.viewportEl.clientWidth ||
-      local.y > this.viewportEl.clientHeight
-    ) {
-      return
-    }
-    const { rect } = this.createGhostRect(interaction, e)
-    interaction.create({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 })
-  }
-
-  /**
-   * Where the ghost is, and what it lines up with there.
-   *
-   * The card is centred on the pointer — every creation path already takes a
-   * centre and lays the card out around it, so the ghost and what replaces it
-   * are the same rectangle by construction.
-   */
-  private createGhostRect(
-    interaction: CreateInteraction,
-    e: PointerEvent,
-  ): Readonly<{ rect: CardRect; guides: readonly SnapGuide[] }> {
-    const center = this.worldPointFromEvent(e)
-    const { w, h } = interaction.size
-    const rect: CardRect = { x: center.x - w / 2, y: center.y - h / 2, w, h }
-    if (!this.snappingWanted(e)) return { rect, guides: [] }
-    const snap = snapMove([rect], interaction.snapCandidates, {
-      ...this.snapOptions(),
-      movedX: true,
-      movedY: true,
-    })
-    return {
-      rect: { ...rect, x: rect.x + snap.dx, y: rect.y + snap.dy },
-      guides: snap.guides,
-    }
-  }
-
-  private showCreateGhost(): void {
-    if (this.createGhostEl) return
-    const el = this.context.getDocument().createElement('div')
-    el.className = CREATE_GHOST_CLASS
-    this.worldEl.appendChild(el)
-    this.createGhostEl = el
-  }
-
-  private placeCreateGhost(rect: CardRect): void {
-    const el = this.createGhostEl
-    if (!el) return
-    el.style.left = `${rect.x}px`
-    el.style.top = `${rect.y}px`
-    el.style.width = `${rect.w}px`
-    el.style.height = `${rect.h}px`
-  }
-
-  private hideCreateGhost(): void {
-    this.createGhostEl?.remove()
-    this.createGhostEl = null
   }
 
   // -----------------------------------------------------------------------
@@ -3343,7 +1655,7 @@ export class WhiteboardCanvas {
     }
     this.animateArrangement(moved)
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
-    this.refreshInteractionLayer()
+    this.interaction.refreshInteractionLayer()
     this.toolbarController.positionToolbar()
     this.recomputeVisibility()
     this.drainQueues()
@@ -3395,39 +1707,6 @@ export class WhiteboardCanvas {
     )
   }
 
-  /**
-   * Whether this event landed inside content the mask is currently lifted
-   * from.
-   *
-   * Reaching a live body at all *is* the test: a masked body has
-   * `pointer-events: none`, which its whole subtree inherits, so an event
-   * whose target is inside one can only have got there through the exemption
-   * (style.css's content-mask block).
-   */
-  private isLiveContentTarget(target: EventTarget | null): boolean {
-    return asElement(target)?.closest(`.${CARD_BODY_LIVE_CLASS}`) != null
-  }
-
-  /** The group whose label this event landed on, or null for anything else. */
-  private groupLabelIdFromEventTarget(
-    target: EventTarget | null,
-  ): NodeId | null {
-    const el = asElement(target)
-    if (!el?.classList.contains(GROUP_LABEL_CLASS)) return null
-    return this.nodeIdFromEventTarget(el)
-  }
-
-  /** Matched on the data attribute rather than on a class, because both
-   * kinds of mounted node carry it (a card and a group frame) and every
-   * gesture that asks "which node is this" means either. */
-  private nodeIdFromEventTarget(target: EventTarget | null): NodeId | null {
-    const el = asElement(target)
-    if (el === null) return null
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Element.closest()'s generic return type defaults to `Element` here (no type argument to infer it from); the assertion is required for `.dataset` below to type-check under tsc even though this lint rule's own type resolution disagrees.
-    const nodeEl = el.closest('[data-node-id]') as HTMLElement | null
-    return nodeEl?.dataset.nodeId ?? null
-  }
-
   /** Fully removes a card no longer present in `board` (as opposed to
    * `unmountNode`, which keeps its runtime entry around — minus the DOM —
    * for a card that's merely scrolled off-screen but still valid). Keeps
@@ -3460,7 +1739,7 @@ export class WhiteboardCanvas {
     // Before the camera glide: a drag reads the live camera to convert its
     // screen delta, and the position the pointer reported belongs to the
     // camera the user was looking at when they reported it.
-    this.consumePointerMove()
+    this.interaction.consumePointerMove()
     this.cameraController.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       this.recomputeVisibility()
@@ -3748,12 +2027,7 @@ export class WhiteboardCanvas {
     // already in `getViewData`'s snapshot, so nothing typed or generated is
     // lost by dropping it.
     this.cardGeneration.abandonAll()
-    this.interaction = null
-    this.pendingPointerMove = null
-    this.setLiveNodeRects(null)
-    this.snapGuideLayer?.clear()
-    this.marqueeEl?.remove()
-    this.marqueeEl = null
+    this.interaction.reset()
     this.keymap.popSelectionScope()
     this.selectedIds = new Set()
     this.focusedNodeId = null

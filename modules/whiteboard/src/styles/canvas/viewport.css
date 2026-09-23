@@ -39,7 +39,7 @@
   cursor: grabbing;
 }
 
-/* Space held (canvas.ts's armSpacePan): the same box takes the pointer over
+/* Space held (interactionController.ts's armSpacePan): the same box takes the pointer over
  * the whole viewport, so hovering anywhere shows the hand and a press
  * anywhere — a card included — lands on it and pans. Only this childless
  * element changes, for the same reason the pan's cursor lives here. */

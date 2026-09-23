@@ -266,8 +266,8 @@ export function fitViewToBounds(
 
 /** Screen-space pointer movement -> world-space movement at `view`'s current
  * scale — a pan/zoom's *translation* doesn't enter into converting a delta,
- * only its scale does, which is what tells a drag gesture (canvas.ts's card
- * move) how far the pointer's client-pixel travel is in board units. */
+ * only its scale does, which is what tells a drag gesture (ui/canvas/dragGestures.ts's
+ * card move) how far the pointer's client-pixel travel is in board units. */
 export function screenDeltaToWorld(
   view: CanvasView,
   dx: number,

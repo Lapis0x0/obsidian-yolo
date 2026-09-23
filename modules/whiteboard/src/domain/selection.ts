@@ -63,7 +63,8 @@ export function nodesInMarquee(
  * Answering this from geometry rather than from an event's target is not a
  * preference: a gesture that captured the pointer retargets every mouse event
  * after it to the capturing element, so `click`/`dblclick` on a card arrive
- * naming the viewport (see canvas.ts's onDoubleClick).
+ * naming the viewport (see ui/canvas/interactionController.ts's
+ * onDoubleClick).
  */
 export function nodeAtPoint(
   nodes: readonly VirtualCardRect[],

@@ -1,6 +1,7 @@
 /* --- resize handles -------------------------------------------------------
  * One layer for the whole board, parked over the hovered card by
- * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
+ * ui/canvas/interactionController.ts's
+ * placeInteractionLayer(). It lives inside the world layer,
  * so it is in world coordinates like the cards — which is why every handle
  * dimension is multiplied by --yolo-whiteboard-zoom-multiplier (1/sqrt(scale),
  * written on this layer by cameraController.ts's applyZoomScale(); the handle

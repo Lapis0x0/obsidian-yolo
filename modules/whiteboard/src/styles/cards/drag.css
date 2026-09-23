@@ -10,7 +10,7 @@
 }
 
 /* Marquee-select overlay div, drawn in the viewport (screen-space) layer —
- * see ui/canvas.ts's startMarquee(). */
+ * see ui/canvas/interactionController.ts's startMarquee(). */
 .yolo-whiteboard-marquee {
   position: absolute;
   left: 0;

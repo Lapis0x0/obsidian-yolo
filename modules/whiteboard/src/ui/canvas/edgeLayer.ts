@@ -370,7 +370,7 @@ export class EdgeLayer {
   }
 
   /** Board-data rect for `id`, or its live drag position from `overrides`
-   * when provided (see canvas.ts's `updateNodeDragPositions`) — the single
+   * when provided (see ./dragGestures.ts's `updateNodeDragPositions`) — the single
    * lookup both `redrawEdge` call sites (live drag, and the post-commit
    * redraw against final data) go through. */
   effectiveNodeRect(

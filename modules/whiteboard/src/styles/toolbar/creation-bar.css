@@ -38,7 +38,7 @@ button.yolo-whiteboard-card-menu-button {
   --icon-size: 24px;
   --icon-stroke: 1.5px;
   /* Every button is also a handle: a card can be dragged off it onto the
-   * board (ui/canvas.ts's beginCreateDrag). */
+   * board (ui/canvas/dragGestures.ts's beginCreate). */
   cursor: grab;
 }
 
