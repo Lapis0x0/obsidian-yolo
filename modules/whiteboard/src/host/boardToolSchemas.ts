@@ -162,7 +162,7 @@ export const boardToolSchemas = {
   editDescription: [
     'Edit a YOLO whiteboard: add, change, connect, group, move and delete its cards.',
     '',
-    'Read the board first (fs_read on its path) — the summary gives every card an id, a position and a preview, and those ids are what this tool addresses. Read one card in full with "<board path>#<card id>".',
+    'Read the board file first — the summary gives every card an id, a position and a preview, and those ids are what this tool addresses. Read one card in full with "<board path>#<card id>".',
     '',
     CARD_CAPACITY,
     '',

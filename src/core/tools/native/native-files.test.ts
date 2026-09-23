@@ -261,6 +261,47 @@ describe('read_file', () => {
     expect(payload.content).toContain('line 2')
   })
 
+  it('reads a module-owned format as its module renders it', async () => {
+    await fs.writeFile(path.join(vaultRoot, 'plan.yoloboard'), '{"raw":1}')
+    const render = jest.fn(
+      async ({
+        path: boardPath,
+        fragment,
+      }: {
+        path: string
+        fragment?: string
+      }) => `rendered ${boardPath}${fragment ? ` card ${fragment}` : ''}`,
+    )
+    ctx = {
+      ...ctx,
+      resolveModuleFileTextRenderer: (extension) =>
+        extension === 'yoloboard'
+          ? { extensions: ['yoloboard'], render }
+          : null,
+    }
+
+    expect(
+      await expectSuccessPayload('read_file', { path: 'plan.yoloboard' }),
+    ).toMatchObject({
+      path: 'plan.yoloboard',
+      content: expect.stringContaining('rendered plan.yoloboard'),
+    })
+    expect(
+      await expectSuccessPayload('read_file', { path: 'plan.yoloboard#c-1' }),
+    ).toMatchObject({ content: expect.stringContaining('card c-1') })
+    expect(render).toHaveBeenLastCalledWith({
+      path: 'plan.yoloboard',
+      content: '{"raw":1}',
+      fragment: 'c-1',
+    })
+  })
+
+  it('reads a file whose name contains # as itself', async () => {
+    await fs.writeFile(path.join(vaultRoot, 'a#b.txt'), 'hash')
+    const payload = await expectSuccessPayload('read_file', { path: 'a#b.txt' })
+    expect(payload.content).toContain('hash')
+  })
+
   it('rejects endLine without startLine and an inverted range', async () => {
     await fs.writeFile(path.join(vaultRoot, 'a.txt'), 'x')
     expect(

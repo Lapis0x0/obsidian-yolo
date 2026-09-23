@@ -22,6 +22,7 @@ import {
   buildAllowedSkillPathSet,
   normalizeExemptPath,
 } from '../../../agent/workspaceScope'
+import { MODULE_RENDERED_FILE_SOURCE_MAX_BYTES } from '../../../modules/moduleFileTextRendererRegistry'
 import { getLiteSkillDocumentByPath } from '../../../skills/liteSkills'
 import { defineTool } from '../../define'
 import { sliceLines } from '../../line-slicing'
@@ -32,7 +33,12 @@ import {
   getOptionalBoundedIntegerArg,
   getTextArg,
 } from '../../tool-args'
-import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
+import {
+  NATIVE_PATH_ARG_DESCRIPTION,
+  getVaultBasePath,
+  resolveNativePath,
+  toEditSummaryPath,
+} from '../paths'
 import { assertDecodableAsText } from '../text'
 
 const MAX_LINE_INDEX = 1_000_000
@@ -40,7 +46,7 @@ const MAX_LINE_INDEX = 1_000_000
 const READ_FILE_DESCRIPTION = [
   'Read a file straight from the local filesystem. Desktop-only.',
   '',
-  'Also reads a skill from its path exactly as listed in <available_skills>.',
+  'Also reads a skill from its path exactly as listed in <available_skills>. A file format a module renders (such as a whiteboard) comes back as that rendering, and `<file>#<fragment>` reads the part the module addresses by that fragment.',
   '',
   'Text files come back line-numbered with the total line count. Omit startLine/endLine to read the whole file; pass startLine (optionally with endLine) to read a window of a large one. A PDF is extracted to text and its line numbers are page numbers. An image is attached for the model to look at.',
 ].join('\n')
@@ -83,31 +89,52 @@ export const readFileDefinition = defineTool({
   isAvailable: () => Platform.isDesktop,
   filesystemPathArg: 'path',
   execute: async (args, ctx) => {
-    const { app, settings, signal, chatModelId, allowedSkillPaths } = ctx
+    const {
+      app,
+      settings,
+      signal,
+      chatModelId,
+      allowedSkillPaths,
+      resolveModuleFileTextRenderer,
+    } = ctx
 
     const range = getReadRange(args)
 
     // A listed skill path is read through the skill registry, the same way
     // `fs_read` does: a builtin skill (`builtin://`) has no file on disk.
-    const skillPath = getTextArg(args, 'path').trim()
+    const rawPath = getTextArg(args, 'path').trim()
     if (
       allowedSkillPaths &&
       buildAllowedSkillPathSet(allowedSkillPaths).has(
-        normalizeExemptPath(skillPath),
+        normalizeExemptPath(rawPath),
       )
     ) {
       const skill = await getLiteSkillDocumentByPath({
         app,
-        path: skillPath,
+        path: rawPath,
         settings,
       })
       if (!skill) {
-        throw new Error(`Skill not found: ${skillPath}`)
+        throw new Error(`Skill not found: ${rawPath}`)
       }
-      return textResult({ path: skillPath, content: skill.content, range })
+      return textResult({ path: rawPath, content: skill.content, range })
     }
 
-    const absolutePath = await resolveNativeFilePathArg(app, args)
+    // A module-owned format reads as its module renders it, the same way
+    // `fs_read` does, including the module's own `<file>#<fragment>`
+    // addressing. The '#' splits only when the part before it has a
+    // renderer, so a real file name containing '#' reads as itself.
+    const hashIndex = rawPath.indexOf('#')
+    const fragmentBase = hashIndex > 0 ? rawPath.slice(0, hashIndex) : null
+    const fragmentRenderer =
+      fragmentBase !== null
+        ? resolveModuleFileTextRenderer?.(getVaultPathExtension(fragmentBase))
+        : null
+    const absolutePath = await resolveNativePath(
+      app,
+      fragmentRenderer && fragmentBase !== null ? fragmentBase : rawPath,
+    )
+    const fragment = fragmentRenderer ? rawPath.slice(hashIndex + 1) : undefined
 
     // eslint-disable-next-line import/no-nodejs-modules -- desktop-only tool, dynamically imported so mobile never loads it
     const fs = await import('node:fs/promises')
@@ -117,6 +144,28 @@ export const readFileDefinition = defineTool({
     }
 
     const extension = getVaultPathExtension(absolutePath)
+
+    const renderer =
+      fragmentRenderer ?? resolveModuleFileTextRenderer?.(extension)
+    if (renderer) {
+      if (stat.size > MODULE_RENDERED_FILE_SOURCE_MAX_BYTES) {
+        throw new Error(
+          `File too large to render (${stat.size} bytes). Max source size for .${extension} is ${MODULE_RENDERED_FILE_SOURCE_MAX_BYTES} bytes.`,
+        )
+      }
+      const displayPath = toEditSummaryPath(absolutePath, getVaultBasePath(app))
+      const rendered = await renderer.render({
+        path: displayPath,
+        content: await fs.readFile(absolutePath, 'utf8'),
+        ...(fragment !== undefined ? { fragment } : {}),
+      })
+      if (rendered.length > MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `Rendered content too large (${rendered.length} chars). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+        )
+      }
+      return textResult({ path: displayPath, content: rendered, range })
+    }
 
     if (getImageMimeTypeFromExtension(extension)) {
       return readAsImage({
