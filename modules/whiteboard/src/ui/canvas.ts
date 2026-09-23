@@ -51,6 +51,7 @@ import {
   rectAnchoredAt,
   resolveEdgeSides,
 } from '../domain/edges'
+import { parsePdfLink } from '../domain/excerpt'
 import {
   type Board,
   type BoardNode,
@@ -136,6 +137,7 @@ import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { OverviewLayer } from './canvas/overviewLayer'
+import { PdfExcerpts } from './canvas/pdfExcerpts'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import {
   ALIGN_MENU,
@@ -719,6 +721,7 @@ export class WhiteboardCanvas {
   /** The PDF annotation toolbar and comment editor, over the whole view
    * (./pdf/annotationController.ts). */
   private annotationController: AnnotationController | null = null
+  private pdfExcerpts!: PdfExcerpts
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -1247,6 +1250,30 @@ export class WhiteboardCanvas {
     // Over the whole view rather than the viewport: it serves the reading
     // panel as well as the cards. Built after the board's toolbar, so the two
     // never compete for the same layer.
+    this.pdfExcerpts = new PdfExcerpts(this.host, {
+      getBoard: () => this.board,
+      canCreate: () => this.canCreate,
+      pdfNodeForReader: (reader) => this.pdfNodeForReader(reader),
+      nextNodeId: (board) => this.nextNodeId(board),
+      addCard: (node) => this.addExcerptCard(node),
+      isInView: (rect) => {
+        const view = computeWorldViewportRect(
+          this.viewportEl.clientWidth,
+          this.viewportEl.clientHeight,
+          this.cameraController.view,
+          0,
+        )
+        return (
+          rect.x >= view.left &&
+          rect.y >= view.top &&
+          rect.x + rect.w <= view.right &&
+          rect.y + rect.h <= view.bottom
+        )
+      },
+      getSourcePath: () => this.sourcePathForBoard(),
+      t: (key) => this.t(key),
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
     this.annotationController?.destroy()
     this.annotationController = new AnnotationController({
       parent: root,
@@ -1255,6 +1282,11 @@ export class WhiteboardCanvas {
       t: (key) => this.t(key),
       getSourcePath: () => this.sourcePathForBoard(),
       registerKeymap: (bindings) => this.context.registerKeymap(bindings),
+      excerpts: {
+        addText: (reader, excerpt) => this.pdfExcerpts.addText(reader, excerpt),
+        addArea: (reader, page, rect) =>
+          this.pdfExcerpts.addArea(reader, page, rect),
+      },
       reportError: (stage, error) => this.reportError(stage, error),
     })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
@@ -1803,6 +1835,16 @@ export class WhiteboardCanvas {
 
   private readonly onDragOver = (e: DragEvent): void => {
     if (!this.acceptsDrop) return
+    // A selection dragged out of a reader lands only on open canvas; over a
+    // card it is not a drop at all.
+    if (
+      this.annotationController?.isExcerptDrag(e) &&
+      this.nodeIdAtPointer(e) !== null
+    ) {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+      this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
+      return
+    }
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     this.viewportEl.classList.add(VIEWPORT_DROP_ACTIVE_CLASS)
@@ -1821,6 +1863,18 @@ export class WhiteboardCanvas {
     if (!this.acceptsDrop) return
     e.preventDefault()
     const at = this.worldPointFromEvent(e)
+    // Text selected in one of this view's PDF readers, dragged out: an
+    // excerpt card where it was dropped (./canvas/pdfExcerpts.ts).
+    const excerpt = this.annotationController?.takeExcerptDrag(e)
+    if (excerpt) {
+      if (
+        this.nodeIdAtPointer(e) === null &&
+        this.pdfExcerpts.addText(excerpt.reader, excerpt.excerpt, at)
+      ) {
+        excerpt.reader.clearTextSelection()
+      }
+      return
+    }
     // Two drags arrive here and they carry different things. One comes from
     // inside Obsidian and names vault files, which the host resolves; the
     // other comes from the operating system and carries bytes. The first is
@@ -2940,8 +2994,12 @@ export class WhiteboardCanvas {
     e: PointerEvent,
   ): void {
     if (!interaction.dragging) {
-      if (interaction.additive) this.toggleSelection(interaction.nodeId)
-      else this.setSelection([interaction.nodeId])
+      if (interaction.additive) {
+        this.toggleSelection(interaction.nodeId)
+      } else {
+        this.setSelection([interaction.nodeId])
+        this.followPdfLinkAt(interaction.nodeId, e)
+      }
       return
     }
 
@@ -5096,6 +5154,94 @@ export class WhiteboardCanvas {
     this.context.requestSave()
   }
 
+  /** The PDF card a reader shows: the panel's card, or the card whose body
+   * the reader is. */
+  private pdfNodeForReader(reader: PdfReader): NodeId | null {
+    if (this.readerPanel?.getReader() === reader) return this.readerPanelNodeId
+    for (const node of this.board.nodes) {
+      if (this.cardRenderer.getRuntime(node.id)?.pdfReader === reader) {
+        return node.id
+      }
+    }
+    return null
+  }
+
+  /** An excerpt card lands like any card made on the board: one undoable
+   * step, mounted now so it is there to be seen. */
+  private addExcerptCard(node: TextNode): void {
+    this.applyBoardChange(addNode(this.board, node))
+    this.recomputeVisibility()
+    this.drainQueues()
+  }
+
+  /**
+   * A click on a card that landed on a link to a place in a PDF on this
+   * board (`[[x.pdf#page=N&selection=…]]`, an excerpt's citation) reads it
+   * there: the reading panel opens on that PDF's card at the page, and the
+   * text the link names is marked (PdfReader's `revealLocation`).
+   *
+   * A card's rendered content takes no pointer events (style.css's content
+   * mask), so which link was clicked is found by geometry. Only these links
+   * are taken: a link to a PDF that has no card here, or to anything else,
+   * is left as it was — a card's links are followed where Obsidian follows
+   * them, in its editor.
+   */
+  private followPdfLinkAt(id: NodeId, e: MouseEvent): void {
+    const runtime = this.cardRenderer.getRuntime(id)
+    const body = runtime?.bodyEl
+    if (!runtime || !body || this.parseFailed) return
+    const link = internalLinkAtPoint(body, e.clientX, e.clientY)
+    const linktext = link?.getAttribute('data-href') ?? ''
+    const parsed = parsePdfLink(linktext)
+    if (!parsed) return
+    let file: YoloModuleHostVaultEntryV1 | null = null
+    try {
+      file = this.host.vault.resolveLink(
+        parsed.linkpath,
+        runtime.contentSourcePath ?? this.sourcePathForBoard(),
+      )
+    } catch (error) {
+      this.reportError('resolve pdf link', error)
+      return
+    }
+    if (!file) return
+    const target = this.pdfCardFor(file.path, id)
+    if (target === null) return
+    this.openReaderPanel(target)
+    this.readerPanel
+      ?.getReader()
+      ?.revealLocation(parsed.target.page, parsed.target.selection)
+  }
+
+  /** The card to read a PDF in: the one the panel is already on, else the
+   * nearest to `near`. */
+  private pdfCardFor(path: string, near: NodeId): NodeId | null {
+    const cards = this.board.nodes.filter(
+      (node): node is FileNode => isPdfNode(node) && node.file === path,
+    )
+    if (cards.length === 0) return null
+    const current = cards.find((node) => node.id === this.readerPanelNodeId)
+    if (current) return current.id
+    const from = this.nodesById.get(near)
+    if (!from) return cards[0].id
+    const centre = (node: BoardNode) => ({
+      x: node.x + node.w / 2,
+      y: node.y + node.h / 2,
+    })
+    const origin = centre(from)
+    let best = cards[0]
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const card of cards) {
+      const c = centre(card)
+      const distance = Math.hypot(c.x - origin.x, c.y - origin.y)
+      if (distance < bestDistance) {
+        best = card
+        bestDistance = distance
+      }
+    }
+    return best.id
+  }
+
   /** The focused card, when it is a PDF card. */
   private focusedPdfNodeId(): NodeId | null {
     const id = this.focusedNodeId
@@ -5661,6 +5807,29 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
+}
+
+/** The rendered internal link under a point, if any. Asked of each link's
+ * own line boxes, so a link wrapped across two lines is hit on either. */
+function internalLinkAtPoint(
+  root: HTMLElement,
+  x: number,
+  y: number,
+): HTMLElement | null {
+  for (const link of Array.from(
+    root.querySelectorAll<HTMLElement>('a.internal-link'),
+  )) {
+    for (const rect of Array.from(link.getClientRects())) {
+      if (
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      )
+        return link
+    }
+  }
+  return null
 }
 
 /** A file card showing a PDF — the cards the reading panel can open. */

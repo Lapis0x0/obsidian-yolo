@@ -149,6 +149,11 @@ export const en = {
     searchNoResults: 'No results',
     closePanel: 'Close reader',
     areaMode: 'Frame an area',
+    linkAlias: '{name}, p.{page}',
+    excerpt: {
+      addedOutOfView: 'Excerpt added beside the PDF card, out of view.',
+      failed: 'Could not excerpt this area.',
+    },
     annotate: {
       highlight: 'Highlight',
       colors: 'Highlight colour',
@@ -159,10 +164,12 @@ export const en = {
         pink: 'Pink',
         purple: 'Purple',
       },
+      frame: 'Annotate area',
       comment: 'Comment',
       editComment: 'Edit comment',
       commentPlaceholder: 'Write a comment…',
       quoteToChat: 'Quote in chat',
+      excerpt: 'Excerpt to board',
       copyLink: 'Copy link',
       linkCopied: 'Link copied',
       linkUnavailable:

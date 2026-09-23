@@ -1184,6 +1184,25 @@ input.yolo-whiteboard-pdf-search-input {
   pointer-events: none;
 }
 
+/* The text a followed link names, marked for a moment (pdfReader.ts's
+ * `flash`): faded in on arrival, held, faded out. Above the text layer,
+ * never in the way of a press on it. */
+.yolo-whiteboard-pdf-flash {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
+}
+
+.yolo-whiteboard-pdf-flash.yolo-whiteboard-pdf-flash-shown {
+  opacity: 1;
+  transition: opacity var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
 button.yolo-whiteboard-pdf-area-toggle {
   --icon-size: 12px;
   align-self: center;

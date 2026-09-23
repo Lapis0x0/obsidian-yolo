@@ -40,13 +40,18 @@
 // annotation clicked, an area framed. What to do about it (the toolbar, the
 // store edits) is the owner's (./annotationController.ts).
 
-import type { PdfRectTuple } from '../../domain/pdfAnnotations'
+import type { PdfRectTuple, SelectionTuple } from '../../domain/pdfAnnotations'
 import type {
   AnnotationLease,
   AnnotationStore,
 } from '../../host/annotationStore'
 
-import { type PageFrame, hitTestAnnotations } from './annotationGeometry'
+import {
+  type PageBox,
+  type PageFrame,
+  hitTestAnnotations,
+  quadBoxes,
+} from './annotationGeometry'
 import {
   annotationClientRect,
   boxesFor,
@@ -119,7 +124,9 @@ export type ReaderAnnotationEvents = Readonly<{
     id: string,
     event: MouseEvent,
   ) => void
-  /** A frame was drawn in area mode: `rect` in the page's PDF space. */
+  /** A frame was drawn in area mode: `rect` in the page's PDF space. The
+   * frame stays drawn, as a selection does, until `clearPendingArea` or the
+   * next press on the pages. */
   onAreaDrawn: (reader: PdfReader, page: number, rect: PdfRectTuple) => void
   /** The reader is being destroyed. */
   onReaderDestroyed: (reader: PdfReader) => void
@@ -155,6 +162,13 @@ const AREA_BUTTON_CLASS = 'yolo-whiteboard-pdf-area-toggle'
 const AREA_MODE_CLASS = 'yolo-whiteboard-pdf-reader-area-mode'
 const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
 const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
+const FLASH_CLASS = 'yolo-whiteboard-pdf-flash'
+const FLASH_SHOWN_CLASS = 'yolo-whiteboard-pdf-flash-shown'
+/** How long the text a link names stays marked after the reader goes to
+ * it, before it fades. */
+const FLASH_HOLD_MS = 1400
+/** Long enough for the fade out (style.css) to finish. */
+const FLASH_FADE_MS = 400
 /** A press that travels less than this is a click, not a drag. */
 const CLICK_SLOP_PX = 4
 /** How near a thin highlight a click still counts as on it, in CSS px. */
@@ -191,6 +205,13 @@ type Press = Readonly<{
   pointerId: number
   x: number
   y: number
+}>
+
+/** A frame drawn in area mode, still on the page, waiting for what to do
+ * with it (the owner's toolbar). */
+type PendingArea = Readonly<{
+  slot: Slot
+  el: HTMLElement
 }>
 
 type AreaDraft = {
@@ -259,6 +280,12 @@ export class PdfReader {
   private readonly areaButton: HTMLButtonElement | null = null
   private areaMode = false
   private areaDraft: AreaDraft | null = null
+  private pendingArea: PendingArea | null = null
+  /** A link's selection waiting for its page's text layer (`revealLocation`). */
+  private pendingReveal: Readonly<{
+    page: number
+    selection: SelectionTuple
+  }> | null = null
   private press: Press | null = null
   /** A selection was reported and has not been reported gone. */
   private selectionReported = false
@@ -508,6 +535,22 @@ export class PdfReader {
     return (await handle.getPage(page)).getTextItems()
   }
 
+  /** PNG bytes of a region of a page (`scale` CSS pixels per PDF unit). */
+  async renderRegion(
+    page: number,
+    rect: PdfRectTuple,
+    scale: number,
+  ): Promise<ArrayBuffer> {
+    const handle = this.handle
+    if (!handle) throw new Error('PDF is not open')
+    return (await handle.getPage(page)).renderRegion(rect, { scale })
+  }
+
+  /** Whether a node is on this reader's pages — where its text is. */
+  containsPageNode(node: Node | null): boolean {
+    return node !== null && this.pagesEl.contains(node)
+  }
+
   /** In area mode a drag on a page frames a region instead of selecting
    * text. */
   setAreaMode(on: boolean): void {
@@ -516,7 +559,42 @@ export class PdfReader {
     this.rootEl.classList.toggle(AREA_MODE_CLASS, on)
     this.areaButton?.setAttribute('aria-pressed', String(on))
     this.areaButton?.classList.toggle('is-active', on)
-    if (!on) this.cancelAreaDraft()
+    if (!on) {
+      this.cancelAreaDraft()
+      this.clearPendingArea()
+    }
+  }
+
+  /** Where the frame last drawn in area mode is on screen, while it is still
+   * waiting to be acted on. */
+  getPendingAreaRect(): DOMRect | null {
+    const pending = this.pendingArea
+    if (!pending?.el.isConnected) return null
+    const rect = pending.el.getBoundingClientRect()
+    return rect.width > 0 || rect.height > 0 ? rect : null
+  }
+
+  /** Takes the waiting frame off the page. */
+  clearPendingArea(): void {
+    this.pendingArea?.el.remove()
+    this.pendingArea = null
+  }
+
+  /**
+   * Goes where a link points: to `page`, and with a `selection`, to the text
+   * it names there, marked for a moment. The text is found on the page's
+   * text layer, so it waits for one — a reader that is not being read
+   * (`setInteractive`) builds none, and the mark comes when it is. A tuple
+   * that names no text on the page — a link Obsidian's own viewer wrote,
+   * whose pdf.js split this page differently — leaves the page.
+   */
+  revealLocation(page: number, selection: SelectionTuple | null): void {
+    if (this.destroyed) return
+    const count = this.handle?.pageCount ?? 0
+    const target = count > 0 ? Math.min(Math.max(1, page), count) : page
+    this.goToPage(target)
+    this.pendingReveal = selection ? { page: target, selection } : null
+    this.finishReveal()
   }
 
   isAreaMode(): boolean {
@@ -995,6 +1073,7 @@ export class PdfReader {
           layer.setScale(current)
         }
         this.search.onTextLayer(slot.index)
+        if (this.pendingReveal?.page === slot.index + 1) this.finishReveal()
       },
       (error: unknown) => {
         if (slot.textTask === task) slot.textTask = null
@@ -1076,6 +1155,43 @@ export class PdfReader {
     )
   }
 
+  private finishReveal(): void {
+    const reveal = this.pendingReveal
+    if (!reveal) return
+    const slot = this.slots[reveal.page - 1]
+    const layer = slot?.textLayer
+    if (!slot || !layer || !slot.frame) return
+    this.pendingReveal = null
+    const range = layer.createRange(reveal.selection)
+    if (!range) return
+    const described = layer.describeRange(range)
+    this.revealSearchHit(slot.index, range)
+    if (described) this.flash(slot, quadBoxes(described.quadPoints, slot.frame))
+  }
+
+  /** Marks boxes on a page for a moment: in, held, faded out, removed. */
+  private flash(slot: Slot, boxes: readonly PageBox[]): void {
+    const win = this.window()
+    if (!win || boxes.length === 0) return
+    const doc = this.rootEl.ownerDocument
+    const els = boxes.map((box) => {
+      const el = doc.createElement('div')
+      el.className = FLASH_CLASS
+      placeBox(el, box)
+      slot.el.appendChild(el)
+      return el
+    })
+    // Laid out once without the shown state, so turning it on transitions.
+    void els[0].offsetWidth
+    for (const el of els) el.classList.add(FLASH_SHOWN_CLASS)
+    win.setTimeout(() => {
+      for (const el of els) el.classList.remove(FLASH_SHOWN_CLASS)
+      win.setTimeout(() => {
+        for (const el of els) el.remove()
+      }, FLASH_FADE_MS)
+    }, FLASH_HOLD_MS)
+  }
+
   // -----------------------------------------------------------------------
   // Annotations
   // -----------------------------------------------------------------------
@@ -1150,6 +1266,9 @@ export class PdfReader {
 
   private readonly onPagesPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return
+    // A frame left waiting is let go by the next press, as a text selection
+    // is by a click elsewhere.
+    this.clearPendingArea()
     this.press = {
       pointerId: event.pointerId,
       x: event.clientX,
@@ -1207,19 +1326,32 @@ export class PdfReader {
     }
   }
 
+  /** Ends a drag in area mode. A frame big enough to mean something stays
+   * on the page, waiting (`pendingArea`), and is reported. */
   private finishAreaDraft(): void {
     const draft = this.areaDraft
     if (!draft) return
-    this.cancelAreaDraft()
+    this.areaDraft = null
+    if (draft.slot.el.hasPointerCapture(draft.pointerId)) {
+      draft.slot.el.releasePointerCapture(draft.pointerId)
+    }
     const page = draft.slot.page
     const events = this.options.annotationEvents
-    if (!page || !events) return
     const left = Math.min(draft.startX, draft.x)
     const right = Math.max(draft.startX, draft.x)
     const top = Math.min(draft.startY, draft.y)
     const bottom = Math.max(draft.startY, draft.y)
-    const minHeight = (MIN_AREA_FRACTION * page.width) / page.height
-    if (right - left < MIN_AREA_FRACTION || bottom - top < minHeight) return
+    const minHeight = page ? (MIN_AREA_FRACTION * page.width) / page.height : 0
+    if (
+      !page ||
+      !events ||
+      right - left < MIN_AREA_FRACTION ||
+      bottom - top < minHeight
+    ) {
+      draft.el.remove()
+      return
+    }
+    this.pendingArea = { slot: draft.slot, el: draft.el }
     const [x1, y1] = page.toPdfPoint([left * page.width, top * page.height], 1)
     const [x2, y2] = page.toPdfPoint(
       [right * page.width, bottom * page.height],

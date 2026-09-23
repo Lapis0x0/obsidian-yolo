@@ -145,6 +145,11 @@ export const it = {
     searchNoResults: 'Nessun risultato',
     closePanel: 'Chiudi il lettore',
     areaMode: "Seleziona un'area",
+    linkAlias: '{name}, p.{page}',
+    excerpt: {
+      addedOutOfView: 'Estratto aggiunto accanto alla scheda PDF, fuori vista.',
+      failed: "Impossibile estrarre quest'area.",
+    },
     annotate: {
       highlight: 'Evidenzia',
       colors: 'Colore evidenziazione',
@@ -155,10 +160,12 @@ export const it = {
         pink: 'Rosa',
         purple: 'Viola',
       },
+      frame: 'Annota area',
       comment: 'Commento',
       editComment: 'Modifica commento',
       commentPlaceholder: 'Scrivi un commento…',
       quoteToChat: 'Cita nella chat',
+      excerpt: 'Estrai sulla lavagna',
       copyLink: 'Copia link',
       linkCopied: 'Link copiato',
       linkUnavailable:

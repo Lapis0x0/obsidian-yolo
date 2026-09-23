@@ -1,5 +1,10 @@
 import type { BoardNode } from './fileFormat'
-import { PLACEMENT_GAP, collectObstacles, placeCard } from './placement'
+import {
+  PLACEMENT_GAP,
+  collectObstacles,
+  placeBeside,
+  placeCard,
+} from './placement'
 
 const SIZE = { w: 100, h: 100 }
 
@@ -56,5 +61,46 @@ describe('placeCard', () => {
     }))
     const point = placeCard([previous, ...wall], SIZE, previous)
     expect(point.x).toBeGreaterThan(previous.x)
+  })
+})
+
+describe('placeBeside', () => {
+  const source = { x: 0, y: 0, w: 300, h: 400 }
+
+  it('starts right of the source, top-aligned with it', () => {
+    expect(placeBeside([source], SIZE, source)).toEqual({
+      x: 300 + PLACEMENT_GAP,
+      y: 0,
+    })
+  })
+
+  it('stacks the next one under the last, not on it', () => {
+    const first = { x: 300 + PLACEMENT_GAP, y: 0, w: 100, h: 100 }
+    const second = { x: first.x, y: 100 + PLACEMENT_GAP, w: 100, h: 60 }
+    expect(placeBeside([source, first], SIZE, source)).toEqual({
+      x: first.x,
+      y: second.y,
+    })
+    expect(placeBeside([source, first, second], SIZE, source)).toEqual({
+      x: first.x,
+      y: second.y + 60 + PLACEMENT_GAP,
+    })
+  })
+
+  it('skips past an unrelated card in the column', () => {
+    const other = { x: 300 + PLACEMENT_GAP + 50, y: 20, w: 400, h: 500 }
+    expect(placeBeside([source, other], SIZE, source)).toEqual({
+      x: 300 + PLACEMENT_GAP,
+      y: 520 + PLACEMENT_GAP,
+    })
+  })
+
+  it('fills a gap big enough for the card', () => {
+    const top = { x: 300 + PLACEMENT_GAP, y: 0, w: 100, h: 100 }
+    const low = { x: 300 + PLACEMENT_GAP, y: 400, w: 100, h: 100 }
+    expect(placeBeside([source, top, low], SIZE, source)).toEqual({
+      x: top.x,
+      y: 100 + PLACEMENT_GAP,
+    })
   })
 })

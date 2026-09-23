@@ -71,6 +71,42 @@ export function placeCard(
 }
 
 /**
+ * A card that belongs to one particular card — an excerpt beside the PDF it
+ * was taken from: in the column just right of `source`, top-aligned with it,
+ * in the first free slot going down.
+ *
+ * `placeCard`'s search turned a quarter: it walks right because a batch
+ * reads left to right, and this walks down because what is kept beside a
+ * source reads like notes in its margin — the second excerpt under the
+ * first, not further away from the page it came from. Still one axis and
+ * still no moving of anything already there; a slot is skipped by jumping
+ * past whatever filled it, so the column packs.
+ */
+export function placeBeside(
+  obstacles: readonly Rect[],
+  size: Size,
+  source: Rect,
+): Point {
+  let candidate: Rect = {
+    x: source.x + source.w + PLACEMENT_GAP,
+    y: source.y,
+    w: size.w,
+    h: size.h,
+  }
+  for (let step = 0; step < MAX_PLACEMENT_STEPS; step += 1) {
+    const blocking = obstacles.filter((obstacle) =>
+      overlaps(obstacle, candidate),
+    )
+    if (blocking.length === 0) break
+    const below = Math.max(
+      ...blocking.map((obstacle) => obstacle.y + obstacle.h),
+    )
+    candidate = { ...candidate, y: below + PLACEMENT_GAP }
+  }
+  return { x: candidate.x, y: candidate.y }
+}
+
+/**
  * Walks right from `seed` until the card fits. Searching along one axis
  * (rather than spiralling) keeps the result predictable: a card lands after
  * what it follows, further out if it has to, and never behind it.

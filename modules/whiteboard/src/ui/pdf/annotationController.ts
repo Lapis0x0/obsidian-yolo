@@ -8,6 +8,13 @@
 // acting for: a card is under the camera's transform, and chrome must not
 // zoom with it.
 //
+// Excerpts (摘录到白板) are handed to the board (`excerpts`): the toolbar
+// offers them for a selection, a framed area and an annotation alike, and
+// never records a link between an excerpt and an annotation. A selection can
+// also be dragged out onto the board; this is where such a drag is
+// recognised as ours (`takeExcerptDrag`), and the board decides what a drop
+// means.
+//
 // The toolbar is the board's own floating toolbar (../selectionToolbar.ts),
 // placed by the same rule (above what it acts on, below when there is no
 // room). It follows its anchor — the selection, or the annotation's marks —
@@ -20,12 +27,14 @@
 // in a popout window; everything here is built from the view's document.
 
 import { type ScreenPoint } from '../../domain/camera'
+import type { TextExcerpt } from '../../domain/excerpt'
 import {
   ANNOTATION_COLORS,
   type AnnotationColor,
   type HighlightAnnotation,
   type PdfAnnotation,
   type PdfRectTuple,
+  type SelectionTuple,
 } from '../../domain/pdfAnnotations'
 import { toolbarScreenPosition } from '../../domain/toolbar'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
@@ -39,6 +48,7 @@ import {
 
 import { quoteContext, resolveHighlightSelection } from './annotationGeometry'
 import { annotationColorClass } from './annotationLayer'
+import { generatePdfLink } from './pdfLink'
 import type {
   PdfReader,
   ReaderAnnotationEvents,
@@ -46,6 +56,26 @@ import type {
 } from './pdfReader'
 
 type Translate = (key: string) => string
+
+/** Where excerpts go: the board this controller serves. */
+export type ExcerptSink = Readonly<{
+  addText: (reader: PdfReader, excerpt: TextExcerpt) => boolean
+  addArea: (
+    reader: PdfReader,
+    page: number,
+    rect: PdfRectTuple,
+  ) => Promise<boolean>
+}>
+
+/** A text selection being dragged out of a reader. */
+export type ExcerptDrag = Readonly<{
+  reader: PdfReader
+  excerpt: TextExcerpt
+}>
+
+/** Marks a drag as a selection leaving one of this view's readers. Only the
+ * type is read on drop; what is dragged is kept here, not in the transfer. */
+const EXCERPT_DRAG_TYPE = 'application/x-yolo-whiteboard-pdf-excerpt'
 
 export type AnnotationControllerOptions = Readonly<{
   /** The view root: the toolbar spans it, panel included. */
@@ -61,11 +91,13 @@ export type AnnotationControllerOptions = Readonly<{
   registerKeymap: (
     bindings: readonly YoloModuleHostKeymapBindingV1[],
   ) => () => void
+  excerpts: ExcerptSink
   reportError: (stage: string, error: unknown) => void
 }>
 
 const OVERLAY_CLASS = 'yolo-whiteboard-pdf-annotation-overlay'
 const HIGHLIGHT_BUTTON_CLASS = 'yolo-whiteboard-pdf-highlight-button'
+const PAGES_SELECTOR = '.yolo-whiteboard-pdf-pages'
 const COMMENT_CLASS = 'yolo-whiteboard-pdf-comment'
 const COMMENT_TEXT_CLASS = 'yolo-whiteboard-pdf-comment-text'
 const COMMENT_INPUT_CLASS = 'yolo-whiteboard-pdf-comment-input'
@@ -77,6 +109,14 @@ type Mode =
       selection: ReaderTextSelection
     }>
   | Readonly<{ kind: 'annotation'; reader: PdfReader; id: string }>
+  /** A frame drawn in area mode, not yet anything: it becomes an area
+   * annotation, an excerpt, or nothing. */
+  | Readonly<{
+      kind: 'area'
+      reader: PdfReader
+      page: number
+      rect: PdfRectTuple
+    }>
 
 export class AnnotationController {
   readonly events: ReaderAnnotationEvents
@@ -87,6 +127,7 @@ export class AnnotationController {
   private editor: HTMLTextAreaElement | null = null
   private editorKeymapDisposer: (() => void) | null = null
   private frameId: number | null = null
+  private drag: ExcerptDrag | null = null
 
   constructor(private readonly options: AnnotationControllerOptions) {
     const doc = options.parent.ownerDocument
@@ -105,6 +146,8 @@ export class AnnotationController {
       event.preventDefault()
     })
     doc.addEventListener('pointerdown', this.onDocumentPointerDown, true)
+    options.parent.addEventListener('dragstart', this.onDragStart)
+    options.parent.addEventListener('dragend', this.onDragEnd)
 
     this.events = {
       onTextSelection: (reader, selection) =>
@@ -140,6 +183,22 @@ export class AnnotationController {
     return true
   }
 
+  /** Whether a drag is a selection leaving one of this view's readers. */
+  isExcerptDrag(event: DragEvent): boolean {
+    return (
+      this.drag !== null &&
+      (event.dataTransfer?.types.includes(EXCERPT_DRAG_TYPE) ?? false)
+    )
+  }
+
+  /** The selection a drop carries, taken: a drop is one excerpt. */
+  takeExcerptDrag(event: DragEvent): ExcerptDrag | null {
+    if (!this.isExcerptDrag(event)) return null
+    const drag = this.drag
+    this.drag = null
+    return drag
+  }
+
   /** Delete or Backspace with an annotation's toolbar open deletes it. */
   deleteActive(): boolean {
     const mode = this.mode
@@ -160,6 +219,8 @@ export class AnnotationController {
       this.onDocumentPointerDown,
       true,
     )
+    this.options.parent.removeEventListener('dragstart', this.onDragStart)
+    this.options.parent.removeEventListener('dragend', this.onDragEnd)
     this.toolbar.destroy()
   }
 
@@ -211,6 +272,11 @@ export class AnnotationController {
           this.openEditor()
         },
       },
+      {
+        title: t('pdf.annotate.excerpt'),
+        icon: annotation.type === 'area' ? 'image-plus' : 'text-quote',
+        onSelect: () => void this.excerptAnnotation(reader, annotation),
+      },
     ]
     if (annotation.type === 'highlight') {
       items.push(
@@ -247,6 +313,16 @@ export class AnnotationController {
     page: number,
     rect: PdfRectTuple,
   ): void {
+    this.open({ kind: 'area', reader, page, rect })
+  }
+
+  /** Makes the waiting frame an area annotation. */
+  private annotateArea(
+    mode: Extract<Mode, { kind: 'area' }>,
+    color: AnnotationColor,
+    withComment: boolean,
+  ): void {
+    const { reader, page, rect } = mode
     const store = this.writableStore(reader)
     if (!store) return
     const now = new Date().toISOString()
@@ -258,8 +334,9 @@ export class AnnotationController {
       updatedAt: now,
       anchor: { page, rect },
     }
-    store.add([annotation])
+    if (!store.add([annotation])) return
     this.open({ kind: 'annotation', reader, id: annotation.id })
+    if (withComment) this.openEditor()
   }
 
   // -----------------------------------------------------------------------
@@ -272,6 +349,15 @@ export class AnnotationController {
     if (previous && previous.reader !== mode.reader) {
       previous.reader.setActiveAnnotation(null)
     }
+    // A waiting frame the toolbar moves on from is let go — unless what it
+    // moves on to is the next frame on the same reader, which is the one the
+    // reader is now showing.
+    if (
+      previous?.kind === 'area' &&
+      !(mode.kind === 'area' && mode.reader === previous.reader)
+    ) {
+      previous.reader.clearPendingArea()
+    }
     this.mode = mode
     mode.reader.setActiveAnnotation(mode.kind === 'annotation' ? mode.id : null)
     this.rebuild()
@@ -280,6 +366,7 @@ export class AnnotationController {
 
   private close(): void {
     if (this.editor) this.closeEditor(true)
+    if (this.mode?.kind === 'area') this.mode.reader.clearPendingArea()
     this.mode?.reader.setActiveAnnotation(null)
     this.mode = null
     this.toolbar.setModel(null)
@@ -293,6 +380,11 @@ export class AnnotationController {
     if (!mode) return
     if (mode.kind === 'selection') {
       this.toolbar.setModel({ items: this.selectionItems(mode) })
+      this.showComment(null)
+      return
+    }
+    if (mode.kind === 'area') {
+      this.toolbar.setModel({ items: this.areaItems(mode) })
       this.showComment(null)
       return
     }
@@ -354,6 +446,11 @@ export class AnnotationController {
         onSelect: () => void this.highlight(reader, selection, color, true),
       },
       {
+        label: t('pdf.annotate.excerpt'),
+        icon: 'text-quote',
+        onSelect: () => this.excerptSelection(reader, selection),
+      },
+      {
         label: t('pdf.annotate.quoteToChat'),
         icon: 'message-square-quote',
         onSelect: () =>
@@ -375,6 +472,40 @@ export class AnnotationController {
       })
     }
     return items
+  }
+
+  /** A waiting frame's toolbar: what the selection toolbar offers, for an
+   * area. Framing is annotating in one click, as highlighting is. */
+  private areaItems(mode: Extract<Mode, { kind: 'area' }>): ToolbarItem[] {
+    const t = this.options.t
+    const color = this.options.prefs.getDefaultColor()
+    return [
+      {
+        label: t('pdf.annotate.frame'),
+        icon: 'highlighter',
+        className: `${HIGHLIGHT_BUTTON_CLASS} ${annotationColorClass(color)}`,
+        onSelect: () => this.annotateArea(mode, color, false),
+      },
+      this.palette(
+        color,
+        (picked) => {
+          this.options.prefs.setDefaultColor(picked)
+          this.annotateArea(mode, picked, false)
+        },
+        'chevron-down',
+      ),
+      {
+        label: t('pdf.annotate.comment'),
+        icon: 'message-square',
+        onSelect: () => this.annotateArea(mode, color, true),
+      },
+      {
+        label: t('pdf.annotate.excerpt'),
+        icon: 'image-plus',
+        onSelect: () =>
+          void this.excerptArea(mode.reader, mode.page, mode.rect),
+      },
+    ]
   }
 
   private annotationItems(
@@ -399,6 +530,11 @@ export class AnnotationController {
         ),
         icon: 'message-square',
         onSelect: () => this.openEditor(),
+      },
+      {
+        label: t('pdf.annotate.excerpt'),
+        icon: annotation.type === 'area' ? 'image-plus' : 'text-quote',
+        onSelect: () => void this.excerptAnnotation(reader, annotation),
       },
     ]
     if (annotation.type === 'highlight') {
@@ -435,9 +571,9 @@ export class AnnotationController {
   private anchorRect(): DOMRect | null {
     const mode = this.mode
     if (!mode) return null
-    return mode.kind === 'selection'
-      ? mode.selection.getRect()
-      : mode.reader.getAnnotationRect(mode.id)
+    if (mode.kind === 'selection') return mode.selection.getRect()
+    if (mode.kind === 'area') return mode.reader.getPendingAreaRect()
+    return mode.reader.getAnnotationRect(mode.id)
   }
 
   private startFollowing(): void {
@@ -460,6 +596,12 @@ export class AnnotationController {
 
   private place(): void {
     const rect = this.anchorRect()
+    // A waiting frame that is gone (a press on the pages let it go) takes
+    // its toolbar with it.
+    if (!rect && this.mode?.kind === 'area') {
+      this.close()
+      return
+    }
     const overlay = this.toolbar.overlay.getBoundingClientRect()
     if (!rect || !(overlay.width > 0)) {
       this.toolbar.setSuppressed(true)
@@ -616,6 +758,66 @@ export class AnnotationController {
     }
   }
 
+  /** A selection as an excerpt card: its text, cited at where it starts —
+   * a selection running onto the next page is one passage, and a link names
+   * one page. */
+  private excerptSelection(
+    reader: PdfReader,
+    selection: ReaderTextSelection,
+  ): void {
+    if (!this.options.excerpts.addText(reader, selectionExcerpt(selection))) {
+      return
+    }
+    reader.clearTextSelection()
+    this.close()
+  }
+
+  /** An annotation as an excerpt card, from its own anchor. Nothing ties the
+   * two together afterwards. */
+  private async excerptAnnotation(
+    reader: PdfReader,
+    annotation: PdfAnnotation,
+  ): Promise<void> {
+    if (annotation.type === 'area') {
+      await this.excerptArea(
+        reader,
+        annotation.anchor.page,
+        annotation.anchor.rect,
+      )
+      return
+    }
+    // The tuple where its text is now; the page alone when it has moved.
+    let tuple: SelectionTuple | null = null
+    try {
+      const items = await reader.getTextItems(annotation.anchor.page)
+      tuple = resolveHighlightSelection(items, annotation.anchor)
+    } catch (error) {
+      this.options.reportError('pdf annotation excerpt', error)
+    }
+    if (
+      this.options.excerpts.addText(reader, {
+        page: annotation.anchor.page,
+        selection: tuple,
+        quote: annotation.anchor.quote.exact,
+      }) &&
+      this.mode?.kind === 'annotation' &&
+      this.mode.id === annotation.id
+    ) {
+      this.close()
+    }
+  }
+
+  private async excerptArea(
+    reader: PdfReader,
+    page: number,
+    rect: PdfRectTuple,
+  ): Promise<void> {
+    const before = this.mode
+    const added = await this.options.excerpts.addArea(reader, page, rect)
+    // Closed only if it is still the toolbar the excerpt was asked from.
+    if (added && this.mode === before) this.close()
+  }
+
   private remove(reader: PdfReader, id: string): void {
     const store = this.writableStore(reader)
     if (!store) return
@@ -657,7 +859,7 @@ export class AnnotationController {
     reader: PdfReader,
     annotation: HighlightAnnotation,
   ): Promise<void> {
-    let tuple: readonly number[] | null = null
+    let tuple: SelectionTuple | null = null
     try {
       const items = await reader.getTextItems(annotation.anchor.page)
       tuple = resolveHighlightSelection(items, annotation.anchor)
@@ -678,13 +880,14 @@ export class AnnotationController {
   private async copyLink(
     reader: PdfReader,
     page: number,
-    tuple: readonly number[],
+    tuple: SelectionTuple,
   ): Promise<void> {
-    const link = this.options.host.vault.generateLink(
-      reader.path,
-      this.options.getSourcePath(),
-      `#page=${page}&selection=${tuple.join(',')}`,
-    )
+    const link = generatePdfLink(this.options.host, this.options.t, {
+      pdfPath: reader.path,
+      sourcePath: this.options.getSourcePath(),
+      page,
+      selection: tuple,
+    })
     if (!link) return
     try {
       const clipboard = this.window()?.navigator.clipboard
@@ -701,20 +904,48 @@ export class AnnotationController {
   /** A press anywhere else closes an annotation's toolbar (a selection's
    * closes with the selection itself). */
   private readonly onDocumentPointerDown = (event: PointerEvent): void => {
-    if (this.mode?.kind !== 'annotation') return
+    if (this.mode?.kind !== 'annotation' && this.mode?.kind !== 'area') return
     const target = event.target as Node | null
     if (this.contains(target)) return
     // A press on the reader's pages is the reader's to report: it may be a
-    // click on another annotation, or on this one again.
-    const pages = (target as Element | null)?.closest?.(
-      '.yolo-whiteboard-pdf-pages',
-    )
+    // click on another annotation, or on this one again — or, for a frame,
+    // the next frame being drawn.
+    const pages = (target as Element | null)?.closest?.(PAGES_SELECTOR)
     if (pages) return
     this.close()
   }
 
+  /** A drag that starts on the selected text of the reader the toolbar is
+   * acting for is an excerpt being dragged out. The browser's own drag of
+   * the selection goes on as always (its text in the transfer, for anywhere
+   * else it is dropped); the board only learns it is ours. */
+  private readonly onDragStart = (event: DragEvent): void => {
+    const mode = this.mode
+    this.drag = null
+    if (mode?.kind !== 'selection' || !event.dataTransfer) return
+    if (!mode.reader.containsPageNode(event.target as Node | null)) return
+    event.dataTransfer.setData(EXCERPT_DRAG_TYPE, '1')
+    this.drag = {
+      reader: mode.reader,
+      excerpt: selectionExcerpt(mode.selection),
+    }
+  }
+
+  private readonly onDragEnd = (): void => {
+    this.drag = null
+  }
+
   private window(): Window | null {
     return this.options.parent.ownerDocument.defaultView
+  }
+}
+
+function selectionExcerpt(selection: ReaderTextSelection): TextExcerpt {
+  const first = selection.pieces[0]
+  return {
+    page: first.pageNumber,
+    selection: first.tuple,
+    quote: selection.pieces.map((piece) => piece.text).join('\n'),
   }
 }
 
