@@ -41,7 +41,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use `fs_edit` for a targeted content change in an existing file, `fs_write` to create or overwrite full file content, and the `bash` tool (`mkdir`/`mv`/`rm`) for path operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer targeted edits over full rewrites, include explicit verification steps, and do not delete or move files unless asked.
 
 ## Anatomy of a Skill
 
@@ -122,17 +122,9 @@ YOLO/skills/
 
 This way, when the user asks about sales metrics, only `bigquery-sales.md` activates and loads.
 
-## Available Tools
+## Tools Differ by Chat Mode
 
-YOLO skills operate within Obsidian's environment. The following built-in tools are available:
-
-| Tool | Purpose |
-|------|---------|
-| `fs_edit` | Apply exactly one targeted text edit to an existing file (by exact `oldText`, or by `startLine`/`endLine` range) |
-| `fs_write` | Create a file or overwrite it with full content |
-| `bash` | Vault-sandboxed shell (mounted at `/vault`) for search/inspection (`ls`, `find`, `grep`, `cat`, pipes, ...) and `mkdir`/`mv`/`rm` path operations |
-
-Skills should be designed around these capabilities. `bash` is a sandboxed virtual shell scoped to the vault, not real OS/shell access, and there is no external API access. All skill workflows must be achievable through these tools and the agent's reasoning.
+A skill runs with whatever tools the current chat mode provides — file reading and editing, a shell, web access, MCP tools — and they differ by mode (Ask mode, for example, cannot edit file contents). Write workflow steps as what to do ("read the note", "append to the log"), not as tool calls, so the skill works in every mode it targets.
 
 ## Skill Load Modes
 
@@ -147,8 +139,6 @@ Skills should be designed around these capabilities. `bash` is a sandboxed virtu
 4. Draft the skill
 5. Write to vault safely
 6. Verify and iterate
-
-Follow these steps in order.
 
 ### Step 1: Understand the Skill with Concrete Examples
 
@@ -166,15 +156,7 @@ Conclude this step when there is a clear sense of the functionality the skill sh
 
 ### Step 2: Explore Existing Vault Skills
 
-Before creating something new, check what already exists:
-
-```
-bash: ls YOLO/skills/                     -> see current inventory
-bash: grep -rl "<topic keywords>" YOLO/skills/  -> find related skills
-bash: sed -n '1,40p' <similar-skill-path>       -> study patterns that work (prefer targeted ranges when a section is known)
-```
-
-This avoids duplication and helps maintain consistency across the vault's skill collection.
+Before creating something new, list `YOLO/skills/`, search it for related topics, and read a similar skill to reuse patterns that work. This avoids duplication and helps maintain consistency across the vault's skill collection.
 
 ### Step 3: Plan the Skill Contents
 
@@ -200,28 +182,17 @@ Body guidelines:
 
 ### Step 5: Write to Vault
 
-For a simple skill, keep the user-facing filename readable:
+Write a simple skill to `YOLO/skills/<readable-name>.md`, keeping the filename readable. Create a package folder with `YOLO/skills/<folder>/SKILL.md` only when the skill needs scripts, references, assets, or other supporting files.
 
-```
-fs_write { path: "YOLO/skills/<readable-name>.md", content: "..." }
-```
-
-Only create a directory package when the skill needs scripts, references, assets, or other supporting files:
-
-```
-bash: mkdir -p YOLO/skills/<folder>
-fs_write { path: "YOLO/skills/<folder>/SKILL.md", content: "..." }
-```
-
-For updates, preserve the skill's existing filename or package folder and prefer `fs_edit` for minimal, targeted changes.
+For updates, keep the skill's existing filename or package folder and make targeted edits.
 
 ### Step 6: Verify and Iterate
 
 After writing:
 
-1. `bash: cat` (or a targeted `sed -n` range) the file to confirm it saved correctly
+1. Read the file back to confirm it saved correctly
 2. Verify the description clearly communicates trigger conditions
-3. Walk through each workflow step mentally: is it executable with available tools?
+3. Walk through each workflow step: can it be done with the tools of the modes the skill targets?
 4. Test the skill on a real task when possible
 
 Iteration workflow:
@@ -229,7 +200,7 @@ Iteration workflow:
 1. Use the skill on real tasks
 2. Notice struggles or inefficiencies
 3. Identify how the skill should be updated
-4. Apply changes with `fs_edit` and test again
+4. Apply targeted edits and test again
 
 ## Quality Checklist
 
@@ -239,7 +210,7 @@ Before finalizing any skill, verify:
 - [ ] Description states clear trigger conditions (not buried in body)
 - [ ] `name` is stable and unique
 - [ ] A simple skill remains a readable Markdown file; supporting resources stay inside a package folder with `SKILL.md`
-- [ ] Workflow is executable with available tools (`fs_edit`, `fs_write`, `bash`)
+- [ ] Workflow steps say what to do, not which tool to call
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
 - [ ] Body is under 300 lines
