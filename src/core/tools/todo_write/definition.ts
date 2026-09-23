@@ -8,7 +8,7 @@ import type { LocalToolCallResult } from '../types'
 // (`src/core/mcp/localFileTools.ts:1220`).
 const TODO_WRITE_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
-    'Update the todo list for the current agent run. Use proactively for multi-step tasks (≥3 steps) or when the user has multiple requests. Each call replaces the entire list; pass `[]` to clear. Keep at most one item in_progress (and exactly one while work is ongoing). Mark items completed immediately as you finish them.',
+    'Update the todo list for the current agent run. Use for multi-step tasks (≥3 steps) or when the user has multiple requests. Each call replaces the entire list; pass `[]` to clear. Keep at most one item in_progress (and exactly one while work is ongoing). Mark items completed immediately as you finish them.',
   inputSchema: {
     type: 'object',
     properties: {
