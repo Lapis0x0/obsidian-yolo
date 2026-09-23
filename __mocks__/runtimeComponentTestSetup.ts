@@ -36,6 +36,9 @@ function createPdfApi(): PdfEngineComponentApi {
     async openDocument() {
       throw new Error('PDF document test double is not configured')
     },
+    async addAnnotations() {
+      throw new Error('PDF annotation test double is not configured')
+    },
     async extractPages(bytes, options) {
       const pdf = await openPdf(bytes)
       const pages: { page: number; text: string }[] = []

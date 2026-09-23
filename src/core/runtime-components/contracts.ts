@@ -131,9 +131,57 @@ export type PdfEngineDocument = Readonly<{
   destroy(): Promise<void>
 }>
 
+/**
+ * A standard PDF annotation to write into a document. Geometry is PDF user
+ * space of the page, exactly as `describeRange` / `toPdfPoint` give it —
+ * the page's own rotation and box offsets are the viewer's business.
+ */
+export type PdfAnnotationInput = Readonly<
+  (
+    | {
+        /** A text highlight (`/Highlight`), painted with a multiply blend. */
+        type: 'highlight'
+        /** Eight numbers per line: top-left, top-right, bottom-left,
+         * bottom-right as the text reads (PDF `/QuadPoints` order). */
+        quadPoints: readonly number[]
+      }
+    | {
+        /** A rectangle outline (`/Square`) around `rect`. */
+        type: 'square'
+        rect: PdfRect
+        /** Stroke width in PDF units; default 1. Drawn outside `rect`. */
+        borderWidth?: number
+      }
+  ) & {
+    /** 1-based. */
+    page: number
+    /** `#rrggbb`. */
+    color: string
+    /** The annotation's note (`/Contents`). */
+    contents?: string
+    /** The note's author (`/T`). */
+    author?: string
+    /** A name unique on the page (`/NM`), e.g. the caller's own id. */
+    id?: string
+    /** ISO 8601 (`/CreationDate`, `/M`). */
+    createdAt?: string
+    modifiedAt?: string
+  }
+>
+
 export type PdfEngineComponentApi = Readonly<{
   /** A long-lived document for interactive use; the caller destroys it. */
   openDocument(bytes: Uint8Array): Promise<PdfEngineDocument>
+  /**
+   * A new PDF: `bytes` with `annotations` added after each page's existing
+   * ones, every one carrying its own appearance stream. `bytes` is not
+   * modified. Rejects on an annotation it cannot write and on a document it
+   * cannot rewrite (encrypted, damaged).
+   */
+  addAnnotations(
+    bytes: Uint8Array,
+    annotations: readonly PdfAnnotationInput[],
+  ): Promise<Uint8Array>
   extractPages(
     bytes: Uint8Array,
     options: { maxPages: number; signal?: AbortSignal },

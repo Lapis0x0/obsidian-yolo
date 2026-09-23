@@ -23,6 +23,7 @@ import type {
   YoloModuleMarkdownEditorV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
+  YoloModulePdfAnnotationV1,
   YoloModulePdfDocumentV1,
   YoloModulePdfPageV1,
   YoloModulePdfPointV1,
@@ -63,6 +64,7 @@ declare global {
   type YoloModuleHostMenuItemV1 = YoloModuleMenuItemV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
   type YoloModuleHostPdfV1 = YoloModulePdfV1
+  type YoloModuleHostPdfAnnotationV1 = YoloModulePdfAnnotationV1
   type YoloModuleHostPdfDocumentV1 = YoloModulePdfDocumentV1
   type YoloModuleHostPdfPageV1 = YoloModulePdfPageV1
   type YoloModuleHostPdfPointV1 = YoloModulePdfPointV1

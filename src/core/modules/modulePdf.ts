@@ -2,10 +2,15 @@ import type {
   PdfDocumentCache,
   PdfDocumentHandle,
 } from '../../utils/pdf/pdfDocumentCache'
+import type { PdfAnnotationInput } from '../runtime-components/contracts'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { normalizeModuleVaultPath } from './moduleVault'
-import type { YoloModulePdfDocumentV1, YoloModulePdfV1 } from './types'
+import type {
+  YoloModulePdfAnnotationV1,
+  YoloModulePdfDocumentV1,
+  YoloModulePdfV1,
+} from './types'
 
 export type ModulePdfCapabilityActivationV1 = Readonly<{
   api: YoloModulePdfV1
@@ -24,6 +29,8 @@ export const UNAVAILABLE_MODULE_PDF_CAPABILITY_PROVIDER: ModulePdfCapabilityProv
     create: () => ({
       api: Object.freeze({
         open: () => Promise.reject(new Error('Module PDF is unavailable')),
+        addAnnotations: () =>
+          Promise.reject(new Error('Module PDF is unavailable')),
       }),
       activate: () => undefined,
     }),
@@ -39,6 +46,10 @@ export class ModulePdfCapabilityProvider
 {
   constructor(
     private readonly getDocuments: () => Pick<PdfDocumentCache, 'open'>,
+    private readonly addAnnotations: (
+      bytes: Uint8Array,
+      annotations: readonly PdfAnnotationInput[],
+    ) => Promise<Uint8Array>,
   ) {}
 
   create(
@@ -78,6 +89,28 @@ export class ModulePdfCapabilityProvider
               handle.release()
             },
           })
+        },
+        addAnnotations: async (
+          pdf: ArrayBuffer,
+          annotations: readonly YoloModulePdfAnnotationV1[],
+        ): Promise<ArrayBuffer> => {
+          assertActive()
+          if (!(pdf instanceof ArrayBuffer)) {
+            throw new TypeError('Module PDF bytes must be an ArrayBuffer')
+          }
+          if (!Array.isArray(annotations)) {
+            throw new TypeError('Module PDF annotations must be an array')
+          }
+          const output = await this.addAnnotations(
+            new Uint8Array(pdf),
+            annotations,
+          )
+          assertActive()
+          // An ArrayBuffer of exactly the output, not a view's whole buffer.
+          return output.buffer.slice(
+            output.byteOffset,
+            output.byteOffset + output.byteLength,
+          )
         },
       }),
       activate: () => undefined,

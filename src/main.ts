@@ -267,6 +267,7 @@ import { isUntitledConversationTitle } from './utils/chat/conversationTitle'
 import { stableStringify } from './utils/json/stableStringify'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
+import { addPdfAnnotations } from './utils/pdf/addPdfAnnotations'
 import { PdfDocumentCache } from './utils/pdf/pdfDocumentCache'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 import { YOLO_ICON_ID, YOLO_ICON_SVG } from './yoloIcon'
@@ -4303,7 +4304,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           },
         }),
         vault: new ObsidianModuleVaultCapabilityProvider(this.app),
-        pdf: new ModulePdfCapabilityProvider(() => this.getPdfDocumentCache()),
+        pdf: new ModulePdfCapabilityProvider(
+          () => this.getPdfDocumentCache(),
+          addPdfAnnotations,
+        ),
       }),
     )
     const runtimeReservation = new ModuleRuntimeReservation({ runtime })

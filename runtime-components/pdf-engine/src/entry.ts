@@ -3,8 +3,12 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import binaryData from 'virtual:pdfjs-binary-data'
 import workerSource from 'virtual:pdfjs-worker-script'
 
-import type { PdfEngineDocument } from '../../../src/core/runtime-components/contracts'
+import type {
+  PdfAnnotationInput,
+  PdfEngineDocument,
+} from '../../../src/core/runtime-components/contracts'
 
+import { addAnnotationsToPdf } from './annotations'
 import { RENDER_DOCUMENT, createPdfDocument } from './document'
 
 type PdfTextItem = {
@@ -156,6 +160,14 @@ globalThis.__yolo_register_runtime_component__({
           throw new Error('PDF engine is disposed')
         }
         return tracked
+      },
+
+      async addAnnotations(
+        bytes: Uint8Array,
+        annotations: readonly PdfAnnotationInput[],
+      ) {
+        assertActive()
+        return addAnnotationsToPdf(bytes, annotations)
       },
 
       async extractPages(

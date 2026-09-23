@@ -998,6 +998,46 @@ export type YoloModulePdfDocumentV1 = Readonly<{
   release(): void
 }>
 
+/**
+ * A standard PDF annotation for `addAnnotations` to write, which any PDF
+ * viewer shows. Geometry is the page's PDF user space — the space
+ * `describeRange` and `toPdfPoint` answer in — so the page's rotation and box
+ * offsets need no handling by the caller.
+ */
+export type YoloModulePdfAnnotationV1 = Readonly<
+  (
+    | {
+        /** A text highlight (`/Highlight`), painted opaque with a multiply
+         * blend, like a highlighter pen: for a translucent look, pass a
+         * lighter colour (opacity is not written — viewers disagree on how
+         * to apply it). */
+        type: 'highlight'
+        /** Eight numbers per line, as `describeRange` gives them. */
+        quadPoints: readonly number[]
+      }
+    | {
+        /** A rectangle outline (`/Square`) drawn just outside `rect`. */
+        type: 'square'
+        rect: YoloModulePdfRectV1
+        /** In PDF units; default 1. */
+        borderWidth?: number
+      }
+  ) & {
+    /** 1-based. */
+    page: number
+    /** `#rrggbb`. */
+    color: string
+    /** The annotation's note, shown by viewers as its comment. */
+    contents?: string
+    author?: string
+    /** Written as the annotation's name (`/NM`): the caller's own id. */
+    id?: string
+    /** ISO 8601. */
+    createdAt?: string
+    modifiedAt?: string
+  }
+>
+
 export type YoloModulePdfV1 = Readonly<{
   /**
    * Opens the PDF at a vault path. Every call returns its own handle, to be
@@ -1007,6 +1047,19 @@ export type YoloModulePdfV1 = Readonly<{
    * the first open may wait for a download).
    */
   open(filePath: string): Promise<YoloModulePdfDocumentV1>
+  /**
+   * The bytes of a new PDF: `pdf` with `annotations` added as standard PDF
+   * annotations, after each page's existing ones, each with its own
+   * appearance so it looks the same in every viewer. Nothing is written to
+   * the vault and `pdf` is left as it was — saving the copy is the caller's.
+   * Rejects when an annotation is malformed (none is written then), when the
+   * document cannot be rewritten (encrypted or damaged), or when the PDF
+   * engine is unavailable.
+   */
+  addAnnotations(
+    pdf: ArrayBuffer,
+    annotations: readonly YoloModulePdfAnnotationV1[],
+  ): Promise<ArrayBuffer>
 }>
 
 export type YoloModuleCapabilitiesV1 = Readonly<{

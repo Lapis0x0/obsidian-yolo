@@ -14,16 +14,21 @@ function fakeHandle(path: string, releases: string[]): PdfDocumentHandle {
   }
 }
 
+const unusedAddAnnotations = () => Promise.reject(new Error('not used'))
+
 describe('ModulePdfCapabilityProvider', () => {
   it('releases every handle a module still holds when it unloads', async () => {
     const releases: string[] = []
     const opened: string[] = []
-    const provider = new ModulePdfCapabilityProvider(() => ({
-      open: async (path) => {
-        opened.push(path)
-        return fakeHandle(path, releases)
-      },
-    }))
+    const provider = new ModulePdfCapabilityProvider(
+      () => ({
+        open: async (path) => {
+          opened.push(path)
+          return fakeHandle(path, releases)
+        },
+      }),
+      unusedAddAnnotations,
+    )
     const lifecycle = new ModuleLifecycleScope()
     const { api } = provider.create('reader', lifecycle)
 
@@ -39,10 +44,34 @@ describe('ModulePdfCapabilityProvider', () => {
   })
 
   it('rejects paths outside the vault', async () => {
-    const provider = new ModulePdfCapabilityProvider(() => ({
-      open: () => Promise.reject(new Error('unreachable')),
-    }))
+    const provider = new ModulePdfCapabilityProvider(
+      () => ({ open: () => Promise.reject(new Error('unreachable')) }),
+      unusedAddAnnotations,
+    )
     const { api } = provider.create('reader', new ModuleLifecycleScope())
     await expect(api.open('../outside.pdf')).rejects.toThrow('dot segments')
+  })
+
+  it('hands annotations to the engine and returns exactly its bytes', async () => {
+    const calls: { bytes: number[]; count: number }[] = []
+    const provider = new ModulePdfCapabilityProvider(
+      () => ({ open: () => Promise.reject(new Error('unreachable')) }),
+      async (bytes, annotations) => {
+        calls.push({ bytes: Array.from(bytes), count: annotations.length })
+        // A view into a larger buffer: only the view is the output.
+        return new Uint8Array([9, 7, 7, 9, 9]).subarray(1, 4)
+      },
+    )
+    const lifecycle = new ModuleLifecycleScope()
+    const { api } = provider.create('reader', lifecycle)
+    const source = new Uint8Array([1, 2, 3]).buffer
+    const output = await api.addAnnotations(source, [
+      { type: 'highlight', page: 1, quadPoints: [], color: '#ffff00' },
+    ])
+    expect(Array.from(new Uint8Array(output))).toEqual([7, 7, 9])
+    expect(calls).toEqual([{ bytes: [1, 2, 3], count: 1 }])
+
+    lifecycle.dispose()
+    await expect(api.addAnnotations(source, [])).rejects.toThrow('not active')
   })
 })
