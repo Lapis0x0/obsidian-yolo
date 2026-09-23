@@ -2416,8 +2416,7 @@ ${customInstruction}
 
     if (hasTools) {
       section += `
-- You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
-- When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
+- The chat interface shows the user every tool call, so report what you found or changed rather than narrating the calls.
 - Before calling file-reading tools, use relevant content already present in the conversation, especially <user_selected_content> and prior tool results. Do not re-read the same or an overlapping range; if more context is necessary, read only the smallest missing range. Re-read only to verify content that may have changed.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
       if (hasOnDemandTools) {

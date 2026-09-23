@@ -2514,7 +2514,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
     })
 
     const systemContent = getSystemContent(messages)
-    expect(systemContent).toContain('You have access to tools')
+    expect(systemContent).toContain('shows the user every tool call')
     expect(systemContent).toContain(
       'Before calling file-reading tools, use relevant content already present in the conversation, especially <user_selected_content> and prior tool results.',
     )
