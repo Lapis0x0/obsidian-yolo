@@ -93,7 +93,10 @@ export type ProviderExecutedToolCall = {
 export type ResponsesReplayItem = { type: string } & Record<string, unknown>
 
 /** One entry of an OpenRouter reply's `reasoning_details`, kept as returned. */
-export type OpenRouterReasoningDetail = { type: string } & Record<string, unknown>
+export type OpenRouterReasoningDetail = { type: string } & Record<
+  string,
+  unknown
+>
 
 /** One content block of a Claude reply, kept as the API returned it. */
 export type AnthropicReplayBlock = { type: string } & Record<string, unknown>
