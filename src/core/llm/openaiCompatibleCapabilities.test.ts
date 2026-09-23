@@ -15,7 +15,28 @@ describe('openaiCompatibleCapabilities', () => {
     })
 
     expect(request.enable_thinking).toBe(true)
+    expect(request.preserve_thinking).toBe(true)
     expect(request.thinking_budget).toBe(4096)
+  })
+
+  it('keeps earlier reasoning on GLM when thinking is on', () => {
+    const on: Record<string, unknown> = {}
+    applyOpenAICompatibleCapabilities({
+      request: on,
+      reasoningType: 'gemini',
+      reasoningLevel: 'medium',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    })
+    expect(on.thinking).toEqual({ type: 'enabled', clear_thinking: false })
+
+    const off: Record<string, unknown> = {}
+    applyOpenAICompatibleCapabilities({
+      request: off,
+      reasoningType: 'gemini',
+      reasoningLevel: 'off',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    })
+    expect(off.thinking).toEqual({ type: 'disabled' })
   })
 
   it('applies volcengine-style thinking fields', () => {

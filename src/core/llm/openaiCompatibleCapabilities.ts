@@ -108,6 +108,8 @@ export function applyOpenAICompatibleCapabilities(params: {
         return
       }
       request.enable_thinking = true
+      // Read back the reasoning sent with earlier turns instead of dropping it.
+      request.preserve_thinking = true
       if (reasoningLevel === 'auto') {
         request.thinking_budget = -1
         return
@@ -124,9 +126,15 @@ export function applyOpenAICompatibleCapabilities(params: {
       return
     }
     case 'volcengine': {
-      request.thinking = {
-        type: reasoningLevel === 'off' ? 'disabled' : 'enabled',
+      if (reasoningLevel === 'off') {
+        request.thinking = { type: 'disabled' }
+        return
       }
+      request.thinking =
+        capabilities.host === 'open.bigmodel.cn'
+          ? // GLM drops earlier turns' reasoning unless told to keep it.
+            { type: 'enabled', clear_thinking: false }
+          : { type: 'enabled' }
       return
     }
     case 'openai':
