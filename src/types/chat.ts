@@ -152,6 +152,11 @@ export type ChatToolMessage = {
     request: ToolCallRequest
     response: ToolCallResponse
   }[]
+  /**
+   * A runtime notice the model received right after these results, kept so
+   * every later request sends it in the same place.
+   */
+  notice?: string
   metadata?: {
     sourceUserMessageId?: string
     branchId?: string
@@ -303,6 +308,7 @@ export type SerializedChatToolMessage = {
     response: ToolCallResponse
   }[]
   id: string
+  notice?: string
   metadata?: {
     sourceUserMessageId?: string
     branchId?: string

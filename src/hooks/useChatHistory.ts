@@ -725,6 +725,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         role: 'tool',
         toolCalls: message.toolCalls,
         id: message.id,
+        notice: message.notice,
         metadata: message.metadata,
       }
     case 'external_agent_result':
@@ -771,6 +772,7 @@ const deserializeChatMessage = (
         role: 'tool',
         toolCalls: message.toolCalls,
         id: message.id,
+        notice: message.notice,
         metadata: message.metadata,
       }
     case 'external_agent_result':

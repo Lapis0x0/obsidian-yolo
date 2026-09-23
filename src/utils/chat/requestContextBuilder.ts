@@ -1441,8 +1441,13 @@ ${message.annotations
       }
     }
 
-    // Append a single user message with all collected attachments after the
-    // tool block, preserving the required tool → user message ordering.
+    if (message.notice) {
+      collectedContentParts.push({ type: 'text', text: message.notice })
+    }
+
+    // Append a single user message with all collected attachments and the
+    // notice after the tool block, preserving the required tool → user
+    // message ordering.
     if (collectedContentParts.length > 0) {
       toolMessages.push({
         role: 'user',

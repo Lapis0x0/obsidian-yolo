@@ -20,7 +20,7 @@ import { stampUserMessageInjectedContext } from '../../utils/chat/contextual-inj
 import { runWithLLMDebugTrace } from '../llm/debugCapture'
 
 import {
-  buildAutoContextCompactionNoticeMessage,
+  buildAutoContextCompactionNotice,
   buildCompactedConversationState,
   createConversationCompactionSummary,
   findCompactInstruction,
@@ -221,19 +221,19 @@ export class NativeAgentRuntime implements AgentRuntime {
 
                 const resumedMessageForTurn = pendingResumeAssistantMessage
                 pendingResumeAssistantMessage = undefined
+                const historyMessages = resumedMessageForTurn
+                  ? requestMessages
+                  : ongoingRequestMessages
+                this.attachAutoContextCompactionNotice({
+                  input,
+                  historyMessages,
+                  promptedAssistantMessageIds:
+                    promptedAutoCompactionAssistantMessageIds,
+                })
                 const conversationMessages = [
-                  ...(resumedMessageForTurn
-                    ? requestMessages
-                    : ongoingRequestMessages),
+                  ...historyMessages,
                   ...this.messages,
                 ]
-                const autoContextCompactionNotice =
-                  this.buildAutoContextCompactionNotice({
-                    input,
-                    messages: conversationMessages,
-                    promptedAssistantMessageIds:
-                      promptedAutoCompactionAssistantMessageIds,
-                  })
                 const llmTurnExecutor = new AgentLlmTurnExecutor({
                   providerClient: input.providerClient,
                   model: input.model,
@@ -262,26 +262,14 @@ export class NativeAgentRuntime implements AgentRuntime {
                   modePersonaModuleId: input.modePersonaModuleId,
                   moduleChatModeId: input.moduleChatModeId,
                   contextPolicy: input.contextPolicy,
-                  transientRequestMessages: autoContextCompactionNotice
+                  transientRequestMessages: resumedMessageForTurn
                     ? [
-                        autoContextCompactionNotice,
-                        ...(resumedMessageForTurn
-                          ? [
-                              {
-                                role: 'user' as const,
-                                content: ASSISTANT_CONTINUATION_PROMPT,
-                              },
-                            ]
-                          : []),
+                        {
+                          role: 'user' as const,
+                          content: ASSISTANT_CONTINUATION_PROMPT,
+                        },
                       ]
-                    : resumedMessageForTurn
-                      ? [
-                          {
-                            role: 'user' as const,
-                            content: ASSISTANT_CONTINUATION_PROMPT,
-                          },
-                        ]
-                      : undefined,
+                    : undefined,
                   resumeAssistantMessage: resumedMessageForTurn,
                   geminiTools: input.geminiTools,
                   ...(input.session ? { session: input.session } : {}),
@@ -593,35 +581,54 @@ export class NativeAgentRuntime implements AgentRuntime {
     )
   }
 
-  private buildAutoContextCompactionNotice({
+  /**
+   * Once the context crosses the auto-compaction threshold, attach the notice
+   * to the tool message the run is about to answer. It rides on tool results
+   * only: those belong to this run, so the notice is persisted with them and
+   * every later request sends it in the same place. A turn that starts above
+   * the threshold gets it with its first tool results — before any
+   * substantial work, which is when the notice asks the model to compact.
+   */
+  private attachAutoContextCompactionNotice({
     input,
-    messages,
+    historyMessages,
     promptedAssistantMessageIds,
   }: {
     input: AgentRuntimeRunInput
-    messages: ChatMessage[]
+    historyMessages: ChatMessage[]
     promptedAssistantMessageIds: Set<string>
-  }): RequestMessage | null {
+  }): void {
     if (!this.loopConfig.enableTools || !input.autoContextCompaction) {
-      return null
+      return
+    }
+    const tail = this.messages.at(-1)
+    if (tail?.role !== 'tool' || tail.notice) {
+      return
     }
 
     const trigger = getAutoContextCompactionPromptTrigger({
-      messages,
+      messages: [...historyMessages, ...this.messages],
       chatOptions: input.autoContextCompaction.chatOptions,
       maxContextTokens: input.autoContextCompaction.maxContextTokens,
       compactionState: this.compactionState,
       promptedAssistantMessageIds,
     })
     if (!trigger) {
-      return null
+      return
     }
 
     promptedAssistantMessageIds.add(trigger.assistantMessage.id)
-    return buildAutoContextCompactionNoticeMessage({
-      trigger,
-      chatOptions: input.autoContextCompaction.chatOptions,
-    })
+    this.messages = [
+      ...this.messages.slice(0, -1),
+      {
+        ...tail,
+        notice: buildAutoContextCompactionNotice({
+          trigger,
+          chatOptions: input.autoContextCompaction.chatOptions,
+        }),
+      },
+    ]
+    this.notifySubscribers()
   }
 
   private async runSingleTurnFastPath(

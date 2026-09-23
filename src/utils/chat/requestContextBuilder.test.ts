@@ -2055,6 +2055,69 @@ describe('RequestContextBuilder generateRequestMessages stamped context', () => 
     expect(userMessages).toHaveLength(1)
     expect(textOf(userMessages[0].content)).toContain('notes/focus.md')
   })
+
+  it('sends a notice kept on a tool message right after its results', async () => {
+    const emptyArgs = createCompleteToolCallArguments({ value: {} })
+    const builder = new RequestContextBuilder(makeApp() as never, baseSettings)
+
+    const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'do something',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'tool-call-1',
+              name: 'yolo_local__fs_read',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          notice: '<auto_context_compaction_notice>',
+          toolCalls: [
+            {
+              request: {
+                id: 'tool-call-1',
+                name: 'yolo_local__fs_read',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: 'file content' },
+              },
+            },
+          ],
+        },
+      ],
+      hasTools: true,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conv-3',
+    })
+
+    expect(requestMessages.slice(-2).map((m) => m.role)).toEqual([
+      'tool',
+      'user',
+    ])
+    expect(requestMessages.at(-1)?.content).toEqual([
+      { type: 'text', text: '<auto_context_compaction_notice>' },
+    ])
+  })
 })
 
 describe('stripUnsupportedImages', () => {

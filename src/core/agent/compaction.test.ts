@@ -11,7 +11,7 @@ import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
 
 import {
-  buildAutoContextCompactionNoticeMessage,
+  buildAutoContextCompactionNotice,
   buildManualCompactionState,
   createConversationCompactionSummary,
   getAutoContextCompactionPromptTrigger,
@@ -549,16 +549,15 @@ describe('auto context compaction runtime notice', () => {
       throw new Error('Expected auto compaction prompt trigger')
     }
 
-    const notice = buildAutoContextCompactionNoticeMessage({
+    const notice = buildAutoContextCompactionNotice({
       trigger,
       chatOptions: baseAutoOptions,
     })
 
-    expect(notice.role).toBe('user')
-    expect(notice.content).toContain('<auto_context_compaction_notice>')
-    expect(notice.content).toContain('120 prompt tokens')
-    expect(notice.content).toContain('context_compact')
-    expect(notice.content).toContain('not a user-authored message')
+    expect(notice).toContain('<auto_context_compaction_notice>')
+    expect(notice).toContain('120 prompt tokens')
+    expect(notice).toContain('context_compact')
+    expect(notice).toContain('not a user-authored message')
   })
 
   it('does not prompt the same assistant usage twice in one runtime run', () => {

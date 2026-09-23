@@ -70,6 +70,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
               : tc.response,
         })),
         id: message.id,
+        notice: message.notice,
         metadata: message.metadata,
       }
     case 'external_agent_result':
