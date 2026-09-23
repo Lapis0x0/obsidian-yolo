@@ -9,21 +9,12 @@ import { getOptionalBoundedIntegerArg, getOptionalTextArg } from '../tool-args'
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts`).
 const TERMINAL_COMMAND_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
-    'Run a command in the local OS shell. Desktop-only. ' +
-    'Uses PowerShell on Windows and a POSIX shell on macOS/Linux. ' +
-    'Use for terminal-style inspection or local CLI commands on the user’s machine. ' +
-    'For vault content search/read/inspection, prefer the bash tool instead — it is sandboxed to the vault and works on every platform. ' +
-    'By default, command runs as a one-shot process and completes when that process exits; ' +
-    'it does not keep shell state between calls. ' +
-    'Use background=true to create a persistent session for long-running or interactive commands; ' +
-    'session_id polls or continues an existing ' +
-    'session; input sends stdin to that session; kill=true terminates it. ' +
-    'Results separate stdout and stderr. ' +
-    'Use tail_lines or tail_bytes when polling verbose sessions to inspect recent logs only. ' +
-    'Avoid heredocs and full-screen TUI programs such as vim/top. Long-running ' +
-    'commands should use background=true; completion is pushed when finished. ' +
-    'Avoid frequent polling to check status. ' +
-    'The tool result is returned to you, but it does not automatically become a user-facing answer; to show the user the result, send a concise text summary of the relevant output.',
+    'Run a command in the local OS shell (PowerShell on Windows, POSIX shell on macOS/Linux). Desktop-only. ' +
+    'Each call is a one-shot process; no shell state carries over. ' +
+    'For long-running or interactive commands, set background=true to start a persistent session — you are notified when it finishes. ' +
+    'session_id polls a session, input writes to its stdin, kill=true ends it; tail_lines / tail_bytes limit a poll to recent output. ' +
+    'stdout and stderr are returned separately. ' +
+    'Commands run without a TTY, so full-screen programs such as vim, top, or less won’t work.',
   inputSchema: {
     type: 'object',
     properties: {
