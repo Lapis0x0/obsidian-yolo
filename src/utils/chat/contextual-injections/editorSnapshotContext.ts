@@ -1,4 +1,4 @@
-import type { RequestMessage } from '../../../types/llm/request'
+import type { InjectedContextPart } from '../../../types/chat'
 
 import type { EditorSnapshotInjection, EditorSnapshotSelection } from './types'
 
@@ -19,7 +19,7 @@ const SCOPE_RULES = [
  */
 export function renderEditorSnapshotInjection(
   injection: EditorSnapshotInjection,
-): RequestMessage | null {
+): InjectedContextPart[] | null {
   const trimmedTitle = injection.fileTitle.trim()
   const trimmedPath = injection.filePath.trim()
   const hasContext = injection.contextText.trim().length > 0
@@ -47,10 +47,7 @@ export function renderEditorSnapshotInjection(
           cursorMarker: injection.cursorMarker,
         })
 
-  return {
-    role: 'user',
-    content: body,
-  }
+  return [{ type: 'text', text: body }]
 }
 
 function buildPlainBody({

@@ -1,13 +1,17 @@
-import type { ContentPart, RequestMessage } from '../../../types/llm/request'
+import type { App } from 'obsidian'
+
+import type {
+  ChatMessage,
+  ChatUserMessage,
+  InjectedContextPart,
+} from '../../../types/chat'
+import type { ContentPart } from '../../../types/llm/request'
+import { tFileToImageDataUrl } from '../../llm/image'
 
 import { renderBrowserContextInjection } from './browserContext'
-import {
-  type CurrentFilePointerRenderContext,
-  renderCurrentFilePointerInjection,
-} from './currentFilePointerContext'
+import { renderCurrentFilePointerInjection } from './currentFilePointerContext'
 import { renderEditorSnapshotInjection } from './editorSnapshotContext'
 import { renderSurfaceContextInjection } from './surfaceContext'
-import { renderTodoListInjection } from './todoListContext'
 import type { ContextualInjection } from './types'
 
 export type {
@@ -17,80 +21,84 @@ export type {
   EditorSnapshotInjection,
   EditorSnapshotSelection,
   SurfaceContextInjection,
-  TodoListInjection,
 } from './types'
 export { renderBrowserContextInjection } from './browserContext'
 export { renderCurrentFilePointerInjection } from './currentFilePointerContext'
 export { renderEditorSnapshotInjection } from './editorSnapshotContext'
 export { renderSurfaceContextInjection } from './surfaceContext'
-export { renderTodoListInjection } from './todoListContext'
 
-export type RenderContextualInjectionContext = CurrentFilePointerRenderContext
-
-export async function renderContextualInjection(
+async function renderContextualInjection(
   injection: ContextualInjection,
-  ctx: RenderContextualInjectionContext,
-): Promise<RequestMessage | null> {
+): Promise<InjectedContextPart[] | null> {
   switch (injection.type) {
     case 'current-file-pointer':
-      return renderCurrentFilePointerInjection(injection, ctx)
+      return renderCurrentFilePointerInjection(injection)
     case 'editor-snapshot':
       return renderEditorSnapshotInjection(injection)
     case 'surface-context':
       return renderSurfaceContextInjection(injection)
-    case 'todo-list':
-      return renderTodoListInjection(injection)
     case 'browser-context':
       return renderBrowserContextInjection(injection)
   }
 }
 
 /**
- * Append rendered contextual injections to the tail user message. If the tail
- * is not a user message (e.g. mid-tool-loop the tail may be assistant/tool),
- * the injection is appended as an independent user message instead.
+ * Fix the user's surroundings onto a message entering the conversation as a
+ * new turn. Every later request sends exactly what was stamped here, so the
+ * request history only grows and a provider's prefix cache and reasoning
+ * signatures stay valid. A message already stamped keeps its context, which
+ * is what a retry or a continuation wants.
  */
-export async function appendContextualInjectionsToLastUserMessage(
-  requestMessages: RequestMessage[],
-  injections: ContextualInjection[],
-  ctx: RenderContextualInjectionContext,
-): Promise<RequestMessage[]> {
-  if (injections.length === 0) {
-    return requestMessages
+export async function stampUserMessageInjectedContext(
+  message: ChatUserMessage,
+  injections: readonly ContextualInjection[],
+): Promise<ChatUserMessage> {
+  if (message.injectedContext) {
+    return message
   }
-
-  const out = [...requestMessages]
-
+  const parts: InjectedContextPart[] = []
   for (const injection of injections) {
-    const rendered = await renderContextualInjection(injection, ctx)
-    if (!rendered) {
+    const rendered = await renderContextualInjection(injection)
+    if (rendered) parts.push(...rendered)
+  }
+  return { ...message, injectedContext: parts }
+}
+
+/**
+ * Stamp the last message when it is a user message entering the conversation.
+ * Returns the input array itself when nothing changed.
+ */
+export async function stampLatestUserMessageInjectedContext(
+  messages: ChatMessage[],
+  injections: readonly ContextualInjection[],
+): Promise<ChatMessage[]> {
+  const last = messages.at(-1)
+  if (last?.role !== 'user') {
+    return messages
+  }
+  const stamped = await stampUserMessageInjectedContext(last, injections)
+  return stamped === last ? messages : [...messages.slice(0, -1), stamped]
+}
+
+/** The stamped context as request content; an image no longer in the vault is left out. */
+export async function renderInjectedContext(
+  parts: readonly InjectedContextPart[],
+  app: App,
+): Promise<ContentPart[]> {
+  const content: ContentPart[] = []
+  for (const part of parts) {
+    if (part.type === 'text') {
+      content.push({ type: 'text', text: part.text })
       continue
     }
-
-    const lastIdx = out.length - 1
-    const lastMsg = out[lastIdx]
-    if (lastMsg && lastMsg.role === 'user') {
-      out[lastIdx] = mergeIntoUserMessage(lastMsg, rendered)
-    } else {
-      out.push(rendered)
+    const file = app.vault.getFileByPath(part.path)
+    if (!file) continue
+    try {
+      const url = await tFileToImageDataUrl(app, file, { cache: true })
+      content.push({ type: 'image_url', image_url: { url } })
+    } catch (error) {
+      console.warn('[YOLO] Failed to read context image', part.path, error)
     }
-  }
-
-  return out
-}
-
-function mergeIntoUserMessage(
-  userMsg: Extract<RequestMessage, { role: 'user' }>,
-  appended: RequestMessage,
-): Extract<RequestMessage, { role: 'user' }> {
-  const userParts = toContentParts(userMsg.content)
-  const appendedParts = toContentParts(appended.content)
-  return { ...userMsg, content: [...userParts, ...appendedParts] }
-}
-
-function toContentParts(content: string | ContentPart[]): ContentPart[] {
-  if (typeof content === 'string') {
-    return [{ type: 'text', text: content }]
   }
   return content
 }

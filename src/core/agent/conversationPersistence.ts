@@ -29,6 +29,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
         timeContext: message.timeContext,
+        injectedContext: message.injectedContext,
       }
     case 'assistant':
       return {

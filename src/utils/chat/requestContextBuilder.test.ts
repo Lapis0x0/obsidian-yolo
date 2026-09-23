@@ -1923,7 +1923,7 @@ describe('RequestContextBuilder project instructions injection', () => {
   })
 })
 
-describe('RequestContextBuilder generateRequestMessages currentFile merging', () => {
+describe('RequestContextBuilder generateRequestMessages stamped context', () => {
   const baseSettings = {
     systemPrompt: '',
     currentAssistantId: undefined,
@@ -1952,10 +1952,19 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
     }
   }
 
-  it('merges currentFileMessage into last user message content parts when last history message is user', async () => {
-    const app = makeApp()
-    const builder = new RequestContextBuilder(app as never, baseSettings)
-    const currentFile = createMockFile('notes/focus.md')
+  const stampedContext = [
+    { type: 'text' as const, text: '# Current Context\nFile: notes/focus.md' },
+  ]
+  const textOf = (content: unknown): string =>
+    Array.isArray(content)
+      ? (content as Array<{ type: string; text?: string }>)
+          .filter((p) => p.type === 'text')
+          .map((p) => p.text)
+          .join('')
+      : String(content)
+
+  it('sends the context stamped on a user message after its content', async () => {
+    const builder = new RequestContextBuilder(makeApp() as never, baseSettings)
 
     const requestMessages = await builder.generateRequestMessages({
       systemPromptSnapshotMode: 'create',
@@ -1966,6 +1975,7 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
           content: null,
           promptContent: 'hello',
           mentionables: [],
+          injectedContext: stampedContext,
         },
       ],
       model: {
@@ -1974,31 +1984,21 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
         name: 'gpt-test',
       } as never,
       conversationId: 'conv-1',
-      contextualInjections: [
-        { type: 'current-file-pointer', file: currentFile },
-      ],
     })
 
-    // Should have system + 1 user (not system + 2 user)
     const userMessages = requestMessages.filter((m) => m.role === 'user')
     expect(userMessages).toHaveLength(1)
-
-    // The single user message content must be an array (merged ContentPart[])
-    const lastUser = userMessages[0]
-    expect(Array.isArray(lastUser.content)).toBe(true)
-    const parts = lastUser.content as Array<{ type: string; text?: string }>
-    const textParts = parts.filter((p) => p.type === 'text')
-    // Original promptContent text
-    expect(textParts.some((p) => p.text?.includes('hello'))).toBe(true)
-    // Current-file pointer text
-    expect(textParts.some((p) => p.text?.includes('notes/focus.md'))).toBe(true)
+    expect(userMessages[0].content).toEqual([
+      { type: 'text', text: 'hello' },
+      ...stampedContext,
+    ])
   })
 
-  it('appends currentFileMessage as independent user message when last history message is not user (agent loop continuation)', async () => {
-    const app = makeApp()
+  // Mid tool loop the request must end with the tool result, not a context
+  // message that the next request would drop.
+  it('keeps stamped context on its own message during a tool loop', async () => {
     const emptyArgs = createCompleteToolCallArguments({ value: {} })
-    const builder = new RequestContextBuilder(app as never, baseSettings)
-    const currentFile = createMockFile('notes/focus.md')
+    const builder = new RequestContextBuilder(makeApp() as never, baseSettings)
 
     const requestMessages = await builder.generateRequestMessages({
       systemPromptSnapshotMode: 'create',
@@ -2009,6 +2009,7 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
           content: null,
           promptContent: 'do something',
           mentionables: [],
+          injectedContext: stampedContext,
         },
         {
           role: 'assistant',
@@ -2047,29 +2048,12 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
         name: 'gpt-test',
       } as never,
       conversationId: 'conv-2',
-      contextualInjections: [
-        { type: 'current-file-pointer', file: currentFile },
-      ],
     })
 
-    // Last message should be an independent user message containing the current-file pointer
-    const lastMsg = requestMessages.at(-1)
-    expect(lastMsg?.role).toBe('user')
-    const content = lastMsg?.content
-    const text =
-      typeof content === 'string'
-        ? content
-        : Array.isArray(content)
-          ? (content as Array<{ type: string; text?: string }>)
-              .filter((p) => p.type === 'text')
-              .map((p) => p.text)
-              .join('')
-          : ''
-    expect(text).toContain('notes/focus.md')
-
-    // The original user message should still exist separately
+    expect(requestMessages.at(-1)?.role).toBe('tool')
     const userMessages = requestMessages.filter((m) => m.role === 'user')
-    expect(userMessages.length).toBeGreaterThanOrEqual(2)
+    expect(userMessages).toHaveLength(1)
+    expect(textOf(userMessages[0].content)).toContain('notes/focus.md')
   })
 })
 

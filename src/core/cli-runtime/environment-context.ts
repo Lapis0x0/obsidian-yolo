@@ -1,11 +1,11 @@
 import type { App, TFile } from 'obsidian'
 
-import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { ContentPart, RequestMessage } from '../../types/llm/request'
+import type { ContentPart } from '../../types/llm/request'
 import type { CurrentFileViewState } from '../../types/mentionable'
 import {
   renderBrowserContextInjection,
   renderCurrentFilePointerInjection,
+  renderInjectedContext,
 } from '../../utils/chat/contextual-injections'
 
 import { RUNTIME_CAPABILITIES } from './capabilities'
@@ -14,16 +14,8 @@ import type { CliRuntimeId } from './types'
 export type BuildCliEnvironmentContextInput = {
   app: App
   runtimeId: CliRuntimeId
-  settings: YoloSettings
   currentFile: TFile | null
   currentFileViewState?: CurrentFileViewState
-}
-
-const toContentParts = (message: RequestMessage | null): ContentPart[] => {
-  if (!message || message.role !== 'user') return []
-  return typeof message.content === 'string'
-    ? [{ type: 'text', text: message.content }]
-    : message.content
 }
 
 /**
@@ -35,28 +27,25 @@ const toContentParts = (message: RequestMessage | null): ContentPart[] => {
 export const buildCliEnvironmentContext = async ({
   app,
   runtimeId,
-  settings,
   currentFile,
   currentFileViewState,
 }: BuildCliEnvironmentContextInput): Promise<ContentPart[]> => {
-  const [currentFileContext, browserContext] = await Promise.all([
-    currentFile
-      ? renderCurrentFilePointerInjection(
-          {
-            type: 'current-file-pointer',
-            file: currentFile,
-            viewState: currentFileViewState,
-          },
-          { app, settings },
-        )
-      : Promise.resolve(null),
-    renderBrowserContextInjection({ type: 'browser-context', app }),
-  ])
+  const currentFileContext = currentFile
+    ? renderCurrentFilePointerInjection({
+        type: 'current-file-pointer',
+        file: currentFile,
+        viewState: currentFileViewState,
+      })
+    : null
+  const browserContext = await renderBrowserContextInjection({
+    type: 'browser-context',
+    app,
+  })
 
-  const parts = [
-    ...toContentParts(currentFileContext),
-    ...toContentParts(browserContext),
-  ]
+  const parts = await renderInjectedContext(
+    [...(currentFileContext ?? []), ...(browserContext ?? [])],
+    app,
+  )
 
   // Viewing an image file makes the current-file pointer contribute the
   // image itself. A runtime that takes no images would fail the whole turn

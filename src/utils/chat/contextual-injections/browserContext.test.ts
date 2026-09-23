@@ -70,21 +70,23 @@ describe('renderBrowserContextInjection', () => {
       app: {} as App,
     })
 
-    expect(result).toEqual({
-      role: 'user',
-      content: [
-        '<browser_context>',
-        '  <active_page>',
-        '    <page_id>page_ab12cd34_ef56gh78</page_id>',
-        '    <url>https://example.com/article</url>',
-        '    <title>Example Article</title>',
-        '    <document_height_px>5000</document_height_px>',
-        '    <viewport_height_px>700</viewport_height_px>',
-        '    <scroll_y_px>800</scroll_y_px>',
-        '  </active_page>',
-        '</browser_context>',
-      ].join('\n'),
-    })
+    expect(result).toEqual([
+      {
+        type: 'text',
+        text: [
+          '<browser_context>',
+          '  <active_page>',
+          '    <page_id>page_ab12cd34_ef56gh78</page_id>',
+          '    <url>https://example.com/article</url>',
+          '    <title>Example Article</title>',
+          '    <document_height_px>5000</document_height_px>',
+          '    <viewport_height_px>700</viewport_height_px>',
+          '    <scroll_y_px>800</scroll_y_px>',
+          '  </active_page>',
+          '</browser_context>',
+        ].join('\n'),
+      },
+    ])
   })
 
   it('omits scroll metadata when page meta is unavailable', async () => {
@@ -103,19 +105,19 @@ describe('renderBrowserContextInjection', () => {
       app: {} as App,
     })
 
-    expect(result?.content).toBe(
-      [
-        '<browser_context>',
-        '  <active_page>',
-        '    <page_id>page_ab12cd34_ef56gh78</page_id>',
-        '    <url>https://example.com/pending</url>',
-        '    <title>Pending</title>',
-        '  </active_page>',
-        '</browser_context>',
-      ].join('\n'),
-    )
-    expect(result?.content).not.toContain('<source>')
-    expect(result?.content).not.toContain('<loading>')
-    expect(result?.content).not.toContain('visible_text_chars')
+    expect(result).toEqual([
+      {
+        type: 'text',
+        text: [
+          '<browser_context>',
+          '  <active_page>',
+          '    <page_id>page_ab12cd34_ef56gh78</page_id>',
+          '    <url>https://example.com/pending</url>',
+          '    <title>Pending</title>',
+          '  </active_page>',
+          '</browser_context>',
+        ].join('\n'),
+      },
+    ])
   })
 })

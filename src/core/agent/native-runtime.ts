@@ -16,9 +16,9 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import { stampUserMessageInjectedContext } from '../../utils/chat/contextual-injections'
 import { runWithLLMDebugTrace } from '../llm/debugCapture'
 
-import { composeAgentInjections } from './agent-injections'
 import {
   buildAutoContextCompactionNoticeMessage,
   buildCompactedConversationState,
@@ -206,7 +206,14 @@ export class NativeAgentRuntime implements AgentRuntime {
                   if (drained) {
                     currentSourceUserMessageId = drained.sourceUserMessageId
                     for (const injectedMessage of drained.messages) {
-                      this.messages.push(injectedMessage)
+                      this.messages.push(
+                        injectedMessage.role === 'user'
+                          ? await stampUserMessageInjectedContext(
+                              injectedMessage,
+                              input.contextualInjections ?? [],
+                            )
+                          : injectedMessage,
+                      )
                     }
                     this.notifySubscribers()
                   }
@@ -248,10 +255,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                   abortSignal,
                   reasoningLevel: input.reasoningLevel,
                   requestParams: input.requestParams,
-                  contextualInjections: composeAgentInjections({
-                    baseInjections: input.contextualInjections,
-                    messages: conversationMessages,
-                  }),
                   capabilityOverrides: input.capabilityOverrides,
                   runtimeMode: input.runtimeMode,
                   modeEnvironmentPrompt: input.modeEnvironmentPrompt,
@@ -451,10 +454,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                         allowedToolNames: input.allowedToolNames,
                         toolPreferences: input.toolPreferences,
                         toolServerPreferences: input.toolServerPreferences,
-                        contextualInjections: composeAgentInjections({
-                          baseInjections: input.contextualInjections,
-                          messages: conversationMessages,
-                        }),
                         capabilityOverrides: input.capabilityOverrides,
                         runtimeMode: input.runtimeMode,
                         modeEnvironmentPrompt: input.modeEnvironmentPrompt,
@@ -648,7 +647,6 @@ export class NativeAgentRuntime implements AgentRuntime {
       abortSignal,
       reasoningLevel: input.reasoningLevel,
       requestParams: input.requestParams,
-      contextualInjections: input.contextualInjections,
       runtimeMode: input.runtimeMode,
       modeEnvironmentPrompt: input.modeEnvironmentPrompt,
       modePersonaPrompt: input.modePersonaPrompt,

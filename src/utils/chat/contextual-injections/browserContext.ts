@@ -15,7 +15,7 @@ import {
   findActiveWebviewHandle,
   readActiveWebviewSnapshot,
 } from '../../../core/browser/activeWebviewProbe'
-import type { RequestMessage } from '../../../types/llm/request'
+import type { InjectedContextPart } from '../../../types/chat'
 
 import type { BrowserContextInjection } from './types'
 
@@ -24,7 +24,7 @@ const escapeXml = (raw: string): string =>
 
 export async function renderBrowserContextInjection(
   injection: BrowserContextInjection,
-): Promise<RequestMessage | null> {
+): Promise<InjectedContextPart[] | null> {
   const handle = findActiveWebviewHandle(injection.app)
   if (!handle) return null
 
@@ -49,8 +49,5 @@ export async function renderBrowserContextInjection(
   lines.push('  </active_page>')
   lines.push('</browser_context>')
 
-  return {
-    role: 'user',
-    content: lines.join('\n'),
-  }
+  return [{ type: 'text', text: lines.join('\n') }]
 }

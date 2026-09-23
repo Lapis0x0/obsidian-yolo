@@ -1,3 +1,5 @@
+import type { InjectedContextPart } from '../../../types/chat'
+
 import { renderEditorSnapshotInjection } from './editorSnapshotContext'
 import type { EditorSnapshotInjection } from './types'
 
@@ -14,13 +16,8 @@ const baseInjection = (
   ...overrides,
 })
 
-const messageText = (msg: { content: string | unknown[] }): string => {
-  if (typeof msg.content === 'string') return msg.content
-  return (msg.content as Array<{ type: string; text?: string }>)
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text ?? '')
-    .join('')
-}
+const messageText = (parts: InjectedContextPart[]): string =>
+  parts.map((part) => (part.type === 'text' ? part.text : '')).join('')
 
 describe('renderEditorSnapshotInjection — plain (no selection)', () => {
   it('returns null when nothing meaningful is present', () => {

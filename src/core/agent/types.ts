@@ -112,6 +112,10 @@ export type AgentRuntimeRunInput = {
    * approval. Present only for a mode that enforces that boundary (Max).
    */
   vaultPathBoundary?: NativePathBoundary
+  /**
+   * What to stamp on a queued user message the run takes in mid-way. The
+   * message that starts the run arrives already stamped by its caller.
+   */
   contextualInjections?: ContextualInjection[]
   runtimeMode?: RuntimeMode
   /**

@@ -24,7 +24,6 @@ import {
   resolveRequestReasoningLevel,
 } from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
-import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { ReasoningPhaseTracker } from '../../utils/chat/reasoningPhaseTracker'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
@@ -75,7 +74,6 @@ type AgentLlmTurnExecutorInput = {
     primaryRequestTimeoutMs?: number
     streamFallbackRecoveryEnabled?: boolean
   }
-  contextualInjections?: ContextualInjection[]
   /** The running chat mode's capability grant; see `AgentToolGateway`. */
   capabilityOverrides?: ChatModeCapabilityOverrides
   runtimeMode?: RuntimeMode
@@ -254,7 +252,6 @@ export class AgentLlmTurnExecutor {
           model: this.input.model,
           conversationId: this.input.conversationId,
           compaction: this.input.compaction,
-          contextualInjections: this.input.contextualInjections,
           runtimeModePrompt,
           modeEnvironmentPrompt: this.input.modeEnvironmentPrompt,
           modePersonaPrompt: this.input.modePersonaPrompt,

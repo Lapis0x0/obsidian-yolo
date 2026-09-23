@@ -93,7 +93,18 @@ export type ChatUserMessage = {
    * 固定后永不改写,故不破坏前缀缓存。旧对话无此字段 → 不注入。
    */
   timeContext?: string
+  /**
+   * The user's surroundings (current file, open web page, Quick Ask's editor
+   * snapshot) rendered once, when the message enters the conversation, and
+   * sent after its content on every later request. Undefined until stamped;
+   * an empty array means it was stamped with nothing to say.
+   */
+  injectedContext?: InjectedContextPart[]
 }
+/** An image is kept by vault path and read when the request is built. */
+export type InjectedContextPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; path: string }
 /**
  * Structured provider failure kept alongside `errorMessage` so the error card
  * can classify the failure and show the raw body on demand. `responseBody` is
@@ -256,6 +267,7 @@ export type SerializedChatUserMessage = {
   selectedModelIds?: string[]
   reasoningLevel?: string
   timeContext?: string
+  injectedContext?: InjectedContextPart[]
 }
 export type SerializedChatAssistantMessage = {
   role: 'assistant'

@@ -1,25 +1,17 @@
-import type { App } from 'obsidian'
-
-import type { YoloSettings } from '../../../settings/schema/setting.types'
-import type { RequestMessage } from '../../../types/llm/request'
-import { isImageTFile, tFileToImageDataUrl } from '../../llm/image'
+import type { InjectedContextPart } from '../../../types/chat'
+import { isImageTFile } from '../../llm/image'
 
 import type { CurrentFilePointerInjection } from './types'
-
-export type CurrentFilePointerRenderContext = {
-  app: App
-  settings: YoloSettings
-}
 
 /**
  * Render the Sidebar Chat "current file pointer". Pointer-only by design —
  * file content is NOT inlined; the agent uses read_file when it needs more.
- * Image files are attached as vision content alongside a pointer text part.
+ * An image file is attached as vision content, kept by path until the request
+ * is built.
  */
-export async function renderCurrentFilePointerInjection(
+export function renderCurrentFilePointerInjection(
   injection: CurrentFilePointerInjection,
-  ctx: CurrentFilePointerRenderContext,
-): Promise<RequestMessage> {
+): InjectedContextPart[] {
   const { file, viewState } = injection
 
   if (isImageTFile(file)) {
@@ -29,30 +21,10 @@ export async function renderCurrentFilePointerInjection(
       '',
       `File: ${file.path}`,
     ]
-    const pointerText = `${pointerLines.join('\n')}\n\n`
-    try {
-      const dataUrl = await tFileToImageDataUrl(ctx.app, file, {
-        cache: true,
-      })
-      return {
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: dataUrl } },
-          { type: 'text', text: pointerText },
-        ],
-      }
-    } catch (error) {
-      // Graceful degradation: if image can't be read, send pointer only
-      console.warn(
-        '[YOLO] Failed to read current file image, falling back to pointer',
-        file.path,
-        error,
-      )
-      return {
-        role: 'user',
-        content: pointerText,
-      }
-    }
+    return [
+      { type: 'image', path: file.path },
+      { type: 'text', text: `${pointerLines.join('\n')}\n\n` },
+    ]
   }
 
   const lines: string[] = []
@@ -89,8 +61,5 @@ export async function renderCurrentFilePointerInjection(
     )
   }
 
-  return {
-    role: 'user',
-    content: `${lines.join('\n')}\n\n`,
-  }
+  return [{ type: 'text', text: `${lines.join('\n')}\n\n` }]
 }

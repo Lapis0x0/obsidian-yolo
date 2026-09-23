@@ -8,7 +8,6 @@ import type {
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
-import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import type {
   PromptSection,
   PromptSectionBucket,
@@ -142,7 +141,6 @@ export const estimateContextBreakdown = async ({
   allowedToolNames,
   toolPreferences,
   toolServerPreferences,
-  contextualInjections,
   capabilityOverrides,
   runtimeMode,
   modeEnvironmentPrompt,
@@ -163,7 +161,6 @@ export const estimateContextBreakdown = async ({
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
-  contextualInjections?: ContextualInjection[]
   /** The running chat mode's capability grant; see `AgentToolGateway`. */
   capabilityOverrides?: ChatModeCapabilityOverrides
   runtimeMode?: RuntimeMode
@@ -201,7 +198,6 @@ export const estimateContextBreakdown = async ({
     model,
     conversationId,
     compaction,
-    contextualInjections,
     runtimeModePrompt,
     modeEnvironmentPrompt,
     modePersonaPrompt,

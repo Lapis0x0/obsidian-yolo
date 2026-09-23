@@ -1,4 +1,4 @@
-import type { RequestMessage } from '../../../types/llm/request'
+import type { InjectedContextPart } from '../../../types/chat'
 
 import type { SurfaceContextInjection } from './types'
 
@@ -13,7 +13,7 @@ import type { SurfaceContextInjection } from './types'
  */
 export async function renderSurfaceContextInjection(
   injection: SurfaceContextInjection,
-): Promise<RequestMessage | null> {
+): Promise<InjectedContextPart[] | null> {
   let text: string
   try {
     text = await injection.getText()
@@ -25,13 +25,15 @@ export async function renderSurfaceContextInjection(
   const trimmed = typeof text === 'string' ? text.trim() : ''
   if (!trimmed) return null
 
-  return {
-    role: 'user',
-    content: [
-      '# Surface Context',
-      'The editor the user is writing in is embedded in a larger surface. Here is what surrounds it:',
-      `"""\n${trimmed}\n"""`,
-      '',
-    ].join('\n'),
-  }
+  return [
+    {
+      type: 'text',
+      text: [
+        '# Surface Context',
+        'The editor the user is writing in is embedded in a larger surface. Here is what surrounds it:',
+        `"""\n${trimmed}\n"""`,
+        '',
+      ].join('\n'),
+    },
+  ]
 }

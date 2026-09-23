@@ -1,6 +1,5 @@
 import type { App, TFile } from 'obsidian'
 
-import type { TodoItem } from '../../../core/agent/todos-from-messages'
 import type { CurrentFileViewState } from '../../../types/mentionable'
 
 /**
@@ -55,11 +54,6 @@ export type SurfaceContextInjection = {
   getText: () => string | Promise<string>
 }
 
-export type TodoListInjection = {
-  type: 'todo-list'
-  todos: ReadonlyArray<TodoItem>
-}
-
 /**
  * Browser context injection. Emitted when focus sync is enabled and the user's
  * most-recent root-split leaf is a supported `<webview>` host (core Web Viewer
@@ -79,5 +73,4 @@ export type ContextualInjection =
   | CurrentFilePointerInjection
   | EditorSnapshotInjection
   | SurfaceContextInjection
-  | TodoListInjection
   | BrowserContextInjection

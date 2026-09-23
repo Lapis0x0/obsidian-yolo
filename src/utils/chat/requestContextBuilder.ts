@@ -86,10 +86,7 @@ import {
 } from '../pdf/extractPdfText'
 import { prefixTimeContext } from '../prompt/timeContext'
 
-import {
-  type ContextualInjection,
-  appendContextualInjectionsToLastUserMessage,
-} from './contextual-injections'
+import { renderInjectedContext } from './contextual-injections'
 import { serializeExternalAgentResultToUserMessage } from './externalAgentResultSerializer'
 import { serializeSubagentResultToUserMessage } from './subagentResultSerializer'
 import { serializeTerminalCommandResultToUserMessage } from './terminalCommandResultSerializer'
@@ -598,7 +595,6 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
     /** Max's environment section — see `ChatModeRuntime.modeEnvironmentPrompt`. */
     modeEnvironmentPrompt?: string
@@ -619,7 +615,7 @@ export class RequestContextBuilder {
   /**
    * Shared pipeline for `generateRequestMessages` and
    * `generateRequestSections`. Compiles the user message, reads snapshots,
-   * builds the system prompt, runs contextual injections, and strips/preps
+   * builds the system prompt, and strips/preps
    * documents for the target model — all in one pass so the two public APIs
    * never duplicate I/O (memory files / project instructions / skill docs).
    */
@@ -631,7 +627,6 @@ export class RequestContextBuilder {
     model: _model,
     conversationId,
     compaction,
-    contextualInjections,
     runtimeModePrompt,
     modeEnvironmentPrompt,
     modePersonaPrompt,
@@ -648,7 +643,6 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
     modeEnvironmentPrompt?: string
     modePersonaPrompt?: string
@@ -782,14 +776,8 @@ export class RequestContextBuilder {
       })),
     ]
 
-    const withInjections = await appendContextualInjectionsToLastUserMessage(
-      baseRequestMessages,
-      contextualInjections ?? [],
-      { app: this.app, settings: this.settings },
-    )
-
     const requestMessages = await prepareDocumentsForModel(
-      stripUnsupportedImages(withInjections, _model),
+      stripUnsupportedImages(baseRequestMessages, _model),
       _model,
       { app: this.app, settings: this.settings },
     )
@@ -817,7 +805,6 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
     modeEnvironmentPrompt?: string
     modePersonaPrompt?: string
@@ -1080,7 +1067,26 @@ export class RequestContextBuilder {
     )
   }
 
-  private async getUserMessageContent({
+  /** The message body followed by the context stamped on it. */
+  private async getUserMessageContent(args: {
+    message: ChatUserMessage
+    snapshotEntries: Record<string, string | ContentPart[]>
+    scope?: LiteSkillScope
+  }): Promise<string | ContentPart[]> {
+    const body = await this.getUserMessageBody(args)
+    const context = args.message.injectedContext
+    if (!context || context.length === 0) {
+      return body
+    }
+    return [
+      ...(typeof body === 'string'
+        ? [{ type: 'text' as const, text: body }]
+        : body),
+      ...(await renderInjectedContext(context, this.app)),
+    ]
+  }
+
+  private async getUserMessageBody({
     message,
     snapshotEntries,
     scope,
