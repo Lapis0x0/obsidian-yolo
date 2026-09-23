@@ -26,6 +26,7 @@ import {
   RequestToolChoice,
 } from '../../types/llm/request'
 import {
+  AnthropicReplayBlock,
   LLMResponseNonStreaming,
   LLMResponseStreaming,
   ResponseUsage,
@@ -47,6 +48,7 @@ import { parseImageDataUrl } from '../../utils/llm/image'
 import { BaseLLMProvider } from './base'
 import {
   claudeAcceptsSamplingParams,
+  isClaudeModelId,
   resolveClaudeReasoningRequest,
 } from './claudeReasoning'
 import {
@@ -66,6 +68,96 @@ type BedrockJsonBody =
 type BedrockDocumentType = NonNullable<
   ConverseCommandInput['additionalModelRequestFields']
 >
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+const base64ToBytes = (value: string): Uint8Array =>
+  Uint8Array.from(atob(value), (char) => char.charCodeAt(0))
+
+/**
+ * A Converse content block in the shape a Claude reply is kept in
+ * (`providerMetadata.anthropic`, shared with the direct API), or null for a
+ * block that cannot be sent back as it was.
+ */
+const toReplayBlock = (block: ContentBlock): AnthropicReplayBlock | null => {
+  if (block.text !== undefined) {
+    return { type: 'text', text: block.text }
+  }
+  if (block.toolUse) {
+    if (block.toolUse.input === undefined) return null
+    return {
+      type: 'tool_use',
+      id: block.toolUse.toolUseId,
+      name: block.toolUse.name,
+      input: block.toolUse.input,
+    }
+  }
+  const reasoning = block.reasoningContent
+  if (reasoning?.reasoningText) {
+    return {
+      type: 'thinking',
+      thinking: reasoning.reasoningText.text,
+      signature: reasoning.reasoningText.signature,
+    }
+  }
+  if (reasoning?.redactedContent) {
+    return {
+      type: 'redacted_thinking',
+      data: bytesToBase64(reasoning.redactedContent),
+    }
+  }
+  return null
+}
+
+const fromReplayBlock = (block: AnthropicReplayBlock): ContentBlock | null => {
+  switch (block.type) {
+    case 'text':
+      return { text: block.text as string }
+    case 'tool_use':
+      return {
+        toolUse: {
+          toolUseId: block.id as string,
+          name: block.name as string,
+          input: block.input as BedrockDocumentType,
+        },
+      }
+    case 'thinking':
+      return {
+        reasoningContent: {
+          reasoningText: {
+            text: block.thinking as string,
+            signature: block.signature as string | undefined,
+          },
+        },
+      }
+    case 'redacted_thinking':
+      return {
+        reasoningContent: {
+          redactedContent: base64ToBytes(block.data as string),
+        },
+      }
+    default:
+      return null
+  }
+}
+
+/** Null unless every block could be kept: a partial reply is rebuilt instead. */
+const toReplayContent = (
+  blocks: readonly ContentBlock[],
+): AnthropicReplayBlock[] | null => {
+  const content: AnthropicReplayBlock[] = []
+  for (const block of blocks) {
+    const replay = toReplayBlock(block)
+    if (!replay) return null
+    if (replay.type === 'text' && replay.text === '') continue
+    content.push(replay)
+  }
+  return content
+}
 
 export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
   private client: BedrockRuntimeClient
@@ -166,6 +258,9 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
         )
 
       const usage = BedrockProvider.convertUsage(response.usage)
+      const replayContent = isClaudeModelId(request.model)
+        ? toReplayContent(contentBlocks)
+        : null
 
       return {
         id: `bedrock-${Date.now()}`,
@@ -177,6 +272,11 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
               reasoning: reasoningContent,
               role: 'assistant',
               tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+              ...(replayContent
+                ? {
+                    providerMetadata: { anthropic: { content: replayContent } },
+                  }
+                : {}),
             },
           },
         ],
@@ -259,8 +359,18 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       total_tokens: 0,
     }
     let finishReason: string | null = null
+    // The reply block by block, so a Claude reply can be sent back exactly as
+    // it was generated. Text and reasoning blocks have no start event; their
+    // first delta opens them.
+    const replayBlocks = new Map<number, ContentBlock>()
+    const replayInputJson = new Map<number, string>()
 
     for await (const event of stream) {
+      BedrockProvider.accumulateReplayBlock(
+        event,
+        replayBlocks,
+        replayInputJson,
+      )
       if (event.contentBlockDelta) {
         const delta = event.contentBlockDelta.delta
         const blockIndex = event.contentBlockDelta.contentBlockIndex ?? 0
@@ -362,17 +472,95 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
+    const replayContent =
+      finishReason !== null && isClaudeModelId(model)
+        ? toReplayContent(
+            [...replayBlocks.entries()]
+              .sort(([a], [b]) => a - b)
+              .map(([, block]) => block),
+          )
+        : null
+
     yield {
       id: messageId,
       choices: [
         {
           finish_reason: finishReason,
-          delta: {},
+          delta: replayContent
+            ? { providerMetadata: { anthropic: { content: replayContent } } }
+            : {},
         },
       ],
       object: 'chat.completion.chunk',
       model,
       usage,
+    }
+  }
+
+  private static accumulateReplayBlock(
+    event: ConverseStreamOutput,
+    blocks: Map<number, ContentBlock>,
+    inputJson: Map<number, string>,
+  ): void {
+    if (event.contentBlockStart?.start?.toolUse) {
+      const { toolUseId, name } = event.contentBlockStart.start.toolUse
+      blocks.set(event.contentBlockStart.contentBlockIndex ?? 0, {
+        toolUse: { toolUseId, name, input: {} },
+      })
+      return
+    }
+    if (event.contentBlockDelta?.delta) {
+      const index = event.contentBlockDelta.contentBlockIndex ?? 0
+      const delta = event.contentBlockDelta.delta
+      const block = blocks.get(index)
+      if (delta.text !== undefined) {
+        blocks.set(index, { text: `${block?.text ?? ''}${delta.text}` })
+      } else if (delta.toolUse) {
+        inputJson.set(
+          index,
+          `${inputJson.get(index) ?? ''}${delta.toolUse.input ?? ''}`,
+        )
+      } else if (delta.reasoningContent) {
+        const reasoning = delta.reasoningContent
+        if (reasoning.redactedContent) {
+          blocks.set(index, {
+            reasoningContent: { redactedContent: reasoning.redactedContent },
+          })
+          return
+        }
+        const current = block?.reasoningContent?.reasoningText
+        blocks.set(index, {
+          reasoningContent: {
+            reasoningText: {
+              text: `${current?.text ?? ''}${reasoning.text ?? ''}`,
+              signature: reasoning.signature ?? current?.signature,
+            },
+          },
+        })
+      }
+      return
+    }
+    if (event.contentBlockStop) {
+      const index = event.contentBlockStop.contentBlockIndex ?? 0
+      const block = blocks.get(index)
+      const json = inputJson.get(index)
+      if (!block?.toolUse || !json) return
+      try {
+        blocks.set(index, {
+          toolUse: {
+            ...block.toolUse,
+            input: JSON.parse(json) as BedrockDocumentType,
+          },
+        })
+      } catch {
+        // Cut off mid-input (`max_tokens`): marks the reply as not replayable.
+        blocks.set(index, {
+          toolUse: {
+            ...block.toolUse,
+            input: undefined as unknown as BedrockDocumentType,
+          },
+        })
+      }
     }
   }
 
@@ -447,6 +635,11 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
           break
         }
         case 'assistant': {
+          const replay = BedrockProvider.convertReplayedAssistantMessage(msg)
+          if (replay) {
+            result.push(replay)
+            break
+          }
           const contentBlocks: ContentBlock[] = []
 
           if (msg.content && msg.content.trim() !== '') {
@@ -499,6 +692,28 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     }
 
     return result
+  }
+
+  /**
+   * The Claude reply exactly as generated, when the message carries it; tool
+   * calls the request no longer answers are left out, as on the direct API.
+   */
+  private static convertReplayedAssistantMessage(
+    msg: Extract<RequestMessage, { role: 'assistant' }>,
+  ): Message | null {
+    const native = msg.providerMetadata?.anthropic?.content
+    if (!native) return null
+    const toolCallIds = new Set(msg.tool_calls?.map((call) => call.id))
+    const content: ContentBlock[] = []
+    for (const block of native) {
+      if (block.type === 'tool_use' && !toolCallIds.has(block.id as string)) {
+        continue
+      }
+      const converted = fromReplayBlock(block)
+      if (!converted) return null
+      content.push(converted)
+    }
+    return content.length > 0 ? { role: 'assistant', content } : null
   }
 
   private static convertUserContent(

@@ -99,3 +99,137 @@ describe('BedrockProvider', () => {
     ).rejects.toThrow('Embedding is not yet supported')
   })
 })
+
+describe('BedrockProvider Claude reply replay', () => {
+  const nativeReply = [
+    { type: 'thinking', thinking: 'Look it up.', signature: 'sig-1' },
+    { type: 'redacted_thinking', data: 'AQID' },
+    { type: 'text', text: 'Reading.' },
+    { type: 'tool_use', id: 'call_1', name: 'read', input: { path: 'a.md' } },
+  ]
+
+  const streamWith = async (events: unknown[], model: string) => {
+    const provider = createProvider()
+    ;(provider as unknown as { client: { send: jest.Mock } }).client = {
+      send: jest
+        .fn()
+        .mockResolvedValue({ stream: createAsyncIterable(events) }),
+    }
+    const stream = await provider.streamResponse(
+      { providerId: 'bedrock', id: 'model-1', model },
+      { model, messages: [{ role: 'user', content: 'hi' }], stream: true },
+    )
+    const chunks = []
+    for await (const chunk of stream) chunks.push(chunk)
+    return chunks.at(-1)?.choices?.[0]?.delta?.providerMetadata
+  }
+
+  const toolTurn = [
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 0,
+        delta: { reasoningContent: { text: 'Look it ' } },
+      },
+    },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 0,
+        delta: { reasoningContent: { text: 'up.' } },
+      },
+    },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 0,
+        delta: { reasoningContent: { signature: 'sig-1' } },
+      },
+    },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 1,
+        delta: {
+          reasoningContent: { redactedContent: new Uint8Array([1, 2, 3]) },
+        },
+      },
+    },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 2,
+        delta: { text: 'Reading.' },
+      },
+    },
+    {
+      contentBlockStart: {
+        contentBlockIndex: 3,
+        start: { toolUse: { toolUseId: 'call_1', name: 'read' } },
+      },
+    },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 3,
+        delta: { toolUse: { input: '{"path":"a.md"}' } },
+      },
+    },
+    { contentBlockStop: { contentBlockIndex: 3 } },
+    { messageStop: { stopReason: 'tool_use' } },
+  ]
+
+  it('assembles the streamed reply with its signature and redacted blocks', async () => {
+    expect(
+      await streamWith(toolTurn, 'us.anthropic.claude-opus-5-5-v1:0'),
+    ).toEqual({ anthropic: { content: nativeReply } })
+  })
+
+  it('keeps nothing from a stream that never finished', async () => {
+    expect(
+      await streamWith(
+        toolTurn.slice(0, -1),
+        'us.anthropic.claude-opus-5-5-v1:0',
+      ),
+    ).toBeUndefined()
+  })
+
+  it('keeps nothing for a model that is not Claude', async () => {
+    expect(await streamWith(toolTurn, 'amazon.nova-pro-v1:0')).toBeUndefined()
+  })
+
+  it('sends the reply back as Converse blocks', () => {
+    expect(
+      BedrockProvider.convertMessages([
+        {
+          role: 'assistant',
+          content: 'Reading.',
+          providerMetadata: { anthropic: { content: nativeReply } },
+          tool_calls: [
+            {
+              id: 'call_1',
+              name: 'read',
+              arguments: '{"path":"a.md"}',
+            } as never,
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          {
+            reasoningContent: {
+              reasoningText: { text: 'Look it up.', signature: 'sig-1' },
+            },
+          },
+          {
+            reasoningContent: { redactedContent: new Uint8Array([1, 2, 3]) },
+          },
+          { text: 'Reading.' },
+          {
+            toolUse: {
+              toolUseId: 'call_1',
+              name: 'read',
+              input: { path: 'a.md' },
+            },
+          },
+        ],
+      },
+    ])
+  })
+})
