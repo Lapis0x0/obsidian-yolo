@@ -180,6 +180,12 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
       const [x, y] = viewportAt(scale).convertToPdfPoint(point[0], point[1])
       return [x, y]
     },
+
+    cleanup(): void {
+      // pdf.js declines while a render of the page is running and cleans up
+      // when the last one ends, so this is safe to call at any time.
+      proxy.cleanup()
+    },
   })
 }
 

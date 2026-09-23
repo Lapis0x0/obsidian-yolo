@@ -906,6 +906,14 @@ export type YoloModulePdfPageV1 = Readonly<{
     scale: number,
   ): YoloModulePdfPointV1
   toPdfPoint(point: YoloModulePdfPointV1, scale: number): YoloModulePdfPointV1
+  /**
+   * Lets go of what drawing this page left in memory — its parsed drawing
+   * operations and decoded images — once no render of it is running (a
+   * running one frees them when it ends). The page stays usable; the next
+   * render parses it again. For a reader to call on pages it has scrolled
+   * far away from: without it a long document keeps every page it ever drew.
+   */
+  cleanup(): void
 }>
 
 export type YoloModulePdfDocumentV1 = Readonly<{

@@ -106,6 +106,9 @@ export type PdfEnginePage = Readonly<{
   ): Promise<ArrayBuffer>
   toViewportPoint(point: PdfPoint, scale: number): PdfPoint
   toPdfPoint(point: PdfPoint, scale: number): PdfPoint
+  /** Frees the page's operator list and decoded images once no render of it
+   * is in flight (pdf.js `PDFPageProxy.cleanup`); the page stays usable. */
+  cleanup(): void
 }>
 
 export type PdfEngineDocument = Readonly<{
