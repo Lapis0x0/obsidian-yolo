@@ -2,8 +2,11 @@ import {
   buildCardContext,
   cardSourceIds,
   cardSourceNotePaths,
+  cardSourcePdfPages,
+  pdfPageTextKey,
 } from './cardContext'
 import { type Board, type BoardNode, emptyBoard } from './fileFormat'
+import { layoutSpreadGrid, openSpread, pdfPageNodeId } from './spread'
 import { CARD_PREVIEW_CHARS } from './summary'
 
 function text(id: string, body: string, x = 0, y = 0): BoardNode {
@@ -179,5 +182,50 @@ describe('buildCardContext', () => {
     })
     expect(context).not.toContain('sources')
     expect(context).toContain('this card: c-2')
+  })
+})
+
+describe('a PDF spread in a card context', () => {
+  const pdfPath = 'Papers/p.pdf'
+  const layout = layoutSpreadGrid(
+    [
+      { width: 612, height: 792 },
+      { width: 612, height: 792 },
+    ],
+    { x: 500, y: 0 },
+    2,
+    100,
+  )
+  const board = openSpread(
+    boardWith([file('pdf', pdfPath), text('t', '')], [edge('e', 'pdf', 't')]),
+    'pdf',
+    layout,
+  )
+  // The edge leaves page 2 rather than the whole PDF.
+  const wired: Board = {
+    ...board,
+    edges: [{ ...board.edges[0], fromNode: pdfPageNodeId('pdf', 2) }],
+  }
+
+  it('gives a wired page its text in full', () => {
+    expect(cardSourcePdfPages(wired, 't')).toEqual([{ file: pdfPath, page: 2 }])
+    const context = buildCardContext({
+      board: wired,
+      nodeId: 't',
+      path: 'b.yoloboard',
+      noteTexts: new Map([[pdfPageTextKey(pdfPath, 2), 'Second page words']]),
+    })
+    expect(context).toContain(
+      `page 2 of the PDF ${pdfPath}:\nSecond page words`,
+    )
+  })
+
+  it('summarizes the spread as one PDF', () => {
+    const context = buildCardContext({
+      board: wired,
+      nodeId: 't',
+      path: 'b.yoloboard',
+    })
+    expect(context).not.toContain('pdf page')
   })
 })

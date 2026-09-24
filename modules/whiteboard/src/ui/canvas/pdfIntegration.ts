@@ -485,7 +485,7 @@ export class PdfIntegration {
     const { core } = this.deps
     const { page, selection } = link.target
     const inPanel = this.readerPanelNodeId === link.cardId
-    const inPlace = inPanel ? null : this.readableCardFor(link.path)
+    const inPlace = inPanel ? null : this.readableCardFor(link.path, page)
     const reader = inPlace === null ? null : core.getRuntime(inPlace)?.pdfReader
     if (inPlace !== null && reader) {
       core.setSelection([inPlace])
@@ -503,14 +503,19 @@ export class PdfIntegration {
   /** A card of the PDF at `path` that is read where it is: holding a reader
    * (so not in the overview tier, where a card is too small to read and has
    * none) and mostly on screen (`isMostlyInView`). The widest, when there are
-   * several. */
-  private readableCardFor(path: string): NodeId | null {
+   * several. A spread's sheet counts when it is the page the link names —
+   * its reader shows that page and no other. */
+  private readableCardFor(path: string, page: number): NodeId | null {
     const { core } = this.deps
     if (core.isOverview()) return null
     const view = core.worldViewportRect(0)
-    let best: FileNode | null = null
+    let best: BoardNode | null = null
     for (const node of core.getBoard().nodes) {
-      if (!isPdfNode(node) || node.file !== path) continue
+      const reads =
+        node.type === 'pdf-page'
+          ? node.file === path && node.page === Math.floor(page)
+          : isPdfNode(node) && node.file === path
+      if (!reads) continue
       if (!core.getRuntime(node.id)?.pdfReader) continue
       if (!isMostlyInView(node, view)) continue
       if (!best || node.w > best.w) best = node

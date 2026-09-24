@@ -28,10 +28,17 @@
 import type { Board, BoardNode, NodeId } from './fileFormat'
 import { nodesInsideGroup } from './groups'
 import { fileNodeKind } from './naming'
+import { collapseBoard } from './spread'
 import { summarizeBoard } from './summary'
 
-/** Backing-file path -> that file's text. */
+/** Backing-file path -> that file's text; and, under `pdfPageTextKey`, a
+ * PDF page's text. */
 export type CardContextNoteTexts = ReadonlyMap<string, string>
+
+/** Where a PDF page's text is kept in `CardContextNoteTexts`. */
+export function pdfPageTextKey(file: string, page: number): string {
+  return `${file}#page=${page}`
+}
 
 export type CardContextOptions = Readonly<{
   board: Board
@@ -64,6 +71,26 @@ export function cardSourceIds(board: Board, nodeId: NodeId): NodeId[] {
 }
 
 /**
+ * The PDF pages among this card's sources — sheets of a spread wired into it
+ * (domain/spread.ts), directly or inside a source group — whose text the
+ * context gives in full, as it does a note's.
+ */
+export function cardSourcePdfPages(
+  board: Board,
+  nodeId: NodeId,
+): Readonly<{ file: string; page: number }>[] {
+  const pages: { file: string; page: number }[] = []
+  for (const node of expandedSources(board, nodeId)) {
+    if (node.type !== 'pdf-page') continue
+    if (pages.some((p) => p.file === node.file && p.page === node.page)) {
+      continue
+    }
+    pages.push({ file: node.file, page: node.page })
+  }
+  return pages
+}
+
+/**
  * Vault paths whose *whole* text this card's context needs: every note card
  * that is a source, plus every note card inside a source group.
  *
@@ -87,7 +114,9 @@ export function buildCardContext({
   noteTexts = new Map(),
 }: CardContextOptions): string {
   const sections = [
-    summarizeBoard(board, { path, previews: noteTexts }),
+    // Summarized the way the file has it: an open PDF spread is one PDF, not
+    // a line per page (domain/spread.ts).
+    summarizeBoard(collapseBoard(board), { path, previews: noteTexts }),
     thisCardSection(board, nodeId),
   ]
   const sources = sourcesSection(board, nodeId, noteTexts)
@@ -173,8 +202,15 @@ export function describeCardContent(
       // A group nested in a source group: its own members are already in the
       // list, because containment is transitive (`nodesInsideGroup`).
       return `(a group${card.label ? ` "${card.label}"` : ''})`
-    case 'pdf-page':
-      return `(this card is page ${card.page} of the PDF ${card.file})`
+    case 'pdf-page': {
+      const text = noteTexts.get(pdfPageTextKey(card.file, card.page))
+      if (text === undefined) {
+        return `(this card is page ${card.page} of the PDF ${card.file})`
+      }
+      return text.trim() === ''
+        ? `(this card is page ${card.page} of the PDF ${card.file}, which has no text)`
+        : `page ${card.page} of the PDF ${card.file}:\n${text}`
+    }
   }
 }
 

@@ -20,7 +20,9 @@ import {
   buildCardContext,
   cardBlock,
   cardSourceNotePaths,
+  cardSourcePdfPages,
   cardsInsideGroup,
+  pdfPageTextKey,
 } from '../domain/cardContext'
 import type { Board, BoardNode, NodeId } from '../domain/fileFormat'
 import { fileNodeKind } from '../domain/naming'
@@ -41,7 +43,35 @@ export async function resolveCardContextNotes(
     const body = await readNoteBody(host, notePath)
     if (body !== null) texts.set(notePath, body)
   }
+  for (const { file, page } of cardSourcePdfPages(board, nodeId)) {
+    const text = await readPdfPageText(host, file, page)
+    if (text !== null) texts.set(pdfPageTextKey(file, page), text)
+  }
   return texts
+}
+
+/** A PDF page's text, lines kept as the page breaks them; null when the PDF
+ * cannot be read. A page wired into a card is what the card is about, the
+ * same as a note, so its text is given rather than its name. */
+async function readPdfPageText(
+  host: YoloModuleHostApiV1,
+  file: string,
+  page: number,
+): Promise<string | null> {
+  let handle: YoloModuleHostPdfDocumentV1 | null = null
+  try {
+    handle = await host.pdf.open(file)
+    if (page > handle.pageCount) return null
+    const items = await (await handle.getPage(page)).getTextItems()
+    return items
+      .map((item) => (item.endsLine ? `${item.text}\n` : item.text))
+      .join('')
+      .trim()
+  } catch {
+    return null
+  } finally {
+    handle?.release()
+  }
 }
 
 /**
