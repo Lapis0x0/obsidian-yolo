@@ -73,9 +73,6 @@ const INTERACTION_LAYER_HIDDEN_CLASS =
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
-/** On the handle layer while a gesture is moving something: the connection
- * points it shows at rest would only be noise riding along with a drag. */
-const INTERACTION_LAYER_BUSY_CLASS = 'yolo-whiteboard-interaction-layer-busy'
 /** On the group frame the pointer is inside, when it is on nothing else there:
  * the frame is pointer-transparent (styles/cards/group.css), so this is how it
  * says it is a thing — and that its label is where it is picked up. */
@@ -378,7 +375,6 @@ export class InteractionController {
     this.autoPan = null
     this.touchPoints.clear()
     this.hintedGroupId = null
-    this.deps.interactionLayerEl.classList.remove(INTERACTION_LAYER_BUSY_CLASS)
     this.pendingPointerMove = null
     this.drag.setLiveNodeRects(null)
     this.deps.snapGuides.clear()
@@ -722,7 +718,6 @@ export class InteractionController {
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
     this.deps.toolbar.setToolbarSuppressed(true)
-    this.deps.interactionLayerEl.classList.add(INTERACTION_LAYER_BUSY_CLASS)
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
@@ -986,7 +981,6 @@ export class InteractionController {
     this.autoPan = null
     this.deps.snapGuides.clear()
     this.deps.toolbar.setToolbarSuppressed(false)
-    this.deps.interactionLayerEl.classList.remove(INTERACTION_LAYER_BUSY_CLASS)
   }
 
   // -----------------------------------------------------------------------

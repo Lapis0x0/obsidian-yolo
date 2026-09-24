@@ -217,15 +217,13 @@
  * this card — needs a tell. The accent ring the selection already draws,
  * doubled, rather than a new colour: it is the same card in a further state,
  * not a different kind of thing. */
-.yolo-whiteboard-card.yolo-whiteboard-card-entered,
-.yolo-whiteboard-card.yolo-whiteboard-card-editing {
+.yolo-whiteboard-card.yolo-whiteboard-card-entered {
   box-shadow:
     0 0 0 1px var(--interactive-accent),
     0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
 }
 
-.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-entered,
-.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-editing {
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-entered {
   box-shadow:
     inset 0 0 0 1px var(--yolo-whiteboard-color),
     0 0 0 1px var(--yolo-whiteboard-color),

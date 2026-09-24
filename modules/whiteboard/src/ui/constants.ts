@@ -451,12 +451,13 @@ export const NODE_ENTER_WINDOW_MS = 600
  * An exponential decay of velocity is an exponential approach of position,
  * which is exactly the glide the camera already runs (domain/camera.ts's
  * `approachView`): a fling is a view glide aimed at release position plus
- * velocity × tau, carried by the same machinery as a wheel pan. 300ms lands
- * between iOS's scroll deceleration and Obsidian Canvas's shorter coast —
- * long enough to feel like the board has mass, short enough that a small flick
- * does not send it somewhere the user has to come back from.
+ * velocity × tau, carried by the same machinery as a wheel pan. Kept short:
+ * the coast only has to say the board has some mass. At 300ms (iOS's own
+ * deceleration) an ordinary pan overshot where the hand had put the board,
+ * and every release became a correction; 150ms carries a flick about half as
+ * far and leaves a deliberate drag almost where it was let go.
  */
-export const PAN_FLING_TAU_MS = 300
+export const PAN_FLING_TAU_MS = 150
 /** Velocity is measured over the last stretch of the drag, not the whole of
  * it: what the hand was doing when it let go. */
 export const PAN_FLING_SAMPLE_MS = 80
