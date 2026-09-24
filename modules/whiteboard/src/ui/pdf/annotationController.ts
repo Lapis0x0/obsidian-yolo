@@ -6,7 +6,10 @@
 // A comment is its own thing, not a part of the toolbar: writing one puts
 // the toolbar away and leaves a field under the passage; a commented
 // annotation carries a dot (./annotationLayer.ts) whose comment shows on
-// hover and opens for editing on a click, without the toolbar.
+// hover and opens for editing on a click, without the toolbar. The preview
+// is a handle too: dragged, the comment goes onto the board as a line of
+// text citing its passage (`excerpts.addComment`) — the passage stays in the
+// PDF, where the citation reads it.
 //
 // One per board view. Every reader on the board — each PDF card and the
 // reading panel — reports to the same controller (`events`), so there is one
@@ -36,7 +39,11 @@
 // in a popout window; everything here is built from the view's document.
 
 import { type ScreenPoint } from '../../domain/camera'
-import type { ExcerptContent, TextExcerpt } from '../../domain/excerpt'
+import type {
+  CommentExcerpt,
+  ExcerptContent,
+  TextExcerpt,
+} from '../../domain/excerpt'
 import {
   ANNOTATION_COLORS,
   type AnnotationColor,
@@ -76,6 +83,11 @@ export type ExcerptSink = Readonly<{
     excerpt: TextExcerpt,
     at?: ScreenPoint,
   ) => boolean
+  addComment: (
+    reader: PdfReader,
+    excerpt: CommentExcerpt,
+    at?: ScreenPoint,
+  ) => boolean
   addArea: (
     reader: PdfReader,
     page: number,
@@ -109,13 +121,17 @@ type Grab = {
   readonly source:
     | Readonly<{ kind: 'area'; page: number; rect: PdfRectTuple }>
     | Readonly<{ kind: 'annotation'; id: string }>
-  /** Pressed on the annotation's comment dot: a click opens the comment. */
-  readonly note: boolean
+    /** An annotation's comment, pressed on its dot or its preview: a click
+     * opens it for editing. */
+    | Readonly<{ kind: 'comment'; id: string }>
   ghost: HTMLElement | null
 }
 
 /** A press that travels less than this is a click, not a drag. */
 const GRAB_SLOP_PX = 4
+/** How long a preview outlasts the pointer leaving its dot — time to cross
+ * the gap onto the preview and take hold of it. */
+const PREVIEW_LINGER_MS = 250
 /** The widest the picture carried by a drag is drawn. */
 const GHOST_MAX_WIDTH_PX = 220
 
@@ -155,6 +171,7 @@ const COMMENT_BUTTON_CLASS = 'yolo-whiteboard-pdf-comment-button'
 const PREVIEW_CLASS = 'yolo-whiteboard-pdf-comment-preview'
 const GHOST_CLASS = 'yolo-whiteboard-pdf-drag-ghost'
 const GHOST_TEXT_CLASS = 'yolo-whiteboard-pdf-drag-ghost-text'
+const GHOST_COMMENT_CLASS = 'yolo-whiteboard-pdf-drag-ghost-comment'
 const GHOST_DROPPABLE_CLASS = 'yolo-whiteboard-pdf-drag-ghost-droppable'
 /** On the view root while something is being dragged out. */
 const GRABBING_CLASS = 'yolo-whiteboard-pdf-grabbing'
@@ -193,6 +210,8 @@ export class AnnotationController {
    * is on it. */
   private readonly previewEl: HTMLElement
   private preview: Readonly<{ reader: PdfReader; id: string }> | null = null
+  private previewTimer: number | null = null
+  private pointerOnPreview = false
   private mode: Mode | null = null
   private editor: HTMLTextAreaElement | null = null
   private editorKeymapDisposer: (() => void) | null = null
@@ -211,6 +230,20 @@ export class AnnotationController {
     this.previewEl = doc.createElement('div')
     this.previewEl.className = PREVIEW_CLASS
     this.previewEl.hidden = true
+    this.previewEl.addEventListener('pointerenter', () => {
+      this.pointerOnPreview = true
+      this.cancelPreviewTimer()
+    })
+    this.previewEl.addEventListener('pointerleave', () => {
+      this.pointerOnPreview = false
+      this.hidePreviewSoon()
+    })
+    this.previewEl.addEventListener('pointerdown', (event) => {
+      const preview = this.preview
+      if (!preview || event.button !== 0) return
+      event.preventDefault()
+      this.onGrab(preview.reader, event, preview.id, true)
+    })
     this.toolbar.overlay.appendChild(this.previewEl)
     // A press on the toolbar must not take the focus, or collapse the text
     // selection its buttons are about to act on. The comment's text area is
@@ -332,6 +365,7 @@ export class AnnotationController {
 
   destroy(): void {
     this.endGrab()
+    this.hidePreview()
     this.close()
     this.options.parent.ownerDocument.removeEventListener(
       'pointerdown',
@@ -887,9 +921,10 @@ export class AnnotationController {
    * reports those on a card not entered, which the reader never sees. */
   hoverNote(reader: PdfReader, id: string | null): void {
     if (id === null) {
-      if (this.preview?.reader === reader) this.hidePreview()
+      if (this.preview?.reader === reader) this.hidePreviewSoon()
       return
     }
+    this.cancelPreviewTimer()
     const comment = reader.getAnnotationStore()?.get(id)?.comment?.trim()
     // Not while it is open for editing, nor while something is carried.
     if (
@@ -925,10 +960,33 @@ export class AnnotationController {
   }
 
   private hidePreview(): void {
+    this.cancelPreviewTimer()
+    this.pointerOnPreview = false
     if (!this.preview) return
     this.preview = null
     this.previewEl.hidden = true
     this.previewEl.textContent = ''
+  }
+
+  /** Hides the preview once the pointer has had time to reach it, unless it
+   * did. */
+  private hidePreviewSoon(): void {
+    this.cancelPreviewTimer()
+    const win = this.window()
+    if (!win) {
+      this.hidePreview()
+      return
+    }
+    this.previewTimer = win.setTimeout(() => {
+      this.previewTimer = null
+      if (!this.pointerOnPreview) this.hidePreview()
+    }, PREVIEW_LINGER_MS)
+  }
+
+  private cancelPreviewTimer(): void {
+    if (this.previewTimer === null) return
+    this.window()?.clearTimeout(this.previewTimer)
+    this.previewTimer = null
   }
 
   // -----------------------------------------------------------------------
@@ -1165,9 +1223,10 @@ export class AnnotationController {
   // Dragging a frame or an annotation out
   // -----------------------------------------------------------------------
 
-  /** A press on an annotation (`id`) or on the waiting frame (null). It
-   * stays a press until it moves — let go there, it is a click, which opens
-   * the annotation — and a drag once it has. */
+  /** A press on an annotation (`id`) — on its comment when `note` — or on
+   * the waiting frame (null). It stays a press until it moves — let go
+   * there, it is a click, which opens the annotation or its comment — and a
+   * drag once it has. */
   private onGrab(
     reader: PdfReader,
     event: PointerEvent,
@@ -1176,7 +1235,7 @@ export class AnnotationController {
   ): void {
     const mode = this.mode
     let source: Grab['source']
-    if (id !== null) source = { kind: 'annotation', id }
+    if (id !== null) source = { kind: note ? 'comment' : 'annotation', id }
     else if (mode?.kind === 'area' && mode.reader === reader) {
       source = { kind: 'area', page: mode.page, rect: mode.rect }
     } else return
@@ -1188,7 +1247,6 @@ export class AnnotationController {
       x: event.clientX,
       y: event.clientY,
       source,
-      note,
       ghost: null,
     }
     const doc = this.options.parent.ownerDocument
@@ -1230,6 +1288,10 @@ export class AnnotationController {
     if (source.kind === 'area') return { kind: 'area', rect: source.rect }
     const annotation = grab.reader.getAnnotationStore()?.get(source.id)
     if (!annotation) return null
+    if (source.kind === 'comment') {
+      const comment = annotation.comment?.trim()
+      return comment ? { kind: 'comment', comment } : null
+    }
     return annotation.type === 'area'
       ? { kind: 'area', rect: annotation.anchor.rect }
       : { kind: 'text', quote: annotation.anchor.quote.exact }
@@ -1247,10 +1309,11 @@ export class AnnotationController {
     if (at) this.dropGrabbed(grab, at)
     // Let go where it was pressed: a click on the annotation, which opens
     // it — the reader never saw this press, so it reports no click.
-    if (clicked && grab.source.kind === 'annotation') {
+    if (clicked && grab.source.kind !== 'area') {
       grab.reader.clearTextSelection()
-      if (grab.note) this.openComment(grab.reader, grab.source.id)
-      else this.onAnnotationClick(grab.reader, grab.source.id)
+      if (grab.source.kind === 'comment') {
+        this.openComment(grab.reader, grab.source.id)
+      } else this.onAnnotationClick(grab.reader, grab.source.id)
     }
   }
 
@@ -1265,6 +1328,17 @@ export class AnnotationController {
     doc.removeEventListener('pointercancel', this.onGrabUp)
     if (!grab.ghost) return
     grab.ghost.remove()
+    // The passage a carried comment was marked as its own gives the mark
+    // back to whatever the toolbar is acting on.
+    if (grab.source.kind === 'comment') {
+      const mode = this.mode
+      grab.reader.setActiveAnnotation(
+        mode?.reader === grab.reader &&
+          (mode.kind === 'annotation' || mode.kind === 'comment')
+          ? mode.id
+          : null,
+      )
+    }
     this.options.parent.classList.remove(GRABBING_CLASS)
     this.options.excerpts.showLanding(null)
     if (this.mode) this.place()
@@ -1291,22 +1365,59 @@ export class AnnotationController {
       return
     }
     const annotation = reader.getAnnotationStore()?.get(source.id)
-    if (annotation) void this.excerptAnnotation(reader, annotation, at)
+    if (!annotation) return
+    if (source.kind === 'comment')
+      void this.excerptComment(reader, annotation, at)
+    else void this.excerptAnnotation(reader, annotation, at)
   }
 
-  /** The picture a drag carries: the framed region itself, or the passage
-   * as the card will quote it. */
+  /** An annotation's comment as a card citing its passage — its selection
+   * where its text is now, its page alone when that has moved, or its page
+   * for a frame. */
+  private async excerptComment(
+    reader: PdfReader,
+    annotation: PdfAnnotation,
+    at: ScreenPoint,
+  ): Promise<void> {
+    const comment = annotation.comment?.trim()
+    if (!comment) return
+    let selection: SelectionTuple | null = null
+    if (annotation.type === 'highlight') {
+      try {
+        const items = await reader.getTextItems(annotation.anchor.page)
+        selection = resolveHighlightSelection(items, annotation.anchor)
+      } catch (error) {
+        this.options.reportError('pdf comment excerpt', error)
+      }
+    }
+    this.options.excerpts.addComment(
+      reader,
+      { page: annotation.anchor.page, selection, comment },
+      at,
+    )
+  }
+
+  /** The picture a drag carries: the framed region itself, the passage as
+   * the card will quote it, or the comment as its preview showed it — the
+   * passage it is about marked meanwhile, since the comment leaves it
+   * behind. */
   private createGhost(grab: Grab): HTMLElement | null {
     const { reader, source } = grab
     const annotation =
-      source.kind === 'annotation'
-        ? reader.getAnnotationStore()?.get(source.id)
-        : undefined
-    if (source.kind === 'annotation' && !annotation) return null
+      source.kind === 'area'
+        ? undefined
+        : reader.getAnnotationStore()?.get(source.id)
+    if (source.kind !== 'area' && !annotation) return null
     const doc = this.options.parent.ownerDocument
     const ghost = doc.createElement('div')
     ghost.className = GHOST_CLASS
-    if (annotation?.type === 'highlight') {
+    if (source.kind === 'comment') {
+      const comment = annotation?.comment?.trim()
+      if (!comment) return null
+      ghost.classList.add(GHOST_COMMENT_CLASS)
+      ghost.textContent = comment
+      reader.setActiveAnnotation(source.id)
+    } else if (annotation?.type === 'highlight') {
       ghost.classList.add(annotationColorClass(annotation.color))
       const text = doc.createElement('div')
       text.className = GHOST_TEXT_CLASS

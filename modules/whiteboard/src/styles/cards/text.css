@@ -97,20 +97,23 @@
   color: var(--yolo-whiteboard-color);
 }
 
-/* An excerpt's citation (domain/excerpt.ts): the one line after the quote or
- * the picture, set small and quiet under what it cites. */
+/* An excerpt's citation (domain/excerpt.ts): its last line, a link to a
+ * place in a PDF and nothing else, set small and quiet under what it cites —
+ * a quote, a picture, or a comment. */
 .yolo-whiteboard-text
   .markdown-preview-sizer
-  > :is(blockquote, p:has(> .internal-embed))
-  + p:last-child {
+  > p:last-child:not(:first-child):has(
+    > a.internal-link[data-href*='.pdf#page=']:only-child
+  ) {
   font-size: 12px;
   color: var(--text-muted);
 }
 
 .yolo-whiteboard-text
   .markdown-preview-sizer
-  > :is(blockquote, p:has(> .internal-embed))
-  + p:last-child
+  > p:last-child:not(:first-child):has(
+    > a.internal-link[data-href*='.pdf#page=']:only-child
+  )
   a {
   color: inherit;
 }

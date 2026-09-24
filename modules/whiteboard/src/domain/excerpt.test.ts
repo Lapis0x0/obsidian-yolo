@@ -6,6 +6,8 @@ import {
   parsePdfLink,
   parsePdfSubpath,
   pdfSubpath,
+  commentExcerptCardSize,
+  commentExcerptMarkdown,
   textExcerptCardSize,
   textExcerptMarkdown,
 } from './excerpt'
@@ -106,6 +108,17 @@ describe('excerpt Markdown', () => {
     ).toBe('> two lines\n\n[[a.pdf#page=1&selection=0,0,1,5|a, p.1]]')
   })
 
+  it('writes a comment excerpt as the comment with its link under it', () => {
+    expect(
+      commentExcerptMarkdown(
+        '  first line\nsecond line \n',
+        '[[a.pdf#page=1&selection=0,0,1,5|a, p.1]]',
+      ),
+    ).toBe(
+      'first line\nsecond line\n\n[[a.pdf#page=1&selection=0,0,1,5|a, p.1]]',
+    )
+  })
+
   it('embeds an area excerpt’s picture above its page link', () => {
     expect(areaExcerptMarkdown('[[x.png]]', '[[a.pdf#page=2|a, p.2]]')).toBe(
       '![[x.png]]\n\n[[a.pdf#page=2|a, p.2]]',
@@ -132,6 +145,18 @@ describe('excerpt card sizes', () => {
     expect(mid.h).toBeGreaterThan(short.h)
     expect(mid.h).toBeLessThan(long.h)
     expect(mid.h % 13).toBe(0)
+  })
+
+  it('sizes a comment by its own lines, with no quote indent', () => {
+    const one = commentExcerptCardSize('A thought.', METRICS)
+    const three = commentExcerptCardSize('a\nb\nc', METRICS)
+    expect(three.h).toBeGreaterThan(one.h)
+    expect(three.h % 13).toBe(0)
+    // The same text is narrower-wrapped as a quote.
+    const text = 'word '.repeat(60)
+    expect(commentExcerptCardSize(text, METRICS).h).toBeLessThanOrEqual(
+      textExcerptCardSize(text, METRICS).h,
+    )
   })
 
   it('counts CJK as wide', () => {

@@ -1,5 +1,5 @@
-// Excerpting from a PDF onto the board it is read on: a quote, or a framed
-// area as a picture, becomes bare text written on the board
+// Excerpting from a PDF onto the board it is read on: a quote, an
+// annotation's comment, or a framed area as a picture, becomes bare text written on the board
 // (../../domain/excerpt.ts has the markdown and why) citing its page with
 // Obsidian's own link.
 //
@@ -24,12 +24,15 @@
 // landed out of sight.
 
 import {
+  type CommentExcerpt,
   type ExcerptCardMetrics,
   type ExcerptContent,
   type TextExcerpt,
   areaExcerptCardSize,
   areaExcerptFileName,
   areaExcerptMarkdown,
+  commentExcerptCardSize,
+  commentExcerptMarkdown,
   textExcerptCardSize,
   textExcerptMarkdown,
 } from '../../domain/excerpt'
@@ -120,6 +123,27 @@ export class PdfExcerpts {
     return true
   }
 
+  /** An annotation's comment as a card, citing its passage. Placed as a
+   * quote is. */
+  addComment(reader: PdfReader, excerpt: CommentExcerpt, at?: Point): boolean {
+    const { callbacks } = this
+    if (!callbacks.canCreate()) return false
+    const link = generatePdfLink(this.host, callbacks.t, {
+      pdfPath: reader.path,
+      sourcePath: callbacks.getSourcePath(),
+      page: excerpt.page,
+      selection: excerpt.selection,
+    })
+    if (!link) return false
+    this.place(
+      reader,
+      commentExcerptMarkdown(excerpt.comment, link),
+      commentExcerptCardSize(excerpt.comment, METRICS),
+      at,
+    )
+    return true
+  }
+
   /**
    * A framed area as a card: the region drawn to a PNG, filed where the
    * user's attachment setting files a picture pasted into a note written at
@@ -179,7 +203,9 @@ export class PdfExcerpts {
     const size =
       content.kind === 'text'
         ? textExcerptCardSize(content.quote, METRICS)
-        : areaExcerptCardSize(areaPictureSize(content.rect), METRICS)
+        : content.kind === 'comment'
+          ? commentExcerptCardSize(content.comment, METRICS)
+          : areaExcerptCardSize(areaPictureSize(content.rect), METRICS)
     return { ...centredOn(at, size), w: size.w, h: size.h }
   }
 

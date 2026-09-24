@@ -149,6 +149,8 @@ export class PdfIntegration {
       excerpts: {
         addText: (reader, excerpt, at) =>
           this.pdfExcerpts.addText(reader, excerpt, at),
+        addComment: (reader, excerpt, at) =>
+          this.pdfExcerpts.addComment(reader, excerpt, at),
         addArea: (reader, page, rect, at) =>
           this.pdfExcerpts.addArea(reader, page, rect, at),
         dropPoint: (event) => deps.excerptDropPoint(event),

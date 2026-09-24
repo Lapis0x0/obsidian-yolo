@@ -14,6 +14,17 @@
 // exactly what was selected, and the link under it is the citation — the
 // shape a note takes when a passage is pasted and its source put under it.
 //
+// A comment excerpt is an annotation's comment taken onto the board: the
+// comment, as it was written, then the link to the passage it is about. Not
+// the passage itself — a comment is a small thought of the reader's, and
+// carrying its passage along would make every one of them a quote with a
+// remark under it; the link reads the passage where it is, and the passage
+// is an excerpt of its own when it is wanted beside it.
+//
+//   The argument skips a step here.
+//
+//   [[paper.pdf#page=3&selection=12,0,15,31|paper, p.3]]
+//
 // An area excerpt is the same card with a picture in the quote's place: the
 // framed region as a PNG attachment, embedded, then the link to its page. One
 // card rather than an image card beside a text card, because the two are one
@@ -33,10 +44,19 @@ export type TextExcerpt = Readonly<{
   quote: string
 }>
 
+/** An annotation's comment to excerpt, and where the link under it points. */
+export type CommentExcerpt = Readonly<{
+  page: number
+  /** Null cites the page alone. */
+  selection: SelectionTuple | null
+  comment: string
+}>
+
 /** What an excerpt being dragged will become — enough to know the size of
  * its card before it is made. */
 export type ExcerptContent =
   | Readonly<{ kind: 'text'; quote: string }>
+  | Readonly<{ kind: 'comment'; comment: string }>
   | Readonly<{ kind: 'area'; rect: PdfRectTuple }>
 
 /** Where a PDF link points inside its file. */
@@ -127,6 +147,11 @@ export function textExcerptMarkdown(quote: string, link: string): string {
   return `> ${excerptQuoteText(quote)}\n\n${link}`
 }
 
+/** A comment excerpt's Markdown: the comment as written, then its link. */
+export function commentExcerptMarkdown(comment: string, link: string): string {
+  return `${comment.trim()}\n\n${link}`
+}
+
 /** An area excerpt card's Markdown: the picture (`link` to the attachment,
  * made an embed), then the link to its page. */
 export function areaExcerptMarkdown(
@@ -183,17 +208,40 @@ export function textExcerptCardSize(
   quote: string,
   metrics: ExcerptCardMetrics,
 ): Readonly<{ w: number; h: number }> {
-  const text = excerptQuoteText(quote)
   const inner = metrics.width - BODY_PADDING_X - QUOTE_INDENT_PX
-  let width = 0
-  for (const char of text) {
-    width += CJK.test(char) ? WIDE_CHAR_PX : LATIN_CHAR_PX
+  return {
+    w: metrics.width,
+    h: fitHeight(
+      wrappedLines(excerptQuoteText(quote), inner) * LINE_PX + CHROME_PX,
+      metrics,
+    ),
   }
-  const lines = Math.max(1, Math.ceil(width / inner))
+}
+
+/** The size a comment excerpt is made at: as a quote's, without the quote's
+ * indent, and keeping the comment's own line breaks. */
+export function commentExcerptCardSize(
+  comment: string,
+  metrics: ExcerptCardMetrics,
+): Readonly<{ w: number; h: number }> {
+  const inner = metrics.width - BODY_PADDING_X
+  let lines = 0
+  for (const line of comment.trim().split(/\r?\n/)) {
+    lines += wrappedLines(line, inner)
+  }
   return {
     w: metrics.width,
     h: fitHeight(lines * LINE_PX + CHROME_PX, metrics),
   }
+}
+
+/** How many lines `text` wraps to in `inner` pixels — at least one. */
+function wrappedLines(text: string, inner: number): number {
+  let width = 0
+  for (const char of text) {
+    width += CJK.test(char) ? WIDE_CHAR_PX : LATIN_CHAR_PX
+  }
+  return Math.max(1, Math.ceil(width / inner))
 }
 
 /**
