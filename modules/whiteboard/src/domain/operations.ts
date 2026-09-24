@@ -194,8 +194,9 @@ export function moveNodes(
 ): Board {
   if (ids.length === 0 || (dx === 0 && dy === 0)) return board
   const idSet = new Set(ids)
+  const present = new Set(board.nodes.map((node) => node.id))
   for (const id of idSet) {
-    if (!board.nodes.some((node) => node.id === id)) {
+    if (!present.has(id)) {
       throw new Error(`moveNodes: node "${id}" not found`)
     }
   }
@@ -223,8 +224,11 @@ export function setNodePositions(
   positions: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
 ): Board {
   if (positions.size === 0) return board
+  // Once over the board, not once per position: a spread's reflow moves
+  // hundreds of pages at every step of the drag.
+  const present = new Set(board.nodes.map((node) => node.id))
   for (const id of positions.keys()) {
-    if (!board.nodes.some((node) => node.id === id)) {
+    if (!present.has(id)) {
       throw new Error(`setNodePositions: node "${id}" not found`)
     }
   }
