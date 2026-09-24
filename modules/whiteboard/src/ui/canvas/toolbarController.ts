@@ -348,11 +348,7 @@ export class ToolbarController {
       single?.type === 'pdf-page'
         ? this.callbacks.getBoard().nodes.find((n) => n.id === single.parent)
         : single
-    if (
-      canEdit &&
-      spreadOf &&
-      this.callbacks.isPdfNode(spreadOf)
-    ) {
+    if (canEdit && spreadOf && this.callbacks.isPdfNode(spreadOf)) {
       const open = isSpreadTitle(spreadOf)
       items.push({
         label: this.callbacks.t(

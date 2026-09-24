@@ -59,8 +59,7 @@ import {
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
-  SPREAD_TITLE_WORLD_FONT_PX,
-  SPREAD_TITLE_WORLD_PADDING_X,
+  SPREAD_TITLE_WORLD,
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
@@ -131,6 +130,8 @@ export type OverviewLayerCallbacks = Readonly<{
   /** What a PDF card's or a sheet's title says about its page — see
    * ui/lod.ts's `nodeTitleText`. */
   pdfPageLabels: PdfPageLabels
+  /** "25 pages", localized, for an open spread's title. */
+  spreadPageCountLabel: (id: NodeId) => string
 }>
 
 /**
@@ -535,10 +536,9 @@ export class OverviewLayer {
     }
   }
 
-  /** A spread's title as the DOM draws it: its name alone, in muted type,
-   * no card around it and no ring when selected — the line down the right of
-   * the whole document says that (spreadFrame.ts). One sheet wide, so a
-   * longer name ends in an ellipsis, as it does in the element. */
+  /** A spread's title as the DOM draws it (spread.css): one line with the
+   * type, the name and the page count, the name cut short to fit between the
+   * other two, no box — and a card's ring when it is selected. */
   private drawSpreadTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
@@ -552,22 +552,59 @@ export class OverviewLayer {
   ): void {
     const palette = this.palette
     if (!palette || titles.length === 0) return
-    const padding = SPREAD_TITLE_WORLD_PADDING_X * view.scale
+    const s = view.scale
+    const pad = SPREAD_TITLE_WORLD.padding * s
+    const gap = SPREAD_TITLE_WORLD.gap * s
     ctx.globalAlpha = 1
-    ctx.font = `600 ${SPREAD_TITLE_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
-    ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
+    ctx.textAlign = 'left'
     for (const title of titles) {
+      if (this.callbacks.isSelected(title.node.id)) {
+        ctx.strokeStyle = palette.accent
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        this.strokeRectPath(ctx, title)
+        ctx.stroke()
+      }
       if (title.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      ctx.fillStyle = this.callbacks.isSelected(title.node.id)
-        ? palette.text
-        : palette.muted
+      const mid = title.y + title.h / 2
+      // The type, on its tint.
+      ctx.font = `600 ${SPREAD_TITLE_WORLD.badgeFont * s}px ${palette.fontFamily}`
+      const badgeText = 'PDF'
+      const badgeW =
+        ctx.measureText(badgeText).width +
+        SPREAD_TITLE_WORLD.badgePadding * 2 * s
+      const badgeH = SPREAD_TITLE_WORLD.badgeHeight * s
+      ctx.globalAlpha = 0.12
+      ctx.fillStyle = palette.presets['1']
+      ctx.fillRect(title.x + pad, mid - badgeH / 2, badgeW, badgeH)
+      ctx.globalAlpha = 1
       ctx.fillText(
-        this.ellipsise(ctx, nodeTitleText(title.node), title.w - padding * 2),
-        title.x + padding,
-        title.y + title.h / 2,
+        badgeText,
+        title.x + pad + SPREAD_TITLE_WORLD.badgePadding * s,
+        mid,
+      )
+      // The page count, against the right side.
+      const count = this.callbacks.spreadPageCountLabel(title.node.id)
+      ctx.font = `${SPREAD_TITLE_WORLD.countFont * s}px ${palette.fontFamily}`
+      const countW = ctx.measureText(count).width
+      ctx.fillStyle = palette.muted
+      ctx.fillText(count, title.x + title.w - pad - countW, mid)
+      // The name, in what is left between them.
+      const nameX = title.x + pad + badgeW + gap
+      ctx.font = `500 ${SPREAD_TITLE_WORLD.nameFont * s}px ${palette.fontFamily}`
+      ctx.fillStyle = palette.text
+      ctx.fillText(
+        this.ellipsise(
+          ctx,
+          nodeTitleText(title.node),
+          title.x + title.w - pad - countW - gap - nameX,
+        ),
+        nameX,
+        mid,
       )
     }
+    ctx.lineWidth = 1
   }
 
   /** A card's title in the lines its title block would give it. Measured at

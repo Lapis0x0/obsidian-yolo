@@ -157,6 +157,7 @@ export const en = {
     pageInput: 'Page',
     pageTitle: '{name} · p. {page}',
     sheetTitle: 'p. {page}',
+    pageCount: '{count} pages',
     search: 'Find in document',
     searchPlaceholder: 'Find…',
     searchPrevious: 'Previous (Shift+Enter)',

@@ -55,8 +55,9 @@ export const SPREAD_METRICS: SpreadMetrics = Object.freeze({
   gap: 26,
   /** The title's height; it is one sheet wide (`layoutSpreadGrid`). */
   titleHeight: 39,
-  /** Between the title and the first row of sheets. */
-  titleGap: 13,
+  /** Between the title and the first row of sheets: enough that a
+   * selected title's ring clears the paper, no more. */
+  titleGap: 6,
 })
 
 /** A page's own proportions — its width and height in any one unit. */

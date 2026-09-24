@@ -253,12 +253,18 @@ export const TITLE_BLOCK_WORLD_FONT_PX = 32
 export const TITLE_BLOCK_LINE_HEIGHT = 1.25
 export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
 
-/** A PDF spread's title, in world units — spread.css's
- * `.yolo-whiteboard-spread-title-text`: its font size and the padding before
- * the text. The overview canvas draws the title as that bare line of text,
- * not as a card, so it keeps its face below the tier. */
-export const SPREAD_TITLE_WORLD_FONT_PX = 24
-export const SPREAD_TITLE_WORLD_PADDING_X = 4
+/** A PDF spread's title line, in world units — spread.css's
+ * `.yolo-whiteboard-spread-title` and its parts, which the overview canvas
+ * draws at the same sizes so the title keeps its face below the tier. */
+export const SPREAD_TITLE_WORLD = {
+  padding: 12,
+  gap: 8,
+  badgeFont: 12,
+  badgePadding: 6,
+  badgeHeight: 20,
+  nameFont: 16,
+  countFont: 13,
+} as const
 
 /** Alpha of the colour wash over an overview card — style.css's
  * `.yolo-whiteboard-card-title-block` background, which is

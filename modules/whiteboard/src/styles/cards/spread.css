@@ -4,44 +4,63 @@
  * cards to the board — selected, dragged, snapped and connected like any —
  * so what is here is only what makes them read as a name and as paper. */
 
-/* The title: the document's name and nothing around it, like a group's label
- * (the same weight and colour), sized in world units so it shrinks with the
- * sheets it names. One sheet wide (domain/spread.ts's `layoutSpreadGrid`);
- * a longer name ends in an ellipsis, and its tooltip has all of it. */
+/* The title: one line over the first sheet saying what the document is —
+ * its type, its name, how many pages it has — so a spread reads as a
+ * document, where a group's label reads as the name of a region. No box of
+ * its own, at rest or pointed at: the badge is what marks it. Selected, it
+ * takes a card's ring, since it is the whole document being selected. One
+ * sheet wide (domain/spread.ts's `layoutSpreadGrid`). */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
-  display: block;
-  border: none;
+  display: flex;
+  /* A card is a column (card.css); the title is one line. */
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-color: transparent;
   background-color: transparent;
 }
 
-.yolo-whiteboard-spread-title-text {
-  overflow: hidden;
-  padding: 0 4px;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 39px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered
-  .yolo-whiteboard-spread-title-text,
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected
-  .yolo-whiteboard-spread-title-text {
-  color: var(--text-normal);
-}
-
-/* No ring when selected and no lifted shadow: the title is a name, not a
- * card, and the line down the right of the whole document (the frame below)
- * is what says it is selected. */
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected {
-  box-shadow: none;
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: transparent;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::after {
   content: none;
+}
+
+.yolo-whiteboard-spread-title-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+  color: var(--color-red);
+  background-color: rgba(var(--color-red-rgb), 0.12);
+}
+
+.yolo-whiteboard-spread-title-text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-normal);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.yolo-whiteboard-spread-title-count {
+  flex: none;
+  margin-left: auto;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* The sheets of the document whose title is under the pointer (the canvas's

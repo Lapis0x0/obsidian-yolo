@@ -65,6 +65,8 @@ const GROUP_CLASS = 'yolo-whiteboard-group'
  * standing on the board for the whole of it — no frame, no body. */
 const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
 const SPREAD_TITLE_TEXT_CLASS = 'yolo-whiteboard-spread-title-text'
+const SPREAD_TITLE_BADGE_CLASS = 'yolo-whiteboard-spread-title-badge'
+const SPREAD_TITLE_COUNT_CLASS = 'yolo-whiteboard-spread-title-count'
 /** One sheet of a spread: a card that is a page of paper, edge to edge. */
 const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
 /** The page number in a sheet's corner. */
@@ -186,6 +188,8 @@ export type NodeRuntime = {
  */
 export type CardRendererCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
+  /** "25 pages", localized, for an open spread's title. */
+  spreadPageCountLabel: (id: NodeId) => string
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
@@ -658,21 +662,28 @@ export class CardRenderer {
   }
 
   /**
-   * An open spread's title: its document's name on the board, and the handle
-   * for the whole document — what a group holds, an edge reaches and a drag
-   * carries the pages with (domain/spread.ts). It has no body. It is one
-   * sheet wide whatever the name (`layoutSpreadGrid`); a name longer than
-   * that is cut short, and the whole of it is the tooltip.
+   * An open spread's title: the line over its first sheet that says what the
+   * document is — type, name, length — and the handle for the whole of it:
+   * what a group holds, an edge reaches and a drag carries the pages with
+   * (domain/spread.ts). It has no body. It is one sheet wide whatever the
+   * name (`layoutSpreadGrid`); a name longer than that is cut short, and the
+   * whole of it is the tooltip.
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
-    const text = doc.createElement('div')
+    const badge = doc.createElement('span')
+    badge.className = SPREAD_TITLE_BADGE_CLASS
+    badge.textContent = 'PDF'
+    const text = doc.createElement('span')
     text.className = SPREAD_TITLE_TEXT_CLASS
     const name = basenameWithoutExtension(file)
     text.textContent = name
     text.title = name
-    el.appendChild(text)
+    const count = doc.createElement('span')
+    count.className = SPREAD_TITLE_COUNT_CLASS
+    count.textContent = this.callbacks.spreadPageCountLabel(id)
+    el.append(badge, text, count)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
       el,

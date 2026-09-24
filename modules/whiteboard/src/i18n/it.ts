@@ -155,6 +155,7 @@ export const it = {
     pageInput: 'Pagina',
     pageTitle: '{name} · p. {page}',
     sheetTitle: 'p. {page}',
+    pageCount: '{count} pagine',
     search: 'Trova nel documento',
     searchPlaceholder: 'Trova…',
     searchPrevious: 'Precedente (Maiusc+Invio)',
