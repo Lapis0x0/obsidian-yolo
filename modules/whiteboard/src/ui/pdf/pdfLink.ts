@@ -19,13 +19,22 @@ export function generatePdfLink(
     selection?: SelectionTuple | null
   }>,
 ): string | null {
-  const alias = t('pdf.linkAlias')
-    .replace('{name}', basenameWithoutExtension(options.pdfPath))
-    .replace('{page}', String(options.page))
+  const alias = pdfLinkAlias(t, options.pdfPath, options.page)
   return host.vault.generateLink(
     options.pdfPath,
     options.sourcePath,
     pdfSubpath(options.page, options.selection ?? undefined),
     alias,
   )
+}
+
+/** What such a link shows: the file's name and the page. */
+export function pdfLinkAlias(
+  t: (key: string) => string,
+  pdfPath: string,
+  page: number,
+): string {
+  return t('pdf.linkAlias')
+    .replace('{name}', basenameWithoutExtension(pdfPath))
+    .replace('{page}', String(page))
 }

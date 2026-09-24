@@ -340,10 +340,12 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
   cursor: grab;
 }
 
-/* What a frame or an annotation dragged out carries under the pointer: the
- * region's picture, or the passage as its card will quote it. Faint over
- * where it cannot land, whole over open board. Placed with `transform` by
- * the controller; it arrives by `scale`, which composes with that. */
+/* What a frame, an annotation or a comment dragged out carries under the
+ * pointer while it is over the PDF: the region's picture, the passage, or
+ * the comment. Over open board it steps aside for the landing slot, which
+ * shows the same thing as it will be, at the board's scale
+ * (annotationController.ts's `onGrabMove`). Placed with `transform` by the
+ * controller; it arrives by `scale`, which composes with that. */
 .yolo-whiteboard-pdf-drag-ghost {
   position: absolute;
   left: 0;
@@ -353,7 +355,7 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
   border-radius: var(--radius-s, 4px);
   background-color: var(--background-primary);
   box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
-  opacity: 0.55;
+  opacity: 0.9;
   pointer-events: none;
   transition: opacity var(--yolo-anim-duration-feedback, 120ms)
     var(--yolo-anim-ease-out, ease-out);
@@ -362,8 +364,8 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
     var(--yolo-anim-ease-out, ease-out);
 }
 
-.yolo-whiteboard-pdf-drag-ghost.yolo-whiteboard-pdf-drag-ghost-droppable {
-  opacity: 0.95;
+.yolo-whiteboard-pdf-drag-ghost.yolo-whiteboard-pdf-drag-ghost-landed {
+  opacity: 0;
 }
 
 @keyframes yolo-whiteboard-pdf-drag-ghost-in {

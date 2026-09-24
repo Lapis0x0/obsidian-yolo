@@ -87,7 +87,11 @@ export type PdfIntegrationDeps = Readonly<{
   excerptDropPoint: (e: MouseEvent) => ScreenPoint | null
   /** Shows the card an excerpt being dragged would become, where it would
    * land (world), or takes it away. */
-  showExcerptLanding: (rect: Rect | null) => void
+  /** Shows where an excerpt dragged out of a reader lands (`rect`, world),
+   * drawn as it will read (`body`), or — with null — shows none. */
+  showExcerptLanding: (
+    landing: Readonly<{ rect: Rect; body: HTMLElement }> | null,
+  ) => void
 }>
 
 export class PdfIntegration {
@@ -145,7 +149,10 @@ export class PdfIntegration {
         dropPoint: (event) => deps.excerptDropPoint(event),
         showLanding: (landing) =>
           deps.showExcerptLanding(
-            landing && this.pdfExcerpts.landing(landing.content, landing.at),
+            landing && {
+              rect: this.pdfExcerpts.landing(landing.content, landing.at),
+              body: landing.body,
+            },
           ),
       },
       reportError: core.reportError,
@@ -332,11 +339,12 @@ export class PdfIntegration {
   /** Such a drag over the board: the card it would make, where it would
    * land (`at`, world), or nothing where it cannot. */
   previewExcerpt(e: DragEvent, at: ScreenPoint | null): void {
-    const quote = this.annotationController.draggedQuote(e)
+    const landing = at && this.annotationController.draggedLanding(e)
     this.deps.showExcerptLanding(
-      at && quote !== null
-        ? this.pdfExcerpts.landing({ kind: 'text', quote }, at)
-        : null,
+      landing && {
+        rect: this.pdfExcerpts.landing(landing.content, at),
+        body: landing.body,
+      },
     )
   }
 

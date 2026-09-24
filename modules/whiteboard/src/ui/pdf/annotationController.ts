@@ -39,10 +39,11 @@
 // in a popout window; everything here is built from the view's document.
 
 import { type ScreenPoint } from '../../domain/camera'
-import type {
-  CommentExcerpt,
-  ExcerptContent,
-  TextExcerpt,
+import {
+  type CommentExcerpt,
+  type ExcerptContent,
+  type TextExcerpt,
+  excerptQuoteText,
 } from '../../domain/excerpt'
 import {
   ANNOTATION_COLORS,
@@ -66,7 +67,7 @@ import {
 import { quoteContext, resolveHighlightSelection } from './annotationGeometry'
 import { annotationColorClass } from './annotationLayer'
 import { createReaderIconButton } from './icons'
-import { generatePdfLink } from './pdfLink'
+import { generatePdfLink, pdfLinkAlias } from './pdfLink'
 import type {
   PdfReader,
   ReaderAnnotationEvents,
@@ -97,10 +98,14 @@ export type ExcerptSink = Readonly<{
   /** Where on the board a pointer drag let go at `event` would land, or
    * null where it cannot (off the board, over a card). */
   dropPoint: (event: MouseEvent) => ScreenPoint | null
-  /** Shows the card `content` would become, landed at `at` (world), or —
-   * with null — shows none. */
+  /** Shows the text `content` would become, landed at `at` (world) and
+   * drawn as `body` (`landingBody`), or — with null — shows none. */
   showLanding: (
-    landing: Readonly<{ at: ScreenPoint; content: ExcerptContent }> | null,
+    landing: Readonly<{
+      at: ScreenPoint
+      content: ExcerptContent
+      body: HTMLElement
+    }> | null,
   ) => void
 }>
 
@@ -125,6 +130,9 @@ type Grab = {
      * opens it for editing. */
     | Readonly<{ kind: 'comment'; id: string }>
   ghost: HTMLElement | null
+  /** What it will be once dropped, drawn for the landing slot: made with
+   * the ghost, while what it was taken from is still on screen to copy. */
+  landingBody: HTMLElement | null
 }
 
 /** A press that travels less than this is a click, not a drag. */
@@ -172,7 +180,13 @@ const PREVIEW_CLASS = 'yolo-whiteboard-pdf-comment-preview'
 const GHOST_CLASS = 'yolo-whiteboard-pdf-drag-ghost'
 const GHOST_TEXT_CLASS = 'yolo-whiteboard-pdf-drag-ghost-text'
 const GHOST_COMMENT_CLASS = 'yolo-whiteboard-pdf-drag-ghost-comment'
-const GHOST_DROPPABLE_CLASS = 'yolo-whiteboard-pdf-drag-ghost-droppable'
+/** On the ghost while the landing slot is showing what it carries. */
+const GHOST_LANDED_CLASS = 'yolo-whiteboard-pdf-drag-ghost-landed'
+const LANDING_BODY_CLASS = 'yolo-whiteboard-landing-body'
+const LANDING_CITATION_CLASS = 'yolo-whiteboard-landing-citation'
+/** The widest a framed area is copied for the landing slot: an excerpt's
+ * width (pdfExcerpts.ts). */
+const LANDING_PICTURE_WIDTH_PX = 390
 /** On the view root while something is being dragged out. */
 const GRABBING_CLASS = 'yolo-whiteboard-pdf-grabbing'
 
@@ -217,6 +231,9 @@ export class AnnotationController {
   private editorKeymapDisposer: (() => void) | null = null
   private frameId: number | null = null
   private drag: ExcerptDrag | null = null
+  /** `drag` as it will read once dropped, made on its first pass over the
+   * board. */
+  private dragLandingBody: HTMLElement | null = null
   private grab: Grab | null = null
 
   constructor(private readonly options: AnnotationControllerOptions) {
@@ -308,9 +325,21 @@ export class AnnotationController {
     )
   }
 
-  /** The passage a dragged selection carries, or null for any other drag. */
-  draggedQuote(event: DragEvent): string | null {
-    return this.isExcerptDrag(event) ? (this.drag?.excerpt.quote ?? null) : null
+  /** What a dragged selection will be once dropped — for the landing slot —
+   * or null for any other drag. */
+  draggedLanding(
+    event: DragEvent,
+  ): Readonly<{ content: ExcerptContent; body: HTMLElement }> | null {
+    const drag = this.drag
+    if (!drag || !this.isExcerptDrag(event)) return null
+    const content: ExcerptContent = { kind: 'text', quote: drag.excerpt.quote }
+    this.dragLandingBody ??= landingBody(
+      this.options.parent.ownerDocument,
+      content,
+      pdfLinkAlias(this.options.t, drag.reader.path, drag.excerpt.page),
+      null,
+    )
+    return { content, body: this.dragLandingBody }
   }
 
   /** The selection a drop carries, taken: a drop is one excerpt. */
@@ -1202,6 +1231,7 @@ export class AnnotationController {
   private readonly onDragStart = (event: DragEvent): void => {
     const mode = this.mode
     this.drag = null
+    this.dragLandingBody = null
     if (mode?.kind !== 'selection' || !event.dataTransfer) return
     if (!mode.reader.containsPageNode(event.target as Node | null)) return
     event.dataTransfer.setData(EXCERPT_DRAG_TYPE, '1')
@@ -1248,6 +1278,7 @@ export class AnnotationController {
       y: event.clientY,
       source,
       ghost: null,
+      landingBody: null,
     }
     const doc = this.options.parent.ownerDocument
     doc.addEventListener('pointermove', this.onGrabMove)
@@ -1266,6 +1297,7 @@ export class AnnotationController {
         this.endGrab()
         return
       }
+      grab.landingBody = this.grabbedLandingBody(grab)
       // A press that kept the page from taking it also kept any selection
       // standing; what is being carried now is the annotation.
       grab.reader.clearTextSelection()
@@ -1276,10 +1308,42 @@ export class AnnotationController {
     const ghost = grab.ghost
     // Centred on the pointer, where the card it becomes will be centred.
     ghost.style.transform = `translate(${event.clientX - overlay.left - ghost.offsetWidth / 2}px, ${event.clientY - overlay.top - ghost.offsetHeight / 2}px)`
+    // Over open board, what is carried is shown as what it will be, where it
+    // will be — the landing slot, at the board's scale — and the ghost steps
+    // aside: two pictures of one thing at two sizes read as two things.
     const at = this.options.excerpts.dropPoint(event)
     const content = at && this.grabbedContent(grab)
-    ghost.classList.toggle(GHOST_DROPPABLE_CLASS, content !== null)
-    this.options.excerpts.showLanding(at && content && { at, content })
+    const body = grab.landingBody
+    const landing = at && content && body ? { at, content, body } : null
+    ghost.classList.toggle(GHOST_LANDED_CLASS, landing !== null)
+    this.options.excerpts.showLanding(landing)
+  }
+
+  /** The grabbed thing as it will read once dropped. */
+  private grabbedLandingBody(grab: Grab): HTMLElement | null {
+    const { reader, source } = grab
+    const content = this.grabbedContent(grab)
+    if (!content) return null
+    const annotation =
+      source.kind === 'area'
+        ? null
+        : reader.getAnnotationStore()?.get(source.id)
+    const page = source.kind === 'area' ? source.page : annotation?.anchor.page
+    if (page === undefined) return null
+    let picture: HTMLCanvasElement | null = null
+    if (content.kind === 'area') {
+      const rect =
+        source.kind === 'area'
+          ? reader.getPendingAreaRect()
+          : reader.getAnnotationRect(source.id)
+      picture = rect ? reader.snapshot(rect, LANDING_PICTURE_WIDTH_PX) : null
+    }
+    return landingBody(
+      this.options.parent.ownerDocument,
+      content,
+      pdfLinkAlias(this.options.t, reader.path, page),
+      picture,
+    )
   }
 
   /** What the grabbed thing will be once dropped, or null when it is gone. */
@@ -1471,4 +1535,36 @@ function addArea(
     anchor: { page, rect },
   }
   return store.add([annotation]) ? annotation.id : null
+}
+
+/**
+ * An excerpt as its text will read once made (../../domain/excerpt.ts's
+ * Markdown, drawn without rendering it): the quote, the comment or the
+ * picture, then the citation under it.
+ */
+function landingBody(
+  doc: Document,
+  content: ExcerptContent,
+  citation: string,
+  picture: HTMLCanvasElement | null,
+): HTMLElement {
+  const body = doc.createElement('div')
+  body.className = LANDING_BODY_CLASS
+  if (content.kind === 'text') {
+    const quote = doc.createElement('blockquote')
+    quote.textContent = excerptQuoteText(content.quote)
+    body.appendChild(quote)
+  } else if (content.kind === 'comment') {
+    const comment = doc.createElement('p')
+    comment.textContent = content.comment
+    body.appendChild(comment)
+  } else if (picture) {
+    picture.setCssProps({ width: '100%', height: 'auto' })
+    body.appendChild(picture)
+  }
+  const cite = doc.createElement('p')
+  cite.className = LANDING_CITATION_CLASS
+  cite.textContent = citation
+  body.appendChild(cite)
+  return body
 }

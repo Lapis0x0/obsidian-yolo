@@ -150,26 +150,60 @@
   display: none;
 }
 
-/* Where a card dragged out of a PDF will land (dropImport.ts's
- * `showLandingSlot`): the card it will be, as an empty dashed outline, in
- * the world layer so the camera sizes it as it sizes cards. Fades in and
- * out; follows the pointer without easing, as the card under it would. */
+/* Where an excerpt dragged out of a PDF will land (dropImport.ts's
+ * `showLandingSlot`): the text it will be, drawn as it will read, inside a
+ * faint outline of the room it takes — in the world layer, so the camera
+ * sizes it as it sizes the text. Fades in and out; follows the pointer
+ * without easing, as the text under it would. */
 .yolo-whiteboard-landing-slot {
   position: absolute;
   left: 0;
   top: 0;
-  border: 1.5px dashed
-    color-mix(in srgb, var(--interactive-accent) 70%, transparent);
-  border-radius: var(--radius-m, 6px);
-  background-color: color-mix(
-    in srgb,
-    var(--interactive-accent) 6%,
-    transparent
-  );
+  border: 1px dashed var(--background-modifier-border-hover);
+  border-radius: var(--radius-s, 4px);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--yolo-anim-duration-exit, 160ms)
     var(--yolo-anim-ease-in, ease-in);
+}
+
+/* The text as a bare text excerpt reads (styles/cards/text.css): its inset,
+ * the card type size, the quote, and the small citation under it — a little
+ * faded, being not yet made. */
+.yolo-whiteboard-landing-body {
+  padding: 2px 4px;
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: var(--line-height-normal);
+  overflow-wrap: anywhere;
+  opacity: 0.8;
+}
+
+.yolo-whiteboard-landing-body > * {
+  margin: 0;
+}
+
+.yolo-whiteboard-landing-body > * + * {
+  margin-top: var(--p-spacing, 1rem);
+}
+
+.yolo-whiteboard-landing-body > blockquote {
+  padding-inline-start: var(--size-4-6, 24px);
+  border-inline-start: var(--blockquote-border-thickness, 2px) solid
+    var(--blockquote-border-color, var(--interactive-accent));
+}
+
+.yolo-whiteboard-landing-body > p {
+  white-space: pre-wrap;
+}
+
+.yolo-whiteboard-landing-body > canvas {
+  display: block;
+}
+
+.yolo-whiteboard-landing-body > p.yolo-whiteboard-landing-citation {
+  color: var(--link-color);
+  font-size: 12px;
 }
 
 .yolo-whiteboard-landing-slot.yolo-whiteboard-landing-slot-shown {

@@ -39,7 +39,9 @@
   )::after {
   content: '';
   position: absolute;
-  inset: 0 -3px 0 auto;
+  /* Centred on the right edge, where an arrow from that side starts, so the
+   * arrow leaves from the line rather than from just inside it. */
+  inset: 0 -1px 0 auto;
   width: 2px;
   border-radius: 1px;
   background-color: var(--text-faint);
@@ -133,14 +135,14 @@
 /* Its width is taken hold of at its right side, so that is where the pointer
  * finds a line: the selection's line, a shade firmer, drawn on the handle so it
  * shows whether or not the text is selected. Centred where the selection's
- * sits, 2px past the text's edge (the handle is centred on the edge). */
+ * sits, on the text's edge (the handle is centred on the edge). */
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-resizer[data-resize='right']::before {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(50% + 1px);
+  left: calc(50% - 1px);
   width: 2px;
   border-radius: 1px;
   background-color: var(--text-faint);

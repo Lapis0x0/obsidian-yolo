@@ -64,8 +64,8 @@ import { isPdfNode } from './pdfIntegration'
 import { ALIGN_MENU, DISTRIBUTE_MENU } from './toolbarController'
 
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
-/** Where a card dragged out of a PDF will land, drawn in the world layer
- * (`showLandingSlot`). */
+/** Where an excerpt dragged out of a PDF will land, drawn in the world
+ * layer (`showLandingSlot`). */
 const LANDING_SLOT_CLASS = 'yolo-whiteboard-landing-slot'
 const LANDING_SLOT_SHOWN_CLASS = 'yolo-whiteboard-landing-slot-shown'
 
@@ -416,16 +416,19 @@ export class DropImport {
   }
 
   /**
-   * Shows where a card dragged out of a PDF will land — `rect` in world
-   * units, the card it will be — or, with null, takes the slot away.
+   * Shows where an excerpt dragged out of a PDF will land — `rect` in world
+   * units, the text it will be, holding `body`, that text as it will read —
+   * or, with null, takes the slot away.
    *
    * An excerpt's drag shows this instead of the board-wide drop hint. That
    * hint is for a file from outside, whose card nobody can see coming; an
-   * excerpt's card has a known size and a known place, and saying exactly
-   * that, where the pointer is, says more than lighting up the whole board.
+   * excerpt has a known look and a known place, and showing exactly that,
+   * where the pointer is, says more than lighting up the whole board.
    */
-  showLandingSlot(rect: Readonly<Rect> | null): void {
-    if (!rect) {
+  showLandingSlot(
+    landing: Readonly<{ rect: Readonly<Rect>; body: HTMLElement }> | null,
+  ): void {
+    if (!landing) {
       this.landingSlot?.classList.remove(LANDING_SLOT_SHOWN_CLASS)
       return
     }
@@ -440,9 +443,13 @@ export class DropImport {
     if (slot !== this.deps.worldEl.lastElementChild) {
       this.deps.worldEl.appendChild(slot)
     }
+    // As wide as the text will be, from where its top will be; as tall as
+    // what it holds, laid out as the text will lay it out — the height the
+    // text takes once made, which the rect only estimates.
+    const { rect, body } = landing
+    if (slot.firstChild !== body) slot.replaceChildren(body)
     slot.setCssProps({
       width: `${rect.w}px`,
-      height: `${rect.h}px`,
       transform: `translate(${rect.x}px, ${rect.y}px)`,
     })
     slot.classList.add(LANDING_SLOT_SHOWN_CLASS)
