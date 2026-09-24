@@ -7,6 +7,18 @@
  * bar's hover lift.
  */
 
+/* Obsidian pads the bottom of every view's content (app.css:
+ * `.workspace-leaf-content .view-content`, `--size-4-8`) so a scrolling view's
+ * last line can clear the floating status bar. A board does not scroll — it
+ * pans — so that padding is only a dead strip the board stops short of. Its
+ * own views that do not scroll either (Canvas, PDF, the editor) take it off
+ * the same way, by leaf type; the status bar then floats over the board, as
+ * it does over Canvas, and the creation bar stands clear of it
+ * (ui/cardMenu.ts's `syncLift`). The type is index.tsx's `VIEW_TYPE`. */
+.workspace-leaf-content[data-type='yolo-whiteboard'] > .view-content {
+  padding: 0;
+}
+
 .yolo-whiteboard-root {
   position: relative;
   width: 100%;
