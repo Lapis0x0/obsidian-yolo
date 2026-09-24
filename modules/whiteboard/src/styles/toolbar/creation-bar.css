@@ -75,6 +75,7 @@
 
 .yolo-whiteboard-card-menu-handle::before {
   content: '';
+  /* cardMenu.ts's HANDLE_GRIP_HALF_WIDTH_PX is half of this. */
   width: 36px;
   height: 4px;
   border-radius: 2px;

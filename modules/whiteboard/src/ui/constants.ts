@@ -686,9 +686,17 @@ export const CARD_CONTENT_EXTRA_LINES = 4
 export const CARD_CONTENT_MAX_CHARS = 4000
 
 /**
- * How long the creation bar waits after the pointer leaves it before tucking
- * itself away (ui/cardMenu.ts): long enough that a pointer grazing past, or
- * crossing from the handle onto the bar it just opened, does not set it
- * flapping.
+ * How long the creation bar stays out after the pointer leaves it, or after a
+ * tap on its handle (ui/cardMenu.ts). Reaching for the bar says it is about to
+ * be wanted again; a bar that tucks itself away the moment the pointer moves
+ * on to place what it just made has to be fetched back every time.
  */
-export const CARD_MENU_COLLAPSE_DELAY_MS = 300
+export const CARD_MENU_HOVER_LINGER_MS = 10_000
+
+/**
+ * How long the creation bar stays out after a card is made from it — a
+ * stronger sign than a hover. Cards tend to be made in runs, a few words typed
+ * or a card nudged into place between one and the next; this covers that gap,
+ * and every card made starts it again, so a run keeps the bar out throughout.
+ */
+export const CARD_MENU_CREATE_LINGER_MS = 30_000

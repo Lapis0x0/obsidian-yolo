@@ -22,7 +22,10 @@
 //
 // Popout safety: every element is created from the `Document` handed in.
 
-import { CARD_MENU_COLLAPSE_DELAY_MS } from './constants'
+import {
+  CARD_MENU_CREATE_LINGER_MS,
+  CARD_MENU_HOVER_LINGER_MS,
+} from './constants'
 
 const MENU_CLASS = 'yolo-whiteboard-card-menu'
 const MENU_HIDDEN_CLASS = 'yolo-whiteboard-card-menu-hidden'
@@ -31,6 +34,11 @@ const HANDLE_CLASS = 'yolo-whiteboard-card-menu-handle'
 /** How far the bar and its handle stand off whatever covers the bottom of
  * the board — see `syncLift`. */
 const LIFT_PROPERTY = '--yolo-card-menu-lift'
+/** Half the handle's grip line — creation-bar.css draws it 36px wide. */
+const HANDLE_GRIP_HALF_WIDTH_PX = 18
+/** How close the status bar may come to either end of the grip before the
+ * grip stands up out of its way. */
+const HANDLE_CLEARANCE_PX = 8
 const BUTTON_CLASS = 'yolo-whiteboard-card-menu-button'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -104,9 +112,16 @@ export class CardMenu {
    * by the owner (`setAutoCollapse`), not by this renderer. */
   private autoCollapse = false
   /** A mouse or pen over the bar or its handle. A touch never hovers: a tap
-   * on the handle opens the bar, and it stays open until the owner says the
-   * board is being worked on again. */
+   * on the handle opens the bar and holds it as a hover leaving would. */
   private hovered = false
+  /**
+   * The earliest the bar may tuck itself away (`performance.now()` time). Every
+   * time the bar is reached for, this moves later — never earlier: reaching
+   * for it says it is about to be wanted again, and a card made from it says
+   * so more strongly than a hover (`hold`). Until then, working on the board
+   * does not tuck it away either.
+   */
+  private holdUntil = 0
   private collapseTimer: number | null = null
   private readonly resizeObserver: ResizeObserver | null
 
@@ -146,12 +161,15 @@ export class CardMenu {
    * Whether the bar gets out of the way when it is not being reached for.
    * Turned on once the board is being worked on, and off while there is
    * nothing on it — an empty board's hint points at this bar. Turning it on
-   * again (every press on the board does) tucks away a bar a tap opened.
+   * (every press on the board does) tucks the bar away at once, unless it
+   * was reached for recently enough to still be held out (`holdUntil`).
    */
   setAutoCollapse(enabled: boolean): void {
     this.autoCollapse = enabled
-    this.clearCollapseTimer()
-    this.setCollapsed(enabled && !this.hovered)
+    if (!enabled) this.setCollapsed(false)
+    else if (!this.hovered && this.now() >= this.holdUntil) {
+      this.setCollapsed(true)
+    }
   }
 
   /**
@@ -174,24 +192,32 @@ export class CardMenu {
   }
 
   private readonly onPointerEnter = (event: PointerEvent): void => {
-    if (event.pointerType !== 'touch') this.hovered = true
-    this.clearCollapseTimer()
     this.setCollapsed(false)
+    if (event.pointerType === 'touch') this.hold(CARD_MENU_HOVER_LINGER_MS)
+    else this.hovered = true
   }
 
-  /** Leaving tucks the bar away after a beat, not at once: a pointer that
-   * grazes past, or crosses from the handle onto the bar it just opened,
-   * must not set it flapping. */
   private readonly onPointerLeave = (event: PointerEvent): void => {
     if (event.pointerType === 'touch') return
     this.hovered = false
-    if (!this.autoCollapse) return
+    this.hold(CARD_MENU_HOVER_LINGER_MS)
+  }
+
+  /** Keeps the bar out for at least `ms` from now, then lets it tuck itself
+   * away if nothing else is holding it by then. */
+  private hold(ms: number): void {
+    const win = this.doc.defaultView
+    if (!win) return
+    this.holdUntil = Math.max(this.holdUntil, this.now() + ms)
     this.clearCollapseTimer()
-    this.collapseTimer =
-      this.doc.defaultView?.setTimeout(() => {
-        this.collapseTimer = null
-        if (this.autoCollapse && !this.hovered) this.setCollapsed(true)
-      }, CARD_MENU_COLLAPSE_DELAY_MS) ?? null
+    this.collapseTimer = win.setTimeout(() => {
+      this.collapseTimer = null
+      if (this.autoCollapse && !this.hovered) this.setCollapsed(true)
+    }, this.holdUntil - this.now())
+  }
+
+  private now(): number {
+    return this.doc.defaultView?.performance.now() ?? 0
   }
 
   private setCollapsed(collapsed: boolean): void {
@@ -212,25 +238,35 @@ export class CardMenu {
   }
 
   /**
-   * Stands the bar and its handle clear of the status bar, when the two share
-   * the bottom of the board. The status bar grows leftward from the window's
-   * right edge, so in a narrow pane it reaches under the middle of the board,
-   * where this bar sits — and a handle a few pixels off the bottom would be
-   * underneath it outright.
+   * Stands the bar and its handle clear of the status bar, when it floats
+   * over the bottom of the board where they sit. The status bar grows
+   * leftward from the window's right edge, so in a narrow pane it reaches
+   * under the middle of the board.
+   *
+   * Asked of each on its own width. The handle's grip is far narrower than the
+   * bar it stands in for, and a status bar that only reaches the bar's end
+   * leaves room under the grip — lifting the grip with the bar would leave it
+   * hanging above an empty strip. Its wider hit area may then run under the
+   * status bar's edge; the grip itself never does.
    */
   private readonly syncLift = (): void => {
     const area = this.parent.getBoundingClientRect()
     const bar = this.statusBar()?.getBoundingClientRect()
-    let lift = 0
-    if (bar && bar.height > 0 && area.height > 0) {
+    const liftFor = (halfWidth: number): number => {
+      if (!bar || !(bar.height > 0) || !(area.height > 0)) return 0
       const centre = area.left + area.width / 2
-      const half = this.el.offsetWidth / 2
-      const sharesX = bar.left < centre + half && bar.right > centre - half
-      if (sharesX) lift = Math.max(0, area.bottom - bar.top)
+      const sharesX =
+        bar.left < centre + halfWidth && bar.right > centre - halfWidth
+      return sharesX ? Math.max(0, area.bottom - bar.top) : 0
     }
-    for (const target of [this.el, this.handleEl]) {
-      target.style.setProperty(LIFT_PROPERTY, `${lift}px`)
-    }
+    this.el.style.setProperty(
+      LIFT_PROPERTY,
+      `${liftFor(this.el.offsetWidth / 2)}px`,
+    )
+    this.handleEl.style.setProperty(
+      LIFT_PROPERTY,
+      `${liftFor(HANDLE_GRIP_HALF_WIDTH_PX + HANDLE_CLEARANCE_PX)}px`,
+    )
   }
 
   private appendButton(parent: HTMLElement, action: CardMenuAction): void {
@@ -247,6 +283,7 @@ export class CardMenu {
       // on.
       if (event.detail !== 0) return
       event.preventDefault()
+      this.hold(CARD_MENU_CREATE_LINGER_MS)
       action.onSelect()
     })
     button.addEventListener('pointerdown', (event) => {
@@ -255,6 +292,7 @@ export class CardMenu {
       // focus ring landing on a button whose card is about to be dragged
       // somewhere else. Canvas's `dragTempNode` opens the same way.
       event.preventDefault()
+      this.hold(CARD_MENU_CREATE_LINGER_MS)
       action.onPress(event)
     })
     parent.appendChild(button)
