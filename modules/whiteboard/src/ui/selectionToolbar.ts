@@ -37,6 +37,10 @@ import { TOOLBAR_MARGIN_PX } from './constants'
 const OVERLAY_CLASS = 'yolo-whiteboard-overlay'
 const TOOLBAR_CLASS = 'yolo-whiteboard-toolbar'
 const TOOLBAR_HIDDEN_CLASS = 'yolo-whiteboard-toolbar-hidden'
+/** The host's feedback duration and ease-out curve, mirrored (constants.ts's
+ * ARRANGE_ANIMATION_* explains why a Web Animation needs the numbers). */
+const TOOLBAR_REVEAL_MS = 120
+const TOOLBAR_REVEAL_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
 const TOOLBAR_BUTTON_CLASS = 'yolo-whiteboard-toolbar-button'
 /** The popover's chrome (position, panel, shadow); the class beside it says
  * what is inside. */
@@ -502,7 +506,31 @@ export class SelectionToolbar {
           this.appendButton(item)
       }
     }
+    this.show()
+  }
+
+  /**
+   * Takes the toolbar off `TOOLBAR_HIDDEN_CLASS`, and — when it was hidden —
+   * lets it arrive rather than blink in: a short fade up from a few pixels
+   * below. It appears after every drag, every selection, every pan; appearing
+   * abruptly at that rate is the flicker a board's chrome is most often
+   * accused of. `opacity` and the standalone `translate` property, which
+   * composes with the `transform` its placement is written in.
+   */
+  private show(): void {
+    if (!this.el.classList.contains(TOOLBAR_HIDDEN_CLASS)) return
     this.el.classList.remove(TOOLBAR_HIDDEN_CLASS)
+    const win = this.el.ownerDocument.defaultView
+    if (!win || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return
+    }
+    this.el.animate(
+      [
+        { opacity: 0, translate: '0 4px' },
+        { opacity: 1, translate: '0 0' },
+      ],
+      { duration: TOOLBAR_REVEAL_MS, easing: TOOLBAR_REVEAL_EASING },
+    )
   }
 
   /** Reflects a colour the caller just applied, without rebuilding the
@@ -529,8 +557,12 @@ export class SelectionToolbar {
    * duration. */
   setSuppressed(suppressed: boolean): void {
     if (!this.model) return
-    if (suppressed) this.closePopover()
-    this.el.classList.toggle(TOOLBAR_HIDDEN_CLASS, suppressed)
+    if (suppressed) {
+      this.closePopover()
+      this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
+      return
+    }
+    this.show()
   }
 
   closePopover(): void {

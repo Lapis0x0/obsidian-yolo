@@ -10,7 +10,11 @@
   overflow: visible;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--background-modifier-border);
+  /* One step firmer than Obsidian's hairline: an uncoloured card is an
+   * opaque white box on a near-white board, and the hairline alone let a
+   * dense board's cards melt into it (a coloured card never had the problem —
+   * its border is its colour). */
+  border: 1px solid var(--background-modifier-border-hover);
   border-radius: var(--radius-m, 6px);
   /* background-color rather than the shorthand: a coloured card adds a wash
    * as a background-image layer on top of it (see .yolo-whiteboard-themed
@@ -33,10 +37,12 @@
  * apparent card size. A ring is chrome: what matters is its share of the
  * card's width, not its pixel count, exactly as with the dot grid.
  *
- * The two states are not told apart by weight because they never were:
- * Obsidian has no separate editing ring either. Editing is already
- * unmistakable from the caret, the live-preview markup and the text cursor,
- * and a second thickness tier only competes with them. */
+ * The two states are not told apart by weight. What does tell them apart is
+ * the soft halo an editing card wears outside the ring — the one a card whose
+ * live content has been entered wears (drag.css), because they are one state:
+ * the card has handed its content to the pointer and the keyboard. A selected
+ * card and one being typed into looked identical until the caret blinked,
+ * which in a card scrolled to its middle may not be in view to do. */
 .yolo-whiteboard-card.yolo-whiteboard-card-editing,
 .yolo-whiteboard-card.yolo-whiteboard-card-selected {
   border-color: var(--interactive-accent);
@@ -45,4 +51,29 @@
 
 .yolo-whiteboard-card.yolo-whiteboard-card-editing {
   cursor: text;
+}
+
+/* The card under the pointer (ui/canvas/interactionController.ts's
+ * `setHoveredNode`, the same state that parks the handle layer on it) firms
+ * its border one more step: the cheapest possible way of saying "this is a
+ * thing you can pick up", and the one Figma, tldraw and Miro all give. A
+ * class rather than `:hover`, because the handle layer overhangs the card's
+ * border and a pointer on it is still on the card. Not animated: a hover
+ * colour is a receipt, and a fade reads as lag. */
+.yolo-whiteboard-card.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ):not(.yolo-whiteboard-card-editing) {
+  border-color: var(--background-modifier-border-focus);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ):not(.yolo-whiteboard-card-editing) {
+  border-color: var(--yolo-whiteboard-color);
+}
+
+/* A deleted card on its way out (cardRenderer's `playExit`): only its pixels
+ * are left, and nothing may land on them. */
+.yolo-whiteboard-card-exiting {
+  pointer-events: none;
 }

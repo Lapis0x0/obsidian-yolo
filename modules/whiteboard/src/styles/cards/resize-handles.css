@@ -131,17 +131,32 @@
   border-radius: 50%;
   background-color: var(--interactive-accent);
   border: 3px solid var(--background-modifier-border);
+  /* Faintly there whenever the layer is: the card under the pointer (or the
+   * one selected) says it can be wired up before the pointer has found the
+   * exact spot. Obsidian Canvas shows nothing until the side is hovered,
+   * which leaves connecting a gesture you have to already know about. */
+  opacity: 0.35;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms) ease-out;
+}
+
+/* While something is being dragged, resized or wired, the resting dots would
+ * only be noise riding along with it. The side a connection is pulled from
+ * stays lit (below): its rule is the more specific. */
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer-busy
+  .yolo-whiteboard-connection-point::after {
   opacity: 0;
 }
 
-.yolo-whiteboard-resizer:hover .yolo-whiteboard-connection-point::after,
-.yolo-whiteboard-interaction-layer[data-connecting='top']
+.yolo-whiteboard-interaction-layer:not(.yolo-whiteboard-interaction-layer-busy)
+  .yolo-whiteboard-resizer:hover
+  .yolo-whiteboard-connection-point::after,
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer[data-connecting='top']
   .yolo-whiteboard-connection-point[data-side='top']::after,
-.yolo-whiteboard-interaction-layer[data-connecting='right']
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer[data-connecting='right']
   .yolo-whiteboard-connection-point[data-side='right']::after,
-.yolo-whiteboard-interaction-layer[data-connecting='bottom']
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer[data-connecting='bottom']
   .yolo-whiteboard-connection-point[data-side='bottom']::after,
-.yolo-whiteboard-interaction-layer[data-connecting='left']
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer[data-connecting='left']
   .yolo-whiteboard-connection-point[data-side='left']::after {
   opacity: 1;
 }

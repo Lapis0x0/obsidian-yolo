@@ -12,10 +12,14 @@
  *     border-color: var(--canvas-color);  box-shadow: inset 0 0 0 1px …, 0 0 0 2px …;
  *   }
  *
- * Two differences, both to stay consistent with this stylesheet's own
+ * Three differences, all to stay consistent with this stylesheet's own
  * decisions rather than to depart from Canvas: no resting shadow (see
- * .yolo-whiteboard-card), and a 1px selection ring rather than 2px (the ring
- * weight the accent selection already uses — see the block above).
+ * .yolo-whiteboard-card), a 1px selection ring rather than 2px (the ring
+ * weight the accent selection already uses — see the block above), and no
+ * inset line at rest. Canvas's inset doubles the border to 2px, which next to
+ * an uncoloured card's 1px made every coloured card on a board look selected;
+ * the colour already sets it apart, and the doubling is kept for the selected
+ * state, where it means something.
  *
  * The 7% wash rides as a background-image layer over the card's opaque
  * background-color, which is the same two-layer result Canvas gets from
@@ -26,8 +30,6 @@
     var(--yolo-whiteboard-color) 70%,
     transparent
   );
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklch, var(--yolo-whiteboard-color) 70%, transparent);
   background-image: linear-gradient(
     color-mix(in oklch, var(--yolo-whiteboard-color) 7%, transparent),
     color-mix(in oklch, var(--yolo-whiteboard-color) 7%, transparent)

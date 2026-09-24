@@ -74,3 +74,13 @@ button.yolo-whiteboard-control-item:hover {
 .yolo-whiteboard-control-item.is-disabled svg {
   color: var(--text-faint);
 }
+
+/* The zoom percentage between the two zoom steps: a value that is also the
+ * reset button. Tabular figures, and a width that fits "250%", so the column
+ * does not twitch as the number changes under a zoom. */
+button.yolo-whiteboard-control-item.yolo-whiteboard-control-readout {
+  min-width: calc(var(--canvas-controls-icon-size, 18px) + var(--size-4-2) * 2);
+  padding: var(--size-4-2) var(--size-2-1, 2px);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}

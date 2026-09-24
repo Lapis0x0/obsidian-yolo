@@ -107,6 +107,7 @@ import {
   GRID_WORLD_STEP_PX,
   GROUP_LABEL_WORLD_FONT_PX,
   MOUNT_QUOTA_PER_FRAME,
+  NODE_ENTER_WINDOW_MS,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
@@ -210,6 +211,14 @@ export class WhiteboardCanvas {
   private cardGeneration!: CardGeneration
   private readonly engine = new VirtualizationEngine()
   private readonly pinnedIds = new Set<NodeId>()
+  /**
+   * Nodes the user has just added to the board (created, pasted, dropped,
+   * restored by an undo), with when they were added — what `drainQueues`
+   * plays the arrival for as each one mounts. A node that mounts outside the
+   * window (NODE_ENTER_WINDOW_MS) was added off screen and is not new to
+   * anyone looking at it, so it mounts like any other.
+   */
+  private readonly entering = new Map<NodeId, number>()
 
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
@@ -839,6 +848,11 @@ export class WhiteboardCanvas {
       fitAll: () => this.cameraController.fitCameraToNodes(this.board.nodes),
       zoomToSelection: () => this.cameraController.zoomToSelection(),
       resetCamera: () => this.cameraController.resetCamera(),
+      zoomStep: (direction) => this.cameraController.zoomStep(direction),
+      resetZoom: () => this.cameraController.resetZoom(),
+      selectAll: () => this.selectAll(),
+      duplicateSelection: () => this.clipboard.duplicateSelection(),
+      nudgeSelection: (x, y) => this.nudgeSelection(x, y),
       armSpacePan: () => this.interaction.armSpacePan(),
     })
     this.registerBoardKeyLayers()
@@ -874,9 +888,10 @@ export class WhiteboardCanvas {
     // hear about every zoom — and redraws once one holds still (the reader's
     // own settle). Same lifetime as the camera and the renderer, so nothing
     // to unsubscribe.
-    this.cameraController.subscribeViewChange(() =>
-      this.cardRenderer.setViewScale(this.cameraController.view.scale),
-    )
+    this.cameraController.subscribeViewChange(() => {
+      this.cardRenderer.setViewScale(this.cameraController.view.scale)
+      this.canvasControls?.refreshReadouts()
+    })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
     this.toolbarController = new ToolbarController(this.context, viewport, {
@@ -991,32 +1006,41 @@ export class WhiteboardCanvas {
       this.editing.forceCommitActiveEdit()
       action()
     }
+    const mod = this.interaction.onMacOS() ? '⌘' : 'Ctrl'
     this.canvasControls = new CanvasControls(
       doc,
       this.toolbarController.overlay,
       [
+        // Zoom in, where you are, zoom out — the two steps either side of
+        // the value they change, the way every zoom control outside Canvas
+        // reads. The value is the reset: 100% is what clicking it gives
+        // back, so it needs no icon of its own (Canvas's reset was a
+        // rotating arrow that read as "refresh").
         [
           {
-            label: this.t('controls.zoomIn'),
+            label: `${this.t('controls.zoomIn')}\n(${mod} =)`,
             icon: 'plus',
             onSelect: () => this.cameraController.zoomStep(1),
           },
           {
-            label: this.t('controls.resetZoom'),
-            icon: 'rotate-cw',
+            label: `${this.t('controls.resetZoom')}\n(${mod} 0)`,
+            readout: () =>
+              `${String(Math.round(this.cameraController.view.scale * 100))}%`,
             onSelect: () => this.cameraController.resetZoom(),
           },
+          {
+            label: `${this.t('controls.zoomOut')}\n(${mod} -)`,
+            icon: 'minus',
+            onSelect: () => this.cameraController.zoomStep(-1),
+          },
+        ],
+        [
           {
             // Canvas's own tooltip names the key, spelled the platform's way.
             label: `${this.t('controls.zoomToFit')}\n(${this.interaction.onMacOS() ? '⇧ 1' : 'Shift + 1'})`,
             icon: 'maximize',
             onSelect: () =>
               this.cameraController.fitCameraToNodes(this.board.nodes),
-          },
-          {
-            label: this.t('controls.zoomOut'),
-            icon: 'minus',
-            onSelect: () => this.cameraController.zoomStep(-1),
           },
         ],
         [
@@ -1201,10 +1225,20 @@ export class WhiteboardCanvas {
 
   private applyBoardChange(next: Board, historyKey?: string): void {
     if (next === this.board) return
+    const previous = this.nodesById
     this.board = next
     this.syncBoardIndex()
+    this.markEntering(previous)
     this.history.push(next, historyKey)
     this.context.requestSave()
+  }
+
+  /** Records the nodes `nodesById` has and `previous` did not, as arriving. */
+  private markEntering(previous: ReadonlyMap<NodeId, BoardNode>): void {
+    const now = this.context.getWindow().performance.now()
+    for (const id of this.nodesById.keys()) {
+      if (!previous.has(id)) this.entering.set(id, now)
+    }
   }
 
   private undo(): void {
@@ -1230,8 +1264,13 @@ export class WhiteboardCanvas {
     // The snapshot's camera is discarded: see this section's doc comment.
     this.board = { ...next, camera: cameraFromView(this.cameraController.view) }
     this.syncBoardIndex()
+    this.markEntering(previous)
     for (const [id, card] of previous) {
-      if (this.nodesById.get(id) !== card) this.purgeNodeRuntime(id)
+      if (this.nodesById.get(id) === card) continue
+      // A node the snapshot no longer has at all leaves the way a deleted one
+      // does; one that merely changed is rebuilt in place, which is not a
+      // departure.
+      this.purgeNodeRuntime(id, { exit: !this.nodesById.has(id) })
     }
     this.clearSelection()
     this.rebuildEdgesSvg()
@@ -1549,7 +1588,9 @@ export class WhiteboardCanvas {
         board = removeNode(board, id)
     }
     this.applyBoardChange(board)
-    for (const id of ids) this.purgeNodeRuntime(id)
+    // Deleted on purpose, so each one is let go of visibly (cardRenderer's
+    // `playExit`) rather than vanishing.
+    for (const id of ids) this.purgeNodeRuntime(id, { exit: true })
     this.clearSelection()
     this.interaction.refreshInteractionLayer()
     // Deleting cards cascades edge removal (operations.ts's removeCard) —
@@ -1636,6 +1677,34 @@ export class WhiteboardCanvas {
     )
   }
 
+  /** Mod+A: every node on the board. Declined on an empty board, so the key
+   * travels on to Obsidian rather than being swallowed for nothing. */
+  private selectAll(): boolean {
+    if (this.board.nodes.length === 0) return false
+    this.setSelection(this.board.nodes.map((node) => node.id))
+    return true
+  }
+
+  /**
+   * Arrow keys: the selection moves by whole grid steps, so a nudged card
+   * stays on the lattice the rest were snapped to. A run of nudges is one
+   * undo step — held down, an arrow repeats thirty times a second, and nobody
+   * wants to undo it thirty times — which is what the shared history key
+   * does until anything else is recorded.
+   */
+  private nudgeSelection(stepsX: number, stepsY: number): boolean {
+    if (!this.canEdit || this.selectedIds.size === 0) return false
+    const dx = stepsX * GRID_WORLD_STEP_PX
+    const dy = stepsY * GRID_WORLD_STEP_PX
+    const requested = new Map<NodeId, Readonly<{ x: number; y: number }>>()
+    for (const id of this.selectedIds) {
+      const node = this.nodesById.get(id)
+      if (node) requested.set(id, { x: node.x + dx, y: node.y + dy })
+    }
+    this.applyArrangement(requested, { animate: false, historyKey: 'nudge' })
+    return true
+  }
+
   /** Commits a batch of new positions and brings the canvas back in step with
    * them. A group among them carries what it holds, the same law a drag obeys
    * (`carryGroupMembers`). `setNodePositions` returns the same board when
@@ -1643,6 +1712,7 @@ export class WhiteboardCanvas {
    * and redraws nothing. */
   private applyArrangement(
     requested: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
+    options?: Readonly<{ animate?: boolean; historyKey?: string }>,
   ): void {
     if (!this.canEdit || requested.size === 0) return
     const positions = carryGroupMembers(this.board.nodes, requested)
@@ -1653,7 +1723,7 @@ export class WhiteboardCanvas {
     }
     const next = setNodePositions(this.board, positions)
     if (next === this.board) return
-    this.applyBoardChange(next)
+    this.applyBoardChange(next, options?.historyKey)
     const moved: { el: HTMLElement; dx: number; dy: number }[] = []
     for (const id of positions.keys()) {
       const el = this.cardRenderer.getRuntime(id)?.el
@@ -1667,7 +1737,7 @@ export class WhiteboardCanvas {
       const dy = from.y - node.y
       if (dx !== 0 || dy !== 0) moved.push({ el, dx, dy })
     }
-    this.animateArrangement(moved)
+    if (options?.animate !== false) this.animateArrangement(moved)
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.interaction.refreshInteractionLayer()
     this.toolbarController.positionToolbar()
@@ -1728,7 +1798,11 @@ export class WhiteboardCanvas {
    * since a removed card is absent from the `cards` array `recompute()`
    * iterates, so it would otherwise never be queued for unmount on its
    * own. */
-  private purgeNodeRuntime(id: NodeId): void {
+  private purgeNodeRuntime(
+    id: NodeId,
+    options?: Readonly<{ exit?: boolean }>,
+  ): void {
+    this.entering.delete(id)
     // A run writing into a card that is going away has nowhere to land: the
     // stop settles it, and `planNodeCommit` finds no node to commit to.
     this.cardGeneration.stop(id)
@@ -1739,7 +1813,7 @@ export class WhiteboardCanvas {
     // its `destroyRuntime` doc comment for why the operation is still one
     // call from every caller but this one's point of view (`evictParkedCard`
     // reaches this same method back through the `purgeNode` callback).
-    this.cardRenderer.destroyRuntime(id)
+    this.cardRenderer.destroyRuntime(id, options)
     this.pinnedIds.delete(id)
     this.contentSyncQueue.delete(id)
     this.engine.markUnmounted(id)
@@ -1753,6 +1827,9 @@ export class WhiteboardCanvas {
     // Before the camera glide: a drag reads the live camera to convert its
     // screen delta, and the position the pointer reported belongs to the
     // camera the user was looking at when they reported it.
+    // First of all: a drag held at the viewport's edge moves the camera, and
+    // everything after reads the camera it moved to.
+    this.interaction.advanceAutoPan(now)
     this.interaction.consumePointerMove()
     this.cameraController.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
@@ -1948,7 +2025,15 @@ export class WhiteboardCanvas {
       MOUNT_QUOTA_PER_FRAME,
       UNMOUNT_QUOTA_PER_FRAME,
     )
-    for (const id of toMount) this.cardRenderer.mountNode(id)
+    const now =
+      this.entering.size > 0 ? this.context.getWindow().performance.now() : 0
+    for (const id of toMount) {
+      this.cardRenderer.mountNode(id)
+      const addedAt = this.entering.get(id)
+      if (addedAt === undefined) continue
+      this.entering.delete(id)
+      if (now - addedAt <= NODE_ENTER_WINDOW_MS) this.cardRenderer.playEnter(id)
+    }
     for (const id of toUnmount) this.cardRenderer.unmountNode(id)
     this.drainContentSync()
   }
@@ -2050,6 +2135,7 @@ export class WhiteboardCanvas {
     this.editing.forgetEntered()
     this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
+    this.entering.clear()
     this.contentSyncQueue.clear()
     this.engine.reset()
     this.edgeLayer.clearEdgesSvg()

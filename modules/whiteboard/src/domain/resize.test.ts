@@ -88,6 +88,47 @@ describe('resizeRect', () => {
       expect(resizeRect(start, handle, 0, 0, min)).toEqual(start)
     }
   })
+
+  it('grows about the centre with fromCenter, mirroring the pulled edge', () => {
+    const next = resizeRect(start, 'right', 40, 0, min, { fromCenter: true })
+    expect(next).toEqual({ x: 60, y: 50, w: 340, h: 180 })
+    expect(next.x + next.w / 2).toBe(start.x + start.w / 2)
+  })
+
+  it('keeps the proportions on a corner, following the axis pulled further', () => {
+    const next = resizeRect(start, 'bottomright', 130, 10, min, {
+      keepAspect: true,
+    })
+    expect(next.w).toBe(390)
+    expect(next.h).toBeCloseTo(270)
+    expect(next.x).toBe(start.x)
+    expect(next.y).toBe(start.y)
+  })
+
+  it('pins the opposite corner when a top-left corner keeps its proportions', () => {
+    const next = resizeRect(start, 'topleft', -130, 0, min, {
+      keepAspect: true,
+    })
+    expect(next.x + next.w).toBe(start.x + start.w)
+    expect(next.y + next.h).toBeCloseTo(start.y + start.h)
+    expect(next.w / next.h).toBeCloseTo(start.w / start.h)
+  })
+
+  it('grows the other axis about its middle for an aspect-locked side handle', () => {
+    const next = resizeRect(start, 'right', 130, 0, min, { keepAspect: true })
+    expect(next.w).toBe(390)
+    expect(next.h).toBeCloseTo(270)
+    expect(next.y + next.h / 2).toBeCloseTo(start.y + start.h / 2)
+  })
+
+  it('holds the proportions at the minimum size', () => {
+    const next = resizeRect(start, 'bottomright', -1000, -1000, min, {
+      keepAspect: true,
+    })
+    expect(next.w).toBeGreaterThanOrEqual(min.w)
+    expect(next.h).toBeGreaterThanOrEqual(min.h)
+    expect(next.w / next.h).toBeCloseTo(start.w / start.h)
+  })
 })
 
 describe('rectOfCard', () => {

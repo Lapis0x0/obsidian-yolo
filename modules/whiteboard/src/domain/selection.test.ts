@@ -1,4 +1,9 @@
-import { marqueeRectFromPoints, nodeAtPoint, nodesInMarquee } from './selection'
+import {
+  innermostFrameAt,
+  marqueeRectFromPoints,
+  nodeAtPoint,
+  nodesInMarquee,
+} from './selection'
 import type { VirtualCardRect } from './virtualization'
 
 function card(
@@ -94,5 +99,23 @@ describe('nodeAtPoint', () => {
   it('counts the border as inside', () => {
     expect(nodeAtPoint([a], { x: 0, y: 50 })).toBe('a')
     expect(nodeAtPoint([a], { x: 100, y: 50 })).toBe('a')
+  })
+})
+
+describe('innermostFrameAt', () => {
+  const outer = { id: 'outer', x: 0, y: 0, w: 400, h: 400 }
+  const inner = { id: 'inner', x: 100, y: 100, w: 100, h: 100 }
+
+  it('picks the smallest frame containing the point', () => {
+    expect(innermostFrameAt([outer, inner], { x: 150, y: 150 })).toBe('inner')
+    expect(innermostFrameAt([inner, outer], { x: 150, y: 150 })).toBe('inner')
+  })
+
+  it('falls back to the enclosing frame outside the nested one', () => {
+    expect(innermostFrameAt([outer, inner], { x: 20, y: 20 })).toBe('outer')
+  })
+
+  it('answers null outside every frame', () => {
+    expect(innermostFrameAt([outer, inner], { x: 500, y: 20 })).toBeNull()
   })
 })

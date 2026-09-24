@@ -148,3 +148,24 @@
   .yolo-whiteboard-group-label:not([contenteditable]):active {
   cursor: grabbing;
 }
+
+/* The pointer is inside this frame and on nothing else there
+ * (interactionController.ts's `setHintedGroup`). The frame takes no pointer
+ * events, so it cannot answer a hover itself — and "why can't I grab this
+ * group" is the first thing anyone asks of one. The border firms up and the
+ * label lights, which is where it is picked up. */
+.yolo-whiteboard-group.yolo-whiteboard-group-hinted:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: var(--background-modifier-border-focus);
+}
+
+.yolo-whiteboard-group.yolo-whiteboard-themed.yolo-whiteboard-group-hinted:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: var(--yolo-whiteboard-color);
+}
+
+.yolo-whiteboard-group-hinted .yolo-whiteboard-group-label {
+  color: var(--text-normal);
+}

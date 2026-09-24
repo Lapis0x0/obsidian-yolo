@@ -16,6 +16,7 @@ const CONTROLS_CLASS = 'yolo-whiteboard-controls'
 const GROUP_CLASS = 'yolo-whiteboard-control-group'
 const ITEM_CLASS = 'yolo-whiteboard-control-item'
 const ITEM_DISABLED_CLASS = 'is-disabled'
+const ITEM_READOUT_CLASS = 'yolo-whiteboard-control-readout'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -23,10 +24,6 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  * ui/cardMenu.ts's, for the same reason: no package dependencies. */
 const ICONS: Readonly<Record<CanvasControlIconName, readonly string[]>> = {
   plus: ['M5 12h14', 'M12 5v14'],
-  'rotate-cw': [
-    'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8',
-    'M21 3v5h-5',
-  ],
   maximize: [
     'M8 3H5a2 2 0 0 0-2 2v3',
     'M21 8V5a2 2 0 0 0-2-2h-3',
@@ -46,25 +43,37 @@ const ICONS: Readonly<Record<CanvasControlIconName, readonly string[]>> = {
 
 export type CanvasControlIconName =
   | 'plus'
-  | 'rotate-cw'
   | 'maximize'
   | 'minus'
   | 'undo-2'
   | 'redo-2'
 
-export type CanvasControl = Readonly<{
-  label: string
-  icon: CanvasControlIconName
-  onSelect: () => void
-  /** Asked again on every `refresh`; a control without it is always on. */
-  isEnabled?: () => boolean
-}>
+export type CanvasControl = Readonly<
+  {
+    label: string
+    onSelect: () => void
+    /** Asked again on every `refresh`; a control without it is always on. */
+    isEnabled?: () => boolean
+  } & (
+    | { icon: CanvasControlIconName; readout?: never }
+    | {
+        icon?: never
+        /** A control that shows a value instead of an icon — the zoom
+         * percentage. Asked again on every `refreshReadouts`. */
+        readout: () => string
+      }
+  )
+>
 
 export class CanvasControls {
   private readonly el: HTMLElement
   private readonly stateful: {
     button: HTMLButtonElement
     isEnabled: () => boolean
+  }[] = []
+  private readonly readouts: {
+    el: HTMLElement
+    read: () => string
   }[] = []
 
   constructor(
@@ -99,6 +108,15 @@ export class CanvasControls {
     }
   }
 
+  /** Re-reads every value-showing control. Called on every camera frame, so
+   * the text is only written when it actually changed. */
+  refreshReadouts(): void {
+    for (const { el, read } of this.readouts) {
+      const text = read()
+      if (el.textContent !== text) el.textContent = text
+    }
+  }
+
   destroy(): void {
     this.el.remove()
   }
@@ -108,7 +126,15 @@ export class CanvasControls {
     button.className = ITEM_CLASS
     button.type = 'button'
     button.setAttribute('aria-label', control.label)
-    button.appendChild(this.createIcon(control.icon))
+    if (control.readout) {
+      button.classList.add(ITEM_READOUT_CLASS)
+      const text = this.doc.createElement('span')
+      text.textContent = control.readout()
+      button.appendChild(text)
+      this.readouts.push({ el: text, read: control.readout })
+    } else {
+      button.appendChild(this.createIcon(control.icon))
+    }
     // A click here is about the board, not the button: keeping focus where it
     // was keeps the board's keys (Space, Mod+Z) working after it.
     button.addEventListener('mousedown', (event) => {

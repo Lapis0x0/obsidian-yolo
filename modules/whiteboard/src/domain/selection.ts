@@ -83,3 +83,28 @@ export function nodeAtPoint(
   }
   return null
 }
+
+/**
+ * The smallest of `frames` that contains `point`, or null — which group a
+ * pointer is inside when groups nest. The innermost is the one a press there
+ * would be about (a card dropped there joins it, a label nearest the pointer
+ * names it), so it is the one to point out.
+ */
+export function innermostFrameAt(
+  frames: readonly VirtualCardRect[],
+  point: ScreenPoint,
+): string | null {
+  let best: VirtualCardRect | null = null
+  for (const frame of frames) {
+    if (
+      point.x < frame.x ||
+      point.x > frame.x + frame.w ||
+      point.y < frame.y ||
+      point.y > frame.y + frame.h
+    ) {
+      continue
+    }
+    if (best === null || frame.w * frame.h < best.w * best.h) best = frame
+  }
+  return best?.id ?? null
+}

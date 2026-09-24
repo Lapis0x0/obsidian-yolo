@@ -47,6 +47,24 @@
   overflow: auto;
 }
 
+/* A card shows as much of its note as it has room for and clips the rest, so
+ * text running into the bottom edge is the one sign there is more — and a
+ * hard cut through a line reads as a rendering fault rather than as "more
+ * below". The last stretch fades instead. Only where the card is not
+ * scrolling (a scrolled card has its own bottom to reach, and would fade its
+ * last line there) and not being edited; a card whose text ends above the
+ * band has nothing there to fade, so a short note pays nothing. */
+.yolo-whiteboard-card-body:not(.yolo-whiteboard-card-body-scrolls):not(
+    .yolo-whiteboard-editor-host
+  )
+  > .markdown-preview-view {
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+}
+
 /* A card's content starts at the card's inset. Obsidian's preview absorbs the
  * first block's top margin because a document opens under a header; a card has
  * no header, so the margin would push its one visible screenful down by a line

@@ -17,12 +17,18 @@ import {
 } from '../../domain/naming'
 import type { AnnotationLease } from '../../host/annotationStore'
 import {
+  ARRANGE_ANIMATION_EASING,
   CARD_BODY_LIVE_CLASS,
   CARD_BODY_SCROLLS_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_HANDOFF_CLASS,
   CARD_SELECTED_CLASS,
   GROUP_LABEL_CLASS,
+  NODE_ENTER_FROM_SCALE,
+  NODE_ENTER_MS,
+  NODE_EXIT_EASING,
+  NODE_EXIT_MS,
+  NODE_EXIT_TO_SCALE,
   WEB_URL_PATTERN,
 } from '../constants'
 import { cardMarkdownWindow, nodeTitleText } from '../lod'
@@ -64,6 +70,9 @@ const CARD_PARKED_CLASS = 'yolo-whiteboard-card-parked'
  * page inside it. See WEB_FRAME_POOL_CAPACITY. */
 const CARD_POOLED_CLASS = 'yolo-whiteboard-card-pooled'
 const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
+/** A deleted card playing its way out (`playExit`): pixels only, never a
+ * pointer target. */
+const CARD_EXITING_CLASS = 'yolo-whiteboard-card-exiting'
 
 /**
  * What a web card's frame is allowed to do.
@@ -213,6 +222,9 @@ export type CardRendererCallbacks = Readonly<{
  */
 export class CardRenderer {
   private readonly runtimeByNodeId = new Map<NodeId, NodeRuntime>()
+  /** Deleted cards still playing their exit (`playExit`): no longer cards,
+   * but still holding content that has to be released when they finish. */
+  private readonly exiting = new Set<NodeRuntime>()
   /**
    * Cards parked off screen with what they hold intact, least-recently-seen
    * first: a Set iterates in insertion order, and every re-park deletes before
@@ -276,6 +288,13 @@ export class CardRenderer {
   /** Tears every mounted/parked card down to nothing — used by
    * canvas.ts's `teardownAllCards` on a full reload/dispose. */
   destroyAll(): void {
+    // Cards still fading out are released now; their elements go with the
+    // root, or with the reload that is about to replace them.
+    for (const runtime of this.exiting) {
+      this.destroyCardContent(runtime)
+      runtime.el?.remove()
+    }
+    this.exiting.clear()
     for (const runtime of this.runtimeByNodeId.values()) {
       this.destroyCardContent(runtime)
       runtime.el?.remove()
@@ -295,14 +314,83 @@ export class CardRenderer {
    * see `CardRendererCallbacks.purgeNode` for how the two halves stay one
    * operation from every other caller's point of view.
    */
-  destroyRuntime(id: NodeId): void {
+  destroyRuntime(id: NodeId, options?: Readonly<{ exit?: boolean }>): void {
     const runtime = this.runtimeByNodeId.get(id)
-    if (runtime) {
-      this.destroyCardContent(runtime)
-      runtime.el?.remove()
-    }
     this.runtimeByNodeId.delete(id)
     this.parkedCards.delete(id)
+    if (!runtime) return
+    const el = runtime.el
+    if (options?.exit === true && el && this.playExit(runtime, el)) return
+    this.destroyCardContent(runtime)
+    el?.remove()
+  }
+
+  /**
+   * Lets a deleted card leave rather than vanish: it fades and settles
+   * inward, and its content is released only once it has gone.
+   *
+   * The card stops being a card at once — out of the runtime map, its node id
+   * taken off so no hit test or selection can find it, pointer-transparent —
+   * and only its pixels stay for the length of the motion. Its content is
+   * kept rather than torn down first, because tearing down is what empties a
+   * card (a PDF's pages, a note's render), and a blank box fading out reads
+   * as a glitch rather than a deletion. `exiting` holds it so a board that
+   * closes mid-motion still releases it (`destroyAll`).
+   *
+   * Declined — and the caller tears down at once — under reduced motion, and
+   * for a card the viewer cannot see (parked in the pool).
+   */
+  private playExit(runtime: NodeRuntime, el: HTMLElement): boolean {
+    const win = this.context.getWindow()
+    if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+    if (
+      el.classList.contains(CARD_PARKED_CLASS) ||
+      el.classList.contains(CARD_POOLED_CLASS)
+    ) {
+      return false
+    }
+    delete el.dataset.nodeId
+    el.classList.add(CARD_EXITING_CLASS)
+    this.exiting.add(runtime)
+    const finish = () => {
+      if (!this.exiting.delete(runtime)) return
+      this.destroyCardContent(runtime)
+      el.remove()
+    }
+    const animation = el.animate(
+      [
+        { opacity: 1, transform: 'scale(1)' },
+        { opacity: 0, transform: `scale(${String(NODE_EXIT_TO_SCALE)})` },
+      ],
+      { duration: NODE_EXIT_MS, easing: NODE_EXIT_EASING, fill: 'forwards' },
+    )
+    animation.onfinish = finish
+    animation.oncancel = finish
+    return true
+  }
+
+  /**
+   * Lets a card that has just been added to the board arrive: it grows out of
+   * a slightly smaller, transparent version of itself into place. Only
+   * `opacity` and `transform`, as a Web Animation so nothing is left on the
+   * element for the next drag to inherit (the same reasoning as the
+   * arrangement FLIP in canvas.ts).
+   */
+  playEnter(id: NodeId): void {
+    const el = this.runtimeByNodeId.get(id)?.el
+    if (!el) return
+    const win = this.context.getWindow()
+    if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    el.animate(
+      [
+        {
+          opacity: 0,
+          transform: `scale(${String(NODE_ENTER_FROM_SCALE)})`,
+        },
+        { opacity: 1, transform: 'scale(1)' },
+      ],
+      { duration: NODE_ENTER_MS, easing: ARRANGE_ANIMATION_EASING },
+    )
   }
 
   // -----------------------------------------------------------------------

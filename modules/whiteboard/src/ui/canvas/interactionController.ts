@@ -10,7 +10,6 @@
 // `CanvasCore`. `WhiteboardCanvas` is the only importer; this module must
 // never import it back.
 
-import { screenToWorld } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
 import { NODE_SIDES, edgeAtPoint } from '../../domain/edges'
 import type {
@@ -27,6 +26,7 @@ import {
   rectOfCard,
 } from '../../domain/resize'
 import {
+  innermostFrameAt,
   marqueeRectFromPoints,
   nodeAtPoint,
   nodesInMarquee,
@@ -34,10 +34,15 @@ import {
 import type { CanvasView } from '../../domain/virtualization'
 import {
   CARD_BODY_LIVE_CLASS,
+  EDGE_AUTO_PAN_BAND_PX,
+  EDGE_AUTO_PAN_MAX_SPEED,
   EDGE_HIT_CLASS,
   EDGE_HIT_STROKE_WORLD_PX,
   EDGE_LABEL_CLASS,
   GROUP_LABEL_CLASS,
+  PAN_FLING_MAX_IDLE_MS,
+  PAN_FLING_MIN_SPEED,
+  PAN_FLING_SAMPLE_MS,
 } from '../constants'
 import { asElement } from '../eventTarget'
 
@@ -68,6 +73,16 @@ const INTERACTION_LAYER_HIDDEN_CLASS =
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
+/** On the handle layer while a gesture is moving something: the connection
+ * points it shows at rest would only be noise riding along with a drag. */
+const INTERACTION_LAYER_BUSY_CLASS = 'yolo-whiteboard-interaction-layer-busy'
+/** On the group frame the pointer is inside, when it is on nothing else there:
+ * the frame is pointer-transparent (styles/cards/group.css), so this is how it
+ * says it is a thing — and that its label is where it is picked up. */
+const GROUP_HINTED_CLASS = 'yolo-whiteboard-group-hinted'
+/** On the card the pointer is over — the same state that parks the handle
+ * layer on it (`hoveredNodeId`), shown on the card itself. */
+const CARD_HOVERED_CLASS = 'yolo-whiteboard-card-hovered'
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -92,15 +107,37 @@ type PanInteraction = Readonly<{
   origin: CanvasView
   startX: number
   startY: number
+  /** Where the pointer has recently been, newest last — what the fling the
+   * pan ends with is measured from (`finishPan`). Trimmed to the sampling
+   * window as it grows. */
+  samples: { t: number; x: number; y: number }[]
 }>
 
-/** Screen-space (viewport-local) coordinates — see startMarquee()'s doc
- * comment for why both `originLocal` and `originClient` are tracked. */
+/**
+ * Two fingers on the board: pan and zoom at once (CameraController's
+ * `updatePinch`). Both pointers are the gesture's; their live positions are in
+ * `touchPoints`, which every touch move keeps current, and the frame reads.
+ */
+type PinchInteraction = Readonly<{
+  kind: 'pinch'
+  pointerId: number
+  otherPointerId: number
+  origin: CanvasView
+  /** The viewport's top-left in client coordinates, taken once: the viewport
+   * does not move under a gesture. */
+  viewportOrigin: ScreenPoint
+  startMid: ScreenPoint
+  startDistance: number
+}>
+
+/** The band's origin is kept in world coordinates, not on screen: a marquee
+ * held against the viewport's edge pans the board (auto-pan), and the corner
+ * it started from has to travel with the board rather than stay pinned to the
+ * glass. Only the moving corner is a screen point. */
 type MarqueeInteraction = Readonly<{
   kind: 'marquee'
   pointerId: number
-  originLocal: ScreenPoint
-  originClient: ScreenPoint
+  originWorld: ScreenPoint
   /** Shift was held at press: the band adds to the selection rather than
    * replacing it, and `baseIds` is what it adds to. Snapshotted here because
    * the live selection is cleared as the band is drawn. */
@@ -110,6 +147,7 @@ type MarqueeInteraction = Readonly<{
 
 export type Interaction =
   | PanInteraction
+  | PinchInteraction
   | MarqueeInteraction
   | NodeInteraction
   | ResizeInteraction
@@ -174,7 +212,14 @@ export type InteractionControllerDeps = Readonly<{
   getNodesById: () => ReadonlyMap<NodeId, BoardNode>
   camera: Pick<
     CameraController,
-    'beginPan' | 'updatePan' | 'finishPan' | 'viewportPointFromEvent'
+    | 'beginPan'
+    | 'updatePan'
+    | 'finishPan'
+    | 'fling'
+    | 'panBy'
+    | 'updatePinch'
+    | 'finishPinch'
+    | 'viewportPointFromEvent'
   >
   edges: Pick<EdgeLayer, 'redrawEdgesForNodes' | 'setEdgeHidden'>
   snapGuides: SnapGuideLayer
@@ -239,6 +284,26 @@ export class InteractionController {
   private readonly drag: DragGestures
   private readonly connect: ConnectGesture
 
+  /** Every touch contact on the viewport, by pointer id, in client
+   * coordinates — what a pinch reads its two fingers from. */
+  private readonly touchPoints = new Map<number, ScreenPoint>()
+  /** The group frame currently hinted (`GROUP_HINTED_CLASS`), or null. */
+  private hintedGroupId: NodeId | null = null
+
+  /**
+   * Edge auto-pan's state for the gesture in flight. `lastEvent` is the
+   * gesture's newest pointer event, re-applied every frame the board moves so
+   * the gesture follows the camera even when the hand holds still. `armed`
+   * waits for the pointer to have been clear of the band once: a gesture that
+   * *starts* in it — a card pulled off the creation bar at the bottom edge, a
+   * card pressed near the side — has not asked to be carried anywhere yet.
+   */
+  private autoPan: {
+    lastEvent: PointerEvent
+    armed: boolean
+    lastFrameAt: number | null
+  } | null = null
+
   constructor(private readonly deps: InteractionControllerDeps) {
     this.core = deps.core
     const begin = (interaction: Interaction) => {
@@ -257,6 +322,7 @@ export class InteractionController {
       queueContentSync: deps.queueContentSync,
       onLiveRectsChange: deps.onLiveRectsChange,
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
+      rebuildEdgesSvg: deps.rebuildEdgesSvg,
       viewportCenterWorld: () => deps.menus.viewportCenterWorld(),
       begin,
       getLayerNodeId,
@@ -283,6 +349,9 @@ export class InteractionController {
     this.deps.viewportEl.addEventListener('pointerdown', this.onPointerDown)
     win.addEventListener('pointermove', this.onPointerMove)
     win.addEventListener('pointerup', this.onPointerUp)
+    // A touch the browser takes back (the OS claimed the gesture, the window
+    // lost it) ends whatever it was doing as a release would.
+    win.addEventListener('pointercancel', this.onPointerUp)
     win.addEventListener('keyup', this.onKeyUp)
     win.addEventListener('blur', this.disarmSpacePan)
     this.deps.viewportEl.addEventListener('dblclick', this.onDoubleClick)
@@ -296,6 +365,7 @@ export class InteractionController {
     this.deps.viewportEl.removeEventListener('contextmenu', this.onContextMenu)
     win.removeEventListener('pointermove', this.onPointerMove)
     win.removeEventListener('pointerup', this.onPointerUp)
+    win.removeEventListener('pointercancel', this.onPointerUp)
     win.removeEventListener('keyup', this.onKeyUp)
     win.removeEventListener('blur', this.disarmSpacePan)
     this.disarmSpacePan()
@@ -305,6 +375,10 @@ export class InteractionController {
    * them. */
   reset(): void {
     this.interaction = null
+    this.autoPan = null
+    this.touchPoints.clear()
+    this.hintedGroupId = null
+    this.deps.interactionLayerEl.classList.remove(INTERACTION_LAYER_BUSY_CLASS)
     this.pendingPointerMove = null
     this.drag.setLiveNodeRects(null)
     this.deps.snapGuides.clear()
@@ -330,6 +404,7 @@ export class InteractionController {
     create: (at: ScreenPoint) => void,
   ): void {
     this.drag.beginCreate(e, size, create)
+    if (this.interaction?.kind === 'create') this.watchAutoPan(e)
   }
 
   // -----------------------------------------------------------------------
@@ -366,6 +441,13 @@ export class InteractionController {
     // viewport element these listeners are on: a press on one of them is not
     // also a press on the board behind it.
     if (this.deps.toolbar.isOverlayTarget(e.target)) return
+    if (e.pointerType === 'touch') {
+      this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      // A second finger turns whatever the first one began into a pinch —
+      // as long as that has not yet become something only one finger can
+      // finish (a card on the move, a resize, a connection being drawn).
+      if (this.touchPoints.size === 2 && this.startPinch(e)) return
+    }
     // A press anywhere else dismisses the colour popover, the same way one
     // dismisses a menu.
     this.deps.toolbar.closePopover()
@@ -385,9 +467,15 @@ export class InteractionController {
     // the card. Connection points are nested inside the side handles, so
     // they have to be asked about first in turn.
     const side = this.connectionSideFromEventTarget(e.target)
-    if (side !== null && this.connect.start(side, e)) return
+    if (side !== null && this.connect.start(side, e)) {
+      this.watchAutoPan(e)
+      return
+    }
     const handle = this.resizeHandleFromEventTarget(e.target)
-    if (handle !== null && this.drag.startResize(handle, e)) return
+    if (handle !== null && this.drag.startResize(handle, e)) {
+      this.watchAutoPan(e)
+      return
+    }
 
     if (nodeId !== null) {
       // The card currently being edited owns its own pointer handling
@@ -410,6 +498,7 @@ export class InteractionController {
         pointerId: e.pointerId,
         nodeId,
         startClient: { x: e.clientX, y: e.clientY },
+        startWorld: this.core.worldPointFromEvent(e),
         additive: e.shiftKey,
         dragging: false,
         ids: [],
@@ -417,6 +506,7 @@ export class InteractionController {
         snapCandidates: [],
       }
       this.deps.viewportEl.setPointerCapture(e.pointerId)
+      this.watchAutoPan(e)
       return
     }
 
@@ -427,15 +517,54 @@ export class InteractionController {
       // Its label is being typed: a press in it places the caret, the same
       // rule a group being renamed follows above.
       if (this.deps.editing.isRenaming({ kind: 'edge', id: edgeId })) return
-      if (this.connect.startEdgeReattach(edgeId, e)) return
+      if (this.connect.startEdgeReattach(edgeId, e)) {
+        this.watchAutoPan(e)
+        return
+      }
     }
 
-    if (e.altKey) {
+    // A finger on empty board moves the board — the one-finger gesture every
+    // touch canvas has, and the only way to pan one with no keyboard. The
+    // band selection it would otherwise start is what a mouse is for.
+    if (e.altKey || e.pointerType === 'touch') {
       this.startPan(e)
       return
     }
 
     this.startMarquee(e)
+  }
+
+  /** Converts the gesture in flight into a two-finger pinch, when it is still
+   * one a second finger may take over. */
+  private startPinch(e: PointerEvent): boolean {
+    const current = this.interaction
+    const convertible =
+      current === null ||
+      current.kind === 'pan' ||
+      current.kind === 'marquee' ||
+      (current.kind === 'card' && !current.dragging)
+    if (!convertible || current === null) return false
+    if (current.kind === 'marquee') {
+      this.marqueeEl?.remove()
+      this.marqueeEl = null
+    }
+    const first = this.touchPoints.get(current.pointerId)
+    if (!first) return false
+    const second = { x: e.clientX, y: e.clientY }
+    const rect = this.deps.viewportEl.getBoundingClientRect()
+    const viewportOrigin = { x: rect.left, y: rect.top }
+    this.interaction = {
+      kind: 'pinch',
+      pointerId: current.pointerId,
+      otherPointerId: e.pointerId,
+      origin: { ...this.core.getView() },
+      viewportOrigin,
+      startMid: midpoint(first, second, viewportOrigin),
+      startDistance: Math.hypot(second.x - first.x, second.y - first.y),
+    }
+    this.autoPan = null
+    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    return true
   }
 
   /**
@@ -548,13 +677,29 @@ export class InteractionController {
   private pendingPointerMove: PointerEvent | null = null
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    if (this.touchPoints.has(e.pointerId)) {
+      this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    }
+    const interaction = this.interaction
+    // A pinch is both of its fingers' gesture; either one moving is a reason
+    // to redraw it, from the positions just recorded above.
+    if (
+      interaction?.kind === 'pinch' &&
+      (e.pointerId === interaction.pointerId ||
+        e.pointerId === interaction.otherPointerId)
+    ) {
+      this.pendingPointerMove = e
+      return
+    }
     // While a gesture is in flight the slot is that gesture's: a second
     // pointer (a finger, a pen) reports its own moves, and the one slot would
     // otherwise hand the drag whichever pointer moved last. With none in
     // flight every pointer is a candidate for the hover.
-    const interaction = this.interaction
     if (interaction !== null && e.pointerId !== interaction.pointerId) return
     this.pendingPointerMove = e
+    if (interaction !== null && this.autoPan !== null) {
+      this.autoPan.lastEvent = e
+    }
   }
 
   /** Applies the latest pointer position to the gesture in flight, or — when
@@ -577,9 +722,13 @@ export class InteractionController {
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
     this.deps.toolbar.setToolbarSuppressed(true)
+    this.deps.interactionLayerEl.classList.add(INTERACTION_LAYER_BUSY_CLASS)
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
+        break
+      case 'pinch':
+        this.updatePinch(interaction)
         break
       case 'marquee':
         this.updateMarquee(interaction, e)
@@ -623,7 +772,32 @@ export class InteractionController {
     }
     const onLayer =
       target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
-    this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
+    const nodeId = onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e)
+    this.setHoveredNode(nodeId)
+    this.setHintedGroup(
+      nodeId === null && !onLayer && !this.core.isOverview()
+        ? innermostFrameAt(this.groupNodes(), this.core.worldPointFromEvent(e))
+        : null,
+    )
+  }
+
+  /** Every group on the board — what the frame hint looks for the pointer
+   * in. A pass over the node list, on a coalesced hover frame. */
+  private groupNodes(): BoardNode[] {
+    return this.core.getBoard().nodes.filter((node) => node.type === 'group')
+  }
+
+  private setHintedGroup(id: NodeId | null): void {
+    if (id === this.hintedGroupId) return
+    if (this.hintedGroupId !== null) {
+      this.core
+        .getRuntime(this.hintedGroupId)
+        ?.el?.classList.remove(GROUP_HINTED_CLASS)
+    }
+    this.hintedGroupId = id
+    if (id !== null) {
+      this.core.getRuntime(id)?.el?.classList.add(GROUP_HINTED_CLASS)
+    }
   }
 
   /**
@@ -676,7 +850,15 @@ export class InteractionController {
 
   setHoveredNode(nodeId: NodeId | null): void {
     if (nodeId === this.hoveredNodeId) return
+    if (this.hoveredNodeId !== null) {
+      this.core
+        .getRuntime(this.hoveredNodeId)
+        ?.el?.classList.remove(CARD_HOVERED_CLASS)
+    }
     this.hoveredNodeId = nodeId
+    if (nodeId !== null) {
+      this.core.getRuntime(nodeId)?.el?.classList.add(CARD_HOVERED_CLASS)
+    }
     this.updateInteractionLayer()
   }
 
@@ -754,15 +936,31 @@ export class InteractionController {
     // The frame that would have applied the gesture's last move may not have
     // run yet; every commit below reads the board's live state, so it has to.
     this.consumePointerMove()
+    this.touchPoints.delete(e.pointerId)
     const interaction = this.interaction
     if (!interaction) return
+    // Either finger lifting ends a pinch; the one left down starts nothing
+    // until it too is lifted and pressed again.
+    if (
+      interaction.kind === 'pinch' &&
+      e.pointerId === interaction.otherPointerId
+    ) {
+      this.interaction = null
+      this.endGesture()
+      this.deps.camera.finishPinch()
+      return
+    }
     // Another pointer lifting is not this gesture ending — the one that
     // started it is the one that can finish it.
     if (e.pointerId !== interaction.pointerId) return
     this.interaction = null
+    this.endGesture()
     switch (interaction.kind) {
       case 'pan':
-        this.finishPan()
+        this.finishPan(interaction, e)
+        break
+      case 'pinch':
+        this.deps.camera.finishPinch()
         break
       case 'marquee':
         this.finishMarquee(interaction, e)
@@ -780,9 +978,15 @@ export class InteractionController {
         this.drag.finishCreate(interaction, e)
         break
     }
-    // Whatever the gesture was, it is over: nothing is lining up any more.
+  }
+
+  /** Whatever the gesture was, it is over: nothing is lining up any more, the
+   * toolbar can come back, and the board stops being carried. */
+  private endGesture(): void {
+    this.autoPan = null
     this.deps.snapGuides.clear()
     this.deps.toolbar.setToolbarSuppressed(false)
+    this.deps.interactionLayerEl.classList.remove(INTERACTION_LAYER_BUSY_CLASS)
   }
 
   // -----------------------------------------------------------------------
@@ -799,6 +1003,7 @@ export class InteractionController {
       origin: { ...this.core.getView() },
       startX: e.clientX,
       startY: e.clientY,
+      samples: [{ t: e.timeStamp, x: e.clientX, y: e.clientY }],
     }
     this.deps.camera.beginPan(e.pointerId)
   }
@@ -809,10 +1014,118 @@ export class InteractionController {
       { x: interaction.startX, y: interaction.startY },
       { x: e.clientX, y: e.clientY },
     )
+    const { samples } = interaction
+    samples.push({ t: e.timeStamp, x: e.clientX, y: e.clientY })
+    while (
+      samples.length > 2 &&
+      e.timeStamp - samples[0].t > PAN_FLING_SAMPLE_MS
+    ) {
+      samples.shift()
+    }
   }
 
-  private finishPan(): void {
+  /**
+   * Ends a pan, and throws the board if the hand was still moving when it let
+   * go: the velocity over the last stretch of the drag, handed to the camera's
+   * fling. A hand that had stopped — slower than the floor, or held still
+   * before lifting — puts the board down where it is.
+   */
+  private finishPan(interaction: PanInteraction, e: PointerEvent): void {
     this.deps.camera.finishPan()
+    const { samples } = interaction
+    const last = samples[samples.length - 1]
+    const first = samples.find(
+      (sample) => last.t - sample.t <= PAN_FLING_SAMPLE_MS,
+    )
+    if (!first || first === last) return
+    if (e.timeStamp - last.t > PAN_FLING_MAX_IDLE_MS) return
+    const dt = last.t - first.t
+    if (dt <= 0) return
+    const vx = (last.x - first.x) / dt
+    const vy = (last.y - first.y) / dt
+    if (Math.hypot(vx, vy) < PAN_FLING_MIN_SPEED) return
+    this.deps.camera.fling(vx, vy)
+  }
+
+  private updatePinch(interaction: PinchInteraction): void {
+    const a = this.touchPoints.get(interaction.pointerId)
+    const b = this.touchPoints.get(interaction.otherPointerId)
+    if (!a || !b) return
+    this.deps.camera.updatePinch(
+      interaction.origin,
+      interaction.startMid,
+      interaction.startDistance,
+      midpoint(a, b, interaction.viewportOrigin),
+      Math.hypot(b.x - a.x, b.y - a.y),
+    )
+  }
+
+  // -----------------------------------------------------------------------
+  // Edge auto-pan. A drag that reaches the viewport's edge — a card, a band,
+  // a connection, a card coming off the creation bar, a resize — carries the
+  // board along with it, faster the deeper into the band along the edge it
+  // goes. Driven from the frame loop, not from pointer moves, because the
+  // point is that the board keeps moving while the hand holds still at the
+  // edge; each frame it moves, the gesture is re-applied from its newest
+  // pointer event against the camera it has just moved to (every gesture
+  // measures in world coordinates for exactly this).
+  // -----------------------------------------------------------------------
+
+  /** Advances the auto-pan by one frame. Called by the canvas's frame loop,
+   * before the frame's pointer move is consumed. */
+  advanceAutoPan(now: number): void {
+    const state = this.autoPan
+    const interaction = this.interaction
+    if (!state || !interaction || !this.carriesBoard(interaction)) {
+      if (state) state.lastFrameAt = null
+      return
+    }
+    const local = this.deps.camera.viewportPointFromEvent(state.lastEvent)
+    const width = this.deps.viewportEl.clientWidth
+    const height = this.deps.viewportEl.clientHeight
+    const push = (distance: number) =>
+      Math.min(
+        1,
+        Math.max(0, (EDGE_AUTO_PAN_BAND_PX - distance) / EDGE_AUTO_PAN_BAND_PX),
+      )
+    const x = push(local.x) - push(width - local.x)
+    const y = push(local.y) - push(height - local.y)
+    if (x === 0 && y === 0) {
+      state.armed = true
+      state.lastFrameAt = null
+      return
+    }
+    if (!state.armed) return
+    const elapsed =
+      state.lastFrameAt === null ? 16.7 : Math.min(now - state.lastFrameAt, 50)
+    state.lastFrameAt = now
+    const step = EDGE_AUTO_PAN_MAX_SPEED * elapsed
+    this.deps.camera.panBy(x * step, y * step)
+    // The hand has not moved, but what is under it has: the gesture is
+    // re-applied as if it had, unless a real move is already waiting.
+    this.pendingPointerMove ??= state.lastEvent
+  }
+
+  /** Whether the gesture in flight is one the board is carried along by —
+   * the ones that are moving something, once they are. */
+  private carriesBoard(interaction: Interaction): boolean {
+    switch (interaction.kind) {
+      case 'marquee':
+        return true
+      case 'card':
+      case 'resize':
+      case 'connect':
+      case 'create':
+        return interaction.dragging
+      case 'pan':
+      case 'pinch':
+        return false
+    }
+  }
+
+  /** Starts watching the gesture just begun for the viewport's edge. */
+  private watchAutoPan(e: PointerEvent): void {
+    this.autoPan = { lastEvent: e, armed: false, lastFrameAt: null }
   }
 
   // -----------------------------------------------------------------------
@@ -827,13 +1140,10 @@ export class InteractionController {
   // -----------------------------------------------------------------------
 
   private startMarquee(e: PointerEvent): void {
-    const rect = this.deps.viewportEl.getBoundingClientRect()
-    const originLocal = { x: e.clientX - rect.left, y: e.clientY - rect.top }
     this.interaction = {
       kind: 'marquee',
       pointerId: e.pointerId,
-      originLocal,
-      originClient: { x: e.clientX, y: e.clientY },
+      originWorld: this.core.worldPointFromEvent(e),
       additive: e.shiftKey,
       baseIds: Array.from(this.core.getSelectedIds()),
     }
@@ -843,22 +1153,18 @@ export class InteractionController {
     el.className = MARQUEE_CLASS
     this.deps.viewportEl.appendChild(el)
     this.marqueeEl = el
-    this.applyMarqueeRect(originLocal, originLocal)
+    const local = this.deps.camera.viewportPointFromEvent(e)
+    this.applyMarqueeRect(local, local)
+    this.watchAutoPan(e)
   }
 
-  /** `originClient` is the raw pointerdown screen position (page-relative,
-   * comparable across pointermove events without re-querying
-   * getBoundingClientRect on every one); `originLocal` is that same instant
-   * converted once to viewport-local coordinates. Since the viewport itself
-   * doesn't move mid-gesture, the current local position is just
-   * `originLocal` plus how far the pointer has moved since. */
-  private currentMarqueePoint(
-    interaction: MarqueeInteraction,
-    e: PointerEvent,
-  ): ScreenPoint {
+  /** Where the band's fixed corner is on screen now — wherever the camera has
+   * carried it since the press. */
+  private marqueeOriginOnScreen(interaction: MarqueeInteraction): ScreenPoint {
+    const { tx, ty, scale } = this.core.getView()
     return {
-      x: interaction.originLocal.x + (e.clientX - interaction.originClient.x),
-      y: interaction.originLocal.y + (e.clientY - interaction.originClient.y),
+      x: interaction.originWorld.x * scale + tx,
+      y: interaction.originWorld.y * scale + ty,
     }
   }
 
@@ -867,8 +1173,8 @@ export class InteractionController {
     e: PointerEvent,
   ): void {
     this.applyMarqueeRect(
-      interaction.originLocal,
-      this.currentMarqueePoint(interaction, e),
+      this.marqueeOriginOnScreen(interaction),
+      this.deps.camera.viewportPointFromEvent(e),
     )
   }
 
@@ -883,11 +1189,10 @@ export class InteractionController {
     interaction: MarqueeInteraction,
     e: PointerEvent,
   ): void {
-    const current = this.currentMarqueePoint(interaction, e)
     this.marqueeEl?.remove()
     this.marqueeEl = null
-    const worldA = screenToWorld(this.core.getView(), interaction.originLocal)
-    const worldB = screenToWorld(this.core.getView(), current)
+    const worldA = interaction.originWorld
+    const worldB = this.core.worldPointFromEvent(e)
     // A zero-size marquee (a plain click on empty canvas, no movement)
     // naturally selects nothing here, subsuming "click empty clears
     // selection" without a separate code path. Edges are not marquee-
@@ -994,5 +1299,17 @@ export class InteractionController {
     const el = asElement(target)
     if (!el?.classList.contains(GROUP_LABEL_CLASS)) return null
     return nodeIdFromEventTarget(el)
+  }
+}
+
+/** The midpoint of two client points, in viewport-local coordinates. */
+function midpoint(
+  a: ScreenPoint,
+  b: ScreenPoint,
+  viewportOrigin: ScreenPoint,
+): ScreenPoint {
+  return {
+    x: (a.x + b.x) / 2 - viewportOrigin.x,
+    y: (a.y + b.y) / 2 - viewportOrigin.y,
   }
 }

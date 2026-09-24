@@ -44,10 +44,19 @@ import {
   GRID_WORLD_STEP_PX,
   INTERACTING_TIMEOUT_MS,
   MIN_SCALE_FIT_MARGIN,
+  PAN_FLING_TAU_MS,
   SCALE_BOUNDS,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_PAN_GLIDE_TAU_MS,
 } from '../constants'
+
+/** `WheelEvent.DOM_DELTA_LINE` / `DOM_DELTA_PAGE`, spelled out: the
+ * constructor they hang from belongs to one window, and this view can live in
+ * a popout. */
+const WHEEL_DELTA_LINE = 1
+const WHEEL_DELTA_PAGE = 2
+/** What one wheel "line" is worth in pixels — Chromium's own conversion. */
+const WHEEL_LINE_PX = 40
 
 /**
  * The narrow surface `WhiteboardCanvas` injects so the camera can trigger
@@ -123,6 +132,10 @@ export class CameraController {
     | Readonly<{ kind: 'view'; target: CanvasView; tauMs: number }>
     | null = null
   private lastGlideTime: number | null = null
+  /** A two-finger pinch is in progress: like a glide, it changes the scale
+   * every frame, and like a glide it holds the counter-scale until it ends
+   * (see `applyZoomScale`). */
+  private pinching = false
 
   private interactingTimer: number | null = null
   private settleTimer: number | null = null
@@ -206,18 +219,30 @@ export class CameraController {
 
   readonly onWheel = (e: WheelEvent): void => {
     if (this.callbacks.isParseFailed()) return
+    // Every delta below is tuned in pixels, which is what a trackpad and most
+    // wheels report. A wheel that reports lines (Firefox-style, and some
+    // Windows mice) or pages would otherwise move the board a fortieth of what
+    // the same notch moves any other scroller.
+    const unit =
+      e.deltaMode === WHEEL_DELTA_LINE
+        ? WHEEL_LINE_PX
+        : e.deltaMode === WHEEL_DELTA_PAGE
+          ? this.viewportEl.clientHeight
+          : 1
+    const rawX = e.deltaX * unit
+    const rawY = e.deltaY * unit
     // Shift turns a vertical wheel sideways. macOS does that before the event
     // is raised (it arrives as deltaX); Windows leaves it to whoever scrolls,
     // and scrolling here is ours.
-    const sideways = e.shiftKey && e.deltaX === 0
-    const deltaX = sideways ? e.deltaY : e.deltaX
-    const deltaY = sideways ? 0 : e.deltaY
+    const sideways = e.shiftKey && rawX === 0
+    const deltaX = sideways ? rawY : rawX
+    const deltaY = sideways ? 0 : rawY
     // Zoom stays a canvas gesture wherever the pointer is, including over an
     // open editor — it is about the board, not about what is under the
     // cursor. (Obsidian Canvas zooms over a focused node too.)
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
-      this.zoomBy(e.deltaY, this.viewportPointFromEvent(e))
+      this.zoomBy(rawY, this.viewportPointFromEvent(e))
       return
     }
     // Plain wheel inside the card being edited belongs to that card: its text
@@ -427,7 +452,7 @@ export class CameraController {
     this.applyGrid()
     // Not mid-glide: see `applyZoomScale`. The glide's last frame writes it
     // through `finishGlideFrame`.
-    if (!this.cameraGlide) this.applyZoomScale()
+    if (!this.cameraGlide && !this.pinching) this.applyZoomScale()
     // The screen-space chrome is anchored to world positions, so it has to be
     // re-projected whenever the camera moves. Both are no-ops when nothing is
     // selected and nothing is being typed, which is the common case.
@@ -639,6 +664,83 @@ export class CameraController {
   }
 
   finishPan(): void {
+    this.commitCameraNow()
+  }
+
+  /**
+   * Lets the board coast after a pointer pan, at the velocity (screen px/ms)
+   * the hand released it at.
+   *
+   * A view glide like any other: exponential decay of velocity is exponential
+   * approach of position, so aiming the existing glide at release point plus
+   * velocity × tau, with tau as its time constant, *is* the fling — and it is
+   * interrupted, re-aimed and persisted by exactly the rules every other glide
+   * already follows (a press cancels it in `beginPan`, a wheel notch re-aims
+   * it, the settle persists its target).
+   */
+  fling(velocityX: number, velocityY: number): void {
+    if (this.prefersReducedMotion()) return
+    const from = this.viewValue
+    this.cameraGlide = {
+      kind: 'view',
+      target: {
+        tx: from.tx + velocityX * PAN_FLING_TAU_MS,
+        ty: from.ty + velocityY * PAN_FLING_TAU_MS,
+        scale: from.scale,
+      },
+      tauMs: PAN_FLING_TAU_MS,
+    }
+    this.lastGlideTime = null
+    this.commitCameraNow()
+  }
+
+  /**
+   * Moves the board by a screen distance, now — what a drag held against the
+   * viewport's edge does every frame. Direct, like a pointer pan: the gesture
+   * reads the camera it has just moved to on the same frame, so a glide still
+   * easing underneath would put the card and the pointer out of step.
+   */
+  panBy(dx: number, dy: number): void {
+    this.cameraGlide = null
+    this.lastGlideTime = null
+    const { tx, ty, scale } = this.viewValue
+    this.viewValue = { tx: tx + dx, ty: ty + dy, scale }
+    this.applyTransform()
+    this.markInteracting()
+    this.scheduleCameraSettle()
+  }
+
+  /**
+   * One frame of a two-finger pinch: the world point that was under the
+   * fingers' midpoint when they landed stays under the midpoint wherever it
+   * has moved to, at the scale the change in their spread asks for. Pan and
+   * zoom in one law, computed from the gesture's start every frame like a
+   * pointer pan, so it cannot drift. Points are viewport-local.
+   */
+  updatePinch(
+    origin: CanvasView,
+    startMid: ScreenPoint,
+    startDistance: number,
+    mid: ScreenPoint,
+    distance: number,
+  ): void {
+    if (startDistance <= 0) return
+    this.pinching = true
+    const scale = clampScale(
+      origin.scale * (distance / startDistance),
+      this.zoomScaleBounds(),
+    )
+    this.viewValue = viewAnchoredAt(mid, screenToWorld(origin, startMid), scale)
+    this.applyTransform()
+    this.markInteracting()
+    this.scheduleCameraSettle()
+  }
+
+  /** A pinch lifted: the counter-scaled chrome catches up with the zoom it
+   * ended at (it is never rewritten mid-gesture), and the camera is kept. */
+  finishPinch(): void {
+    this.pinching = false
+    this.applyZoomScale()
     this.commitCameraNow()
   }
 

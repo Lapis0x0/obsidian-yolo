@@ -395,6 +395,14 @@ export const NEW_EMBED_CARD_SIZE = Object.freeze({
  * three dropped notes read as three cards rather than one. */
 export const DROP_STAGGER_PX = 24
 
+/** How far down and right Mod+D puts a copy of the selection: two grid
+ * steps, so the copy sits on the same lattice the original was snapped to and
+ * is plainly a second thing rather than a thicker border on the first. */
+export const DUPLICATE_OFFSET_WORLD_PX = 26
+
+/** Arrow keys move the selection one grid step; with Shift, this many. */
+export const NUDGE_SHIFT_STEPS = 4
+
 /** How long an in-progress card edit may sit unwritten. Blur used to be the
  * only write point, which left everything typed since the card was opened
  * living in the editor and nowhere else; this bounds what a crash costs.
@@ -414,6 +422,59 @@ export const EDIT_PERSIST_THROTTLE_MS = 400
  */
 export const ARRANGE_ANIMATION_MS = 220
 export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+
+/**
+ * A node arriving on the board (created, pasted, restored by an undo) and one
+ * leaving it (deleted, cut). The same mirror of the host's motion tokens as
+ * the arrangement above: entering is `--yolo-anim-duration-enter` on the
+ * ease-out curve, leaving is `--yolo-anim-duration-exit` on the ease-in one.
+ *
+ * The scale is small on purpose. A card is already where it will be — the
+ * motion only has to say "this is new" or "this is going", not travel — so it
+ * grows out of 94% and shrinks into 96%, which reads as a settle rather than a
+ * zoom.
+ */
+export const NODE_ENTER_MS = 220
+export const NODE_ENTER_FROM_SCALE = 0.94
+export const NODE_EXIT_MS = 160
+export const NODE_EXIT_TO_SCALE = 0.96
+export const NODE_EXIT_EASING = 'cubic-bezier(0.4, 0, 1, 1)'
+/** How long a node added to the board still counts as arriving. A node that
+ * only mounts after this — added off screen and panned to later — is not new
+ * to anyone looking at it, and appears like any other mounted card. */
+export const NODE_ENTER_WINDOW_MS = 600
+
+/**
+ * The fling a pointer pan ends with: the camera keeps the velocity the hand
+ * released it at and loses it exponentially, with this time constant.
+ *
+ * An exponential decay of velocity is an exponential approach of position,
+ * which is exactly the glide the camera already runs (domain/camera.ts's
+ * `approachView`): a fling is a view glide aimed at release position plus
+ * velocity × tau, carried by the same machinery as a wheel pan. 300ms lands
+ * between iOS's scroll deceleration and Obsidian Canvas's shorter coast —
+ * long enough to feel like the board has mass, short enough that a small flick
+ * does not send it somewhere the user has to come back from.
+ */
+export const PAN_FLING_TAU_MS = 300
+/** Velocity is measured over the last stretch of the drag, not the whole of
+ * it: what the hand was doing when it let go. */
+export const PAN_FLING_SAMPLE_MS = 80
+/** Below this release speed (screen px/ms) a pan simply stops — a hand that
+ * slowed to a halt before letting go meant to put the board down there. */
+export const PAN_FLING_MIN_SPEED = 0.25
+/** A release this long after the last move was a hold, not a throw. */
+export const PAN_FLING_MAX_IDLE_MS = 50
+
+/**
+ * The band along the viewport's edge where a drag starts carrying the board
+ * with it (a card, a marquee, a connection, a card coming off the creation
+ * bar), and the fastest it carries it. Speed grows linearly with how deep into
+ * the band the pointer is, and is at its maximum at and beyond the edge.
+ */
+export const EDGE_AUTO_PAN_BAND_PX = 40
+/** Screen pixels per millisecond — about 15px a frame at 60Hz. */
+export const EDGE_AUTO_PAN_MAX_SPEED = 0.9
 
 /**
  * On-screen spacing the grid refuses to go below. The visible step is

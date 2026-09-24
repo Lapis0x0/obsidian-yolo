@@ -138,7 +138,9 @@ export function placeFragment(
   return { board: next, nodeIds: Array.from(idMap.values()) }
 }
 
-function boundsCenter(nodes: readonly BoardNode[]): ScreenPoint {
+/** The centre of the nodes' bounding box — where a fragment placed back at
+ * it lands exactly on top of what it was copied from. */
+export function boundsCenter(nodes: readonly BoardNode[]): ScreenPoint {
   if (nodes.length === 0) return { x: 0, y: 0 }
   const minX = Math.min(...nodes.map((node) => node.x))
   const minY = Math.min(...nodes.map((node) => node.y))

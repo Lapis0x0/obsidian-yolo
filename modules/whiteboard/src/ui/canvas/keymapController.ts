@@ -14,6 +14,7 @@
 // only importer; this module must never import it back.
 
 import type { NodeId } from '../../domain/fileFormat'
+import { NUDGE_SHIFT_STEPS } from '../constants'
 
 import type { CanvasCore } from './core'
 
@@ -59,6 +60,12 @@ export type KeymapControllerDeps = Readonly<{
   fitAll: () => boolean
   zoomToSelection: () => boolean
   resetCamera: () => void
+  zoomStep: (direction: 1 | -1) => void
+  resetZoom: () => void
+  selectAll: () => boolean
+  duplicateSelection: () => boolean
+  /** Moves the selection by whole grid steps. */
+  nudgeSelection: (stepsX: number, stepsY: number) => boolean
   armSpacePan: () => boolean
 }>
 
@@ -164,6 +171,23 @@ export class KeymapController implements KeyLayers {
       this.deps.resetCamera()
       return true
     }
+    // The browser's zoom keys, for the board: Mod+= / Mod+- step, Mod+0 back
+    // to 100% — the same three the controls column labels its buttons with.
+    // Consumed, so they zoom the board and not Obsidian's whole window.
+    const zoom = (direction: 1 | -1) => () => {
+      if (busy()) return false
+      this.deps.zoomStep(direction)
+      return true
+    }
+    const actualSize = () => {
+      if (busy()) return false
+      this.deps.resetZoom()
+      return true
+    }
+    const selectAll = () => {
+      if (busy()) return false
+      return this.deps.selectAll()
+    }
     const undo = () => this.run('undo')
     const redo = () => this.run('redo')
     this.viewKeymapDisposer = this.core.context.registerKeymap([
@@ -174,6 +198,10 @@ export class KeymapController implements KeyLayers {
       { modifiers: ['Shift'], key: '1', handler: fitAll },
       { modifiers: ['Shift'], key: '2', handler: fitSelection },
       { modifiers: ['Shift'], key: '0', handler: home },
+      { modifiers: ['Mod'], key: '=', handler: zoom(1) },
+      { modifiers: ['Mod'], key: '-', handler: zoom(-1) },
+      { modifiers: ['Mod'], key: '0', handler: actualSize },
+      { modifiers: ['Mod'], key: 'A', handler: selectAll },
       // Obsidian names Space by its character (measured: both `key` and
       // `vkey` are " "), not by 'Space'.
       { modifiers: [], key: ' ', handler: this.deps.armSpacePan },
@@ -206,7 +234,36 @@ export class KeymapController implements KeyLayers {
   }
 
   private pushSelectionScope(): void {
+    // Arrow keys nudge what is selected — one grid step, or several with
+    // Shift — as every design tool does. Declined into a field, where an
+    // arrow moves the caret.
+    const nudge = (x: number, y: number) => () => {
+      if (this.isTypingIntoField()) return false
+      return this.deps.nudgeSelection(x, y)
+    }
+    const arrows = (
+      [
+        ['ArrowLeft', -1, 0],
+        ['ArrowRight', 1, 0],
+        ['ArrowUp', 0, -1],
+        ['ArrowDown', 0, 1],
+      ] as const
+    ).flatMap(([key, x, y]) => [
+      { modifiers: [] as const, key, handler: nudge(x, y) },
+      {
+        modifiers: ['Shift'] as const,
+        key,
+        handler: nudge(x * NUDGE_SHIFT_STEPS, y * NUDGE_SHIFT_STEPS),
+      },
+    ])
     this.selectionScopeDisposer = this.core.context.registerKeymap([
+      ...arrows,
+      {
+        modifiers: ['Mod'],
+        key: 'D',
+        handler: () =>
+          !this.isTypingIntoField() && this.deps.duplicateSelection(),
+      },
       {
         modifiers: [],
         key: 'Backspace',

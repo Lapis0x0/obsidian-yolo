@@ -8,8 +8,13 @@
 // dispatches to this class and is its only importer; this module must never
 // import the canvas.
 
-import { gridStepForScale, screenDeltaToWorld } from '../../domain/camera'
+import { gridStepForScale } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
+import {
+  boundsCenter,
+  fragmentFromSelection,
+  placeFragment,
+} from '../../domain/clipboard'
 import type { NodeId } from '../../domain/fileFormat'
 import { nodesToDragWith } from '../../domain/groups'
 import { moveNodes, updateNode } from '../../domain/operations'
@@ -17,6 +22,7 @@ import {
   type CardRect,
   type CardSize,
   type ResizeHandle,
+  type ResizeModifiers,
   rectOfCard,
   resizeRect,
 } from '../../domain/resize'
@@ -54,6 +60,12 @@ export type NodeInteraction = {
   readonly pointerId: number
   readonly nodeId: NodeId
   readonly startClient: ScreenPoint
+  /** The world point under the press. A drag is measured in world units from
+   * here rather than as a screen delta divided by the scale, because the
+   * camera can move under a drag — held against the viewport's edge it pans
+   * (InteractionController's auto-pan), and a wheel can pan or zoom it — and
+   * the card has to stay under the pointer through all of it. */
+  readonly startWorld: ScreenPoint
   /** Shift was held: a press that never moves toggles this card in and out of
    * the selection instead of replacing it. */
   readonly additive: boolean
@@ -63,6 +75,9 @@ export type NodeInteraction = {
   /** What this drag may line up with, frozen when it becomes a drag for the
    * same reason `ids` is (see `beginNodeDrag`). */
   snapCandidates: readonly CardRect[]
+  /** Set when an Alt-drag left a copy behind: the move is pushed under the
+   * same history key, so the copy and the move are one undo step. */
+  historyKey?: string
 }
 
 /**
@@ -79,6 +94,8 @@ export type ResizeInteraction = {
   readonly nodeId: NodeId
   readonly handle: ResizeHandle
   readonly startClient: ScreenPoint
+  /** As `NodeInteraction.startWorld`. */
+  readonly startWorld: ScreenPoint
   readonly startRect: CardRect
   dragging: boolean
   /** As `NodeInteraction.snapCandidates`, frozen when the press becomes a
@@ -125,6 +142,8 @@ export type DragGesturesDeps = Readonly<{
   /** A plain click on a card may land on a link into one of the board's
    * PDFs. */
   followPdfLinkAt: (id: NodeId, e: PointerEvent) => void
+  /** The edge set changed (an Alt-drag copied edges along with its cards). */
+  rebuildEdgesSvg: () => void
   viewportCenterWorld: () => ScreenPoint
   /** Makes this the gesture in flight. */
   begin: (interaction: ResizeInteraction | CreateInteraction) => void
@@ -155,6 +174,8 @@ export class DragGestures {
   private createGhostEl: HTMLElement | null = null
   /** Resolved once, on first use (see `onMacOS`). */
   private isMacOS: boolean | null = null
+  /** Makes each Alt-drag's history key its own. */
+  private duplicateDrags = 0
 
   constructor(private readonly deps: DragGesturesDeps) {
     this.core = deps.core
@@ -212,6 +233,7 @@ export class DragGestures {
       nodeId,
       handle,
       startClient: { x: e.clientX, y: e.clientY },
+      startWorld: this.core.worldPointFromEvent(e),
       startRect: rectOfCard(card),
       dragging: false,
       snapCandidates: [],
@@ -250,17 +272,31 @@ export class DragGestures {
     interaction: ResizeInteraction,
     e: PointerEvent,
   ): Readonly<{ rect: CardRect; guides: readonly SnapGuide[] }> {
-    const { scale } = this.core.getView()
-    const dx = (e.clientX - interaction.startClient.x) / scale
-    const dy = (e.clientY - interaction.startClient.y) / scale
+    const world = this.core.worldPointFromEvent(e)
+    const dx = world.x - interaction.startWorld.x
+    const dy = world.y - interaction.startWorld.y
+    // Read off the event, like the snapping key, so either can be pressed or
+    // let go mid-resize.
+    const modifiers: ResizeModifiers = {
+      keepAspect: e.shiftKey,
+      fromCenter: e.altKey,
+    }
     const rect = resizeRect(
       interaction.startRect,
       interaction.handle,
       dx,
       dy,
       MIN_CARD_SIZE,
+      modifiers,
     )
-    if (!this.snappingWanted(e)) return { rect, guides: [] }
+    // Alignment corrects the one edge a handle moves (domain/snapping.ts's
+    // `snapResize`); a proportional or centred resize moves more than that,
+    // and correcting one of its edges would undo the law the modifier asked
+    // for. Either modifier therefore waves alignment away for as long as it is
+    // held.
+    if (e.shiftKey || e.altKey || !this.snappingWanted(e)) {
+      return { rect, guides: [] }
+    }
     const snap = snapResize(
       rect,
       interaction.handle,
@@ -342,7 +378,7 @@ export class DragGestures {
       const dx = e.clientX - interaction.startClient.x
       const dy = e.clientY - interaction.startClient.y
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-      this.beginNodeDrag(interaction)
+      this.beginNodeDrag(interaction, e.altKey)
     }
     this.updateNodeDragPositions(interaction, e)
   }
@@ -355,7 +391,10 @@ export class DragGestures {
    * pick up every card it passed over and drop the ones it had left behind.
    * Obsidian Canvas takes the same snapshot at the same moment.
    */
-  private beginNodeDrag(interaction: NodeInteraction): void {
+  private beginNodeDrag(
+    interaction: NodeInteraction,
+    duplicate: boolean,
+  ): void {
     interaction.dragging = true
     if (!this.core.getSelectedIds().has(interaction.nodeId)) {
       this.core.setSelection([interaction.nodeId])
@@ -364,6 +403,7 @@ export class DragGestures {
       this.core.getSelectedIds(),
       this.core.getBoard().nodes,
     )
+    if (duplicate) this.leaveCopyBehind(interaction)
     interaction.snapCandidates = this.snapCandidates(new Set(interaction.ids))
     for (const id of interaction.ids) {
       const card = this.core.getNode(id)
@@ -374,6 +414,36 @@ export class DragGestures {
       this.deps.pin(id)
       this.core.getRuntime(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
     }
+  }
+
+  /**
+   * Alt held as a drag begins: a copy of what is being dragged stays where it
+   * was, and the drag carries on with the originals — Figma's and Miro's
+   * gesture. The copies are the selection's fragment placed back on itself
+   * (domain/clipboard.ts, the same code paste uses), so a duplicated group
+   * brings its contents and the edges between copied cards come along.
+   *
+   * The copies go in as a history step keyed to this drag, and the move that
+   * ends it is pushed under the same key: one gesture, one undo, which takes
+   * back both the copy and the move. The originals keep their identity — and
+   * so every edge that reaches them from outside the selection — because they
+   * are what the hand is holding.
+   */
+  private leaveCopyBehind(interaction: NodeInteraction): void {
+    if (!this.core.canCreate()) return
+    const board = this.core.getBoard()
+    const fragment = fragmentFromSelection(board, new Set(interaction.ids))
+    if (fragment.nodes.length === 0) return
+    const { board: next } = placeFragment(
+      board,
+      fragment,
+      boundsCenter(fragment.nodes),
+    )
+    interaction.historyKey = `duplicate-drag-${String(++this.duplicateDrags)}`
+    this.core.applyBoardChange(next, interaction.historyKey)
+    this.core.recomputeVisibility()
+    this.core.drainQueues()
+    if (fragment.edges.length > 0) this.deps.rebuildEdgesSvg()
   }
 
   // -----------------------------------------------------------------------
@@ -395,11 +465,11 @@ export class DragGestures {
     interaction: NodeInteraction,
     e: PointerEvent,
   ): Readonly<{ dx: number; dy: number; guides: readonly SnapGuide[] }> {
-    const raw = screenDeltaToWorld(
-      this.core.getView(),
-      e.clientX - interaction.startClient.x,
-      e.clientY - interaction.startClient.y,
-    )
+    const world = this.core.worldPointFromEvent(e)
+    const raw = {
+      dx: world.x - interaction.startWorld.x,
+      dy: world.y - interaction.startWorld.y,
+    }
     if (!this.snappingWanted(e)) return { ...raw, guides: [] }
     const moving: CardRect[] = []
     for (const id of interaction.ids) {
@@ -542,6 +612,7 @@ export class DragGestures {
     if (dx !== 0 || dy !== 0) {
       this.core.applyBoardChange(
         moveNodes(this.core.getBoard(), interaction.ids, dx, dy),
+        interaction.historyKey,
       )
     }
     // The board holds these positions now; the drag's copy of them retires.

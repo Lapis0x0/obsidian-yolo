@@ -20,6 +20,7 @@ import type { ScreenPoint } from '../../domain/camera'
 import {
   type BoardFragment,
   CANVAS_CLIPBOARD_TYPE,
+  boundsCenter,
   fragmentFromSelection,
   fragmentPlainText,
   parseFragment,
@@ -30,6 +31,7 @@ import type { BoardNode, NodeId } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import {
   DROP_STAGGER_PX,
+  DUPLICATE_OFFSET_WORLD_PX,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
   WEB_URL_PATTERN,
@@ -204,6 +206,26 @@ export class ClipboardController {
     // written; the attachments stay, as a pasted one would in a note.
     if (nodes.length === 0 || !this.core.canEdit()) return
     this.place({ nodes, edges: [] }, at)
+  }
+
+  /**
+   * Mod+D: a copy of the selection, a little down and to the right of it, and
+   * selected — so pressing it again walks a row of copies, and a drag moves
+   * the one just made. The same placement paste uses; only where it lands
+   * differs.
+   */
+  duplicateSelection(): boolean {
+    if (!this.core.canCreate()) return false
+    const selected = this.core.getSelectedIds()
+    if (selected.size === 0) return false
+    const fragment = fragmentFromSelection(this.core.getBoard(), selected)
+    if (fragment.nodes.length === 0) return false
+    const center = boundsCenter(fragment.nodes)
+    this.place(fragment, {
+      x: center.x + DUPLICATE_OFFSET_WORLD_PX,
+      y: center.y + DUPLICATE_OFFSET_WORLD_PX,
+    })
+    return true
   }
 
   private place(fragment: BoardFragment, at: ScreenPoint): void {
