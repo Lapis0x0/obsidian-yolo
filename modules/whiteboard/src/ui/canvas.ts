@@ -536,7 +536,6 @@ export class WhiteboardCanvas {
         board = boardWithPageWindow(board, this.focusedNodeId, page)
       }
     }
-    board = this.pdf.foldPanelPosition(board)
     board = this.editing.foldLiveEdit(board)
     // A generation in flight holds its text in the DOM and nowhere else until
     // it settles — the same race the live editor above is folded in for.
@@ -550,7 +549,7 @@ export class WhiteboardCanvas {
   /** About to load a different file into this leaf. */
   clear(): void {
     // The panel reads a card of the board that is leaving.
-    this.pdf.closeReaderPanel(false)
+    this.pdf.closeReaderPanel()
     this.teardownAllCards()
     this.board = emptyBoard()
     this.syncBoardIndex()
@@ -848,11 +847,12 @@ export class WhiteboardCanvas {
       purgeNode: (id) => this.purgeNodeRuntime(id),
       getSourcePath: this.core.getSourcePath,
       getViewScale: () => this.cameraController.view.scale,
-      getPdfStartPosition: (id) => this.pdf.pdfStartPosition(id),
+      getPdfStartPosition: (id) => {
+        const node = this.core.getNode(id)
+        return node?.type === 'file' ? node.startPage : undefined
+      },
       openAnnotations: (path) => this.annotationStores.acquire(path),
       getAnnotationEvents: () => this.pdf.annotationEvents,
-      onPdfPositionChange: (id, position) =>
-        this.pdf.onCardPdfPosition(id, position),
       pdfPageLabel: this.pdfPageLabel,
       reportError: this.core.reportError,
       t: this.core.t,

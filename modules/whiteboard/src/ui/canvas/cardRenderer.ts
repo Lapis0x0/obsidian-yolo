@@ -212,11 +212,8 @@ export type CardRendererCallbacks = Readonly<{
   getSourcePath: () => string
   /** The camera's current zoom — what a PDF card's pages are drawn for. */
   getViewScale: () => number
-  /** Where a PDF card's reader opens: the node's `startPage`, or the reading
-   * panel's place when the panel is reading this card. */
+  /** Where a PDF card's reader opens: the node's `startPage`. */
   getPdfStartPosition: (id: NodeId) => number | undefined
-  /** A PDF card's reader moved (see PdfReader's `onPositionChange`). */
-  onPdfPositionChange: (id: NodeId, position: number) => void
   /** The annotations of a PDF, for a reader to hold until it goes. */
   openAnnotations: (path: string) => AnnotationLease
   /** Where the board's readers report selections and annotation clicks. */
@@ -1379,8 +1376,6 @@ export class CardRenderer {
       interactive: this.callbacks.isFocused(id),
       t: (key) => this.callbacks.t(key),
       canStartWork: () => this.callbacks.canBuildContent(),
-      onPositionChange: (position) =>
-        this.callbacks.onPdfPositionChange(id, position),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),

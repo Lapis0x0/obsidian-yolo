@@ -7,9 +7,10 @@
 //
 // This class is the panel's chrome and nothing else: the divider that
 // resizes it, the header naming the file, the close button, and the reader's
-// container. Which card it belongs to, and keeping it and that card's reader
-// at the same place, is the canvas's business (ui/canvas.ts); so is making
-// room for it, since the board's viewport is what has to shrink.
+// container. Which card it belongs to is the canvas's business
+// (ui/canvas/pdfIntegration.ts), which opens it where that card is and then
+// leaves the two to be read apart; so is making room for it, since the
+// board's viewport is what has to shrink.
 //
 // Every element and listener belongs to the document the panel was built in,
 // so it keeps working in a popout window.
@@ -36,7 +37,6 @@ export type ReaderPanelOptions = Readonly<{
   onClose: () => void
   /** The header's menu button was pressed while reading `path`. */
   onMenu: (event: MouseEvent, path: string) => void
-  onPositionChange: (position: number) => void
   /** The annotations of a PDF, for the panel's reader to hold. */
   openAnnotations: (path: string) => AnnotationLease
   annotationEvents: ReaderAnnotationEvents
@@ -156,7 +156,6 @@ export class ReaderPanel {
       position,
       interactive: true,
       t: this.options.t,
-      onPositionChange: (next) => this.options.onPositionChange(next),
       annotations: this.options.openAnnotations(path),
       annotationEvents: this.options.annotationEvents,
       reportError: this.options.reportError,
@@ -174,11 +173,6 @@ export class ReaderPanel {
 
   getPosition(): number | null {
     return this.reader?.getPosition() ?? null
-  }
-
-  /** Follows another reader: silent, so it is not reported back. */
-  setPosition(position: number): void {
-    this.reader?.setPosition(position)
   }
 
   openSearch(): void {

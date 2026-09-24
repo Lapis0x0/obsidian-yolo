@@ -12,16 +12,11 @@
 // Reading panel. One PDF card at a time is read in a column beside the board
 // (../pdf/readerPanel.ts) — a second reader over the card's file.
 //
-// Position flows both ways without bouncing: the panel's reader reports every
-// move and the card's reader follows it silently (`setPosition` reports
-// nothing back), and the card's reader is followed only while it is the
-// focused card — the only state in which someone can be scrolling it. A card
-// reader built or rebuilt meanwhile opens where the panel is
-// (`pdfStartPosition`), so its first report is the panel's own position.
-//
-// The node's `startPage` is where the position persists: written on a short
-// timer while the panel is read, on close, and folded into every save
-// (`foldPanelPosition`, from the canvas's `getViewData`).
+// The two readers are read apart: the panel opens where the card is (or at
+// the passage a link names), and from then on neither follows the other — a
+// card left at one page while the panel reads another is two places being
+// read, not one place shown twice. The node's `startPage` is the card's own
+// position (the canvas's `commitReadingWindow`); the panel keeps none.
 //
 // The board makes room rather than being covered: its viewport's right edge
 // moves in by the panel's width, and everything measured against the
@@ -33,14 +28,13 @@
 import type { ScreenPoint } from '../../domain/camera'
 import { type PdfLinkTarget, parsePdfLink } from '../../domain/excerpt'
 import type {
-  Board,
   BoardNode,
   FileNode,
   NodeId,
   TextNode,
 } from '../../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
-import { addNode, boardWithPageWindow } from '../../domain/operations'
+import { addNode } from '../../domain/operations'
 import type { Rect } from '../../domain/placement'
 import { isReadableInView } from '../../domain/virtualization'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
@@ -65,11 +59,6 @@ import { PdfExcerpts } from './pdfExcerpts'
 /** How much of the view the board keeps however wide the reading panel is
  * dragged. */
 const READER_PANEL_MIN_BOARD_WIDTH = 240
-/** How often a position read in the panel is written to its card's node.
- * The node is the position's only persistent home — the card's own reader
- * may be parked, evicted or never built — but writing it on every scroll
- * frame would rebuild the board index at scroll rate. */
-const READER_PANEL_COMMIT_MS = 800
 /** The narrowest a PDF card is shown on screen and still read where it is:
  * a page about this wide sets a 10pt body at about 8px. */
 const READABLE_CARD_WIDTH_PX = 500
@@ -108,7 +97,6 @@ export class PdfIntegration {
   private readerPanel: ReaderPanel | null = null
   /** The card the panel is reading, whenever the panel is open. */
   private readerPanelNodeId: NodeId | null = null
-  private readerPanelCommitTimer: number | null = null
   /** Mod+F, bound only while there is a reader to search (see
    * `syncReaderKeymap`). */
   private readerKeymapDisposer: (() => void) | null = null
@@ -196,23 +184,13 @@ export class PdfIntegration {
    * this canvas, a popout migration builds a new one on the same view), and
    * the annotation chrome. */
   destroy(): void {
-    this.closeReaderPanel(false)
+    this.closeReaderPanel()
     this.readerKeymapDisposer?.()
     this.readerKeymapDisposer = null
     this.annotationController.destroy()
   }
 
   // -- the canvas's lifecycle -------------------------------------------
-
-  /** The panel's position is written to its card on a timer; the last
-   * stretch of reading must not wait for it. */
-  foldPanelPosition(board: Board): Board {
-    const panelPage = this.readerPanel?.getPosition() ?? null
-    if (this.readerPanelNodeId !== null && panelPage !== null) {
-      return boardWithPageWindow(board, this.readerPanelNodeId, panelPage)
-    }
-    return board
-  }
 
   /** A narrower view may leave the panel wider than it may be; giving the
    * difference back lays the board out again (`layoutForReaderPanel`). */
@@ -225,7 +203,7 @@ export class PdfIntegration {
    * rename rewriter updates the card, and `syncWithBoard` follows it.) */
   onFileDeleted(path: string): boolean {
     if (path !== this.readerPanel?.path) return false
-    this.closeReaderPanel(false)
+    this.closeReaderPanel()
     return true
   }
 
@@ -255,9 +233,6 @@ export class PdfIntegration {
     const { core } = this.deps
     const node = core.getNode(id)
     if (!node || !isPdfNode(node)) return
-    if (this.readerPanelNodeId !== null && this.readerPanelNodeId !== id) {
-      this.commitReaderPanelPosition()
-    }
     const position = this.deps.getPdfPosition(id) ?? node.startPage
     if (!this.readerPanel) {
       const rootEl = this.deps.rootEl
@@ -271,10 +246,9 @@ export class PdfIntegration {
           this.layoutForReaderPanel()
           if (done) this.deps.readerPanelPrefs.setWidth(width)
         },
-        onClose: () => this.closeReaderPanel(true),
+        onClose: () => this.closeReaderPanel(),
         onMenu: (event, path) =>
           core.host.ui.showMenu(event, [this.exportAnnotatedPdfItem(path)]),
-        onPositionChange: (next) => this.onReaderPanelPosition(next),
         openAnnotations: (path) => this.deps.annotationStores.acquire(path),
         annotationEvents: this.annotationController.events,
         reportError: core.reportError,
@@ -290,12 +264,8 @@ export class PdfIntegration {
     this.syncReaderKeymap()
   }
 
-  /** Closes the panel, writing where it was to its card unless the board it
-   * belongs to is going away (`commit` false). */
-  closeReaderPanel(commit: boolean): void {
+  closeReaderPanel(): void {
     if (!this.readerPanel) return
-    if (commit) this.commitReaderPanelPosition()
-    this.clearReaderPanelCommitTimer()
     this.readerPanel.destroy()
     this.readerPanel = null
     this.readerPanelNodeId = null
@@ -321,7 +291,7 @@ export class PdfIntegration {
     if (id === null || !panel) return
     const node = this.deps.core.getNode(id)
     if (!node || !isPdfNode(node)) {
-      this.closeReaderPanel(false)
+      this.closeReaderPanel()
       return
     }
     if (node.file !== panel.path) {
@@ -331,67 +301,6 @@ export class PdfIntegration {
         panel.getPosition() ?? node.startPage,
       )
     }
-  }
-
-  /** The panel moved: the card's reader follows, and the node hears soon. */
-  private onReaderPanelPosition(position: number): void {
-    const id = this.readerPanelNodeId
-    if (id === null) return
-    this.deps.core.getRuntime(id)?.pdfReader?.setPosition(position)
-    this.scheduleReaderPanelCommit()
-  }
-
-  /** A card's reader moved. Only the focused card is one someone can be
-   * scrolling; any other report is a reader settling where it was put. */
-  onCardPdfPosition(id: NodeId, position: number): void {
-    if (
-      id !== this.readerPanelNodeId ||
-      id !== this.deps.core.getFocusedNodeId()
-    ) {
-      return
-    }
-    this.readerPanel?.setPosition(position)
-    this.scheduleReaderPanelCommit()
-  }
-
-  /** Where a PDF card's reader should open: the panel's place when the panel
-   * is reading that card, which is newer than the node's. */
-  pdfStartPosition(id: NodeId): number | undefined {
-    if (id === this.readerPanelNodeId) {
-      const position = this.readerPanel?.getPosition()
-      if (position !== null && position !== undefined) return position
-    }
-    const node = this.deps.core.getNode(id)
-    return node?.type === 'file' ? node.startPage : undefined
-  }
-
-  private scheduleReaderPanelCommit(): void {
-    if (this.readerPanelCommitTimer !== null) return
-    this.readerPanelCommitTimer = this.deps.core.context
-      .getWindow()
-      .setTimeout(() => {
-        this.readerPanelCommitTimer = null
-        this.commitReaderPanelPosition()
-      }, READER_PANEL_COMMIT_MS)
-  }
-
-  private clearReaderPanelCommitTimer(): void {
-    if (this.readerPanelCommitTimer === null) return
-    this.deps.core.context.getWindow().clearTimeout(this.readerPanelCommitTimer)
-    this.readerPanelCommitTimer = null
-  }
-
-  /** Written like the canvas's `commitReadingWindow`: straight to the board,
-   * not a step anyone would undo. */
-  private commitReaderPanelPosition(): void {
-    this.clearReaderPanelCommitTimer()
-    const { core } = this.deps
-    const id = this.readerPanelNodeId
-    const position = this.readerPanel?.getPosition() ?? null
-    if (id === null || position === null || core.isParseFailed()) return
-    core.commitWithoutHistory(
-      boardWithPageWindow(core.getBoard(), id, position),
-    )
   }
 
   // -- excerpts ---------------------------------------------------------
