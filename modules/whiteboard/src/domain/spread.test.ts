@@ -109,7 +109,7 @@ describe('column counts', () => {
 
 describe('openSpread / closeSpread', () => {
   it('turns the node into its title and adds a sheet per page after it', () => {
-    const before = board([pdf('p', { x: 5, y: 6 }), pdf('q')])
+    const before = board([pdf('p', { x: 1000, y: 0 }), pdf('q')])
     const open = openSpread(before, 'p', threePages)
     expect(open.nodes.map((node) => node.id)).toEqual([
       'p',
@@ -122,7 +122,7 @@ describe('openSpread / closeSpread', () => {
     expect(isSpreadTitle(title)).toBe(true)
     expect(title).toMatchObject({
       ...threePages.title,
-      readerRect: { x: 5, y: 6 },
+      readerRect: { x: 1000, y: 0 },
     })
     expect(open.nodes[2]).toMatchObject({
       type: 'pdf-page',
@@ -175,6 +175,59 @@ describe('openSpread / closeSpread', () => {
     expect(reopened.nodes.find((n) => n.id === 'p/p3')?.x).toBe(-500)
   })
 
+  it('keeps the card and the title at one corner and one width', () => {
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: 0, h: 600 })]),
+      'p',
+      threePages,
+    )
+    const title = open.nodes[0]
+    const moved = {
+      ...open,
+      nodes: open.nodes.map((node) =>
+        node.parent === 'p' || node.id === 'p'
+          ? { ...node, x: node.x + 50, y: node.y + 70 }
+          : node,
+      ),
+    }
+    const card = closeSpread(moved, 'p').nodes[0] as FileNode
+    // Where the title was, as wide as the sheets, as tall as the reader.
+    expect(card).toMatchObject({
+      x: title.x + 50,
+      y: title.y + 70,
+      w: threePages.pages[0].w,
+      h: 600,
+    })
+
+    // A card moved while its pages were away brings them along.
+    const shifted = { ...closeSpread(moved, 'p') }
+    shifted.nodes = [{ ...card, x: card.x - 200, y: card.y + 10 }]
+    const reopened = openSpread(shifted, 'p')
+    expect(reopened.nodes[0]).toMatchObject({ x: card.x - 200, y: card.y + 10 })
+    expect(reopened.nodes[1]).toMatchObject({
+      x: threePages.pages[0].x + 50 - 200,
+      y: threePages.pages[0].y + 70 + 10,
+    })
+  })
+
+  it('lays the sheets out again at the width of a card resized while closed', () => {
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: 0 })]),
+      'p',
+      threePages,
+    )
+    const closed = closeSpread(open, 'p')
+    const card = closed.nodes[0] as FileNode
+    const wider = { ...closed, nodes: [{ ...card, w: 780 }] }
+    const reopened = openSpread(wider, 'p')
+    const sheets = spreadPages(reopened, 'p')
+    expect(sheets.map((sheet) => sheet.w)).toEqual([780, 780, 780])
+    expect(reopened.nodes[0].w).toBe(780)
+    // As many across as before: two.
+    expect(sheets[0].y).toBe(sheets[1].y)
+    expect(sheets[2].y).toBeGreaterThan(sheets[0].y)
+  })
+
   it('leaves a node it cannot open alone', () => {
     const plain = board([pdf('p')])
     expect(openSpread(plain, 'p')).toBe(plain)
@@ -184,18 +237,22 @@ describe('openSpread / closeSpread', () => {
 
 describe('the file round trip', () => {
   it('writes an open spread as one node with the reader card rectangle', () => {
-    const open = openSpread(board([pdf('p', { x: 5, y: 6 })]), 'p', threePages)
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: 0 })]),
+      'p',
+      threePages,
+    )
     const file = collapseBoard(open)
     expect(file.nodes).toHaveLength(1)
     const node = file.nodes[0] as FileNode
-    expect(node).toMatchObject({ x: 5, y: 6 })
+    expect(node).toMatchObject({ x: 1000, y: 0 })
     expect(node.spread?.open).toBe(true)
 
     const text = serializeBoard(file)
     const json = JSON.parse(text) as { nodes: Record<string, unknown>[] }
     expect(json.nodes[0].spread).toEqual({
       open: true,
-      title: [1000, 0, 200, SPREAD_METRICS.titleHeight],
+      title: [1000, 0, 390, SPREAD_METRICS.titleHeight],
       pages: threePages.pages.map((r) => [r.x, r.y, r.w, r.h]),
     })
 
@@ -252,7 +309,7 @@ describe('the file round trip', () => {
 
 describe('the document as a whole', () => {
   const open = openSpread(
-    board([pdf('p'), pdf('q', { x: -2000 })]),
+    board([pdf('p', { x: 1000, y: 0 }), pdf('q', { x: -2000 })]),
     'p',
     threePages,
   )
@@ -291,7 +348,7 @@ describe('the document as a whole', () => {
       type: 'group',
       x: 990,
       y: -10,
-      w: 300,
+      w: 410,
       h: 60,
       extra: {},
     }
