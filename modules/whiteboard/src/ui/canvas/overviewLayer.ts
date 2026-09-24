@@ -103,6 +103,8 @@ type Palette = Readonly<{
   muted: string
   background: string
   fontFamily: string
+  /** A dark theme, which shows PDF pages inverted (styles/pdf/card.css). */
+  dark: boolean
 }>
 
 /**
@@ -134,6 +136,13 @@ export type OverviewLayerCallbacks = Readonly<{
   pdfPageLabels: PdfPageLabels
   /** "25 pages", localized, for an open spread's title. */
   spreadPageCountLabel: (id: NodeId) => string
+  /** A small picture of a spread's page (ui/pdf/thumbnails.ts), as the
+   * theme shows it, or null while it has none. */
+  pageThumbnail: (
+    path: string,
+    page: number,
+    dark: boolean,
+  ) => ImageBitmap | null
 }>
 
 /**
@@ -448,6 +457,7 @@ export class OverviewLayer {
       muted: read('--text-muted', '#5c5c5c'),
       background: read('--background-primary', '#ffffff'),
       fontFamily: style.fontFamily || 'sans-serif',
+      dark: this.styleSourceEl.closest('.theme-dark') !== null,
     }
   }
 
@@ -589,6 +599,25 @@ export class OverviewLayer {
       ctx.fill()
     }
 
+    // 2b. A spread's pages, as pictures of themselves where there is one —
+    //     what the page shows in the DOM tiers, over its wash as the page's
+    //     canvas is over its card. Such a page needs no title: it shows its
+    //     own.
+    const pictured = new Set<NodeId>()
+    ctx.globalAlpha = 1
+    for (const card of visible) {
+      const node = card.node
+      if (node.type !== 'pdf-page') continue
+      const picture = this.callbacks.pageThumbnail(
+        node.file,
+        node.page,
+        palette.dark,
+      )
+      if (!picture) continue
+      ctx.drawImage(picture, card.x, card.y, card.w, card.h)
+      pictured.add(node.id)
+    }
+
     // 3. Borders. An uncoloured card takes the theme's border token at full
     //    strength; a coloured one takes its own colour at the stylesheet's 70%.
     ctx.lineWidth = 1
@@ -658,6 +687,7 @@ export class OverviewLayer {
     ctx.textBaseline = 'middle'
     for (const card of visible) {
       if (card.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
+      if (pictured.has(card.node.id)) continue
       const title = nodeTitleText(card.node, this.callbacks.pdfPageLabels)
       if (title.length === 0) continue
       const lines = this.wrapTitle(ctx, title, card.node, view.scale)

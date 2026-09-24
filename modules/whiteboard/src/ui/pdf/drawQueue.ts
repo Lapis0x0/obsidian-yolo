@@ -27,22 +27,29 @@ export type PdfDrawClient = Readonly<{
 
 export class PdfDrawQueue {
   private running = 0
-  private readonly waiting = new Set<PdfDrawClient>()
+  /** Who is waiting, and whether for a page that shows nothing at all. */
+  private readonly waiting = new Map<PdfDrawClient, boolean>()
 
-  /** `limit` is how many draws may run at once right now; 0 holds them all. */
-  constructor(private readonly limit: () => number) {}
+  /**
+   * `limit(urgent)` is how many draws may run at once right now, counting
+   * every draw running: `urgent` for a page that shows nothing yet, the
+   * other for one that shows a stand-in (a thumbnail, or its picture at an
+   * old density) and could wait. 0 holds them.
+   */
+  constructor(private readonly limit: (urgent: boolean) => number) {}
 
   /**
    * Whether `client` may start a draw now. On yes the draw counts as running
    * until `finish`; on no the client waits and is woken when its turn comes.
+   * An urgent request goes ahead of every other, nearest first among each.
    */
-  tryStart(client: PdfDrawClient): boolean {
-    if (this.running < this.limit() && this.isNext(client)) {
+  tryStart(client: PdfDrawClient, urgent = false): boolean {
+    if (this.running < this.limit(urgent) && this.isNext(client, urgent)) {
       this.waiting.delete(client)
       this.running += 1
       return true
     }
-    this.waiting.add(client)
+    this.waiting.set(client, urgent)
     return false
   }
 
@@ -60,28 +67,43 @@ export class PdfDrawQueue {
   /**
    * Wakes as many waiting clients as there is room for, best first. Called
    * after a draw ends and once a frame by the board, since room also appears
-   * when `limit()` rises — the camera stopping, a drag being let go.
+   * when `limit` rises — the camera stopping, a drag being let go.
    */
   pump(): void {
-    const room = this.limit() - this.running
-    if (room <= 0 || this.waiting.size === 0) return
-    const best = [...this.waiting]
-      .map((client) => ({ client, priority: client.priority() }))
-      .sort((a, b) => a.priority - b.priority)
-      .slice(0, room)
-    for (const { client } of best) client.wake()
+    if (this.waiting.size === 0) return
+    let woken = 0
+    for (const { client, urgent } of this.ordered()) {
+      if (this.running + woken >= this.limit(urgent)) continue
+      client.wake()
+      woken += 1
+    }
+  }
+
+  private ordered(): { client: PdfDrawClient; urgent: boolean }[] {
+    return [...this.waiting]
+      .map(([client, urgent]) => ({
+        client,
+        urgent,
+        priority: client.priority(),
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.urgent) - Number(a.urgent) || a.priority - b.priority,
+      )
   }
 
   /** Whether `client` is among the first as many waiting clients as there
    * is room for — or no one is waiting ahead of it. */
-  private isNext(client: PdfDrawClient): boolean {
+  private isNext(client: PdfDrawClient, urgent: boolean): boolean {
     if (this.waiting.size === 0) return true
-    const room = this.limit() - this.running
+    const room = this.limit(urgent) - this.running
     const own = client.priority()
     let ahead = 0
-    for (const other of this.waiting) {
+    for (const [other, otherUrgent] of this.waiting) {
       if (other === client) continue
-      if (other.priority() < own) ahead += 1
+      const before =
+        otherUrgent !== urgent ? otherUrgent : other.priority() < own
+      if (before) ahead += 1
       if (ahead >= room) return false
     }
     return true

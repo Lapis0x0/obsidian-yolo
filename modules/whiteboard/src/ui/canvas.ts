@@ -140,6 +140,7 @@ import {
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
+import { PdfThumbnails, type WantedThumbnail } from './pdf/thumbnails'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -436,15 +437,20 @@ export class WhiteboardCanvas {
    * it runs at full rate. */
   private interacting = false
   /**
-   * Every PDF page this board draws waits its turn here (../pdf/drawQueue.ts):
-   * two at a time at rest, one while the camera moves — each draw puts a
-   * slice of main-thread work into every frame until it is done — and none
-   * while a spread's frame is being dragged, where the pages coming into
-   * view are drawn once it is let go.
+   * Every PDF page this board draws waits its turn here (./pdf/drawQueue.ts):
+   * two at a time at rest. While the camera moves, each draw puts a slice of
+   * main-thread work into every frame until it is done, so only a page that
+   * shows nothing at all is drawn then, one at a time — one showing its
+   * thumbnail is sharpened once the camera stops. None while a spread's
+   * frame is being dragged: the pages coming into view are drawn once it is
+   * let go.
    */
-  private readonly pdfDraws = new PdfDrawQueue(() =>
-    this.spreadFrame?.dragging ? 0 : this.interacting ? 1 : 2,
+  private readonly pdfDraws = new PdfDrawQueue((urgent) =>
+    this.spreadFrame?.dragging ? 0 : !this.interacting ? 2 : urgent ? 1 : 0,
   )
+  /** Small pictures of every open spread's pages, made while the board is
+   * still (./pdf/thumbnails.ts). */
+  private pdfThumbnails: PdfThumbnails | null = null
 
   /** PDF reading on this board — the reading panel, annotations, excerpts,
    * links into its PDFs (./canvas/pdfIntegration.ts). Built in `ensureDom`. */
@@ -661,6 +667,8 @@ export class WhiteboardCanvas {
     this.overviewLayer = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
+    this.pdfThumbnails?.destroy()
+    this.pdfThumbnails = null
     this.viewportObserver?.disconnect()
     this.viewportObserver = null
     this.teardownAllCards()
@@ -771,6 +779,16 @@ export class WhiteboardCanvas {
       resize: (id, pageWidth, key) => this.resizeSpreadTo(id, pageWidth, key),
     })
     this.spreadFrame = spreadFrame
+    this.pdfThumbnails?.destroy()
+    this.pdfThumbnails = new PdfThumbnails({
+      pdf: this.host.pdf,
+      queue: this.pdfDraws,
+      doc,
+      wanted: () => this.wantedThumbnails(),
+      idle: () => !this.interacting && !spreadFrame.dragging,
+      onChange: (path, page) => this.onThumbnailChange(path, page),
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
@@ -787,6 +805,8 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
       spreadPageCountLabel: (id) => this.spreadPageCountLabel(id),
+      pageThumbnail: (path, page, dark) =>
+        this.pdfThumbnails?.get(path, page, dark) ?? null,
     })
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
@@ -922,6 +942,7 @@ export class WhiteboardCanvas {
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
+      pdfThumbnail: (path, page) => this.pdfThumbnails?.get(path, page) ?? null,
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
       },
@@ -2387,6 +2408,7 @@ export class WhiteboardCanvas {
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
     this.pdfDraws.pump()
+    this.pdfThumbnails?.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
     // Last: it draws the camera the world layer was just given, and the
@@ -2428,6 +2450,38 @@ export class WhiteboardCanvas {
       this.edgeLayer.updateVisibility(rect, this.edgePinnedIds(moved))
     }
     this.syncGroupLabelScale()
+  }
+
+  /** Every page of every open spread, with how far it is from the middle
+   * of the viewport — what thumbnails are made for, nearest first. */
+  private *wantedThumbnails(): Iterable<WantedThumbnail> {
+    const view = this.worldViewportRect(0)
+    const cx = (view.left + view.right) / 2
+    const cy = (view.top + view.bottom) / 2
+    for (const node of this.cardNodes) {
+      if (node.type !== 'pdf-page') continue
+      yield {
+        path: node.file,
+        page: node.page,
+        distance: Math.hypot(
+          node.x + node.w / 2 - cx,
+          node.y + node.h / 2 - cy,
+        ),
+      }
+    }
+  }
+
+  /** A thumbnail was made (`page`), or a file's were dropped (null): the
+   * overview redraws, and the sheet showing that page takes it if it has
+   * nothing better yet. */
+  private onThumbnailChange(path: string, page: number | null): void {
+    this.overviewLayer?.markDirty()
+    if (page === null) return
+    for (const node of this.cardNodes) {
+      if (node.type !== 'pdf-page' || node.page !== page) continue
+      if (node.file !== path) continue
+      this.cardRenderer.getRuntime(node.id)?.pdfReader?.placeholderReady()
+    }
   }
 
   /** How far a card's middle is from the viewport's, in world units — the
@@ -2725,6 +2779,13 @@ export class WhiteboardCanvas {
     )
     this.syncEmptyHint()
     this.spreadFrame?.sync()
+    this.pdfThumbnails?.retain(
+      new Set(
+        this.cardNodes.flatMap((node) =>
+          node.type === 'pdf-page' ? [node.file] : [],
+        ),
+      ),
+    )
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.

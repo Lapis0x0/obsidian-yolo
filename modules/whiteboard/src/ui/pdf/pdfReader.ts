@@ -109,6 +109,9 @@ export type PdfReaderOptions = Readonly<{
   drawQueue?: PdfDrawQueue
   /** Where this reader stands in `drawQueue`: lower goes first. */
   drawPriority?: () => number
+  /** A small picture of a page (./thumbnails.ts), shown until the page's
+   * own is drawn; null when there is none yet. */
+  placeholder?: (page: number) => ImageBitmap | null
   /** Called when the reading position changes — by scrolling, a page jump,
    * a search hit, or a relayout that moved the column under it. Not called
    * for a `setPosition`. */
@@ -230,6 +233,9 @@ type Slot = {
    * that has since changed). */
   drawnScale: number
   drawnRatio: number
+  /** The canvas holds the page's thumbnail (`placeholder`) while its own
+   * picture is on the way. */
+  placeholder: boolean
   textEl: HTMLElement | null
   textLayer: YoloModuleHostPdfTextLayerV1 | null
   textTask: PdfTask<YoloModuleHostPdfTextLayerV1> | null
@@ -930,6 +936,7 @@ export class PdfReader {
       slot.draw = null
       slot.drawnScale = 0
       slot.drawnRatio = 0
+      slot.placeholder = false
       slot.page = null
       slot.loading = false
       slot.size = null
@@ -954,6 +961,7 @@ export class PdfReader {
         draw: null,
         drawnScale: 0,
         drawnRatio: 0,
+        placeholder: false,
         textEl: null,
         textLayer: null,
         textTask: null,
@@ -1044,6 +1052,10 @@ export class PdfReader {
 
   private readonly update = (): void => {
     this.frameId = null
+    // Out of the draw queue first, before any way out of this pass: a
+    // reader asks again below if it still wants to draw, and one that
+    // stayed queued without asking would hold up every reader behind it.
+    this.options.drawQueue?.withdraw(this.drawClient)
     if (this.destroyed || !this.visible || !this.handle) return
     const scroller = this.scrollerEl
     const width = this.scrollerSize?.width ?? 0
@@ -1108,11 +1120,9 @@ export class PdfReader {
         Math.abs(layout.tops[b.index] + layout.heights[b.index] / 2 - middle),
     )
     let deferred = false
-    // Asked afresh on every pass: a reader that no longer wants a turn must
-    // not keep one from the rest.
     const queue = this.options.drawQueue
-    queue?.withdraw(this.drawClient)
     for (const slot of order) {
+      this.paintPlaceholder(slot)
       if (!slot.page) {
         this.loadPage(slot)
         continue
@@ -1124,7 +1134,10 @@ export class PdfReader {
           continue
         }
         // Not our turn: the queue wakes this reader when it is.
-        if (queue && !queue.tryStart(this.drawClient)) continue
+        // Urgent when the page shows nothing: a stand-in can wait for the
+        // board to be still.
+        const urgent = slot.drawnRatio === 0 && !slot.placeholder
+        if (queue && !queue.tryStart(this.drawClient, urgent)) continue
         this.drawPage(slot, layout)
       }
       if (this.interactive && !slot.textLayer && !slot.textTask) {
@@ -1216,23 +1229,47 @@ export class PdfReader {
     )
   }
 
+  private ensureCanvas(slot: Slot): HTMLCanvasElement {
+    if (slot.canvas) return slot.canvas
+    const canvas = this.rootEl.ownerDocument.createElement('canvas')
+    canvas.className = CANVAS_CLASS
+    slot.el.prepend(canvas)
+    slot.canvas = canvas
+    if (this.store) {
+      const marks = this.rootEl.ownerDocument.createElement('div')
+      marks.className = MARKS_CLASS
+      canvas.after(marks)
+      slot.marksEl = marks
+      this.renderMarks(slot)
+    }
+    return canvas
+  }
+
+  /** Puts the page's thumbnail in a canvas that has no picture of its own
+   * yet. The draw that follows replaces it only once it is complete (the
+   * engine keeps a canvas's picture until then). */
+  private paintPlaceholder(slot: Slot): void {
+    if (slot.drawnRatio !== 0 || slot.placeholder) return
+    const picture = this.options.placeholder?.(slot.number)
+    if (!picture) return
+    const canvas = this.ensureCanvas(slot)
+    canvas.width = picture.width
+    canvas.height = picture.height
+    canvas.getContext('2d')?.drawImage(picture, 0, 0)
+    slot.placeholder = true
+    // Held like a drawn page: given back when the page is far away.
+    this.active.add(slot)
+  }
+
+  /** A thumbnail this reader may be waiting for has been made. */
+  placeholderReady(): void {
+    this.schedule()
+  }
+
   private drawPage(slot: Slot, layout: ReaderLayout): void {
     const page = slot.page
     if (!page) return
-    let canvas = slot.canvas
-    if (!canvas) {
-      canvas = this.rootEl.ownerDocument.createElement('canvas')
-      canvas.className = CANVAS_CLASS
-      slot.el.prepend(canvas)
-      slot.canvas = canvas
-      if (this.store) {
-        const marks = this.rootEl.ownerDocument.createElement('div')
-        marks.className = MARKS_CLASS
-        canvas.after(marks)
-        slot.marksEl = marks
-        this.renderMarks(slot)
-      }
-    }
+    const canvas = this.ensureCanvas(slot)
     const scale = layout.scales[slot.index]
     const ratio = this.wantedRatio(slot.drawnRatio === 0)
     const generation = this.generation
@@ -1328,6 +1365,7 @@ export class PdfReader {
     slot.marksEl = null
     slot.drawnScale = 0
     slot.drawnRatio = 0
+    slot.placeholder = false
     this.releaseTextLayer(slot)
     try {
       slot.page?.cleanup()
