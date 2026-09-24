@@ -1,0 +1,105 @@
+/* --- PDF spreads -----------------------------------------------------------
+ * A PDF card spread out on the board (domain/spread.ts): a title that stands
+ * for the whole document, and a sheet per page placed on its own. Both are
+ * cards to the board — selected, dragged, snapped and connected like any —
+ * so what is here is only what makes them read as a name and as paper. */
+
+/* The title: the document's name and nothing around it, like a group's label
+ * (the same weight and colour), sized in world units so it shrinks with the
+ * sheets it names. Its box is exactly its text, which is what the node's
+ * width is measured from (cardRenderer's `mountSpreadTitle`). */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title {
+  display: block;
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.yolo-whiteboard-spread-title-text {
+  width: max-content;
+  max-width: none;
+  padding: 0 4px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 39px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: transparent;
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered
+  .yolo-whiteboard-spread-title-text,
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected
+  .yolo-whiteboard-spread-title-text {
+  color: var(--text-normal);
+}
+
+/* The sheets of the document whose title is under the pointer (the canvas's
+ * `syncSpreadHover`): which pieces of paper are one paper. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-sheet.yolo-whiteboard-spread-sibling {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* A sheet is a page of paper: square corners, no frame of its own beyond the
+ * one every card has, and the page drawn edge to edge. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-sheet {
+  border-radius: 0;
+}
+
+.yolo-whiteboard-spread-sheet .yolo-whiteboard-card-body,
+.yolo-whiteboard-spread-sheet .yolo-whiteboard-card-title-block {
+  border-radius: 0;
+}
+
+.yolo-whiteboard-spread-sheet .yolo-whiteboard-pdf-reader {
+  background: transparent;
+}
+
+.yolo-whiteboard-spread-sheet .yolo-whiteboard-pdf-page {
+  box-shadow: none;
+}
+
+/* The page number, in the sheet's lower right corner: small, and in world
+ * units, so it is on the paper rather than on the screen. */
+.yolo-whiteboard-spread-sheet-number {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: var(--radius-s, 4px);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+  pointer-events: none;
+}
+
+/* Parked on a title or a sheet, the handle layer keeps only its connection
+ * points: neither is resized by hand (interactionController's
+ * `isFixedSize`), and a press on a side handle falls through to the card to
+ * drag it. */
+.yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-resizer {
+  pointer-events: none;
+  cursor: default;
+}
+
+.yolo-whiteboard-interaction-layer-fixed
+  .yolo-whiteboard-resizer:is(
+    [data-resize='topleft'],
+    [data-resize='topright'],
+    [data-resize='bottomleft'],
+    [data-resize='bottomright']
+  ) {
+  display: none;
+}
+
+.yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-connection-point {
+  pointer-events: auto;
+}

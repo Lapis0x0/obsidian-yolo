@@ -32,6 +32,7 @@ import {
   nodeAtPoint,
   nodesInMarquee,
 } from '../../domain/selection'
+import { isSpreadTitle } from '../../domain/spread'
 import type { CanvasView } from '../../domain/virtualization'
 import {
   CARD_BODY_LIVE_CLASS,
@@ -74,6 +75,10 @@ const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
 /** On the handle layer while it is parked on bare text. */
 const INTERACTION_LAYER_TEXT_CLASS = 'yolo-whiteboard-interaction-layer-text'
+/** On the layer while it is parked on something whose size is not the user's
+ * to change — a PDF spread's title or sheet (domain/spread.ts): no resize
+ * handles, only the connection points. */
+const INTERACTION_LAYER_FIXED_CLASS = 'yolo-whiteboard-interaction-layer-fixed'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -196,6 +201,12 @@ export function buildInteractionLayer(doc: Document): HTMLElement {
 /** Matched on the data attribute rather than on a class, because both
  * kinds of mounted node carry it (a card and a group frame) and every
  * gesture that asks "which node is this" means either. */
+/** A spread's title is as wide as its name and a sheet as big as its page:
+ * neither is resized by hand. */
+function isFixedSize(node: BoardNode | undefined): boolean {
+  return node?.type === 'pdf-page' || isSpreadTitle(node)
+}
+
 export function nodeIdFromEventTarget(
   target: EventTarget | null,
 ): NodeId | null {
@@ -266,6 +277,8 @@ export type InteractionControllerDeps = Readonly<{
   queueContentSync: (id: NodeId) => void
   /** The live geometry of a drag or resize changed (see `liveNodeRects`). */
   onLiveRectsChange: () => void
+  /** The card under the pointer changed (or there is none). */
+  onHoverChange: (nodeId: NodeId | null) => void
   rebuildEdgesSvg: () => void
 }>
 
@@ -496,7 +509,11 @@ export class InteractionController {
       return
     }
     const handle = this.resizeHandleFromEventTarget(e.target)
-    if (handle !== null && this.drag.startResize(handle, e)) {
+    if (
+      handle !== null &&
+      !isFixedSize(this.core.getNode(this.layerNodeId ?? '')) &&
+      this.drag.startResize(handle, e)
+    ) {
       this.watchAutoPan(e)
       return
     }
@@ -905,6 +922,7 @@ export class InteractionController {
       this.core.getRuntime(nodeId)?.el?.classList.add(CARD_HOVERED_CLASS)
     }
     this.updateInteractionLayer()
+    this.deps.onHoverChange(nodeId)
   }
 
   /**
@@ -963,6 +981,10 @@ export class InteractionController {
     layer.classList.toggle(
       INTERACTION_LAYER_TEXT_CLASS,
       isPlainText(card ?? undefined),
+    )
+    layer.classList.toggle(
+      INTERACTION_LAYER_FIXED_CLASS,
+      isFixedSize(card ?? undefined),
     )
     if (card) this.placeInteractionLayer(rectOfCard(card))
   }

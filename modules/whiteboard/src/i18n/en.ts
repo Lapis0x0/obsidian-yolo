@@ -44,6 +44,8 @@ export const en = {
     tidy: 'Tidy up',
     openReader: 'Open in reader',
     exportAnnotatedPdf: 'Export PDF with annotations',
+    openSpread: 'Spread out pages',
+    closeSpread: 'Collapse to reader',
   },
   // The creation bar along the bottom of the canvas.
   controls: {
@@ -84,6 +86,8 @@ export const en = {
     arrows: 'Arrows',
     edgeLabel: 'Label',
     openReader: 'Open in reader',
+    openSpread: 'Spread out pages',
+    closeSpread: 'Collapse to reader',
   },
   // The six preset names are Obsidian's own canvas palette.
   color: {

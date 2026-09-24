@@ -55,7 +55,7 @@ import {
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
-import { isMarkdownPath } from '../domain/naming'
+import { basenameWithoutExtension, isMarkdownPath } from '../domain/naming'
 import {
   boardWithPageWindow,
   boardWithReadingWindow,
@@ -66,6 +66,18 @@ import {
   updateNode,
 } from '../domain/operations'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
+import {
+  closeSpread,
+  collapseBoard,
+  defaultSpreadColumns,
+  expandBoard,
+  isSpreadTitle,
+  layoutSpreadGrid,
+  nodesToDelete,
+  openSpread,
+  spreadPages,
+  titleWidthFor,
+} from '../domain/spread'
 import { tidyRects } from '../domain/tidy'
 import {
   VirtualizationEngine,
@@ -157,6 +169,8 @@ const UNREACHABLE_RECT: WorldRect = Object.freeze({
 const NO_PINS: ReadonlySet<NodeId> = new Set()
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
+/** On every sheet of the spread whose title is under the pointer. */
+const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const PAN_CAPTURE_CLASS = 'yolo-whiteboard-pan-capture'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
@@ -234,6 +248,8 @@ export class WhiteboardCanvas {
   /** A card asked to be edited from the overview tier, waiting for the camera
    * to bring it back into the DOM (`zoomInToEdit`), and when to give up. */
   private pendingEdit: Readonly<{ id: NodeId; until: number }> | null = null
+  /** The spread whose title the pointer is on (`syncSpreadHover`). */
+  private hoveredSpreadId: NodeId | null = null
 
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
@@ -470,7 +486,9 @@ export class WhiteboardCanvas {
     }
 
     this.parseFailed = false
-    this.board = result.board
+    // The board's own shape of the file: an open PDF spread becomes its title
+    // and a node per page (domain/spread.ts). `getViewData` folds it back.
+    this.board = expandBoard(result.board)
     this.syncBoardIndex()
     this.selfHealMissingFileNodes()
     // Baseline for undo, taken after self-heal so the repaired board is the
@@ -543,7 +561,7 @@ export class WhiteboardCanvas {
       const action = planNodeCommit(board, id, text)
       if (action.kind === 'updateBoard') board = action.board
     }
-    return serializeBoard(board)
+    return serializeBoard(collapseBoard(board))
   }
 
   /** About to load a different file into this leaf. */
@@ -835,6 +853,7 @@ export class WhiteboardCanvas {
         this.editing.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
       onTextMeasured: (id, size) => this.commitTextSize(id, size),
+      onSpreadTitleMeasured: (id, w) => this.commitSpreadTitleWidth(id, w),
       onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
@@ -927,6 +946,7 @@ export class WhiteboardCanvas {
       getEdge: this.core.getEdge,
       isPdfNode: (node) => isPdfNode(node),
       openReader: (id) => this.pdf.openReaderPanel(id),
+      toggleSpread: (id) => void this.toggleSpread(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
       getView: this.core.getView,
       getViewportSize: () => ({
@@ -983,6 +1003,7 @@ export class WhiteboardCanvas {
       dropExcerpt: (e, at, isOverCard) =>
         this.pdf.dropExcerpt(e, at, isOverCard),
       openReader: (id) => this.pdf.openReaderPanel(id),
+      toggleSpread: (id) => void this.toggleSpread(id),
       exportAnnotatedPdfItem: (path) => this.pdf.exportAnnotatedPdfItem(path),
       createGroupFromSelection: () => this.createGroupFromSelection(),
       tidySelection: () => this.tidySelection(),
@@ -1026,6 +1047,7 @@ export class WhiteboardCanvas {
         this.contentSyncQueue.add(id)
       },
       onLiveRectsChange: () => this.overviewLayer?.markDirty(),
+      onHoverChange: (id) => this.syncSpreadHover(id),
       rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
     this.emptyHintEl = this.buildEmptyHint(doc, this.toolbarController.overlay)
@@ -1229,6 +1251,23 @@ export class WhiteboardCanvas {
   }
 
   /**
+   * A spread title's measured width, written to its node — the board
+   * hit-tests, snaps and connects by the node's size, not by the element.
+   * Not a step, for the reason bare text's size is not: it follows from the
+   * name, which nobody typed.
+   */
+  private commitSpreadTitleWidth(id: NodeId, w: number): void {
+    const node = this.nodesById.get(id)
+    if (!isSpreadTitle(node) || Math.abs(node.w - w) < 1) return
+    this.commitWithoutHistory(updateNode(this.board, id, { w }))
+    const el = this.cardRenderer.getRuntime(id)?.el
+    if (el) el.style.width = `${w}px`
+    this.edgeLayer.redrawEdgesForNodes(new Set([id]))
+    this.interaction.refreshInteractionLayer()
+    this.toolbarController.positionToolbar()
+  }
+
+  /**
    * Takes bare text that was left empty off the board.
    *
    * Text that never had anything in it was never recorded (the history's
@@ -1400,8 +1439,12 @@ export class WhiteboardCanvas {
     // being computed against — and then written over — what the user is in
     // the middle of typing.
     this.editing.forceCommitActiveEdit()
-    const [next, value] = edit(this.board)
-    if (next && next !== this.board) {
+    // The agent reads and writes boards the way the file has them, so it is
+    // handed that shape and its answer is opened back up (domain/spread.ts).
+    const current = collapseBoard(this.board)
+    const [edited, value] = edit(current)
+    if (edited && edited !== current) {
+      const next = expandBoard(edited)
       this.history.push(next)
       this.applyHistoryBoard(next)
     }
@@ -1652,8 +1695,12 @@ export class WhiteboardCanvas {
     this.rebuildEdgesSvg()
   }
 
-  private deleteNodes(ids: readonly NodeId[]): void {
-    if (!this.canEdit || ids.length === 0) return
+  private deleteNodes(asked: readonly NodeId[]): void {
+    if (!this.canEdit) return
+    // A spread's title takes its pages with it; a page on its own is part of
+    // its PDF and is not deleted (domain/spread.ts's `nodesToDelete`).
+    const ids = nodesToDelete(this.board.nodes, asked)
+    if (ids.length === 0) return
     // Commit through the one blur path before the card stops existing,
     // rather than leaving an editor mounted on a deleted card.
     this.editing.blurEditor(ids)
@@ -1750,6 +1797,95 @@ export class WhiteboardCanvas {
         GRID_WORLD_STEP_PX,
       ),
     )
+  }
+
+  /**
+   * Spreads a PDF card's pages out on the board, or puts them away again
+   * (domain/spread.ts) — one undoable step either way. Asked of a sheet, it
+   * is asked of the document the sheet belongs to.
+   *
+   * A spread opened before comes back as it was left. The first one is laid
+   * out as a grid under where the card's top-left corner was, which needs
+   * every page's size and so waits for the document; the board may have
+   * changed by the time it arrives, and the node is looked at again then.
+   */
+  private async toggleSpread(asked: NodeId): Promise<void> {
+    if (!this.canEdit) return
+    const target = this.nodesById.get(asked)
+    const id = target?.type === 'pdf-page' ? target.parent : asked
+    const node = this.nodesById.get(id)
+    if (isSpreadTitle(node)) {
+      this.commitSpreadToggle(id, closeSpread(this.board, id))
+      return
+    }
+    if (!node || !isPdfNode(node)) return
+    if (node.spread) {
+      this.commitSpreadToggle(id, openSpread(this.board, id))
+      return
+    }
+    let sizes: readonly Readonly<{ width: number; height: number }>[]
+    try {
+      sizes = await this.pdf.pageSizes(node.file)
+    } catch (error) {
+      this.reportError('pdf spread', error)
+      this.host.ui.notice(this.t('pdf.openFailed'))
+      return
+    }
+    const now = this.nodesById.get(id)
+    if (!this.canEdit || !now || !isPdfNode(now) || isSpreadTitle(now)) return
+    if (now.file !== node.file || sizes.length === 0) return
+    const layout = layoutSpreadGrid(
+      sizes,
+      { x: now.x, y: now.y },
+      defaultSpreadColumns(sizes),
+      titleWidthFor(basenameWithoutExtension(now.file)),
+    )
+    this.commitSpreadToggle(id, openSpread(this.board, id, layout))
+  }
+
+  /**
+   * The pointer on a spread's title lights up every one of its sheets, so
+   * the pieces of paper that are one document read as one — wherever on the
+   * board they have been put.
+   */
+  private syncSpreadHover(id: NodeId | null): void {
+    const title = id === null ? null : this.nodesById.get(id)
+    const next = isSpreadTitle(title ?? undefined) ? id : null
+    if (next === this.hoveredSpreadId) return
+    const mark = (titleId: NodeId, on: boolean) => {
+      for (const node of spreadPages(this.board, titleId)) {
+        this.cardRenderer
+          .getRuntime(node.id)
+          ?.el?.classList.toggle(SPREAD_SIBLING_CLASS, on)
+      }
+    }
+    if (this.hoveredSpreadId !== null) mark(this.hoveredSpreadId, false)
+    this.hoveredSpreadId = next
+    if (next !== null) mark(next, true)
+  }
+
+  /** Puts a spread opened or put away on screen: the node's element was a
+   * card and is now a title, or the other way round, so it is built again,
+   * and the sheets come and go with the ordinary mount and purge. */
+  private commitSpreadToggle(id: NodeId, next: Board): void {
+    if (next === this.board) return
+    const before = this.nodesById
+    this.editing.blurEditor([id])
+    this.applyBoardChange(next)
+    this.purgeNodeRuntime(id)
+    for (const [nodeId, node] of before) {
+      if (node.type === 'pdf-page' && !this.nodesById.has(nodeId)) {
+        this.purgeNodeRuntime(nodeId)
+      }
+    }
+    // What was just spread out is new to the board, not arriving from off
+    // screen: its sheets are the same paper the card held.
+    for (const nodeId of this.nodesById.keys()) this.entering.delete(nodeId)
+    this.setSelection([id])
+    this.rebuildEdgesSvg()
+    this.interaction.refreshInteractionLayer()
+    this.recomputeVisibility()
+    this.drainQueues()
   }
 
   /**

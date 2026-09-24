@@ -42,6 +42,8 @@ export const it = {
     tidy: 'Riordina',
     openReader: 'Apri nel lettore',
     exportAnnotatedPdf: 'Esporta PDF con annotazioni',
+    openSpread: 'Distribuisci le pagine',
+    closeSpread: 'Riduci a lettore',
   },
   controls: {
     zoomIn: 'Ingrandisci',
@@ -82,6 +84,8 @@ export const it = {
     arrows: 'Frecce',
     edgeLabel: 'Etichetta',
     openReader: 'Apri nel lettore',
+    openSpread: 'Distribuisci le pagine',
+    closeSpread: 'Riduci a lettore',
   },
   color: {
     default: 'Nessun colore',

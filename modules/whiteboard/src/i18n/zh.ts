@@ -41,6 +41,8 @@ export const zh = {
     tidy: '整理',
     openReader: '展开阅读',
     exportAnnotatedPdf: '导出带注释的 PDF',
+    openSpread: '平铺页面',
+    closeSpread: '收起为阅读器',
   },
   controls: {
     zoomIn: '放大',
@@ -79,6 +81,8 @@ export const zh = {
     arrows: '箭头',
     edgeLabel: '标签',
     openReader: '展开阅读',
+    openSpread: '平铺页面',
+    closeSpread: '收起为阅读器',
   },
   color: {
     default: '不设颜色',

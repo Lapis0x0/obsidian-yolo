@@ -38,6 +38,7 @@ import {
 import { addNode, replaceNode, updateNode } from '../../domain/operations'
 import type { Rect } from '../../domain/placement'
 import type { CardSize } from '../../domain/resize'
+import { isSpreadTitle } from '../../domain/spread'
 import {
   CardMenu,
   type CardMenuAction,
@@ -110,6 +111,9 @@ export type DropImportDeps = Readonly<{
     isOverCard: () => boolean,
   ) => boolean
   openReader: (id: NodeId) => void
+  /** Spreads a PDF's pages out on the board, or puts them away
+   * (the canvas's `toggleSpread`). */
+  toggleSpread: (id: NodeId) => void
   exportAnnotatedPdfItem: (path: string) => YoloModuleHostMenuItemV1
   // The selection's commands, which the menu shares with the toolbar.
   createGroupFromSelection: () => void
@@ -294,6 +298,18 @@ export class DropImport {
         },
         this.deps.exportAnnotatedPdfItem(single.file),
       )
+    }
+    // A PDF card spreads its pages out on the board, and a spread — asked
+    // through its title or any of its sheets — is put away again.
+    const spreadOf =
+      single?.type === 'pdf-page' ? this.core.getNode(single.parent) : single
+    if (this.core.canEdit() && spreadOf && isPdfNode(spreadOf)) {
+      const open = isSpreadTitle(spreadOf)
+      items.push({
+        title: this.core.t(open ? 'menu.closeSpread' : 'menu.openSpread'),
+        icon: open ? 'minimize-2' : 'files',
+        onSelect: () => this.deps.toggleSpread(spreadOf.id),
+      })
     }
     if (this.core.canEdit() && single?.type === 'text') {
       const plain = single.plain === true

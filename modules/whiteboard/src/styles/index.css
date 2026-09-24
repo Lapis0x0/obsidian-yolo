@@ -9,6 +9,7 @@
 @import './pdf/card.css';
 @import './pdf/annotations.css';
 @import './pdf/reader-panel.css';
+@import './cards/spread.css';
 @import './cards/content.css';
 @import './cards/title.css';
 @import './cards/ai.css';

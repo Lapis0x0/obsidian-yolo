@@ -34,6 +34,7 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import { arrangeTargets } from '../../domain/groups'
+import { isSpreadTitle } from '../../domain/spread'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
 import type { CanvasView } from '../../domain/virtualization'
 import { TOOLBAR_GAP_PX, TOOLBAR_MARGIN_PX } from '../constants'
@@ -111,6 +112,9 @@ export type ToolbarControllerCallbacks = Readonly<{
    * to. */
   isPdfNode: (node: BoardNode) => boolean
   openReader: (id: NodeId) => void
+  /** Spreads a PDF's pages out on the board, or puts them away
+   * (the canvas's `toggleSpread`). */
+  toggleSpread: (id: NodeId) => void
   /** World point an edge's toolbar anchors to — canvas.ts's own
    * `edgeAnchorPoint`, which needs the edge layer's live geometry this class
    * does not own. */
@@ -336,6 +340,28 @@ export class ToolbarController {
         label: this.callbacks.t('toolbar.openReader'),
         icon: 'book-open',
         onSelect: () => this.callbacks.openReader(single.id),
+      })
+    }
+    // Spread a PDF's pages out, or put a spread away — from its title or
+    // any one of its sheets. Not in the overview tier: sheets are cards,
+    // and a card has no element down there to be built into.
+    const spreadOf =
+      single?.type === 'pdf-page'
+        ? this.callbacks.getBoard().nodes.find((n) => n.id === single.parent)
+        : single
+    if (
+      canEdit &&
+      !this.callbacks.isOverview() &&
+      spreadOf &&
+      this.callbacks.isPdfNode(spreadOf)
+    ) {
+      const open = isSpreadTitle(spreadOf)
+      items.push({
+        label: this.callbacks.t(
+          open ? 'toolbar.closeSpread' : 'toolbar.openSpread',
+        ),
+        icon: open ? 'minimize-2' : 'files',
+        onSelect: () => this.callbacks.toggleSpread(spreadOf.id),
       })
     }
     // A group has no content to type into, so its pencil renames it — the

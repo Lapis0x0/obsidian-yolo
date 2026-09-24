@@ -307,6 +307,29 @@ export class PdfIntegration {
     }
   }
 
+  // -- spreads ----------------------------------------------------------
+
+  /**
+   * Every page's size, in page order — what a spread is first laid out
+   * from (domain/spread.ts's `layoutSpreadGrid`). The document is the one
+   * the board's readers already share, so this parses nothing new.
+   */
+  async pageSizes(
+    path: string,
+  ): Promise<readonly Readonly<{ width: number; height: number }>[]> {
+    const handle = await this.deps.core.host.pdf.open(path)
+    try {
+      const sizes: { width: number; height: number }[] = []
+      for (let page = 1; page <= handle.pageCount; page += 1) {
+        const loaded = await handle.getPage(page)
+        sizes.push({ width: loaded.width, height: loaded.height })
+      }
+      return sizes
+    } finally {
+      handle.release()
+    }
+  }
+
   // -- excerpts ---------------------------------------------------------
 
   /** The PDF card a reader shows: the panel's card, or the card whose body

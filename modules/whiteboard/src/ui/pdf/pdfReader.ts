@@ -88,6 +88,14 @@ export type PdfReaderOptions = Readonly<{
   /** Where to open, as a 1-based fractional page (readerLayout's
    * `positionAt`). Defaults to the top of page 1. */
   position?: number
+  /**
+   * Show this one page (1-based) and nothing else: a sheet of a spread
+   * (domain/spread.ts), sized to the page, that neither scrolls nor has a
+   * page field or a search of its own. Everything drawn on the page —
+   * annotations, selection, excerpts — works as it does in a whole reader,
+   * in the document's own page numbers.
+   */
+  sheet?: number
   /** The scale of whatever transforms the reader on screen. */
   viewScale?: number
   interactive?: boolean
@@ -173,6 +181,8 @@ const STATUS_CLASS = 'yolo-whiteboard-pdf-status'
 const STATUS_ERROR_CLASS = 'yolo-whiteboard-pdf-status-error'
 const STATUS_HINT_CLASS = 'yolo-whiteboard-pdf-status-hint'
 const SEARCH_BUTTON_CLASS = 'yolo-whiteboard-pdf-search-open'
+/** On the reader when it shows one sheet (`sheet`): no scrolling, no chrome. */
+const SHEET_CLASS = 'yolo-whiteboard-pdf-reader-sheet'
 const AREA_BUTTON_CLASS = 'yolo-whiteboard-pdf-area-toggle'
 const AREA_MODE_CLASS = 'yolo-whiteboard-pdf-reader-area-mode'
 const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
@@ -196,7 +206,11 @@ const HIT_SLOP_PX = 3
 const MIN_AREA_FRACTION = 0.01
 
 type Slot = {
+  /** Where the slot is in this reader's column, from 0. */
   readonly index: number
+  /** The page of the document it shows, from 1 — `index + 1` unless the
+   * reader shows a single sheet. */
+  readonly number: number
   readonly el: HTMLElement
   /** The page's own size, once it has been loaded; until then the layout
    * uses the first page's (`estimate`). */
@@ -245,6 +259,9 @@ type AreaDraft = {
 
 export class PdfReader {
   readonly path: string
+  /** The one page shown, when this reader is a sheet (`sheet`); null for a
+   * reader over the whole document. */
+  readonly sheet: number | null
   private readonly options: PdfReaderOptions
   private readonly rootEl: HTMLElement
   private readonly scrollerEl: HTMLElement
@@ -315,6 +332,10 @@ export class PdfReader {
   constructor(options: PdfReaderOptions) {
     this.options = options
     this.path = options.path
+    this.sheet =
+      options.sheet !== undefined && options.sheet >= 1
+        ? Math.floor(options.sheet)
+        : null
     this.position = options.position ?? 1
     this.viewScale = options.viewScale ?? 1
     this.settledViewScale = this.viewScale
@@ -323,6 +344,7 @@ export class PdfReader {
     const doc = options.container.ownerDocument
     this.rootEl = doc.createElement('div')
     this.rootEl.className = READER_CLASS
+    if (this.sheet !== null) this.rootEl.classList.add(SHEET_CLASS)
     this.scrollerEl = doc.createElement('div')
     this.scrollerEl.className = SCROLLER_CLASS
     this.pagesEl = doc.createElement('div')
@@ -414,6 +436,7 @@ export class PdfReader {
 
   /** Where the reader is, as a 1-based fractional page. */
   getPosition(): number {
+    if (this.sheet !== null) return this.sheet
     if (this.pendingPosition !== null) return this.pendingPosition
     if (!this.layout) return this.position
     return positionAt(this.layout, this.scrollerEl.scrollTop)
@@ -435,7 +458,8 @@ export class PdfReader {
   }
 
   private moveTo(position: number, silent: boolean): void {
-    if (!Number.isFinite(position)) return
+    // A sheet is always at its page; there is nowhere else for it to go.
+    if (!Number.isFinite(position) || this.sheet !== null) return
     this.position = position
     this.pendingPosition = null
     this.pendingSilently = silent
@@ -461,7 +485,8 @@ export class PdfReader {
 
   /** Opens the search bar, with the caret in it. */
   openSearch(): void {
-    if (this.destroyed || !this.handle) return
+    // A sheet has the rest of the document beside it on the board, not in it.
+    if (this.destroyed || !this.handle || this.sheet !== null) return
     this.search.open()
   }
 
@@ -478,7 +503,7 @@ export class PdfReader {
    * false hands the gesture back to whoever asked (the board pans instead).
    */
   scrollBy(deltaX: number, deltaY: number): boolean {
-    if (!this.layout) return false
+    if (!this.layout || this.sheet !== null) return false
     const scroller = this.scrollerEl
     const room = scroller.scrollHeight - scroller.clientHeight
     if (room <= 0) return false
@@ -541,7 +566,7 @@ export class PdfReader {
   getAnnotationRect(id: string): DOMRect | null {
     const annotation = this.store?.get(id)
     if (!annotation) return null
-    const marks = this.slots[annotation.anchor.page - 1]?.marksEl
+    const marks = this.slotFor(annotation.anchor.page)?.marksEl
     return marks ? annotationClientRect(marks, id) : null
   }
 
@@ -550,7 +575,7 @@ export class PdfReader {
   getAnnotationEndRect(id: string): DOMRect | null {
     const annotation = this.store?.get(id)
     if (!annotation) return null
-    const slot = this.slots[annotation.anchor.page - 1]
+    const slot = this.slotFor(annotation.anchor.page)
     if (!slot?.marksEl || !slot.frame) return null
     const last = boxesFor(annotation, slot.frame).at(-1)
     const page = slot.el.getBoundingClientRect()
@@ -569,7 +594,7 @@ export class PdfReader {
   getNoteRect(id: string): DOMRect | null {
     const annotation = this.store?.get(id)
     if (!annotation) return null
-    const marks = this.slots[annotation.anchor.page - 1]?.marksEl
+    const marks = this.slotFor(annotation.anchor.page)?.marksEl
     for (const note of this.notesIn(marks)) {
       if (note.dataset.annotationId === id) return note.getBoundingClientRect()
     }
@@ -710,6 +735,13 @@ export class PdfReader {
    */
   revealLocation(page: number, selection: SelectionTuple | null): void {
     if (this.destroyed) return
+    if (this.sheet !== null) {
+      // Only the sheet's own page is here to be shown.
+      if (Math.floor(page) !== this.sheet) return
+      this.pendingReveal = selection ? { page: this.sheet, selection } : null
+      this.finishReveal()
+      return
+    }
     const count = this.handle?.pageCount ?? 0
     const target = count > 0 ? Math.min(Math.max(1, page), count) : page
     this.goToPage(target)
@@ -788,7 +820,12 @@ export class PdfReader {
     }
     try {
       if (generation !== this.generation) throw abortError()
-      first = await handle.getPage(1)
+      if (this.sheet !== null && this.sheet > handle.pageCount) {
+        throw new Error(
+          `Page ${this.sheet} is past the end of a ${handle.pageCount}-page PDF`,
+        )
+      }
+      first = await handle.getPage(this.firstPage)
       if (generation !== this.generation) throw abortError()
     } catch (error) {
       handle.release()
@@ -810,11 +847,11 @@ export class PdfReader {
     this.failed = false
     this.hideStatus()
     this.estimate = { width: first.width, height: first.height }
-    this.rebuildSlots(handle.pageCount)
+    this.rebuildSlots(this.sheet !== null ? 1 : handle.pageCount)
     this.setPage(this.slots[0], first)
     this.slots[0].size = this.estimate
     this.countEl.textContent = `/ ${handle.pageCount}`
-    this.indicatorEl.hidden = false
+    this.indicatorEl.hidden = this.sheet !== null
     this.layout = null
     this.relayout(position)
     this.schedule()
@@ -838,6 +875,17 @@ export class PdfReader {
    * their elements and their pictures — marked as needing a redraw, and
    * handed no page until the new document gives them one.
    */
+  /** The first page of the document the column shows. */
+  private get firstPage(): number {
+    return this.sheet ?? 1
+  }
+
+  /** The slot showing a page of the document (1-based), if this reader has
+   * one for it. */
+  private slotFor(page: number): Slot | undefined {
+    return this.slots[page - this.firstPage]
+  }
+
   private rebuildSlots(pageCount: number): void {
     for (const slot of this.slots.slice(pageCount)) {
       this.releaseSlot(slot)
@@ -859,10 +907,12 @@ export class PdfReader {
     for (let index = this.slots.length; index < pageCount; index += 1) {
       const el = doc.createElement('div')
       el.className = PAGE_CLASS
-      el.dataset.page = String(index + 1)
+      const number = this.firstPage + index
+      el.dataset.page = String(number)
       this.pagesEl.appendChild(el)
       this.slots.push({
         index,
+        number,
         el,
         size: null,
         page: null,
@@ -985,7 +1035,7 @@ export class PdfReader {
     const height = scroller.clientHeight
     if (!(height > 0)) return
 
-    this.reportPosition(positionAt(layout, scrollTop))
+    if (this.sheet === null) this.reportPosition(positionAt(layout, scrollTop))
 
     const draw = pagesInBand(
       layout,
@@ -1094,7 +1144,7 @@ export class PdfReader {
     slot.loading = true
     this.active.add(slot)
     const generation = this.generation
-    this.handle.getPage(slot.index + 1).then(
+    this.handle.getPage(slot.number).then(
       (page) => {
         if (generation !== this.generation) return
         slot.loading = false
@@ -1194,7 +1244,7 @@ export class PdfReader {
           layer.setScale(current)
         }
         this.search.onTextLayer(slot.index)
-        if (this.pendingReveal?.page === slot.index + 1) this.finishReveal()
+        if (this.pendingReveal?.page === slot.number) this.finishReveal()
       },
       (error: unknown) => {
         if (slot.textTask === task) slot.textTask = null
@@ -1279,7 +1329,7 @@ export class PdfReader {
   private finishReveal(): void {
     const reveal = this.pendingReveal
     if (!reveal) return
-    const slot = this.slots[reveal.page - 1]
+    const slot = this.slotFor(reveal.page)
     const layer = slot?.textLayer
     if (!slot || !layer || !slot.frame) return
     this.pendingReveal = null
@@ -1335,7 +1385,7 @@ export class PdfReader {
     }
     renderAnnotationLayer(
       slot.marksEl,
-      this.store.forPage(slot.index + 1),
+      this.store.forPage(slot.number),
       slot.frame,
       this.activeAnnotationId,
     )
@@ -1357,7 +1407,7 @@ export class PdfReader {
     const target = event.target as Element | null
     const pageEl = target?.closest?.(`.${PAGE_CLASS}`) as HTMLElement | null
     if (!pageEl || !this.pagesEl.contains(pageEl)) return null
-    const slot = this.slots[Number(pageEl.dataset.page) - 1]
+    const slot = this.slotFor(Number(pageEl.dataset.page))
     if (!slot) return null
     const rect = pageEl.getBoundingClientRect()
     if (!(rect.width > 0 && rect.height > 0)) return null
@@ -1411,7 +1461,7 @@ export class PdfReader {
     const store = this.store
     const frame = slot.frame
     if (!store || !frame) return null
-    const entries = store.forPage(slot.index + 1).map((annotation) => ({
+    const entries = store.forPage(slot.number).map((annotation) => ({
       id: annotation.id,
       boxes: boxesFor(annotation, frame),
     }))
@@ -1574,7 +1624,7 @@ export class PdfReader {
       [right * page.width, bottom * page.height],
       1,
     )
-    events.onAreaDrawn(this, draft.slot.index + 1, [
+    events.onAreaDrawn(this, draft.slot.number, [
       Math.min(x1, x2),
       Math.min(y1, y2),
       Math.max(x1, x2),

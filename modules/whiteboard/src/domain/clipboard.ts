@@ -28,11 +28,14 @@ import {
 import { nodesToDragWith } from './groups'
 import { mintEdgeId, mintNodeId } from './ids'
 import { addEdge, addNode } from './operations'
+import { collapseBoard, expandBoard, pdfPageNodeId } from './spread'
 
 /** The clipboard type Obsidian Canvas reads and writes. */
 export const CANVAS_CLIPBOARD_TYPE = 'obsidian/canvas'
 
-/** Some nodes and the edges between them — what one copy carries. */
+/** Some nodes and the edges between them — what one copy carries. Always in
+ * the file's shape (domain/spread.ts): a spread is its PDF's node, never its
+ * title and sheets, so a fragment reads the same on a Canvas as on a board. */
 export type BoardFragment = Readonly<{
   nodes: readonly BoardNode[]
   edges: readonly Edge[]
@@ -52,12 +55,17 @@ export function fragmentFromSelection(
   selectedIds: ReadonlySet<NodeId>,
 ): BoardFragment {
   const ids = new Set(nodesToDragWith(selectedIds, board.nodes))
-  return {
+  // A spread comes along whole or not at all: its title brings every sheet
+  // (`nodesToDragWith`), and a sheet selected without it is part of a PDF that
+  // is not being copied — the fold below drops it.
+  const folded = collapseBoard({
+    ...board,
     nodes: board.nodes.filter((node) => ids.has(node.id)),
     edges: board.edges.filter(
       (edge) => ids.has(edge.fromNode) && ids.has(edge.toNode),
     ),
-  }
+  })
+  return { nodes: folded.nodes, edges: folded.edges }
 }
 
 /** The fragment as Canvas's clipboard payload. */
@@ -119,23 +127,51 @@ export function placeFragment(
   fragment: BoardFragment,
   at: ScreenPoint,
 ): Readonly<{ board: Board; nodeIds: NodeId[] }> {
-  const center = boundsCenter(fragment.nodes)
+  // Placed in the board's shape, so an open spread lands as the title and
+  // sheets it was copied as, and is centred on what was on screen.
+  const opened = expandBoard({ ...board, ...fragment })
+  const center = boundsCenter(opened.nodes)
   const dx = Math.round(at.x - center.x)
   const dy = Math.round(at.y - center.y)
   const idMap = new Map<NodeId, NodeId>()
   let next = board
-  for (const node of fragment.nodes) {
+  for (const node of opened.nodes) {
+    const moved = { ...node, x: node.x + dx, y: node.y + dy }
+    if (moved.type === 'pdf-page') {
+      // Board order puts a title before its sheets, so its new id is known.
+      const parent = idMap.get(moved.parent)
+      if (parent === undefined) continue
+      const id = pdfPageNodeId(parent, moved.page)
+      idMap.set(node.id, id)
+      next = addNode(next, { ...moved, id, parent })
+      continue
+    }
     const id = mintNodeId(next)
     idMap.set(node.id, id)
-    next = addNode(next, { ...node, id, x: node.x + dx, y: node.y + dy })
+    if (moved.type === 'file' && moved.readerRect) {
+      const reader = moved.readerRect
+      next = addNode(next, {
+        ...moved,
+        id,
+        readerRect: { ...reader, x: reader.x + dx, y: reader.y + dy },
+      })
+      continue
+    }
+    next = addNode(next, { ...moved, id })
   }
-  for (const edge of fragment.edges) {
+  for (const edge of opened.edges) {
     const fromNode = idMap.get(edge.fromNode)
     const toNode = idMap.get(edge.toNode)
     if (fromNode === undefined || toNode === undefined) continue
     next = addEdge(next, { ...edge, id: mintEdgeId(next), fromNode, toNode })
   }
-  return { board: next, nodeIds: Array.from(idMap.values()) }
+  return {
+    board: next,
+    nodeIds: opened.nodes.flatMap((node) => {
+      const id = idMap.get(node.id)
+      return id === undefined ? [] : [id]
+    }),
+  }
 }
 
 /** The centre of the nodes' bounding box — where a fragment placed back at

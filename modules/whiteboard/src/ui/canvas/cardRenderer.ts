@@ -19,6 +19,7 @@ import {
   basenameWithoutExtension,
   fileNodeKind,
 } from '../../domain/naming'
+import { isSpreadTitle } from '../../domain/spread'
 import type { AnnotationLease } from '../../host/annotationStore'
 import {
   ARRANGE_ANIMATION_EASING,
@@ -60,6 +61,14 @@ const CARD_CLASS = 'yolo-whiteboard-card'
  * the frame, whose box is its content's. */
 const PLAIN_TEXT_CLASS = 'yolo-whiteboard-text'
 const GROUP_CLASS = 'yolo-whiteboard-group'
+/** The title of an open PDF spread (domain/spread.ts): the document's name,
+ * standing on the board for the whole of it — no frame, no body. */
+const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
+const SPREAD_TITLE_TEXT_CLASS = 'yolo-whiteboard-spread-title-text'
+/** One sheet of a spread: a card that is a page of paper, edge to edge. */
+const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
+/** The page number in a sheet's corner. */
+const SPREAD_SHEET_NUMBER_CLASS = 'yolo-whiteboard-spread-sheet-number'
 const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
@@ -194,6 +203,8 @@ export type CardRendererCallbacks = Readonly<{
   /** Bare text laid itself out at a new size — what its node's `w`/`h` now
    * are (see `observeText`). */
   onTextMeasured: (id: NodeId, size: Readonly<{ w: number; h: number }>) => void
+  /** A spread's title laid its name out at `w` world units wide. */
+  onSpreadTitleMeasured: (id: NodeId, w: number) => void
   /** Called after a note card's text has been read and drawn — the first
    * moment its editor can be opened (`noteText` is known). */
   onNoteCardRendered: (id: NodeId) => void
@@ -577,6 +588,11 @@ export class CardRenderer {
     // (`nodeIdFromEventTarget`), not the geometry. No longer the only handle,
     // now that a card has to be entered before its body is given away, but
     // the one that still works once the pointer is inside the page.
+    if (isSpreadTitle(node)) {
+      this.mountSpreadTitle(id, el, node.file)
+      return
+    }
+
     const chromeTitle =
       node.type === 'file'
         ? basenameWithoutExtension(node.file)
@@ -593,6 +609,16 @@ export class CardRenderer {
     const body = doc.createElement('div')
     body.className = CARD_BODY_CLASS
     el.appendChild(body)
+
+    // A sheet is a page of its document: named by the number in its corner,
+    // the document itself by its title.
+    if (node.type === 'pdf-page') {
+      el.classList.add(SPREAD_SHEET_CLASS)
+      const number = doc.createElement('div')
+      number.className = SPREAD_SHEET_NUMBER_CLASS
+      number.textContent = String(node.page)
+      el.appendChild(number)
+    }
 
     // Title block: always built — it is a line of text, and it is what the
     // card shows for as long as its body holds nothing, which is every card
@@ -631,6 +657,45 @@ export class CardRenderer {
     if (plain) this.observeText(el)
 
     void this.renderCardPreview(id)
+  }
+
+  /**
+   * An open spread's title: its document's name on the board, and the handle
+   * for the whole document — what a group holds, an edge reaches and a drag
+   * carries the pages with (domain/spread.ts). It has no body; its width is
+   * whatever its name takes, which is measured once it is laid out and
+   * written back to the node, since the board hit-tests by the node's size.
+   */
+  private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
+    const doc = el.ownerDocument
+    el.classList.add(SPREAD_TITLE_CLASS)
+    const text = doc.createElement('div')
+    text.className = SPREAD_TITLE_TEXT_CLASS
+    text.textContent = basenameWithoutExtension(file)
+    el.appendChild(text)
+    this.worldEl.appendChild(el)
+    this.runtimeByNodeId.set(id, {
+      el,
+      bodyEl: null,
+      contentRenderer: null,
+      contentView: null,
+      contentMarkdown: null,
+      contentSourcePath: null,
+      releaseContent: null,
+      webFrameUrl: null,
+      pdfReader: null,
+      missingFile: false,
+      noteText: null,
+    })
+    // Read on the next frame, with the rest of that frame's layout, rather
+    // than forcing one in the middle of a mount pass.
+    el.ownerDocument.defaultView?.requestAnimationFrame(() => {
+      if (this.runtimeByNodeId.get(id)?.el !== el || !text.isConnected) return
+      // Layout width, in world units: the element sits inside the camera's
+      // transform, which `offset*` ignores.
+      const w = Math.ceil(text.offsetWidth)
+      if (w > 0) this.callbacks.onSpreadTitleMeasured(id, w)
+    })
   }
 
   unmountNode(id: NodeId): void {
@@ -1035,7 +1100,7 @@ export class CardRenderer {
     }
 
     if (node.type === 'pdf-page') {
-      this.renderPdfInto(id, runtime, node.file)
+      this.renderPdfInto(id, runtime, node.file, node.page)
       return
     }
 
@@ -1358,9 +1423,18 @@ export class CardRenderer {
    * here is only whether it is the card being read — the one whose pages
    * carry text layers.
    */
-  private renderPdfInto(id: NodeId, runtime: NodeRuntime, path: string): void {
+  private renderPdfInto(
+    id: NodeId,
+    runtime: NodeRuntime,
+    path: string,
+    sheet?: number,
+  ): void {
     const existing = runtime.pdfReader
-    if (existing && existing.path === path) {
+    if (
+      existing &&
+      existing.path === path &&
+      existing.sheet === (sheet ?? null)
+    ) {
       existing.setInteractive(this.callbacks.isFocused(id))
       existing.retryIfFailed()
       return
@@ -1376,6 +1450,7 @@ export class CardRenderer {
       pdf: this.host.pdf,
       path,
       container: bodyEl,
+      sheet,
       position: this.callbacks.getPdfStartPosition(id),
       viewScale: this.callbacks.getViewScale(),
       interactive: this.callbacks.isFocused(id),
