@@ -7,19 +7,32 @@
 /* The title: one line over the first sheet saying what the document is —
  * its type, its name, how many pages it has — so a spread reads as a
  * document, where a group's label reads as the name of a region. No box of
- * its own, at rest or pointed at: the badge is what marks it.
+ * its own at rest: the badge is what marks it.
  *
  * The node is one sheet wide (domain/spread.ts's `layoutSpreadGrid`), but
  * the name is never cut: the line is at least the node's width and as much
  * wider as the name needs, spilling past it. So the line, not the node, is
  * what wears the selection ring — a card's, since it is the whole document
- * being selected. */
+ * being selected — and the border a pointed-at card gets. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected {
   border-color: transparent;
   background-color: transparent;
   box-shadow: none;
+}
+
+/* A card's hover border (card.css) is written with its selection and
+ * editing exclusions, which outweigh the rule above: repeated at that
+ * weight, for the title and a themed one. The line below carries the hover
+ * instead. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ):not(.yolo-whiteboard-card-editing),
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-themed.yolo-whiteboard-card-hovered:not(
+    .yolo-whiteboard-card-selected
+  ):not(.yolo-whiteboard-card-editing) {
+  border-color: transparent;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
@@ -38,6 +51,10 @@
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: inherit;
+}
+
+.yolo-whiteboard-card-hovered > .yolo-whiteboard-spread-title-line {
+  border-color: var(--background-modifier-border-focus);
 }
 
 .yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line {

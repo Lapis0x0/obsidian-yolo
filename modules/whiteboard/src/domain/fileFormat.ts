@@ -125,8 +125,13 @@ export type SpreadRect = Readonly<{
 export type PdfSpread = Readonly<{
   open: boolean
   title: SpreadRect
-  pages: readonly SpreadRect[]
+  pages: readonly SpreadPage[]
 }>
+
+/** Where a spread's page was left, and the colour it was given if any —
+ * the one thing a sheet carries of its own besides its place. Written as
+ * `[x, y, w, h]`, or `[x, y, w, h, color]` for a coloured one. */
+export type SpreadPage = SpreadRect & Readonly<{ color?: NodeColor }>
 
 /**
  * The spread fields a file node can carry: `spread` as it is in the file,
@@ -616,9 +621,9 @@ function parseSpread(entry: Record<string, unknown>): { spread?: PdfSpread } {
   if (!isPlainObject(raw)) return {}
   const title = parseSpreadRect(raw.title)
   if (!title || !Array.isArray(raw.pages) || raw.pages.length === 0) return {}
-  const pages: SpreadRect[] = []
+  const pages: SpreadPage[] = []
   for (const value of raw.pages) {
-    const page = parseSpreadRect(value)
+    const page = parseSpreadPage(value)
     if (!page) return {}
     pages.push(page)
   }
@@ -633,6 +638,16 @@ function parseSpreadRect(value: unknown): SpreadRect | null {
   return { x, y, w, h }
 }
 
+function parseSpreadPage(value: unknown): SpreadPage | null {
+  if (!Array.isArray(value) || value.length !== 5) {
+    return parseSpreadRect(value)
+  }
+  const rect = parseSpreadRect(value.slice(0, 4))
+  const color: unknown = value[4]
+  if (!rect || !isNonEmptyString(color)) return null
+  return { ...rect, color }
+}
+
 function serializeSpread(
   spread: PdfSpread | undefined,
 ): Record<string, unknown> | undefined {
@@ -641,7 +656,9 @@ function serializeSpread(
   return {
     open: spread.open ? true : undefined,
     title: tuple(spread.title),
-    pages: spread.pages.map(tuple),
+    pages: spread.pages.map((page) =>
+      page.color === undefined ? tuple(page) : [...tuple(page), page.color],
+    ),
   }
 }
 

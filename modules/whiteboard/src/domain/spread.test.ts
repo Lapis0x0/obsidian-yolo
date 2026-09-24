@@ -289,6 +289,37 @@ describe('the file round trip', () => {
     expect(collapseBoard(expandBoard(parsed.board))).toEqual(parsed.board)
   })
 
+  it('keeps a page colour through the file and a closed spread', () => {
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: 0 })]),
+      'p',
+      threePages,
+    )
+    const coloured = {
+      ...open,
+      nodes: open.nodes.map((node) =>
+        node.id === 'p/p2' ? { ...node, color: '4' } : node,
+      ),
+    }
+    const text = serializeBoard(collapseBoard(coloured))
+    const json = JSON.parse(text) as {
+      nodes: { spread: { pages: unknown[][] } }[]
+    }
+    expect(json.nodes[0].spread.pages[1]).toHaveLength(5)
+    expect(json.nodes[0].spread.pages[0]).toHaveLength(4)
+    const parsed = parseBoard(text)
+    if (!parsed.ok) throw new Error('parse failed')
+    const reopened = openSpread(
+      closeSpread(expandBoard(parsed.board), 'p'),
+      'p',
+    )
+    expect(spreadPages(reopened, 'p').map((sheet) => sheet.color)).toEqual([
+      undefined,
+      '4',
+      undefined,
+    ])
+  })
+
   it('writes an edge page as a field and reads it back', () => {
     const text = serializeBoard(
       board(

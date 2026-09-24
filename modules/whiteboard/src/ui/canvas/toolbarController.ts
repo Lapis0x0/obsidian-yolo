@@ -291,6 +291,10 @@ export class ToolbarController {
     const single = nodes.length === 1 ? nodes[0] : null
     const ids = nodes.map((node) => node.id)
     const canEdit = this.callbacks.canEdit()
+    // Pages of a spread and nothing else: pieces of a document that is
+    // deleted, grouped and put away as a whole, from its title. What is a
+    // page's own is its colour, and where the camera looks.
+    const onlySheets = nodes.every((node) => node.type === 'pdf-page')
 
     // The row is Obsidian Canvas's, in its order: delete, colour, focus,
     // group, align. No edit button: a second click on the selected card opens
@@ -301,11 +305,13 @@ export class ToolbarController {
     // canvas.ts's `selectionMenuItems`.
     const items: ToolbarItem[] = []
     if (canEdit) {
-      items.push({
-        label: this.callbacks.t('menu.deleteCard'),
-        icon: 'trash',
-        onSelect: () => this.callbacks.deleteNodes(ids),
-      })
+      if (!onlySheets) {
+        items.push({
+          label: this.callbacks.t('menu.deleteCard'),
+          icon: 'trash',
+          onSelect: () => this.callbacks.deleteNodes(ids),
+        })
+      }
       items.push(
         this.colorControl(
           commonColor(nodes.map((node) => node.color)),
@@ -323,7 +329,7 @@ export class ToolbarController {
         onSelect: () => this.callbacks.zoomToNodes(nodes),
       })
     }
-    if (canEdit && nodes.length > 1) {
+    if (canEdit && nodes.length > 1 && !onlySheets) {
       items.push({
         label: this.callbacks.t('menu.createGroup'),
         icon: 'group',
@@ -341,21 +347,19 @@ export class ToolbarController {
         onSelect: () => this.callbacks.openReader(single.id),
       })
     }
-    // Spread a PDF's pages out, or put a spread away — from its title or
-    // any one of its sheets. In the overview tier too: the board changes and
-    // the canvas draws it, and the cards are built when the zoom comes back.
-    const spreadOf =
-      single?.type === 'pdf-page'
-        ? this.callbacks.getBoard().nodes.find((n) => n.id === single.parent)
-        : single
-    if (canEdit && spreadOf && this.callbacks.isPdfNode(spreadOf)) {
-      const open = isSpreadTitle(spreadOf)
+    // Spread a PDF's pages out, or put a spread away — from the card or the
+    // title, not from a page, where it would put away more than was pointed
+    // at (the page's right-click menu still has it). In the overview tier
+    // too: the board changes and the canvas draws it, and the cards are
+    // built when the zoom comes back.
+    if (canEdit && single && this.callbacks.isPdfNode(single)) {
+      const open = isSpreadTitle(single)
       items.push({
         label: this.callbacks.t(
           open ? 'toolbar.closeSpread' : 'toolbar.openSpread',
         ),
         icon: open ? 'minimize-2' : 'maximize-2',
-        onSelect: () => this.callbacks.toggleSpread(spreadOf.id),
+        onSelect: () => this.callbacks.toggleSpread(single.id),
       })
     }
     // A group has no content to type into, so its pencil renames it — the

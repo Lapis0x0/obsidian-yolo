@@ -30,6 +30,7 @@ import type {
   NodeId,
   PdfPageNode,
   PdfSpread,
+  SpreadPage,
   SpreadRect,
 } from './fileFormat'
 
@@ -66,7 +67,7 @@ export type PageSize = Readonly<{ width: number; height: number }>
 
 export type SpreadLayout = Readonly<{
   title: SpreadRect
-  pages: readonly SpreadRect[]
+  pages: readonly SpreadPage[]
 }>
 
 /** The id a spread's page has on the board: derived from its PDF's, so it is
@@ -171,18 +172,23 @@ export function openSpread(
     h: use.title.h,
     readerRect: { x: node.x, y: node.y, w: node.w, h: node.h },
   }
-  const pages: PdfPageNode[] = use.pages.map((rect, pageIndex) => ({
-    id: pdfPageNodeId(id, pageIndex + 1),
-    type: 'pdf-page',
-    parent: id,
-    file: node.file,
-    page: pageIndex + 1,
-    x: rect.x + dx,
-    y: rect.y + dy,
-    w: rect.w,
-    h: rect.h,
-    extra: {},
-  }))
+  const pages: PdfPageNode[] = use.pages.map((rect, pageIndex) => {
+    // A page's colour is its own, whatever layout it is placed by.
+    const color = remembered.pages[pageIndex]?.color
+    return {
+      id: pdfPageNodeId(id, pageIndex + 1),
+      type: 'pdf-page',
+      parent: id,
+      file: node.file,
+      page: pageIndex + 1,
+      x: rect.x + dx,
+      y: rect.y + dy,
+      w: rect.w,
+      h: rect.h,
+      ...(color === undefined ? {} : { color }),
+      extra: {},
+    }
+  })
   const nodes = [
     ...board.nodes.slice(0, index),
     title,
@@ -252,6 +258,7 @@ function foldSpread(board: Board, id: NodeId, open: boolean): Board {
       y: sheet.y,
       w: sheet.w,
       h: sheet.h,
+      ...(sheet.color === undefined ? {} : { color: sheet.color }),
     })),
   }
   // Back to a card at the title's corner and the sheets' width (the
