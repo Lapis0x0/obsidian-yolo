@@ -1,23 +1,21 @@
-// The frame around a selected PDF spread (domain/spread.ts), and its handle:
-// the one way a spread is laid out again as a grid.
+// The frame around a selected PDF spread (domain/spread.ts), and the one way
+// a spread is laid out again as a grid: dragging the frame's right edge.
 //
 // Shown while a spread's title is the lone selection — the title is the
 // document, and the frame is what "the whole document" covers on the board:
-// the union of the title and every sheet, wherever they have been put. The
-// handle sits level with the title, at the right edge of the grid as it is
-// now — beside the title rather than in a corner of the frame, because a
-// single sheet dragged far away takes the frame's corners with it and the
-// handle would go off screen. It is dragged sideways to say how wide the
-// grid should be; every sheet is laid out again under the title at that many
-// columns, snapping to whole columns as the pointer passes them
-// (`spreadColumnsForWidth`). It takes back sheets that were moved away on their
-// own: the grid is a way of arranging the whole document, not a place some of
-// it belongs to. A drag is one undo step, however many column counts it
-// passed through.
+// the union of the title and every sheet, wherever they have been put. Its
+// right edge is dragged sideways to say how wide the document should be;
+// every sheet is laid out again under the title at that many columns,
+// snapping to whole columns as the pointer passes them
+// (`spreadColumnsForWidth`), and the frame follows the grid it makes. It
+// takes back sheets that were moved away on their own: the grid is a way of
+// arranging the whole document, not a place some of it belongs to. A drag is
+// one undo step, however many column counts it passed through.
 //
 // World-layer DOM, like the snap guides: stated in world coordinates, drawn
-// over the cards. The frame itself takes no pointer; only the handle does, and
-// a press on it stops there, so the board never sees a marquee begin.
+// over the cards. The frame itself takes no pointer; only its right edge
+// does, and a press on it stops there, so the board never sees a marquee
+// begin.
 //
 // Popout safety: everything comes from the `Document` handed in, and the
 // drag listens on that document's window.
@@ -29,12 +27,14 @@ import {
   isSpreadTitle,
   spreadColumnsForWidth,
   spreadPages,
-  spreadWidthForColumns,
 } from '../../domain/spread'
 
 const FRAME_CLASS = 'yolo-whiteboard-spread-frame'
 const FRAME_HIDDEN_CLASS = 'yolo-whiteboard-spread-frame-hidden'
-const HANDLE_CLASS = 'yolo-whiteboard-spread-frame-handle'
+/** The frame's right edge: what is dragged to lay the spread out again. */
+const EDGE_CLASS = 'yolo-whiteboard-spread-frame-edge'
+/** On the frame for the length of a drag, so the edge stays lit. */
+const DRAGGING_CLASS = 'yolo-whiteboard-spread-frame-dragging'
 /** How far outside the sheets the frame is drawn, in world units. */
 const FRAME_PADDING = 13
 
@@ -51,7 +51,7 @@ export type SpreadFrameDeps = Readonly<{
 
 export class SpreadFrame {
   private readonly frameEl: HTMLElement
-  private readonly handleEl: HTMLElement
+  private readonly edgeEl: HTMLElement
   private titleId: NodeId | null = null
   private drag: Readonly<{
     pointerId: number
@@ -68,11 +68,11 @@ export class SpreadFrame {
   ) {
     this.frameEl = doc.createElement('div')
     this.frameEl.className = `${FRAME_CLASS} ${FRAME_HIDDEN_CLASS}`
-    this.handleEl = doc.createElement('div')
-    this.handleEl.className = HANDLE_CLASS
-    this.frameEl.appendChild(this.handleEl)
+    this.edgeEl = doc.createElement('div')
+    this.edgeEl.className = EDGE_CLASS
+    this.frameEl.appendChild(this.edgeEl)
     parent.appendChild(this.frameEl)
-    this.handleEl.addEventListener('pointerdown', this.onPointerDown)
+    this.edgeEl.addEventListener('pointerdown', this.onPointerDown)
   }
 
   /** The counter-scaled chrome element (CameraController's applyZoomScale):
@@ -83,7 +83,7 @@ export class SpreadFrame {
 
   destroy(): void {
     this.endDrag()
-    this.handleEl.removeEventListener('pointerdown', this.onPointerDown)
+    this.edgeEl.removeEventListener('pointerdown', this.onPointerDown)
     this.frameEl.remove()
   }
 
@@ -113,16 +113,11 @@ export class SpreadFrame {
     this.frameEl.style.top = `${bounds.y - FRAME_PADDING}px`
     this.frameEl.style.width = `${bounds.w + FRAME_PADDING * 2}px`
     this.frameEl.style.height = `${bounds.h + FRAME_PADDING * 2}px`
-    if (!title) return
-    const gridRight =
-      title.x + spreadWidthForColumns(currentSpreadColumns(sheets))
-    this.handleEl.style.left = `${gridRight - bounds.x + FRAME_PADDING}px`
-    this.handleEl.style.top = `${title.y + title.h / 2 - bounds.y + FRAME_PADDING}px`
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0 || this.titleId === null || !this.deps.canEdit()) return
-    // The press is the handle's: not a marquee, not a pan, not a click that
+    // The press is the edge's: not a marquee, not a pan, not a click that
     // clears the selection this frame belongs to.
     e.stopPropagation()
     e.preventDefault()
@@ -134,6 +129,7 @@ export class SpreadFrame {
       id: this.titleId,
       historyKey: `spread-reflow-${this.titleId}-${this.dragCount}`,
     }
+    this.frameEl.classList.add(DRAGGING_CLASS)
     const win = this.doc.defaultView
     win?.addEventListener('pointermove', this.onPointerMove)
     win?.addEventListener('pointerup', this.onPointerUp)
@@ -167,5 +163,6 @@ export class SpreadFrame {
     win?.removeEventListener('pointerup', this.onPointerUp)
     win?.removeEventListener('pointercancel', this.onPointerUp)
     this.drag = null
+    this.frameEl.classList.remove(DRAGGING_CLASS)
   }
 }

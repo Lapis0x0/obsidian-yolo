@@ -104,17 +104,19 @@
   pointer-events: auto;
 }
 
-/* The frame around a selected spread, and its reflow handle
- * (ui/canvas/spreadFrame.ts). The frame says what "the whole document"
- * covers and takes no pointer; the handle, level with the title at the
- * grid's right edge, is dragged sideways to lay every sheet out again, a whole column at a time.
- * Both are chrome in world coordinates, weighted by the zoom multiplier the
+/* The frame around a selected spread (ui/canvas/spreadFrame.ts). It says
+ * what "the whole document" covers and takes no pointer, except at its right
+ * edge: dragged sideways, that lays every sheet out again a whole column at a
+ * time. Chrome in world coordinates, weighted by the zoom multiplier the
  * camera writes on this element, like the resize handles. */
 .yolo-whiteboard-spread-frame {
+  --yolo-whiteboard-spread-frame-line: calc(
+    1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
   position: absolute;
   z-index: 2;
   box-sizing: border-box;
-  border: calc(1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)) dashed
+  border: var(--yolo-whiteboard-spread-frame-line) dashed
     var(--interactive-accent);
   border-radius: calc(6px * var(--yolo-whiteboard-zoom-multiplier, 1));
   pointer-events: none;
@@ -124,20 +126,39 @@
   display: none;
 }
 
-.yolo-whiteboard-spread-frame-handle {
-  --yolo-whiteboard-spread-handle: calc(
-    14px * var(--yolo-whiteboard-zoom-multiplier, 1)
+/* A strip straddling the right edge, wider than the line so it can be
+ * found; the line it sits on turns solid and heavier under the pointer, and
+ * stays so for the length of a drag. */
+.yolo-whiteboard-spread-frame-edge {
+  --yolo-whiteboard-spread-edge: calc(
+    12px * var(--yolo-whiteboard-zoom-multiplier, 1)
   );
   position: absolute;
-  /* Centred on the point spreadFrame.ts places it at: the grid's right edge,
-   * level with the title. */
-  translate: -50% -50%;
-  width: var(--yolo-whiteboard-spread-handle);
-  height: var(--yolo-whiteboard-spread-handle);
-  border: calc(1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)) solid
-    var(--interactive-accent);
-  border-radius: calc(3px * var(--yolo-whiteboard-zoom-multiplier, 1));
-  background: var(--background-primary);
+  top: 0;
+  bottom: 0;
+  right: calc(
+    var(--yolo-whiteboard-spread-edge) * -0.5 -
+      var(--yolo-whiteboard-spread-frame-line) * 0.5
+  );
+  width: var(--yolo-whiteboard-spread-edge);
   cursor: ew-resize;
   pointer-events: auto;
+}
+
+.yolo-whiteboard-spread-frame-edge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - var(--yolo-whiteboard-spread-frame-line));
+  width: calc(var(--yolo-whiteboard-spread-frame-line) * 2);
+  border-radius: var(--yolo-whiteboard-spread-frame-line);
+  background: var(--interactive-accent);
+  opacity: 0;
+}
+
+.yolo-whiteboard-spread-frame-edge:hover::before,
+.yolo-whiteboard-spread-frame-dragging
+  .yolo-whiteboard-spread-frame-edge::before {
+  opacity: 1;
 }

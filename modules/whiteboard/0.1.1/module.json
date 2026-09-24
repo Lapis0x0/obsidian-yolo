@@ -19,8 +19,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 339379,
-          "sha256": "3f5a74b4e1b279bc6f3e261ae5c45cd81f92d70a4bc456ca2735f0cf1ffc3e42",
+          "byteSize": 339281,
+          "sha256": "7c1b1bbd5278375c5e9d0ab87963ab96c0b8e94a0c4f9f415492d889dd71a51c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
@@ -28,8 +28,8 @@
           "role": "style",
           "name": "style.css",
           "path": "style.css",
-          "byteSize": 51404,
-          "sha256": "b436025817c4d5a1c7087786cd13ae345cb4d0c9f58d6c2f1b53c6b7dad80d99",
+          "byteSize": 51772,
+          "sha256": "3182b4860f2d357ff81e949864261e69bbd866ea9597f4c8615d0d67f468a682",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/style.css",
           "storage": "module"
         }
@@ -43,8 +43,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 339379,
-          "sha256": "3f5a74b4e1b279bc6f3e261ae5c45cd81f92d70a4bc456ca2735f0cf1ffc3e42",
+          "byteSize": 339281,
+          "sha256": "7c1b1bbd5278375c5e9d0ab87963ab96c0b8e94a0c4f9f415492d889dd71a51c",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
@@ -52,8 +52,8 @@
           "role": "style",
           "name": "style.css",
           "path": "style.css",
-          "byteSize": 51404,
-          "sha256": "b436025817c4d5a1c7087786cd13ae345cb4d0c9f58d6c2f1b53c6b7dad80d99",
+          "byteSize": 51772,
+          "sha256": "3182b4860f2d357ff81e949864261e69bbd866ea9597f4c8615d0d67f468a682",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/style.css",
           "storage": "module"
         }
