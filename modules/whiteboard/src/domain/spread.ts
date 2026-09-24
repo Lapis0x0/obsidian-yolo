@@ -482,6 +482,48 @@ export function reflowSpread(
   return changed ? { ...board, nodes } : board
 }
 
+/**
+ * Makes an open spread's sheets `pageWidth` wide, scaling the whole document
+ * about the title's corner: every sheet grows or shrinks in proportion, and
+ * so does the room between them, so an arrangement — a grid, or sheets moved
+ * about by hand — keeps its shape at the new size. The title is one sheet
+ * wide, so it follows; the reader card will, when the pages are put away.
+ * What the corner of a selected spread's frame does.
+ */
+export function scaleSpread(
+  board: Board,
+  titleId: NodeId,
+  pageWidth: number,
+  metrics = SPREAD_METRICS,
+): Board {
+  const title = board.nodes.find((node) => node.id === titleId)
+  if (!isSpreadTitle(title)) return board
+  const sheets = spreadPages(board, titleId)
+  if (sheets.length === 0 || sheets[0].w === pageWidth) return board
+  const factor = pageWidth / sheets[0].w
+  // Horizontally about the title's left edge; vertically about the top of
+  // the first row, so the title keeps its gap above the paper.
+  const left = title.x
+  const top = title.y + title.h + metrics.titleGap
+  const scaled = new Map(
+    sheets.map((sheet) => [
+      sheet.id,
+      {
+        x: Math.round(left + (sheet.x - left) * factor),
+        y: Math.round(top + (sheet.y - top) * factor),
+        w: pageWidth,
+        h: Math.round(sheet.h * factor),
+      },
+    ]),
+  )
+  const nodes = board.nodes.map((node) => {
+    if (node.id === titleId) return { ...node, w: pageWidth }
+    const rect = scaled.get(node.id)
+    return rect ? { ...node, ...rect } : node
+  })
+  return { ...board, nodes }
+}
+
 /** How many columns an open spread's sheets are in right now, read off the
  * first row — what the resize handle starts from. */
 export function currentSpreadColumns(

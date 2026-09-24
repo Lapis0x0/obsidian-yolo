@@ -21,6 +21,7 @@ import {
   openSpread,
   pdfPageNodeId,
   reflowSpread,
+  scaleSpread,
   spreadColumnsForWidth,
   spreadPages,
   spreadWidthForColumns,
@@ -185,7 +186,7 @@ describe('openSpread / closeSpread', () => {
     const moved = {
       ...open,
       nodes: open.nodes.map((node) =>
-        node.parent === 'p' || node.id === 'p'
+        (node.type === 'pdf-page' && node.parent === 'p') || node.id === 'p'
           ? { ...node, x: node.x + 50, y: node.y + 70 }
           : node,
       ),
@@ -232,6 +233,27 @@ describe('openSpread / closeSpread', () => {
     const plain = board([pdf('p')])
     expect(openSpread(plain, 'p')).toBe(plain)
     expect(closeSpread(plain, 'p')).toBe(plain)
+  })
+})
+
+describe('scaleSpread', () => {
+  it('scales the whole document about the title corner', () => {
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: 0 })]),
+      'p',
+      threePages,
+    )
+    const scaled = scaleSpread(open, 'p', 780)
+    const title = scaled.nodes[0]
+    expect(title).toMatchObject({ x: 1000, y: 0, w: 780 })
+    const top = SPREAD_METRICS.titleHeight + SPREAD_METRICS.titleGap
+    const [a, b, c] = spreadPages(scaled, 'p')
+    expect(a).toMatchObject({ x: 1000, y: top, w: 780 })
+    expect(a.h).toBe(threePages.pages[0].h * 2)
+    // The room between sheets doubles with them.
+    expect(b.x).toBe(1000 + (390 + 26) * 2)
+    expect(c.y).toBe(top + (threePages.pages[2].y - top) * 2)
+    expect(scaleSpread(scaled, 'p', 780)).toBe(scaled)
   })
 })
 

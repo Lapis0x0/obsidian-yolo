@@ -7,29 +7,42 @@
 /* The title: one line over the first sheet saying what the document is —
  * its type, its name, how many pages it has — so a spread reads as a
  * document, where a group's label reads as the name of a region. No box of
- * its own, at rest or pointed at: the badge is what marks it. Selected, it
- * takes a card's ring, since it is the whole document being selected. One
- * sheet wide (domain/spread.ts's `layoutSpreadGrid`). */
-.yolo-whiteboard-card.yolo-whiteboard-spread-title {
-  display: flex;
-  /* A card is a column (card.css); the title is one line. */
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+ * its own, at rest or pointed at: the badge is what marks it.
+ *
+ * The node is one sheet wide (domain/spread.ts's `layoutSpreadGrid`), but
+ * the name is never cut: the line is at least the node's width and as much
+ * wider as the name needs, spilling past it. So the line, not the node, is
+ * what wears the selection ring — a card's, since it is the whole document
+ * being selected. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title,
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered,
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected {
   border-color: transparent;
   background-color: transparent;
-}
-
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ) {
-  border-color: transparent;
+  box-shadow: none;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::after {
   content: none;
+}
+
+.yolo-whiteboard-spread-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+}
+
+.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .yolo-whiteboard-spread-title-badge {
@@ -45,18 +58,16 @@
 }
 
 .yolo-whiteboard-spread-title-text {
-  min-width: 0;
-  overflow: hidden;
   font-size: 16px;
   font-weight: 500;
   color: var(--text-normal);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .yolo-whiteboard-spread-title-count {
   flex: none;
   margin-left: auto;
+  padding-left: 8px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
@@ -70,6 +81,18 @@
     .yolo-whiteboard-card-selected
   ) {
   border-color: var(--background-modifier-border-focus);
+}
+
+/* Every sheet of the spread whose title is selected (canvas.ts's
+ * `setSelection`): a faint wash of the accent, so the document the selection
+ * names can be found on the board — fainter than a selected card's ring,
+ * since the sheets are not what is selected. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-sheet.yolo-whiteboard-spread-sheet-of-selected:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 }
 
 /* A sheet is a page of paper: square corners, no frame of its own beyond the
@@ -180,8 +203,63 @@
 }
 
 .yolo-whiteboard-spread-frame-edge:hover::before,
-.yolo-whiteboard-spread-frame-dragging
+.yolo-whiteboard-spread-frame-dragging-edge
   .yolo-whiteboard-spread-frame-edge::before {
+  background-color: var(--interactive-accent);
+  opacity: 1;
+}
+
+/* The bottom-right corner: what sizes the pages (the whole document scales
+ * with them). Marked by a short stroke along the bottom that turns the right
+ * edge's line into a corner, in the same faint ink; the grip is a square
+ * over the corner, above the edge's strip so the corner wins where they
+ * meet. */
+.yolo-whiteboard-spread-frame-corner {
+  --yolo-whiteboard-spread-corner: calc(
+    16px * var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  position: absolute;
+  z-index: 1;
+  right: calc(var(--yolo-whiteboard-spread-corner) * -0.5);
+  bottom: calc(var(--yolo-whiteboard-spread-corner) * -0.5);
+  width: var(--yolo-whiteboard-spread-corner);
+  height: var(--yolo-whiteboard-spread-corner);
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-spread-frame-corner::before,
+.yolo-whiteboard-spread-frame-corner::after {
+  content: '';
+  position: absolute;
+  border-radius: var(--yolo-whiteboard-spread-frame-line);
+  background-color: var(--text-faint);
+  opacity: 0.5;
+}
+
+/* Along the bottom, from the corner leftwards. */
+.yolo-whiteboard-spread-frame-corner::before {
+  right: calc(50% - var(--yolo-whiteboard-spread-frame-line) * 0.5);
+  top: calc(50% - var(--yolo-whiteboard-spread-frame-line) * 0.5);
+  width: calc(var(--yolo-whiteboard-spread-corner) * 1.25);
+  height: var(--yolo-whiteboard-spread-frame-line);
+}
+
+/* Up the right side, over the edge's own line, so the corner lights as one
+ * piece. */
+.yolo-whiteboard-spread-frame-corner::after {
+  left: calc(50% - var(--yolo-whiteboard-spread-frame-line) * 0.5);
+  bottom: calc(50% - var(--yolo-whiteboard-spread-frame-line) * 0.5);
+  width: var(--yolo-whiteboard-spread-frame-line);
+  height: calc(var(--yolo-whiteboard-spread-corner) * 1.25);
+}
+
+.yolo-whiteboard-spread-frame-corner:hover::before,
+.yolo-whiteboard-spread-frame-corner:hover::after,
+.yolo-whiteboard-spread-frame-dragging-corner
+  .yolo-whiteboard-spread-frame-corner::before,
+.yolo-whiteboard-spread-frame-dragging-corner
+  .yolo-whiteboard-spread-frame-corner::after {
   background-color: var(--interactive-accent);
   opacity: 1;
 }

@@ -76,6 +76,7 @@ import {
   nodesToDelete,
   openSpread,
   reflowSpread,
+  scaleSpread,
   SPREAD_METRICS,
   spreadPages,
 } from '../domain/spread'
@@ -131,6 +132,7 @@ import {
   SVG_NS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
+  SPREAD_SHEET_OF_SELECTED_CLASS,
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { applyColorToElement } from './selectionToolbar'
@@ -730,6 +732,7 @@ export class WhiteboardCanvas {
       canEdit: () => this.canEdit,
       worldPointFromEvent: (e) => this.worldPointFromEvent(e),
       reflow: (id, columns, key) => this.reflowSpreadTo(id, columns, key),
+      resize: (id, pageWidth, key) => this.resizeSpreadTo(id, pageWidth, key),
     })
     this.spreadFrame = spreadFrame
 
@@ -1068,6 +1071,8 @@ export class WhiteboardCanvas {
         this.spreadFrame?.sync()
       },
       onHoverChange: (id) => this.syncSpreadHover(id),
+      overviewSpreadTitleAt: (point) =>
+        this.overviewLayer?.spreadTitleAt(point) ?? null,
       rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
     this.emptyHintEl = this.buildEmptyHint(doc, this.toolbarController.overlay)
@@ -1508,6 +1513,18 @@ export class WhiteboardCanvas {
       if (!this.selectedIds.has(id))
         this.cardRenderer.getRuntime(id)?.el?.classList.add(CARD_SELECTED_CLASS)
     }
+    // A selected spread's sheets are lit faintly, wherever they are, so the
+    // document the selection names can be found on the board.
+    for (const id of new Set([...this.selectedIds, ...next])) {
+      const on = next.has(id)
+      if (on === this.selectedIds.has(id)) continue
+      if (!isSpreadTitle(this.nodesById.get(id))) continue
+      for (const sheet of spreadPages(this.board, id)) {
+        this.cardRenderer
+          .getRuntime(sheet.id)
+          ?.el?.classList.toggle(SPREAD_SHEET_OF_SELECTED_CLASS, on)
+      }
+    }
     this.selectedIds = next
     // The class writes above reach nothing in the overview tier; there the
     // selection ring is drawn.
@@ -1896,6 +1913,39 @@ export class WhiteboardCanvas {
       requested.set(node.id, { x: node.x, y: node.y })
     }
     this.applyArrangement(requested, { historyKey })
+  }
+
+  /** Makes an open spread's sheets `pageWidth` wide, the whole document
+   * scaled about its title's corner (domain/spread.ts's `scaleSpread`), as
+   * part of the step `historyKey` names. The elements are resized in place;
+   * a sheet's reader follows its element's size on its own. */
+  private resizeSpreadTo(
+    id: NodeId,
+    pageWidth: number,
+    historyKey: string,
+  ): void {
+    if (!this.canEdit) return
+    const next = scaleSpread(this.board, id, pageWidth)
+    if (next === this.board) return
+    this.applyBoardChange(next, historyKey)
+    const changed = new Set<NodeId>([
+      id,
+      ...spreadPages(next, id).map((sheet) => sheet.id),
+    ])
+    for (const nodeId of changed) {
+      const el = this.cardRenderer.getRuntime(nodeId)?.el
+      const node = this.nodesById.get(nodeId)
+      if (!el || !node) continue
+      el.style.left = `${node.x}px`
+      el.style.top = `${node.y}px`
+      el.style.width = `${node.w}px`
+      el.style.height = `${node.h}px`
+    }
+    this.edgeLayer.redrawEdgesForNodes(changed)
+    this.interaction.refreshInteractionLayer()
+    this.toolbarController.positionToolbar()
+    this.recomputeVisibility()
+    this.drainQueues()
   }
 
   /** Puts a spread opened or put away on screen: the node's element was a

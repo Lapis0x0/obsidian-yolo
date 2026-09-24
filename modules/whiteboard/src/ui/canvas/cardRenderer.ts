@@ -36,6 +36,7 @@ import {
   NODE_EXIT_TO_SCALE,
   PLAIN_TEXT_AUTO_CLASS,
   WEB_URL_PATTERN,
+  SPREAD_SHEET_OF_SELECTED_CLASS,
 } from '../constants'
 import { type PdfPageLabels, cardMarkdownWindow, nodeTitleText } from '../lod'
 import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
@@ -65,6 +66,7 @@ const GROUP_CLASS = 'yolo-whiteboard-group'
  * standing on the board for the whole of it — no frame, no body. */
 const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
 const SPREAD_TITLE_TEXT_CLASS = 'yolo-whiteboard-spread-title-text'
+const SPREAD_TITLE_LINE_CLASS = 'yolo-whiteboard-spread-title-line'
 const SPREAD_TITLE_BADGE_CLASS = 'yolo-whiteboard-spread-title-badge'
 const SPREAD_TITLE_COUNT_CLASS = 'yolo-whiteboard-spread-title-count'
 /** One sheet of a spread: a card that is a page of paper, edge to edge. */
@@ -616,6 +618,9 @@ export class CardRenderer {
     // the document itself by its title.
     if (node.type === 'pdf-page') {
       el.classList.add(SPREAD_SHEET_CLASS)
+      if (this.callbacks.isSelected(node.parent)) {
+        el.classList.add(SPREAD_SHEET_OF_SELECTED_CLASS)
+      }
       const number = doc.createElement('div')
       number.className = SPREAD_SHEET_NUMBER_CLASS
       number.textContent = String(node.page)
@@ -665,9 +670,9 @@ export class CardRenderer {
    * An open spread's title: the line over its first sheet that says what the
    * document is — type, name, length — and the handle for the whole of it:
    * what a group holds, an edge reaches and a drag carries the pages with
-   * (domain/spread.ts). It has no body. It is one sheet wide whatever the
-   * name (`layoutSpreadGrid`); a name longer than that is cut short, and the
-   * whole of it is the tooltip.
+   * (domain/spread.ts). It has no body. The node is one sheet wide
+   * (`layoutSpreadGrid`); the line it shows is as wide as the whole name
+   * needs, and reaches past the node when the name is long.
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
@@ -679,11 +684,13 @@ export class CardRenderer {
     text.className = SPREAD_TITLE_TEXT_CLASS
     const name = basenameWithoutExtension(file)
     text.textContent = name
-    text.title = name
     const count = doc.createElement('span')
     count.className = SPREAD_TITLE_COUNT_CLASS
     count.textContent = this.callbacks.spreadPageCountLabel(id)
-    el.append(badge, text, count)
+    const line = doc.createElement('div')
+    line.className = SPREAD_TITLE_LINE_CLASS
+    line.append(badge, text, count)
+    el.appendChild(line)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
       el,

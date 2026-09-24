@@ -279,6 +279,11 @@ export type InteractionControllerDeps = Readonly<{
   onLiveRectsChange: () => void
   /** The card under the pointer changed (or there is none). */
   onHoverChange: (nodeId: NodeId | null) => void
+  /** Overview tier: the spread title whose drawn line is at `point`, which
+   * reaches beyond its node's rectangle there. */
+  overviewSpreadTitleAt: (
+    point: Readonly<{ x: number; y: number }>,
+  ) => NodeId | null
   rebuildEdgesSvg: () => void
 }>
 
@@ -871,9 +876,10 @@ export class InteractionController {
   nodeIdAtPointer(e: MouseEvent): NodeId | null {
     const fromDom = nodeIdFromEventTarget(e.target)
     if (fromDom !== null || !this.core.isOverview()) return fromDom
-    return nodeAtPoint(
-      this.core.getCardNodes(),
-      this.core.worldPointFromEvent(e),
+    const world = this.core.worldPointFromEvent(e)
+    return (
+      this.deps.overviewSpreadTitleAt(world) ??
+      nodeAtPoint(this.core.getCardNodes(), world)
     )
   }
 

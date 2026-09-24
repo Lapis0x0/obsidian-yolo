@@ -55,6 +55,7 @@ import {
   EDGE_STROKE_WORLD_PX,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
+  OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_LABEL_MIN_FONT_PX,
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
@@ -149,6 +150,11 @@ export class OverviewLayer {
    * Kept in world units, so a zoom does not invalidate them; dropped with the
    * palette, whose font they were measured in. */
   private readonly titleLines = new Map<string, readonly string[]>()
+  /** Where each spread title's line was last drawn, in world units. */
+  private readonly titleRects = new Map<
+    NodeId,
+    Readonly<{ x: number; y: number; w: number; h: number }>
+  >()
   /** Viewport size in CSS pixels, pushed in rather than measured: reading it
    * here would force a layout flush on a frame that has just written the
    * world's transform. `WhiteboardCanvas` already measures the viewport on its
@@ -514,6 +520,22 @@ export class OverviewLayer {
     if (anySelected) ctx.stroke()
     ctx.lineWidth = 1
 
+    // 4b. The sheets of a selected spread, lit faintly — the stylesheet's
+    //     `.yolo-whiteboard-spread-sheet-of-selected`.
+    ctx.globalAlpha = 0.45
+    ctx.beginPath()
+    let anyLit = false
+    for (const card of visible) {
+      const node = card.node
+      if (node.type !== 'pdf-page') continue
+      if (this.callbacks.isSelected(node.id)) continue
+      if (!this.callbacks.isSelected(node.parent)) continue
+      this.strokeRectPath(ctx, card)
+      anyLit = true
+    }
+    if (anyLit) ctx.stroke()
+    ctx.globalAlpha = 1
+
     // 5. Titles, where a card is wide enough on screen to hold one. The type
     //    and the box it wraps in are the DOM card's title block — 32 world
     //    units, so it shrinks with the card — which is what makes the switch
@@ -550,61 +572,102 @@ export class OverviewLayer {
       h: number
     }>[],
   ): void {
+    this.titleRects.clear()
     const palette = this.palette
     if (!palette || titles.length === 0) return
-    const s = view.scale
-    const pad = SPREAD_TITLE_WORLD.padding * s
-    const gap = SPREAD_TITLE_WORLD.gap * s
+    // Held at a floor on screen, as a group's label is (constants.ts's
+    // OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX): the name is what an overview is
+    // for. Everything in the line grows by the same factor, upwards from the
+    // title's bottom edge so it never covers the paper, and as far right as
+    // the whole name needs.
+    const grow = Math.max(
+      1,
+      OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX /
+        (SPREAD_TITLE_WORLD.nameFont * view.scale),
+    )
+    const u = view.scale * grow
+    const pad = SPREAD_TITLE_WORLD.padding * u
+    const gap = SPREAD_TITLE_WORLD.gap * u
+    const badgeText = 'PDF'
+    const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
+    const nameFont = `500 ${SPREAD_TITLE_WORLD.nameFont * u}px ${palette.fontFamily}`
+    const countFont = `${SPREAD_TITLE_WORLD.countFont * u}px ${palette.fontFamily}`
     ctx.globalAlpha = 1
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'left'
     for (const title of titles) {
+      const name = nodeTitleText(title.node)
+      const count = this.callbacks.spreadPageCountLabel(title.node.id)
+      ctx.font = badgeFont
+      const badgeW =
+        ctx.measureText(badgeText).width +
+        SPREAD_TITLE_WORLD.badgePadding * 2 * u
+      ctx.font = nameFont
+      const nameW = ctx.measureText(name).width
+      ctx.font = countFont
+      const countW = ctx.measureText(count).width
+      const h = title.h * grow
+      const box = {
+        x: title.x,
+        y: title.y + title.h - h,
+        w: Math.max(title.w, pad + badgeW + gap + nameW + gap + countW + pad),
+        h,
+      }
+      // Where it was drawn is where it is pointed at: the line reaches past
+      // the node's rectangle, and a press on any of it is a press on the
+      // title (`spreadTitleAt`).
+      this.titleRects.set(title.node.id, {
+        x: (box.x - view.tx) / view.scale,
+        y: (box.y - view.ty) / view.scale,
+        w: box.w / view.scale,
+        h: box.h / view.scale,
+      })
       if (this.callbacks.isSelected(title.node.id)) {
         ctx.strokeStyle = palette.accent
         ctx.lineWidth = 2
         ctx.beginPath()
-        this.strokeRectPath(ctx, title)
+        this.strokeRectPath(ctx, box)
         ctx.stroke()
       }
       if (title.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      const mid = title.y + title.h / 2
+      const mid = box.y + box.h / 2
       // The type, on its tint.
-      ctx.font = `600 ${SPREAD_TITLE_WORLD.badgeFont * s}px ${palette.fontFamily}`
-      const badgeText = 'PDF'
-      const badgeW =
-        ctx.measureText(badgeText).width +
-        SPREAD_TITLE_WORLD.badgePadding * 2 * s
-      const badgeH = SPREAD_TITLE_WORLD.badgeHeight * s
+      const badgeH = SPREAD_TITLE_WORLD.badgeHeight * u
       ctx.globalAlpha = 0.12
       ctx.fillStyle = palette.presets['1']
-      ctx.fillRect(title.x + pad, mid - badgeH / 2, badgeW, badgeH)
+      ctx.fillRect(box.x + pad, mid - badgeH / 2, badgeW, badgeH)
       ctx.globalAlpha = 1
+      ctx.font = badgeFont
       ctx.fillText(
         badgeText,
-        title.x + pad + SPREAD_TITLE_WORLD.badgePadding * s,
+        box.x + pad + SPREAD_TITLE_WORLD.badgePadding * u,
         mid,
       )
-      // The page count, against the right side.
-      const count = this.callbacks.spreadPageCountLabel(title.node.id)
-      ctx.font = `${SPREAD_TITLE_WORLD.countFont * s}px ${palette.fontFamily}`
-      const countW = ctx.measureText(count).width
-      ctx.fillStyle = palette.muted
-      ctx.fillText(count, title.x + title.w - pad - countW, mid)
-      // The name, in what is left between them.
-      const nameX = title.x + pad + badgeW + gap
-      ctx.font = `500 ${SPREAD_TITLE_WORLD.nameFont * s}px ${palette.fontFamily}`
+      ctx.font = nameFont
       ctx.fillStyle = palette.text
-      ctx.fillText(
-        this.ellipsise(
-          ctx,
-          nodeTitleText(title.node),
-          title.x + title.w - pad - countW - gap - nameX,
-        ),
-        nameX,
-        mid,
-      )
+      ctx.fillText(name, box.x + pad + badgeW + gap, mid)
+      ctx.font = countFont
+      ctx.fillStyle = palette.muted
+      ctx.fillText(count, box.x + box.w - pad - countW, mid)
     }
     ctx.lineWidth = 1
+  }
+
+  /** The spread title whose drawn line is under `point` (world units), if
+   * any — the line is wider and taller than the title's node at this tier. */
+  spreadTitleAt(point: Readonly<{ x: number; y: number }>): NodeId | null {
+    if (!this.active) return null
+    for (const [id, rect] of this.titleRects) {
+      if (
+        point.x >= rect.x &&
+        point.x <= rect.x + rect.w &&
+        point.y >= rect.y &&
+        point.y <= rect.y + rect.h
+      ) {
+        return id
+      }
+    }
+    return null
   }
 
   /** A card's title in the lines its title block would give it. Measured at

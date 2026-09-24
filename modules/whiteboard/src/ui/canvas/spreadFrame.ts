@@ -1,23 +1,27 @@
-// The frame around a selected PDF spread (domain/spread.ts), and the one way
-// a spread is laid out again as a grid: dragging the frame's right edge.
+// The frame around a selected PDF spread (domain/spread.ts), and the two ways
+// the whole document is reshaped by hand: its right edge, and its corner.
 //
 // Shown while a spread's title is the lone selection, at every zoom — the
 // overview tier is where a long document is seen whole, so where it is most
-// often laid out again. The title is the
-// document, and the frame is what "the whole document" covers on the board:
-// the union of the title and every sheet, wherever they have been put. Its
-// right edge is dragged sideways to say how wide the document should be;
-// every sheet is laid out again under the title at that many columns,
-// snapping to whole columns as the pointer passes them
-// (`spreadColumnsForWidth`), and the frame follows the grid it makes. It
-// takes back sheets that were moved away on their own: the grid is a way of
-// arranging the whole document, not a place some of it belongs to. A drag is
-// one undo step, however many column counts it passed through.
+// often reshaped. The title is the document, and the frame is what "the
+// whole document" covers on the board: the union of the title and every
+// sheet, wherever they have been put.
+//
+// - The right edge is dragged sideways to say how many columns the document
+//   takes: every sheet is laid out again under the title at that many
+//   across, snapping to whole columns as the pointer passes them
+//   (`spreadColumnsForWidth`). It takes back sheets moved away on their own:
+//   the grid is a way of arranging the whole document.
+// - The bottom-right corner is dragged to say how big a page is: the whole
+//   document scales about the title's corner (`scaleSpread`), arrangement
+//   and all, in whole grid cells.
+//
+// A drag is one undo step, however many sizes it passed through.
 //
 // World-layer DOM, like the snap guides: stated in world coordinates, drawn
-// over the cards. The frame itself takes no pointer; only its right edge
-// does, and a press on it stops there, so the board never sees a marquee
-// begin.
+// over the cards. The frame itself takes no pointer; only its edge and
+// corner do, and a press on them stops there, so the board never sees a
+// marquee begin.
 //
 // Popout safety: everything comes from the `Document` handed in, and the
 // drag listens on that document's window.
@@ -28,16 +32,27 @@ import type { CardRect } from '../../domain/resize'
 import {
   currentSpreadColumns,
   isSpreadTitle,
+  SPREAD_METRICS,
   spreadColumnsForWidth,
   spreadPages,
 } from '../../domain/spread'
+import { GRID_WORLD_STEP_PX } from '../constants'
 
 const FRAME_CLASS = 'yolo-whiteboard-spread-frame'
 const FRAME_HIDDEN_CLASS = 'yolo-whiteboard-spread-frame-hidden'
 /** The frame's right edge: what is dragged to lay the spread out again. */
 const EDGE_CLASS = 'yolo-whiteboard-spread-frame-edge'
-/** On the frame for the length of a drag, so the edge stays lit. */
+/** The frame's bottom-right corner: what is dragged to size the pages. */
+const CORNER_CLASS = 'yolo-whiteboard-spread-frame-corner'
+/** On the frame for the length of a drag, with the part being dragged. */
 const DRAGGING_CLASS = 'yolo-whiteboard-spread-frame-dragging'
+const DRAGGING_PART_CLASS = {
+  edge: 'yolo-whiteboard-spread-frame-dragging-edge',
+  corner: 'yolo-whiteboard-spread-frame-dragging-corner',
+} as const
+/** The smallest and largest a page is sized to by the corner, in grid cells:
+ * from a thumbnail to about four new cards across. */
+const PAGE_WIDTH_CELLS = { min: 10, max: 120 } as const
 /** How far outside the sheets the frame is drawn, in world units. */
 const FRAME_PADDING = 13
 
@@ -52,18 +67,31 @@ export type SpreadFrameDeps = Readonly<{
   /** Lays the spread out again at `columns` across, as part of the step
    * `historyKey` names. */
   reflow: (id: NodeId, columns: number, historyKey: string) => void
+  /** Makes the spread's pages `pageWidth` wide, the whole document scaled
+   * with them, as part of the step `historyKey` names. */
+  resize: (id: NodeId, pageWidth: number, historyKey: string) => void
 }>
+
+type DragPart = keyof typeof DRAGGING_PART_CLASS
 
 export class SpreadFrame {
   private readonly frameEl: HTMLElement
   private readonly edgeEl: HTMLElement
+  private readonly cornerEl: HTMLElement
   private titleId: NodeId | null = null
   private drag: Readonly<{
     pointerId: number
     id: NodeId
+    part: DragPart
     historyKey: string
+    /** Corner only: the page width, and the frame's reach right of the
+     * title's left edge, when the drag began — the pointer's reach is read
+     * against it, since the whole document scales about that edge. */
+    startPageWidth: number
+    startReach: number
   }> | null = null
-  private columns = 0
+  /** The last column count (edge) or page width (corner) asked for. */
+  private asked = 0
   private dragCount = 0
 
   constructor(
@@ -75,9 +103,12 @@ export class SpreadFrame {
     this.frameEl.className = `${FRAME_CLASS} ${FRAME_HIDDEN_CLASS}`
     this.edgeEl = doc.createElement('div')
     this.edgeEl.className = EDGE_CLASS
-    this.frameEl.appendChild(this.edgeEl)
+    this.cornerEl = doc.createElement('div')
+    this.cornerEl.className = CORNER_CLASS
+    this.frameEl.append(this.edgeEl, this.cornerEl)
     parent.appendChild(this.frameEl)
-    this.edgeEl.addEventListener('pointerdown', this.onPointerDown)
+    this.edgeEl.addEventListener('pointerdown', this.onEdgePointerDown)
+    this.cornerEl.addEventListener('pointerdown', this.onCornerPointerDown)
   }
 
   /** The counter-scaled chrome element (CameraController's applyZoomScale):
@@ -88,7 +119,8 @@ export class SpreadFrame {
 
   destroy(): void {
     this.endDrag()
-    this.edgeEl.removeEventListener('pointerdown', this.onPointerDown)
+    this.edgeEl.removeEventListener('pointerdown', this.onEdgePointerDown)
+    this.cornerEl.removeEventListener('pointerdown', this.onCornerPointerDown)
     this.frameEl.remove()
   }
 
@@ -125,21 +157,36 @@ export class SpreadFrame {
     this.frameEl.style.height = `${bounds.h + FRAME_PADDING * 2}px`
   }
 
-  private readonly onPointerDown = (e: PointerEvent): void => {
+  private readonly onEdgePointerDown = (e: PointerEvent): void => {
+    this.beginDrag(e, 'edge')
+  }
+
+  private readonly onCornerPointerDown = (e: PointerEvent): void => {
+    this.beginDrag(e, 'corner')
+  }
+
+  private beginDrag(e: PointerEvent, part: DragPart): void {
     if (e.button !== 0 || this.titleId === null || !this.deps.canEdit()) return
-    // The press is the edge's: not a marquee, not a pan, not a click that
+    const board = this.deps.getBoard()
+    const title = board.nodes.find((node) => node.id === this.titleId)
+    const sheets = spreadPages(board, this.titleId)
+    if (!title || sheets.length === 0) return
+    // The press is the frame's: not a marquee, not a pan, not a click that
     // clears the selection this frame belongs to.
     e.stopPropagation()
     e.preventDefault()
-    const sheets = spreadPages(this.deps.getBoard(), this.titleId)
-    this.columns = currentSpreadColumns(sheets)
+    const bounds = unionRect([title, ...sheets])
+    this.asked = part === 'edge' ? currentSpreadColumns(sheets) : sheets[0].w
     this.dragCount += 1
     this.drag = {
       pointerId: e.pointerId,
       id: this.titleId,
-      historyKey: `spread-reflow-${this.titleId}-${this.dragCount}`,
+      part,
+      historyKey: `spread-${part}-${this.titleId}-${this.dragCount}`,
+      startPageWidth: sheets[0].w,
+      startReach: bounds ? bounds.x + bounds.w - title.x : sheets[0].w,
     }
-    this.frameEl.classList.add(DRAGGING_CLASS)
+    this.frameEl.classList.add(DRAGGING_CLASS, DRAGGING_PART_CLASS[part])
     const win = this.doc.defaultView
     win?.addEventListener('pointermove', this.onPointerMove)
     win?.addEventListener('pointerup', this.onPointerUp)
@@ -149,16 +196,36 @@ export class SpreadFrame {
   private readonly onPointerMove = (e: PointerEvent): void => {
     const drag = this.drag
     if (!drag || e.pointerId !== drag.pointerId) return
-    const title = this.deps.getBoard().nodes.find((node) => node.id === drag.id)
-    if (!title) {
+    const board = this.deps.getBoard()
+    const title = board.nodes.find((node) => node.id === drag.id)
+    const sheets = spreadPages(board, drag.id)
+    if (!title || sheets.length === 0) {
       this.endDrag()
       return
     }
-    const point = this.deps.worldPointFromEvent(e)
-    const columns = spreadColumnsForWidth(point.x - title.x)
-    if (columns === this.columns) return
-    this.columns = columns
-    this.deps.reflow(drag.id, columns, drag.historyKey)
+    const reach = this.deps.worldPointFromEvent(e).x - title.x
+    if (drag.part === 'edge') {
+      const columns = spreadColumnsForWidth(reach, {
+        ...SPREAD_METRICS,
+        pageWidth: sheets[0].w,
+      })
+      if (columns === this.asked) return
+      this.asked = columns
+      this.deps.reflow(drag.id, columns, drag.historyKey)
+      return
+    }
+    // The document scales about the title's left edge, so the frame's right
+    // side moves in proportion to the page width: the pointer's reach, over
+    // the reach the drag began with, is the factor.
+    const cells = Math.round(
+      (drag.startPageWidth * reach) / drag.startReach / GRID_WORLD_STEP_PX,
+    )
+    const pageWidth =
+      Math.min(PAGE_WIDTH_CELLS.max, Math.max(PAGE_WIDTH_CELLS.min, cells)) *
+      GRID_WORLD_STEP_PX
+    if (pageWidth === this.asked) return
+    this.asked = pageWidth
+    this.deps.resize(drag.id, pageWidth, drag.historyKey)
   }
 
   private readonly onPointerUp = (e: PointerEvent): void => {
@@ -173,6 +240,9 @@ export class SpreadFrame {
     win?.removeEventListener('pointerup', this.onPointerUp)
     win?.removeEventListener('pointercancel', this.onPointerUp)
     this.drag = null
-    this.frameEl.classList.remove(DRAGGING_CLASS)
+    this.frameEl.classList.remove(
+      DRAGGING_CLASS,
+      ...Object.values(DRAGGING_PART_CLASS),
+    )
   }
 }

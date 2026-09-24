@@ -618,6 +618,10 @@ export const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 /** The single-selected card, mirroring Obsidian Canvas's `is-focused`. */
 export const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
 export const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
+/** On every sheet of a spread whose title is selected: where the document
+ * the selection names is on the board. */
+export const SPREAD_SHEET_OF_SELECTED_CLASS =
+  'yolo-whiteboard-spread-sheet-of-selected'
 /** Marks a body whose content is its own interaction surface — media
  * transport controls, an embedded web page — and so is the one kind of body
  * the content mask can be lifted from. Lifting it takes CARD_ENTERED_CLASS;
