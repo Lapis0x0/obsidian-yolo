@@ -277,6 +277,24 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
   box-shadow: none;
 }
 
+/* Past one line the field takes the whole width and its buttons sit under
+ * it, at the right. */
+.yolo-whiteboard-pdf-comment.yolo-whiteboard-pdf-comment-multiline {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Its height is the one fitted to what is written (`fitEditor`), not a
+ * share of the column. */
+.yolo-whiteboard-pdf-comment-multiline
+  textarea.yolo-whiteboard-pdf-comment-input {
+  flex: none;
+}
+
+.yolo-whiteboard-pdf-comment-multiline .yolo-whiteboard-pdf-comment-actions {
+  align-self: flex-end;
+}
+
 .yolo-whiteboard-pdf-comment-actions {
   display: flex;
   flex: none;

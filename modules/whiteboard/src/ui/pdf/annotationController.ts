@@ -147,6 +147,8 @@ const PAGES_SELECTOR = '.yolo-whiteboard-pdf-pages'
 const COMMENT_CLASS = 'yolo-whiteboard-pdf-comment'
 const COMMENT_NEW_CLASS = 'yolo-whiteboard-pdf-comment-new'
 const COMMENT_HIDDEN_CLASS = 'yolo-whiteboard-pdf-comment-hidden'
+/** A comment past one line: its buttons go under it rather than beside. */
+const COMMENT_MULTILINE_CLASS = 'yolo-whiteboard-pdf-comment-multiline'
 const COMMENT_INPUT_CLASS = 'yolo-whiteboard-pdf-comment-input'
 const COMMENT_ACTIONS_CLASS = 'yolo-whiteboard-pdf-comment-actions'
 const COMMENT_BUTTON_CLASS = 'yolo-whiteboard-pdf-comment-button'
@@ -810,11 +812,21 @@ export class AnnotationController {
     input.setSelectionRange(input.value.length, input.value.length)
   }
 
-  /** Grows the field with what is written in it, up to its CSS max-height. */
+  /** Grows the field with what is written in it, up to its CSS max-height.
+   * Past one line, the buttons beside it would leave a column of nothing
+   * above them, so they move under it. Whether it is past one line is
+   * measured beside the buttons, always: measured in the wider field under
+   * them, a line that just fits there would put them back beside it, where
+   * it wraps again. */
   private fitEditor(): void {
     const input = this.editor
     if (!input) return
+    this.commentEl.classList.remove(COMMENT_MULTILINE_CLASS)
     input.setCssProps({ height: 'auto' })
+    // At `rows = 1` and no set height, the field is one line tall.
+    if (input.scrollHeight > input.clientHeight + 1) {
+      this.commentEl.classList.add(COMMENT_MULTILINE_CLASS)
+    }
     input.setCssProps({ height: `${input.scrollHeight}px` })
   }
 
