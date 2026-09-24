@@ -77,10 +77,14 @@ button.yolo-whiteboard-control-item:hover {
 
 /* The zoom percentage between the two zoom steps: a value that is also the
  * reset button. Tabular figures, and a width that fits "250%", so the column
- * does not twitch as the number changes under a zoom. */
+ * does not twitch as the number changes under a zoom. Its height is the icon
+ * buttons' own (icon plus their padding), stated rather than left to the
+ * text's line box, which is shorter than an icon and made this one row squat. */
 button.yolo-whiteboard-control-item.yolo-whiteboard-control-readout {
+  box-sizing: content-box;
+  height: calc(var(--canvas-controls-icon-size, 18px) + var(--size-4-2) * 2);
   min-width: calc(var(--canvas-controls-icon-size, 18px) + var(--size-4-2) * 2);
-  padding: var(--size-4-2) var(--size-2-1, 2px);
+  padding: 0 var(--size-2-1, 2px);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
