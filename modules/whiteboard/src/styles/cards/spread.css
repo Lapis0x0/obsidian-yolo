@@ -103,3 +103,41 @@
 .yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-connection-point {
   pointer-events: auto;
 }
+
+/* The frame around a selected spread, and its reflow handle
+ * (ui/canvas/spreadFrame.ts). The frame says what "the whole document"
+ * covers and takes no pointer; the handle, level with the title at the
+ * grid's right edge, is dragged sideways to lay every sheet out again, a whole column at a time.
+ * Both are chrome in world coordinates, weighted by the zoom multiplier the
+ * camera writes on this element, like the resize handles. */
+.yolo-whiteboard-spread-frame {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  border: calc(1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)) dashed
+    var(--interactive-accent);
+  border-radius: calc(6px * var(--yolo-whiteboard-zoom-multiplier, 1));
+  pointer-events: none;
+}
+
+.yolo-whiteboard-spread-frame.yolo-whiteboard-spread-frame-hidden {
+  display: none;
+}
+
+.yolo-whiteboard-spread-frame-handle {
+  --yolo-whiteboard-spread-handle: calc(
+    14px * var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  position: absolute;
+  /* Centred on the point spreadFrame.ts places it at: the grid's right edge,
+   * level with the title. */
+  translate: -50% -50%;
+  width: var(--yolo-whiteboard-spread-handle);
+  height: var(--yolo-whiteboard-spread-handle);
+  border: calc(1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)) solid
+    var(--interactive-accent);
+  border-radius: calc(3px * var(--yolo-whiteboard-zoom-multiplier, 1));
+  background: var(--background-primary);
+  cursor: ew-resize;
+  pointer-events: auto;
+}

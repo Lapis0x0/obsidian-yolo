@@ -75,6 +75,7 @@ import {
   layoutSpreadGrid,
   nodesToDelete,
   openSpread,
+  reflowSpread,
   spreadPages,
   titleWidthFor,
 } from '../domain/spread'
@@ -107,6 +108,7 @@ import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
+import { SpreadFrame } from './canvas/spreadFrame'
 import { ToolbarController } from './canvas/toolbarController'
 import { CanvasControls } from './canvasControls'
 import {
@@ -336,6 +338,9 @@ export class WhiteboardCanvas {
   private edgeLayer!: EdgeLayer
   /** Drawn only while a drag or a resize is lining something up. */
   private snapGuideLayer: SnapGuideLayer | null = null
+  /** The frame and reflow handle around a selected PDF spread
+   * (./canvas/spreadFrame.ts). */
+  private spreadFrame: SpreadFrame | null = null
   /**
    * The overview tier's renderer. Built in `ensureDom`; null before
    * that, which `clear()` can reach.
@@ -618,6 +623,8 @@ export class WhiteboardCanvas {
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
+    this.spreadFrame?.destroy()
+    this.spreadFrame = null
     this.teardownAllCards()
     this.preheatRenderer?.unload()
     this.preheatRenderer = null
@@ -715,6 +722,16 @@ export class WhiteboardCanvas {
     this.snapGuideLayer?.destroy()
     const snapGuides = new SnapGuideLayer(doc, world)
     this.snapGuideLayer = snapGuides
+    this.spreadFrame?.destroy()
+    const spreadFrame = new SpreadFrame(doc, world, {
+      getBoard: () => this.board,
+      getSelectedIds: () => this.selectedIds,
+      canEdit: () => this.canEdit,
+      isOverview: () => this.overview,
+      worldPointFromEvent: (e) => this.worldPointFromEvent(e),
+      reflow: (id, columns, key) => this.reflowSpreadTo(id, columns, key),
+    })
+    this.spreadFrame = spreadFrame
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
@@ -760,7 +777,7 @@ export class WhiteboardCanvas {
       // variable on each of these rather than once on `world`, because a
       // custom property written on `world` restyles every card under it (see
       // CameraController's applyZoomScale).
-      [interactionLayer, snapGuides.element],
+      [interactionLayer, snapGuides.element, spreadFrame.element],
       // The two of them the overview tier takes out of the document, which is
       // why they are handed over separately — see the same method.
       [edgesSvg, edgeLabels],
@@ -1509,6 +1526,7 @@ export class WhiteboardCanvas {
     // The class writes above reach nothing in the overview tier; there the
     // selection ring is drawn.
     this.overviewLayer?.markDirty()
+    this.spreadFrame?.sync()
     this.applyFocusedNode()
     this.keymap.syncSelectionScope()
     // Selection is one of the two things that decides where the handles are.
@@ -1864,6 +1882,23 @@ export class WhiteboardCanvas {
     if (next !== null) mark(next, true)
   }
 
+  /** The spread frame's handle: every sheet laid out again at `columns`
+   * across, animated there like any arrangement, and one undo step for the
+   * whole drag (`historyKey`). */
+  private reflowSpreadTo(
+    id: NodeId,
+    columns: number,
+    historyKey: string,
+  ): void {
+    const next = reflowSpread(this.board, id, columns)
+    if (next === this.board) return
+    const requested = new Map<NodeId, Readonly<{ x: number; y: number }>>()
+    for (const node of spreadPages(next, id)) {
+      requested.set(node.id, { x: node.x, y: node.y })
+    }
+    this.applyArrangement(requested, { historyKey })
+  }
+
   /** Puts a spread opened or put away on screen: the node's element was a
    * card and is now a title, or the other way round, so it is built again,
    * and the sheets come and go with the ordinary mount and purge. */
@@ -2211,6 +2246,7 @@ export class WhiteboardCanvas {
     this.editing.syncEdgeRenameChrome()
     this.toolbarController.refreshToolbar()
     this.dropImport.refreshCardMenu()
+    this.spreadFrame?.sync()
   }
 
   /**
@@ -2401,6 +2437,7 @@ export class WhiteboardCanvas {
       this.board.edges.map((edge) => [edge.id, edge]),
     )
     this.syncEmptyHint()
+    this.spreadFrame?.sync()
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.
