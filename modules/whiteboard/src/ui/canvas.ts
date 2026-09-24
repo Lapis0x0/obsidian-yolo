@@ -44,6 +44,7 @@ import {
   type NodeColor,
   type NodeId,
   emptyBoard,
+  isPlainText,
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
@@ -834,6 +835,7 @@ export class WhiteboardCanvas {
       onGroupLabelBlur: (id) =>
         this.editing.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
+      onTextMeasured: (id, size) => this.commitTextSize(id, size),
       onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
@@ -887,11 +889,14 @@ export class WhiteboardCanvas {
       },
       syncChips: (id) => this.cardGeneration.syncChips(id),
       writeReadingWindow: (id, line) => {
+        // Bare text shows all of itself; it has no window to remember.
+        if (isPlainText(this.nodesById.get(id))) return
         const board = this.boardWithSnappedWindow(this.board, id, line)
         if (board === this.board) return
         this.board = board
         this.syncBoardIndex()
       },
+      discardText: (id, historyKey) => this.discardText(id, historyKey),
       subscribeViewChange: (listener) =>
         this.cameraController.subscribeViewChange(listener),
       isOverviewChromeHidden: () => this.overviewChromeHidden,
@@ -1197,6 +1202,51 @@ export class WhiteboardCanvas {
           ? boardWithPageWindow(this.board, id, page)
           : this.board
     this.commitWithoutHistory(next)
+  }
+
+  /**
+   * Bare text's measured size, written to its node (cardRenderer.ts's
+   * `observeText`).
+   *
+   * Not a step: the size follows from the text and the width, which are what
+   * was changed, and each of those is recorded where it was made. An undo
+   * puts back the text, the text lays itself out, and the size follows it
+   * back. Only the width of text whose width follows its content is taken
+   * from the measurement; a width someone gave it is theirs.
+   */
+  private commitTextSize(
+    id: NodeId,
+    size: Readonly<{ w: number; h: number }>,
+  ): void {
+    const node = this.nodesById.get(id)
+    if (!isPlainText(node)) return
+    const w = node.autoWidth === true ? size.w : node.w
+    if (w === node.w && size.h === node.h) return
+    this.commitWithoutHistory(updateNode(this.board, id, { w, h: size.h }))
+    this.edgeLayer.redrawEdgesForNodes(new Set([id]))
+    this.interaction.refreshInteractionLayer()
+    this.toolbarController.positionToolbar()
+  }
+
+  /**
+   * Takes bare text that was left empty off the board.
+   *
+   * Text that never had anything in it was never recorded (the history's
+   * present does not have it — see `createTextAt`), so it leaves no step
+   * either: a double-click and a click away is nothing to undo. Text that
+   * had content and was emptied is a deletion like any other, folded into
+   * the editing session that emptied it.
+   */
+  private discardText(id: NodeId, historyKey: string): void {
+    if (!this.nodesById.has(id)) return
+    const next = removeNode(this.board, id)
+    const recorded =
+      this.history.present()?.nodes.some((node) => node.id === id) === true
+    if (recorded) this.applyBoardChange(next, historyKey)
+    else this.commitWithoutHistory(next)
+    this.purgeNodeRuntime(id)
+    this.interaction.refreshInteractionLayer()
+    this.rebuildEdgesSvg()
   }
 
   /** The write path for board state that is not a step anyone would undo

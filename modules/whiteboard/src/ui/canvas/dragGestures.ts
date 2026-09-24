@@ -15,7 +15,7 @@ import {
   fragmentFromSelection,
   placeFragment,
 } from '../../domain/clipboard'
-import type { NodeId } from '../../domain/fileFormat'
+import { type NodeId, isPlainText } from '../../domain/fileFormat'
 import { nodesToDragWith } from '../../domain/groups'
 import { moveNodes, updateNode } from '../../domain/operations'
 import {
@@ -36,6 +36,7 @@ import {
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   MIN_CARD_SIZE,
+  PLAIN_TEXT_AUTO_CLASS,
   SNAP_SCREEN_PX,
 } from '../constants'
 
@@ -242,6 +243,11 @@ export class DragGestures {
     const nodeId = this.deps.getLayerNodeId()
     const card = nodeId === null ? null : this.core.getNode(nodeId)
     if (!card || nodeId === null) return false
+    // Bare text is as tall as its content: only its width is someone's to
+    // set. Its other handles are not offered (styles/cards/text.css).
+    if (isPlainText(card) && handle !== 'left' && handle !== 'right') {
+      return false
+    }
     // Keeps the press from moving focus. Without it, grabbing a handle on the
     // card you are writing in blurs its editor, which commits and closes it —
     // adjusting a card's width should not cost you the caret you were at.
@@ -297,16 +303,20 @@ export class DragGestures {
     const dy = world.y - interaction.startWorld.y
     // Read off the event, like the snapping key, so either can be pressed or
     // let go mid-resize.
+    // Bare text has no proportions to keep — its height is not a dimension
+    // anyone sets — and no minimum height either.
+    const plain = isPlainText(this.core.getNode(interaction.nodeId))
     const modifiers: ResizeModifiers = {
-      keepAspect: e.shiftKey,
+      keepAspect: e.shiftKey && !plain,
       fromCenter: e.altKey,
     }
+    const min = plain ? { w: MIN_CARD_SIZE.w, h: 0 } : MIN_CARD_SIZE
     const rect = resizeRect(
       interaction.startRect,
       interaction.handle,
       dx,
       dy,
-      MIN_CARD_SIZE,
+      min,
       modifiers,
     )
     // Alignment corrects the one edge a handle moves (domain/snapping.ts's
@@ -329,7 +339,7 @@ export class DragGestures {
         interaction.handle,
         dx + snap.dx,
         dy + snap.dy,
-        MIN_CARD_SIZE,
+        min,
       ),
       guides: snap.guides,
     }
@@ -338,10 +348,22 @@ export class DragGestures {
   /** Live (uncommitted) geometry for the card, its handles and its edges. */
   private applyResizeRect(
     interaction: ResizeInteraction,
-    rect: CardRect,
-  ): void {
+    resized: CardRect,
+  ): CardRect {
     const el = this.core.getRuntime(interaction.nodeId)?.el
-    if (el) {
+    let rect = resized
+    if (el && isPlainText(this.core.getNode(interaction.nodeId))) {
+      // Bare text is given a width and wraps to it; how tall that makes it
+      // is read back off the text, once, for the handles and the edges to
+      // follow. The width is its own from here on, so the rule that sizes it
+      // to its longest line stands aside.
+      el.classList.remove(PLAIN_TEXT_AUTO_CLASS)
+      el.style.left = `${rect.x}px`
+      el.style.top = `${rect.y}px`
+      el.style.width = `${rect.w}px`
+      el.style.removeProperty('height')
+      rect = { ...rect, h: el.offsetHeight }
+    } else if (el) {
       el.style.left = `${rect.x}px`
       el.style.top = `${rect.y}px`
       el.style.width = `${rect.w}px`
@@ -353,6 +375,7 @@ export class DragGestures {
     this.setLiveNodeRects(live)
     this.deps.placeLayer(rect)
     this.deps.edges.redrawEdgesForNodes(new Set([interaction.nodeId]), live)
+    return rect
   }
 
   /** Publishes (or, with null, retires) the geometry a gesture has reached but
@@ -378,15 +401,25 @@ export class DragGestures {
     }
 
     this.deps.unpin(interaction.nodeId)
-    const { rect } = this.resizedRect(interaction, e)
+    const rect = this.applyResizeRect(
+      interaction,
+      this.resizedRect(interaction, e).rect,
+    )
     // A group's contents deliberately stay where they are: growing a frame is
     // how more cards are taken in and shrinking it is how they are let go,
     // which is only possible if resizing moves nothing (Obsidian Canvas's
     // group resize behaves identically).
+    //
+    // Bare text given a width keeps it: its width no longer follows its
+    // longest line.
+    const plain = isPlainText(this.core.getNode(interaction.nodeId))
     this.core.applyBoardChange(
-      updateNode(this.core.getBoard(), interaction.nodeId, rect),
+      updateNode(
+        this.core.getBoard(),
+        interaction.nodeId,
+        plain ? { ...rect, autoWidth: undefined } : rect,
+      ),
     )
-    this.applyResizeRect(interaction, rect)
     // The board holds this rectangle now; the gesture's copy of it retires.
     this.setLiveNodeRects(null)
     // How much of a card's markdown is worth building is derived from the

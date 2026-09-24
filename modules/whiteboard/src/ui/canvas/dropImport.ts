@@ -35,7 +35,7 @@ import {
   generateDroppedHtmlFileName,
   sanitizeFileName,
 } from '../../domain/naming'
-import { addNode, replaceNode } from '../../domain/operations'
+import { addNode, replaceNode, updateNode } from '../../domain/operations'
 import type { Rect } from '../../domain/placement'
 import type { CardSize } from '../../domain/resize'
 import {
@@ -45,8 +45,11 @@ import {
 } from '../cardMenu'
 import {
   DROP_STAGGER_PX,
+  GRID_WORLD_STEP_PX,
+  MIN_CARD_SIZE,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  NEW_TEXT_SIZE,
   WEB_URL_PATTERN,
 } from '../constants'
 import { asNode } from '../eventTarget'
@@ -141,6 +144,9 @@ export class DropImport {
       this.core.context.getDocument(),
       deps.overlay,
       [
+        this.creationAction('cardMenu.addText', 'type', NEW_TEXT_SIZE, (at) =>
+          this.createTextAt(at),
+        ),
         this.creationAction(
           'cardMenu.newCard',
           'sticky-note',
@@ -218,6 +224,11 @@ export class DropImport {
     const creation: YoloModuleHostMenuItemV1[] = this.core.canCreate()
       ? [
           {
+            title: this.core.t('menu.newText'),
+            icon: 'type',
+            onSelect: () => this.createTextAt(point),
+          },
+          {
             title: this.core.t('menu.newCard'),
             icon: 'sticky-note',
             onSelect: () => this.createTextCardAt(point),
@@ -285,6 +296,12 @@ export class DropImport {
       )
     }
     if (this.core.canEdit() && single?.type === 'text') {
+      const plain = single.plain === true
+      items.push({
+        title: this.core.t(plain ? 'menu.convertToCard' : 'menu.convertToText'),
+        icon: plain ? 'sticky-note' : 'type',
+        onSelect: () => this.switchTextDisplay(single.id),
+      })
       items.push({
         title: this.core.t('menu.convertToNote'),
         icon: 'file-plus',
@@ -846,6 +863,38 @@ export class DropImport {
     this.deps.enterEditMode(node.id)
   }
 
+  /**
+   * Starts bare text at `world` and opens it for typing: the caret lands
+   * where the double-click was, one line's box around it.
+   *
+   * Not recorded yet. Text with nothing in it is nothing to undo, and text
+   * left that way is taken off again (canvas.ts's `discardText`); the first
+   * thing typed records it, with the text in it, as one step.
+   */
+  createTextAt(world: ScreenPoint): void {
+    if (!this.core.canCreate()) return
+    const node: TextNode = {
+      id: this.core.nextNodeId(),
+      type: 'text',
+      // Its border and inset (styles/cards/text.css) before the caret.
+      x: Math.round(world.x - 5),
+      y: Math.round(world.y - NEW_TEXT_SIZE.h / 2),
+      w: NEW_TEXT_SIZE.w,
+      h: NEW_TEXT_SIZE.h,
+      text: '',
+      plain: true,
+      autoWidth: true,
+      extra: {},
+    }
+    this.core.commitWithoutHistory(addNode(this.core.getBoard(), node))
+    this.core.clearSelection()
+    // Mounted now rather than on the next frame, so the editor has an
+    // element to go into (the same as a new card).
+    this.core.recomputeVisibility()
+    this.core.drainQueues()
+    this.deps.enterEditMode(node.id)
+  }
+
   /** Adds one file card per vault path, staggered from `world`. Which kind of
    * card each becomes is decided at render time from its extension, so this
    * is one path for notes, images, audio and video alike. */
@@ -917,6 +966,38 @@ export class DropImport {
     const current = this.core.getNode(id)
     if (!current || current.type !== 'text') return
     void this.writeCardNote(current)
+  }
+
+  /**
+   * Turns a text card into bare text, or bare text into a card: the same
+   * node, the same markdown, drawn the other way.
+   *
+   * Card to text keeps the card's width as the text's own, and the height
+   * becomes whatever the text takes at it. Text to card keeps the box the
+   * text had, rounded out to whole grid cells so the card sits on the grid
+   * the way a card made on the board does.
+   */
+  private switchTextDisplay(id: NodeId): void {
+    if (!this.core.canEdit()) return
+    this.deps.commitEditOn(id)
+    const node = this.core.getNode(id)
+    if (!node || node.type !== 'text') return
+    const cell = (size: number, min: number) =>
+      Math.max(min, Math.ceil(size / GRID_WORLD_STEP_PX) * GRID_WORLD_STEP_PX)
+    const patch =
+      node.plain === true
+        ? {
+            plain: undefined,
+            autoWidth: undefined,
+            w: cell(node.w, MIN_CARD_SIZE.w),
+            h: cell(node.h, MIN_CARD_SIZE.h),
+          }
+        : { plain: true, startLine: undefined }
+    this.core.applyBoardChange(updateNode(this.core.getBoard(), id, patch))
+    // Which element it is and how it is sized are decided at mount.
+    this.deps.purgeNodeRuntime(id)
+    this.core.recomputeVisibility()
+    this.core.drainQueues()
   }
 
   private async writeCardNote(node: TextNode): Promise<void> {

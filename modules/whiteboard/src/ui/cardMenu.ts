@@ -59,6 +59,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  * ui/selectionToolbar.ts inlines its own: this module has no package
  * dependencies, and four icons are not worth acquiring one. */
 const ICONS: Readonly<Record<CardMenuIconName, readonly string[]>> = {
+  // `lucide-type`: bare text, the one thing on the bar that is not a card.
+  type: ['M4 7V4h16v3', 'M9 20h6', 'M12 4v16'],
   'sticky-note': [
     'M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z',
     'M15 21v-4a2 2 0 0 1 2-2h4',
@@ -96,6 +98,7 @@ const ICONS: Readonly<Record<CardMenuIconName, readonly string[]>> = {
 }
 
 export type CardMenuIconName =
+  | 'type'
   | 'sticky-note'
   | 'file-text'
   | 'file-image'

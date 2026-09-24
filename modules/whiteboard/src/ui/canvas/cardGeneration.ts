@@ -195,6 +195,9 @@ export class CardGeneration {
     // A file card is never "empty" in this sense: its content lives in a note,
     // and an empty note is a note to write in, not a card to generate into.
     if (node?.type !== 'text') return false
+    // Neither is bare text: it is something being written by hand, and an
+    // empty one only exists while its editor is open.
+    if (node.plain === true) return false
     // Only the card the user is on offers them: the lone selected card, or
     // the one being edited (editing clears the selection, so it has to be
     // asked separately). A board of empty cards is not a board of prompts.

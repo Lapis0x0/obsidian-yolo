@@ -34,7 +34,13 @@ import {
   computeEdgeGeometry,
   resolveEdgeSides,
 } from '../../domain/edges'
-import type { BoardNode, Edge, EdgeId, NodeId } from '../../domain/fileFormat'
+import {
+  type BoardNode,
+  type Edge,
+  type EdgeId,
+  type NodeId,
+  isPlainText,
+} from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
 import {
   type CanvasView,
@@ -58,6 +64,8 @@ import { nodeTitleText } from '../lod'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
+/** How dark bare text's block of ink is drawn, zoomed out past reading it. */
+const OVERVIEW_TEXT_ALPHA = 0.18
 
 /**
  * Concrete colour values for one draw.
@@ -384,6 +392,7 @@ export class OverviewLayer {
       w: number
       h: number
     }[] = []
+    const texts: typeof visible = []
     for (const node of nodes) {
       const rect = live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
@@ -393,7 +402,31 @@ export class OverviewLayer {
       if (x >= this.width || y >= this.height || x + w <= 0 || y + h <= 0) {
         continue
       }
-      visible.push({ node, x, y, w, h })
+      const item = { node, x, y, w, h }
+      if (isPlainText(node)) texts.push(item)
+      else visible.push(item)
+    }
+    // Bare text has no card to draw: at this distance it is a block of ink,
+    // in its colour, as greyed-out text is drawn — and a selection ring when
+    // it is selected, drawn with the cards' below.
+    if (texts.length > 0) {
+      ctx.globalAlpha = OVERVIEW_TEXT_ALPHA
+      for (const text of texts) {
+        ctx.fillStyle = this.colorOf(text.node, palette) ?? palette.text
+        ctx.fillRect(text.x, text.y, text.w, text.h)
+      }
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = palette.accent
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      let anySelected = false
+      for (const text of texts) {
+        if (!this.callbacks.isSelected(text.node.id)) continue
+        this.strokeRectPath(ctx, text)
+        anySelected = true
+      }
+      if (anySelected) ctx.stroke()
+      ctx.lineWidth = 1
     }
     if (visible.length === 0) return
 

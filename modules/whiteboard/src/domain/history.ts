@@ -78,6 +78,12 @@ export class BoardHistory {
     this.onChange()
   }
 
+  /** The state now on screen as the history recorded it, or null before
+   * the first reset. */
+  present(): Board | null {
+    return this.index >= 0 ? this.entries[this.index] : null
+  }
+
   canUndo(): boolean {
     return this.index > 0
   }

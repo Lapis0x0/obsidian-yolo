@@ -9,7 +9,11 @@
 // back (single-direction dependency between the canvas and its
 // collaborators).
 
-import type { BoardNode, NodeId } from '../../domain/fileFormat'
+import {
+  type BoardNode,
+  type NodeId,
+  isPlainText,
+} from '../../domain/fileFormat'
 import {
   type FileNodeKind,
   basenameWithoutExtension,
@@ -29,6 +33,7 @@ import {
   NODE_EXIT_EASING,
   NODE_EXIT_MS,
   NODE_EXIT_TO_SCALE,
+  PLAIN_TEXT_AUTO_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
 import { cardMarkdownWindow, nodeTitleText } from '../lod'
@@ -51,6 +56,9 @@ const PREVIEW_VIEW_CLASS = 'markdown-preview-view markdown-rendered'
 const PREVIEW_SIZER_CLASS = 'markdown-preview-sizer markdown-preview-section'
 
 const CARD_CLASS = 'yolo-whiteboard-card'
+/** A text node drawn as bare text (fileFormat.ts's `plain`): a card without
+ * the frame, whose box is its content's. */
+const PLAIN_TEXT_CLASS = 'yolo-whiteboard-text'
 const GROUP_CLASS = 'yolo-whiteboard-group'
 const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
@@ -183,6 +191,9 @@ export type CardRendererCallbacks = Readonly<{
    * chips can be put back or taken away from the one place every card state
    * passes through. */
   onTextCardRendered: (id: NodeId) => void
+  /** Bare text laid itself out at a new size — what its node's `w`/`h` now
+   * are (see `observeText`). */
+  onTextMeasured: (id: NodeId, size: Readonly<{ w: number; h: number }>) => void
   /** Called after a note card's text has been read and drawn — the first
    * moment its editor can be opened (`noteText` is known). */
   onNoteCardRendered: (id: NodeId) => void
@@ -254,6 +265,8 @@ export class CardRenderer {
   /** Cards that hold (or held) a PDF reader — what a camera move has to
    * reach (`setViewScale`). Pruned lazily as their readers go. */
   private readonly pdfCards = new Set<NodeId>()
+  /** Watches every mounted bare text for its size; created with the first. */
+  private textObserver: ResizeObserver | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -306,6 +319,8 @@ export class CardRenderer {
     }
     this.runtimeByNodeId.clear()
     this.parkedCards.clear()
+    this.textObserver?.disconnect()
+    this.textObserver = null
   }
 
   /**
@@ -397,6 +412,70 @@ export class CardRenderer {
   }
 
   // -----------------------------------------------------------------------
+  // Bare text's size.
+  //
+  // A card's box is its node's rectangle; bare text's is its content's, and
+  // the node follows. The two alternate: while there is content laid out in
+  // the element its box is left to the content (`releaseTextSize`) and every
+  // size it settles at is reported back (`observeText`); whenever there is
+  // not — mounting, a rebuild, an editor coming or going, the hidden pool —
+  // the element is pinned at the size last reported (`holdTextSize`), so an
+  // empty body is never measured as an empty text.
+  //
+  // Held or not is read off the element's inline height: set while held,
+  // absent while the content has the say. That is the state itself, not a
+  // flag beside it that could disagree.
+  // -----------------------------------------------------------------------
+
+  private observeText(el: HTMLElement): void {
+    if (!this.textObserver) {
+      // The window the board is in, which a popout's is not the main one's.
+      const win = el.ownerDocument.defaultView
+      if (!win) return
+      this.textObserver = new win.ResizeObserver((entries) => {
+        for (const entry of entries) this.reportTextSize(entry.target)
+      })
+    }
+    this.textObserver.observe(el)
+  }
+
+  private reportTextSize(target: Element): void {
+    const el = target as HTMLElement
+    if (!el.isConnected) {
+      this.textObserver?.unobserve(el)
+      return
+    }
+    const id = el.dataset.nodeId
+    if (id === undefined || el.style.height !== '') return
+    if (this.runtimeByNodeId.get(id)?.el !== el) return
+    // Layout size, in world units: the element sits inside the camera's
+    // transform, which `offset*` ignores.
+    const w = el.offsetWidth
+    const h = el.offsetHeight
+    if (w > 0 && h > 0) this.callbacks.onTextMeasured(id, { w, h })
+  }
+
+  /** Pins bare text at its node's size (a card is left alone). */
+  holdTextSize(el: HTMLElement, node: BoardNode | undefined): void {
+    if (!isPlainText(node)) return
+    el.style.width = `${node.w}px`
+    el.style.height = `${node.h}px`
+  }
+
+  /** Gives bare text's box back to its content: its height always, its
+   * width too when the width follows the text. */
+  releaseTextSize(id: NodeId): void {
+    const node = this.callbacks.getNode(id)
+    const el = this.runtimeByNodeId.get(id)?.el
+    if (!el || !isPlainText(node)) return
+    if (this.parkedCards.has(id)) return
+    el.classList.toggle(PLAIN_TEXT_AUTO_CLASS, node.autoWidth === true)
+    if (node.autoWidth === true) el.style.removeProperty('width')
+    else el.style.width = `${node.w}px`
+    el.style.removeProperty('height')
+  }
+
+  // -----------------------------------------------------------------------
   // Card mount/unmount
   // -----------------------------------------------------------------------
 
@@ -415,6 +494,11 @@ export class CardRenderer {
     const doc = this.context.getDocument()
     const el = doc.createElement('div')
     el.className = node.type === 'group' ? GROUP_CLASS : CARD_CLASS
+    const plain = isPlainText(node)
+    if (plain) {
+      el.classList.add(PLAIN_TEXT_CLASS)
+      el.classList.toggle(PLAIN_TEXT_AUTO_CLASS, node.autoWidth === true)
+    }
     el.style.left = `${node.x}px`
     el.style.top = `${node.y}px`
     el.style.width = `${node.w}px`
@@ -520,10 +604,14 @@ export class CardRenderer {
     // toggles it. Computed once from card data at mount time; card
     // title-affecting fields (file/markdown) never change post-mount, only
     // position does.
-    const titleBlock = doc.createElement('div')
-    titleBlock.className = CARD_TITLE_BLOCK_CLASS
-    titleBlock.textContent = nodeTitleText(node, this.callbacks.pdfPageLabel)
-    el.appendChild(titleBlock)
+    // Bare text has no card to stand in for: until its content arrives it
+    // holds its last size, empty.
+    if (!plain) {
+      const titleBlock = doc.createElement('div')
+      titleBlock.className = CARD_TITLE_BLOCK_CLASS
+      titleBlock.textContent = nodeTitleText(node, this.callbacks.pdfPageLabel)
+      el.appendChild(titleBlock)
+    }
 
     // Click-to-edit vs. drag-to-move is disambiguated centrally in
     // onPointerDown/Move/Up (DRAG_THRESHOLD_PX) rather than a per-card
@@ -543,6 +631,7 @@ export class CardRenderer {
       missingFile: false,
       noteText: existing?.noteText ?? null,
     })
+    if (plain) this.observeText(el)
 
     void this.renderCardPreview(id)
   }
@@ -621,6 +710,10 @@ export class CardRenderer {
     runtime.el?.classList.add(
       runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
     )
+    // A parked card is skipped with its contents, which leaves a box sized by
+    // its content with nothing to size it by: bare text is held at the size
+    // it had, and let go again when it comes back.
+    if (runtime.el) this.holdTextSize(runtime.el, this.callbacks.getNode(id))
     this.callbacks.dequeueContentSync(id)
     runtime.pdfReader?.setVisible(false)
     // Delete before adding so a re-parked card moves to the back of the queue:
@@ -645,6 +738,7 @@ export class CardRenderer {
       runtime.el.style.width = `${node.w}px`
       runtime.el.style.height = `${node.h}px`
       applyColorToElement(runtime.el, node.color)
+      if (runtime.contentRenderer !== null) this.releaseTextSize(id)
     }
     runtime.el.classList.toggle(
       CARD_SELECTED_CLASS,
@@ -1029,17 +1123,23 @@ export class CardRenderer {
     // handover it never makes. What still comes back is the whole card, when
     // it leaves the viewport or the board drops into the overview tier, and
     // that is where the memory goes back too.
-    const scrollable =
-      this.callbacks.isFocused(id) || runtime.contentView !== null
-
+    //
+    // Bare text is neither: it has no window to scroll, because it is as
+    // tall as everything it holds, so it always gets the one-pass render of
+    // all of it.
     const node = this.callbacks.getNode(id)
+    const plain = isPlainText(node)
+    const scrollable =
+      !plain && (this.callbacks.isFocused(id) || runtime.contentView !== null)
+
     const startLine =
       node && (node.type === 'text' || node.type === 'file')
         ? (node.startLine ?? 0)
         : 0
-    const wanted = scrollable
-      ? markdown
-      : cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
+    const wanted =
+      scrollable || plain
+        ? markdown
+        : cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
     // Nothing to do when neither the visible source, what it resolves against,
     // nor which of the two surfaces should hold it has changed — which is
     // every edit made below an unfocused card's fold.
@@ -1073,6 +1173,7 @@ export class CardRenderer {
     const endHandoff =
       scrollable && startLine > 0 ? this.beginContentHandoff(runtime) : null
     if (!endHandoff) {
+      if (runtime.el) this.holdTextSize(runtime.el, node)
       this.destroyCardContent(runtime)
       bodyEl.replaceChildren()
     }
@@ -1125,6 +1226,7 @@ export class CardRenderer {
       .then(() => {
         if (runtime.contentRenderer !== renderer) return
         this.markUnresolvedLinks(sizer, sourcePath)
+        if (plain) this.releaseTextSize(id)
       })
       .catch((error: unknown) => {
         // A render that lost its card was cancelled, not failed: `unload()`

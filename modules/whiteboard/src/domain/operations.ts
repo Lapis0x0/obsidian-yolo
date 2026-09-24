@@ -34,6 +34,10 @@ export type NodePatch = Readonly<{
   file?: string
   text?: string
   label?: string
+  /** A text node's display (fileFormat.ts's `TextDisplay`); `undefined`
+   * clears the field. */
+  plain?: boolean
+  autoWidth?: boolean
 }>
 
 /** Fields `updateEdge` may patch: where an edge is attached, and everything

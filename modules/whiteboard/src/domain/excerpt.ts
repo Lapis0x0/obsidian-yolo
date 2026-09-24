@@ -1,5 +1,6 @@
-// What an excerpt from a PDF looks like once it is on the board: an ordinary
-// text card, written in Obsidian's own Markdown so it reads the same when it
+// What an excerpt from a PDF looks like once it is on the board: a text
+// node (drawn as bare text — ui/canvas/pdfExcerpts.ts), written in Obsidian's
+// own Markdown so it reads the same when it
 // is copied into a note, and a link back to the page in Obsidian's own
 // syntax (`#page=N&selection=a,b,c,d`) so it opens wherever a PDF link opens.
 //

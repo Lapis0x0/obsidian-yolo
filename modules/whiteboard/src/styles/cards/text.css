@@ -1,0 +1,148 @@
+/* --- bare text (fileFormat.ts's `plain`) ------------------------------------
+ * A text node written straight on the board: the card's element with the card
+ * taken away. No frame and no fill at rest — the border stays, transparent,
+ * so the hover and selection rings a card draws land on it unchanged and say
+ * where the text's box is only when that is the question. Its height is its
+ * content's (cardRenderer.ts's `releaseTextSize`); nothing here sets one. */
+
+.yolo-whiteboard-card.yolo-whiteboard-text {
+  border-color: transparent;
+  border-radius: var(--radius-s, 4px);
+  background-color: transparent;
+  /* A coloured card's wash (color.css): bare text is coloured in its ink. */
+  background-image: none;
+}
+
+/* Width that follows the longest line, up to where prose stops being
+ * comfortable to read; past it the text wraps. The minimum keeps an empty
+ * one, being typed into, wide enough to hold its caret and be pointed at. */
+.yolo-whiteboard-card.yolo-whiteboard-text-auto {
+  width: max-content;
+  min-width: 24px;
+  max-width: var(--yolo-whiteboard-text-max-width, 390px);
+}
+
+/* Obsidian gives the editor's content no width of its own (`width: 0`,
+ * grown by flex to fill whatever it is given), which is right in a page and
+ * leaves nothing for a width that follows the text to follow: typed into, it
+ * would stay at its minimum and break after every character. Here the
+ * content is as wide as what is typed. */
+.yolo-whiteboard-text-auto .markdown-source-view.mod-cm6 .cm-content {
+  width: auto;
+}
+
+/* Lifted without a shadow: a shadow is a card's, and under bare text it would
+ * draw the card this is not. */
+.yolo-whiteboard-card.yolo-whiteboard-text::before {
+  content: none;
+}
+
+/* All of it is shown, so nothing clips it, fades it or scrolls it. */
+.yolo-whiteboard-text .yolo-whiteboard-card-body,
+.yolo-whiteboard-text .yolo-whiteboard-card-body .markdown-preview-view,
+.yolo-whiteboard-text .yolo-whiteboard-editor-host .cm-scroller {
+  overflow: visible;
+}
+
+.yolo-whiteboard-text
+  .yolo-whiteboard-card-body:not(.yolo-whiteboard-editor-host)
+  > .markdown-preview-view {
+  mask-image: none;
+}
+
+/* A tighter inset than a card's: the text sits where it was written, not
+ * inside a box. Reading and editing share it, so opening the editor does not
+ * move a line. */
+.yolo-whiteboard-text .yolo-whiteboard-card-body .markdown-preview-view,
+.yolo-whiteboard-text .yolo-whiteboard-editor-host .cm-scroller {
+  padding: 2px 4px;
+}
+
+.yolo-whiteboard-text .markdown-preview-sizer > :last-child {
+  margin-bottom: 0;
+}
+
+/* A coloured text is written in its colour, and so is the bar of a quote in
+ * it. */
+.yolo-whiteboard-text.yolo-whiteboard-themed .yolo-whiteboard-card-body {
+  --blockquote-border-color: var(--yolo-whiteboard-color);
+  color: var(--yolo-whiteboard-color);
+}
+
+/* An excerpt's citation (domain/excerpt.ts): the one line after the quote or
+ * the picture, set small and quiet under what it cites. */
+.yolo-whiteboard-text
+  .markdown-preview-sizer
+  > :is(blockquote, p:has(> .internal-embed))
+  + p:last-child {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.yolo-whiteboard-text
+  .markdown-preview-sizer
+  > :is(blockquote, p:has(> .internal-embed))
+  + p:last-child
+  a {
+  color: inherit;
+}
+
+/* The handle layer over bare text: its height is its content's, so only the
+ * sides resize it. The top and bottom handles keep their connection points
+ * and give up the rest; the corners go. */
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-resizer:is(
+    [data-resize='topleft'],
+    [data-resize='topright'],
+    [data-resize='bottomleft'],
+    [data-resize='bottomright']
+  ) {
+  display: none;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-resizer:is([data-resize='top'], [data-resize='bottom']) {
+  pointer-events: none;
+}
+
+/* Its connection points stand just outside the handles rather than in their
+ * middle. A card is tall enough that the dot takes a fraction of its side
+ * handle; a line of text is about as tall as the dot, which would leave its
+ * sides nothing to be resized by. Out there they are also always shown while
+ * the layer is on the text — nothing else says where invisible text's edges
+ * are, or that an arrow can start from them. */
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point[data-side='left'] {
+  left: auto;
+  right: 100%;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point[data-side='right'] {
+  right: auto;
+  left: 100%;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point[data-side='top'] {
+  top: auto;
+  bottom: 100%;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point[data-side='bottom'] {
+  bottom: auto;
+  top: 100%;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point::after {
+  opacity: 0.5;
+  scale: 0.6;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-connection-point:hover::after {
+  opacity: 1;
+  scale: 1;
+}

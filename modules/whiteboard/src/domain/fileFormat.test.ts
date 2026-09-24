@@ -163,6 +163,47 @@ describe('parseBoard / serializeBoard', () => {
     expect(board.nodes[0]).toMatchObject({ type: 'group' })
   })
 
+  describe('bare text', () => {
+    const textNode = (extra: Record<string, unknown>): string =>
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 10,
+            text: 'a',
+            ...extra,
+          },
+        ],
+      })
+
+    it('round-trips plain and autoWidth', () => {
+      const board = requireOk(
+        parseBoard(textNode({ plain: true, autoWidth: true })),
+      )
+      expect(board.nodes[0]).toMatchObject({ plain: true, autoWidth: true })
+      expect(board.nodes[0].extra).toEqual({})
+      const written = JSON.parse(serializeBoard(board)).nodes[0]
+      expect(written.plain).toBe(true)
+      expect(written.autoWidth).toBe(true)
+    })
+
+    it('reads anything but true as a card, and writes no field for one', () => {
+      for (const extra of [{}, { plain: 'yes' }, { autoWidth: true }]) {
+        const board = requireOk(parseBoard(textNode(extra)))
+        expect(board.nodes[0]).not.toHaveProperty('plain')
+        expect(board.nodes[0]).not.toHaveProperty('autoWidth')
+        const written = JSON.parse(serializeBoard(board)).nodes[0]
+        expect('plain' in written).toBe(false)
+        expect('autoWidth' in written).toBe(false)
+      }
+    })
+  })
+
   describe('startLine', () => {
     const withNode = (extra: Record<string, unknown>): string =>
       JSON.stringify({

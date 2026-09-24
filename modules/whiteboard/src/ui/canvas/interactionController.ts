@@ -12,11 +12,12 @@
 
 import type { ScreenPoint } from '../../domain/camera'
 import { NODE_SIDES, edgeAtPoint } from '../../domain/edges'
-import type {
-  BoardNode,
-  EdgeId,
-  NodeId,
-  NodeSide,
+import {
+  type BoardNode,
+  type EdgeId,
+  type NodeId,
+  type NodeSide,
+  isPlainText,
 } from '../../domain/fileFormat'
 import {
   type CardRect,
@@ -71,6 +72,8 @@ const PAN_CAPTURE_ARMED_CLASS = 'yolo-whiteboard-pan-capture-armed'
 const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
+/** On the handle layer while it is parked on bare text. */
+const INTERACTION_LAYER_TEXT_CLASS = 'yolo-whiteboard-interaction-layer-text'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -240,7 +243,7 @@ export type InteractionControllerDeps = Readonly<{
   generation: Pick<CardGeneration, 'isGenerating' | 'stop'>
   menus: Pick<
     DropImport,
-    | 'createTextCardAt'
+    | 'createTextAt'
     | 'canvasMenuItems'
     | 'selectionMenuItems'
     | 'viewportCenterWorld'
@@ -646,7 +649,7 @@ export class InteractionController {
     // element this method declined to handle would fall through to creating
     // a stray card.
     if (target !== this.deps.viewportEl && target !== this.deps.worldEl) return
-    this.deps.menus.createTextCardAt(world)
+    this.deps.menus.createTextAt(world)
   }
 
   private readonly onContextMenu = (e: MouseEvent): void => {
@@ -940,6 +943,11 @@ export class InteractionController {
     const layer = this.deps.interactionLayerEl
     if (!layer) return
     layer.classList.toggle(INTERACTION_LAYER_HIDDEN_CLASS, !card)
+    // Bare text is resized from its sides only (styles/cards/text.css).
+    layer.classList.toggle(
+      INTERACTION_LAYER_TEXT_CLASS,
+      isPlainText(card ?? undefined),
+    )
     if (card) this.placeInteractionLayer(rectOfCard(card))
   }
 

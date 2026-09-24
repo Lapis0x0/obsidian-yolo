@@ -17,7 +17,13 @@
 // and Escape from double-committing.
 
 import { planNodeCommit } from '../../domain/commit'
-import type { Board, BoardNode, EdgeId, NodeId } from '../../domain/fileFormat'
+import {
+  type Board,
+  type BoardNode,
+  type EdgeId,
+  type NodeId,
+  isPlainText,
+} from '../../domain/fileFormat'
 import { isMarkdownPath } from '../../domain/naming'
 import { updateEdge, updateNode } from '../../domain/operations'
 import { resolveCardContext } from '../../host/cardContext'
@@ -90,6 +96,10 @@ export type EditingControllerDeps = Readonly<{
    * to the board without a history step or a save of its own (the commit
    * that follows saves it). */
   writeReadingWindow: (id: NodeId, line: number) => void
+  /** Bare text left empty is taken off the board: it has nothing to show,
+   * so it would be an invisible box. `historyKey` is the session's, for the
+   * text that was already recorded with something in it. */
+  discardText: (id: NodeId, historyKey: string) => void
   subscribeViewChange: (listener: () => void) => () => void
   /** Whether the overview tier's chrome (edges and their labels) is out of
    * the drawing. */
@@ -384,6 +394,8 @@ export class EditingController {
     // a body holding something an editor cannot sit over — a placeholder, an
     // image, a web frame — is cleared first.
     if (runtime.contentView === null) {
+      // Bare text keeps its size across the moment its body is empty.
+      if (runtime.el) this.deps.cards.holdTextSize(runtime.el, node)
       this.deps.cards.destroyCardContent(runtime)
       runtime.bodyEl.replaceChildren()
     }
@@ -448,6 +460,8 @@ export class EditingController {
       historyKey: `edit-${this.nextEditSessionId()}`,
       persistTimer: null,
     }
+    // With the editor in, bare text is sized by what is being typed.
+    this.deps.cards.releaseTextSize(id)
     this.deps.onEditingChange()
     editor.focus()
     // Open where the card was being read. Both surfaces speak the same
@@ -521,12 +535,21 @@ export class EditingController {
     // `destroy()`, which is what makes the editor unable to answer.
     const line = editing.editor.getScrollLine()
     this.deps.writeReadingWindow(id, line)
+    const runtime = this.deps.cards.getRuntime(id)
+    if (runtime?.el) {
+      this.deps.cards.holdTextSize(runtime.el, this.core.getNode(id))
+    }
     editing.editor.destroy()
     this.deps.unpin(id)
 
-    const runtime = this.deps.cards.getRuntime(id)
     runtime?.el?.classList.remove(CARD_EDITING_CLASS)
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
+
+    if (isPlainText(this.core.getNode(id)) && text.trim() === '') {
+      this.deps.discardText(id, editing.historyKey)
+      this.deps.onEditingChange()
+      return
+    }
 
     // Final flush: the throttled writes may have left the last keystrokes
     // unpersisted, and a no-op commit costs nothing. Still under the

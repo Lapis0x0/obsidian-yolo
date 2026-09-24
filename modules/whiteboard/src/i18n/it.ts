@@ -16,7 +16,10 @@ export const it = {
     newWhiteboard: 'Nuova lavagna YOLO',
     importCanvas: 'Importa come lavagna YOLO',
     newCard: 'Nuova scheda',
+    newText: 'Nuovo testo',
     convertToNote: 'Converti in nota',
+    convertToText: 'Converti in testo',
+    convertToCard: 'Converti in scheda',
     deleteCard: 'Elimina',
     deleteEdge: 'Elimina collegamento',
     arrowNone: 'Nessuna freccia',
@@ -50,12 +53,13 @@ export const it = {
   },
   emptyBoard: {
     title:
-      'Fai doppio clic in un punto vuoto per aggiungere una scheda, o trascinane una dalla barra qui sotto',
+      'Fai doppio clic in un punto vuoto per scrivere, o trascina una scheda dalla barra qui sotto',
     desktopHint:
       'Trascina qui note, immagini o PDF · Tieni premuto Spazio e trascina per spostarti',
     touchHint: 'Trascina con un dito per spostarti · Pizzica per lo zoom',
   },
   cardMenu: {
+    addText: 'Aggiungi testo',
     newCard: 'Aggiungi scheda',
     addNote: 'Aggiungi nota',
     addMedia: 'Aggiungi file multimediale',

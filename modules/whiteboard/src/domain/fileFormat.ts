@@ -95,9 +95,28 @@ type ReadingWindow = Readonly<{ startLine?: number }>
  */
 type PageWindow = Readonly<{ startPage?: number }>
 
+/**
+ * How a text node is drawn: as a card, or as bare text written on the board.
+ *
+ * Not in JSON Canvas. Bare text has no frame and no window: it shows all of
+ * its content, and its height is whatever that content takes at its width —
+ * the node's `h` is what it was last measured at, kept so that edges,
+ * placement and a board opened elsewhere have a size to work with. A reader
+ * that does not know the field (Obsidian Canvas) shows the same markdown as a
+ * card, which loses nothing.
+ *
+ * `autoWidth` says who chose the width: set, the text is as wide as its
+ * longest line up to a cap, and `w` follows it as it is typed; absent, the
+ * width is the one someone gave it and the text wraps inside it. Two
+ * fields rather than one, because a width alone cannot say which of the two
+ * it is, and the two behave oppositely the next time the text changes.
+ */
+type TextDisplay = Readonly<{ plain?: boolean; autoWidth?: boolean }>
+
 /** JSON Canvas text node: markdown that lives in the board file itself. */
 export type TextNode = BoardNodeBase &
   ReadingWindow &
+  TextDisplay &
   Readonly<{
     type: 'text'
     text: string
@@ -143,6 +162,13 @@ export type GroupNode = BoardNodeBase &
   }>
 
 export type BoardNode = TextNode | FileNode | LinkNode | GroupNode
+
+/** Whether a node is bare text rather than a card (`TextDisplay`). */
+export function isPlainText(
+  node: BoardNode | undefined,
+): node is TextNode & Readonly<{ plain: true }> {
+  return node?.type === 'text' && node.plain === true
+}
 
 export type Edge = Readonly<{
   id: EdgeId
@@ -332,7 +358,13 @@ export function serializeBoard(board: Board): string {
 // --- nodes ---------------------------------------------------------------
 
 const NODE_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'color'] as const
-const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text', 'startLine'] as const
+const TEXT_NODE_KEYS = [
+  ...NODE_COMMON_KEYS,
+  'text',
+  'startLine',
+  'plain',
+  'autoWidth',
+] as const
 const FILE_NODE_KEYS = [
   ...NODE_COMMON_KEYS,
   'file',
@@ -403,6 +435,7 @@ function parseNode(
         type: 'text',
         text,
         ...parseReadingWindow(entry),
+        ...parseTextDisplay(entry),
         extra: extractExtra(entry, TEXT_NODE_KEYS),
       }
     }
@@ -478,6 +511,17 @@ function parseReadingWindow(entry: Record<string, unknown>): {
   return { startLine: value }
 }
 
+/** Bare text is written `true` or not at all; anything else is a card. */
+function parseTextDisplay(entry: Record<string, unknown>): {
+  plain?: boolean
+  autoWidth?: boolean
+} {
+  if (entry.plain !== true) return {}
+  return entry.autoWidth === true
+    ? { plain: true, autoWidth: true }
+    : { plain: true }
+}
+
 /** The same rule for a page window: the top of page 1 is 1, and anything
  * that is not a place at or past it is no window at all. */
 function parsePageWindow(entry: Record<string, unknown>): {
@@ -531,6 +575,9 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         ...common,
         text: node.text,
         startLine: node.startLine,
+        plain: node.plain === true ? true : undefined,
+        autoWidth:
+          node.plain === true && node.autoWidth === true ? true : undefined,
         ...node.extra,
       }
     case 'file':

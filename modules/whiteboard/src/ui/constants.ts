@@ -371,6 +371,20 @@ export const NEW_CARD_SIZE = Object.freeze({
 })
 
 /**
+ * Size bare text (fileFormat.ts's `plain`) is made at: one short line. Only
+ * a guess to stand on until it has laid itself out — its box is its
+ * content's from then on (cardRenderer.ts's `releaseTextSize`).
+ */
+export const NEW_TEXT_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * 4,
+  h: GRID_WORLD_STEP_PX * 2,
+})
+
+/** On bare text whose width follows its longest line (`autoWidth`); taken
+ * off while a resize gives it a width of its own. */
+export const PLAIN_TEXT_AUTO_CLASS = 'yolo-whiteboard-text-auto'
+
+/**
  * Size a card that shows something else is created at: a note, an image, a
  * web page.
  *

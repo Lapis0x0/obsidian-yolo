@@ -12,6 +12,7 @@
 @import './cards/content.css';
 @import './cards/title.css';
 @import './cards/ai.css';
+@import './cards/text.css';
 @import './edges.css';
 @import './canvas/alignment-guides.css';
 @import './toolbar/selection-toolbar.css';

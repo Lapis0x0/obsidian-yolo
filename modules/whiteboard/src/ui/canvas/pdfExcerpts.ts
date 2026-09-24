@@ -1,12 +1,19 @@
 // Excerpting from a PDF onto the board it is read on: a quote, or a framed
-// area as a picture, becomes an ordinary text card (../../domain/excerpt.ts
-// has the shape and why) citing its page with Obsidian's own link.
+// area as a picture, becomes bare text written on the board
+// (../../domain/excerpt.ts has the markdown and why) citing its page with
+// Obsidian's own link.
 //
-// An excerpt is only a card. Nothing binds it to the PDF, to a highlight it
+// Bare text rather than a card: an excerpt is a line taken down beside the
+// reading, not a document of its own, and a frame around every one of them
+// turned a board of notes into a board of boxes. It is still a text node — it
+// turns into a card from its menu, and a reader that does not know bare text
+// shows it as one (fileFormat.ts's `TextDisplay`).
+//
+// An excerpt is only text. Nothing binds it to the PDF, to a highlight it
 // may have been taken from, or to the annotation file: the drag that made
 // it may leave the passage marked (../pdf/annotationController.ts), but
 // deleting either never touches the other (design.md §0). It is undone like
-// any card made on the board.
+// anything made on the board.
 //
 // Where it goes: dropped, where it was dropped; otherwise beside the PDF card
 // it came from — the column right of the card, the next free slot down
@@ -41,11 +48,7 @@ import {
   placeBeside,
   placeCard,
 } from '../../domain/placement'
-import {
-  GRID_WORLD_STEP_PX,
-  NEW_CARD_SIZE,
-  NEW_EMBED_CARD_SIZE,
-} from '../constants'
+import { GRID_WORLD_STEP_PX, NEW_EMBED_CARD_SIZE } from '../constants'
 import { generatePdfLink } from '../pdf/pdfLink'
 import type { PdfReader } from '../pdf/pdfReader'
 
@@ -68,11 +71,15 @@ export type PdfExcerptsCallbacks = Readonly<{
   reportError: (stage: string, error: unknown) => void
 }>
 
+/** An excerpt is made at the width bare text grows to on its own
+ * (styles/cards/text.css), and as tall as it is estimated to come out — an
+ * estimate its first layout replaces (cardRenderer.ts's `observeText`), so
+ * it is only ever what the landing slot and the first frame show. */
 const METRICS: ExcerptCardMetrics = {
   width: NEW_EMBED_CARD_SIZE.w,
   grid: GRID_WORLD_STEP_PX,
-  minHeight: NEW_CARD_SIZE.h - 4 * GRID_WORLD_STEP_PX,
-  maxHeight: NEW_EMBED_CARD_SIZE.h + 10 * GRID_WORLD_STEP_PX,
+  minHeight: 2 * GRID_WORLD_STEP_PX,
+  maxHeight: Number.POSITIVE_INFINITY,
 }
 
 /** An area is drawn at about twice the card's width in pixels, so a card
@@ -195,6 +202,7 @@ export class PdfExcerpts {
       w: size.w,
       h: size.h,
       text,
+      plain: true,
       extra: {},
     }
     callbacks.addCard(node)
