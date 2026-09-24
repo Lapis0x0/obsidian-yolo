@@ -952,8 +952,14 @@ button.yolo-chat-quick-access-picker-row > svg {
   margin-right: auto;
 }
 
+/* 消息导航条贴在对话区左侧 host 内边距处。宽 pane 里居中剩下的留白自然避开它，
+ * 窄 pane 里正文会铺到它下面，所以两侧都让出与侧边栏布局相同的 20px 间距。
+ * 侧边栏布局的这 20px 见上方 .yolo-chat-container--sidebar 的同名规则。 */
 .yolo-chat-container--centered .yolo-chat-messages .yolo-chat-timeline-row {
-  width: min(100%, var(--yolo-chat-content-max-width));
+  width: min(
+    calc(100% - (var(--yolo-chat-host-inline-padding) + 20px) * 2),
+    var(--yolo-chat-content-max-width)
+  );
   margin-left: auto;
   margin-right: auto;
 }
