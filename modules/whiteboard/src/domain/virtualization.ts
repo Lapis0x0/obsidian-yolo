@@ -71,18 +71,14 @@ export function intersectsViewport(
 }
 
 /**
- * Whether a card is on screen enough to be read where it is: at least half
- * of it in the viewport — or, zoomed in past the viewport's size, covering at
- * least half of the viewport — and shown at least `minScreenWidth` screen
- * pixels wide. `view` is the viewport in world coordinates (no buffer).
+ * Whether a card is on screen: at least half of it in the viewport — or,
+ * zoomed in past the viewport's size, covering at least half of the
+ * viewport. `view` is the viewport in world coordinates (no buffer).
  */
-export function isReadableInView(
+export function isMostlyInView(
   card: VirtualCardRect,
   view: WorldRect,
-  scale: number,
-  minScreenWidth: number,
 ): boolean {
-  if (card.w * scale < minScreenWidth) return false
   const w = Math.min(card.x + card.w, view.right) - Math.max(card.x, view.left)
   const h = Math.min(card.y + card.h, view.bottom) - Math.max(card.y, view.top)
   if (!(w > 0 && h > 0)) return false
