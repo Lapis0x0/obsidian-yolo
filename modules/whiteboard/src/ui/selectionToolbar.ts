@@ -438,6 +438,10 @@ export class SelectionToolbar {
   private color: ToolbarColorControl | null = null
   /** The swatch control whose popover is open, if one is. */
   private swatches: ToolbarSwatchControl | null = null
+  /** Set by `hide` and cleared a microtask later: a toolbar hidden and shown
+   * again before then was never painted hidden, so `show` has nothing to
+   * reveal. */
+  private hiddenUnpainted = false
 
   constructor(
     private readonly doc: Document,
@@ -481,7 +485,7 @@ export class SelectionToolbar {
     this.el.replaceChildren()
     this.color = null
     if (!model || model.items.length === 0) {
-      this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
+      this.hide()
       return
     }
     for (const item of model.items) {
@@ -525,10 +529,17 @@ export class SelectionToolbar {
    * abruptly at that rate is the flicker a board's chrome is most often
    * accused of. `opacity` and the standalone `translate` property, which
    * composes with the `transform` its placement is written in.
+   *
+   * Only when the hidden state was ever on screen. A hand-off between two
+   * owners of the toolbar's target — the selection clearing as a card's
+   * editor opens, and back as it closes — passes through an empty model in
+   * the same synchronous call; replaying the arrival there would make a
+   * toolbar that never left blink.
    */
   private show(): void {
     if (!this.el.classList.contains(TOOLBAR_HIDDEN_CLASS)) return
     this.el.classList.remove(TOOLBAR_HIDDEN_CLASS)
+    if (this.hiddenUnpainted) return
     const win = this.el.ownerDocument.defaultView
     if (!win || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return
@@ -540,6 +551,15 @@ export class SelectionToolbar {
       ],
       { duration: TOOLBAR_REVEAL_MS, easing: TOOLBAR_REVEAL_EASING },
     )
+  }
+
+  private hide(): void {
+    if (this.el.classList.contains(TOOLBAR_HIDDEN_CLASS)) return
+    this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
+    this.hiddenUnpainted = true
+    queueMicrotask(() => {
+      this.hiddenUnpainted = false
+    })
   }
 
   /** Reflects a colour the caller just applied, without rebuilding the
@@ -568,7 +588,7 @@ export class SelectionToolbar {
     if (!this.model) return
     if (suppressed) {
       this.closePopover()
-      this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
+      this.hide()
       return
     }
     this.show()
