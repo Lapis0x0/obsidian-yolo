@@ -1,16 +1,42 @@
 /* --- bare text (fileFormat.ts's `plain`) ------------------------------------
  * A text node written straight on the board: the card's element with the card
- * taken away. No frame and no fill at rest — the border stays, transparent,
- * so the hover and selection rings a card draws land on it unchanged and say
- * where the text's box is only when that is the question. Its height is its
- * content's (cardRenderer.ts's `releaseTextSize`); nothing here sets one. */
+ * taken away. No frame and no fill at rest. Its height is its content's
+ * (cardRenderer.ts's `releaseTextSize`); nothing here sets one. */
 
 .yolo-whiteboard-card.yolo-whiteboard-text {
-  border-color: transparent;
+  /* No border at all, so the colour a card's hover, selection and theme
+   * rules give theirs has nothing to land on. */
+  border: none;
   border-radius: var(--radius-s, 4px);
   background-color: transparent;
   /* A coloured card's wash (color.css): bare text is coloured in its ink. */
   background-image: none;
+  /* Its states are drawn with this instead: one thin line, stood a little
+   * off the glyphs so it frames the text rather than boxing it in. */
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+}
+
+/* Not a card's rings: a card is outlined twice when selected because its
+ * border is already there to be doubled. */
+.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-selected,
+.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-editing {
+  box-shadow: none;
+}
+
+/* Under the pointer, a faint line says there is something here to pick up —
+ * the only sign of where invisible text's box is. */
+.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-hovered {
+  outline-color: var(--background-modifier-border-hover);
+}
+
+/* Selected and being typed into are one line, the same: a selection that is
+ * opened for typing does not change how it is marked. Neutral, one step
+ * firmer than hover — not the accent a card's selection draws, which is
+ * what made a selected text read as a selected card. */
+.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-selected,
+.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-editing {
+  outline-color: var(--text-faint);
 }
 
 /* Width that follows the longest line, up to where prose stops being
@@ -88,8 +114,10 @@
 }
 
 /* The handle layer over bare text: its height is its content's, so only the
- * sides resize it. The top and bottom handles keep their connection points
- * and give up the rest; the corners go. */
+ * sides resize it. The corners go; the top and bottom handles stay, but only
+ * as the strip that reveals their connection point — a press there resizes
+ * nothing (dragGestures.ts's `startResize` declines it) and moves the text,
+ * so it says so. */
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-resizer:is(
     [data-resize='topleft'],
@@ -102,15 +130,14 @@
 
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-resizer:is([data-resize='top'], [data-resize='bottom']) {
-  pointer-events: none;
+  cursor: grab;
 }
 
 /* Its connection points stand just outside the handles rather than in their
  * middle. A card is tall enough that the dot takes a fraction of its side
  * handle; a line of text is about as tall as the dot, which would leave its
- * sides nothing to be resized by. Out there they are also always shown while
- * the layer is on the text — nothing else says where invisible text's edges
- * are, or that an arrow can start from them. */
+ * sides nothing to be resized by. They show as a card's do: the one on the
+ * side the pointer is at. */
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-connection-point[data-side='left'] {
   left: auto;
@@ -133,16 +160,4 @@
   .yolo-whiteboard-connection-point[data-side='bottom'] {
   bottom: auto;
   top: 100%;
-}
-
-.yolo-whiteboard-interaction-layer-text
-  .yolo-whiteboard-connection-point::after {
-  opacity: 0.5;
-  scale: 0.6;
-}
-
-.yolo-whiteboard-interaction-layer-text
-  .yolo-whiteboard-connection-point:hover::after {
-  opacity: 1;
-  scale: 1;
 }

@@ -876,8 +876,8 @@ export class DropImport {
     const node: TextNode = {
       id: this.core.nextNodeId(),
       type: 'text',
-      // Its border and inset (styles/cards/text.css) before the caret.
-      x: Math.round(world.x - 5),
+      // Its inset (styles/cards/text.css) before the caret.
+      x: Math.round(world.x - 4),
       y: Math.round(world.y - NEW_TEXT_SIZE.h / 2),
       w: NEW_TEXT_SIZE.w,
       h: NEW_TEXT_SIZE.h,

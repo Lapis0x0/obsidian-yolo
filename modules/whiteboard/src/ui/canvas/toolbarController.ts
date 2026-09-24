@@ -24,13 +24,14 @@ import {
   type ArrowDirection,
   arrowDirection,
 } from '../../domain/edges'
-import type {
-  Board,
-  BoardNode,
-  Edge,
-  EdgeId,
-  NodeColor,
-  NodeId,
+import {
+  type Board,
+  type BoardNode,
+  type Edge,
+  type EdgeId,
+  type NodeColor,
+  type NodeId,
+  isPlainText,
 } from '../../domain/fileFormat'
 import { arrangeTargets } from '../../domain/groups'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
@@ -310,12 +311,15 @@ export class ToolbarController {
       )
     }
     // Framing the selection is a camera move, not an edit — Obsidian Canvas's
-    // third button too.
-    items.push({
-      label: this.callbacks.t('menu.zoomToSelection'),
-      icon: 'scan-search',
-      onSelect: () => this.callbacks.zoomToNodes(nodes),
-    })
+    // third button too. Not for a lone bare text: it is already read where it
+    // is, and its row is kept to what a line of text has.
+    if (!isPlainText(single ?? undefined)) {
+      items.push({
+        label: this.callbacks.t('menu.zoomToSelection'),
+        icon: 'scan-search',
+        onSelect: () => this.callbacks.zoomToNodes(nodes),
+      })
+    }
     if (canEdit && nodes.length > 1) {
       items.push({
         label: this.callbacks.t('menu.createGroup'),
