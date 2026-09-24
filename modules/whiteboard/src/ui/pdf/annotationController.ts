@@ -350,9 +350,17 @@ export class AnnotationController {
     return drag
   }
 
-  /** Opens an annotation's toolbar as a click on it would. */
-  openAnnotation(reader: PdfReader, id: string): void {
-    this.open({ kind: 'annotation', reader, id })
+  /** A press on an annotation (on its comment dot, with `note`) that the
+   * reader did not see — the board saw it, over a card not yet entered — to
+   * be taken as the reader's own would be: a click opens it, a drag takes it
+   * out. */
+  takePress(
+    reader: PdfReader,
+    event: PointerEvent,
+    id: string,
+    note: boolean,
+  ): void {
+    this.onGrab(reader, event, id, note)
   }
 
   /** Opens an annotation's comment for editing, as a click on its dot

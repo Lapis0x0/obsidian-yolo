@@ -415,10 +415,17 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
   cursor: grabbing;
 }
 
-/* Over an annotation on a PDF card whose content has not been entered, or
+/* Over a comment dot on a PDF card whose content has not been entered, or
  * over a link into one of the board's PDFs: a click there opens it (the
- * card takes the click and opens it itself); a drag still moves the card. */
+ * card takes the click and opens it itself). */
 .yolo-whiteboard-card.yolo-whiteboard-card-over-openable,
 .yolo-whiteboard-card.yolo-whiteboard-card-over-openable * {
   cursor: pointer;
+}
+
+/* Over an annotation on such a card: a press takes it, as inside the card
+ * (PdfIntegration's `grabAnnotationAt`). */
+.yolo-whiteboard-card.yolo-whiteboard-card-over-grabbable,
+.yolo-whiteboard-card.yolo-whiteboard-card-over-grabbable * {
+  cursor: grab;
 }

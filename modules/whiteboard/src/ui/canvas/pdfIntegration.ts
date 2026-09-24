@@ -374,39 +374,50 @@ export class PdfIntegration {
   // -- links into this board's PDFs --------------------------------------
 
   /**
-   * A click on a PDF card that landed on one of its annotations — while the
-   * card's content was still under its mask, so the reader never saw it. The
-   * annotation is what was aimed at, not the card: the card is selected and
-   * entered, as a second click would, and the annotation opened, as a click
-   * on it inside would. True when that is what happened.
+   * A press on a PDF card, whose content has not been entered, that landed
+   * on one of its annotations or comment dots — under the card's mask, so
+   * the reader never saw it. The annotation is what was aimed at, not the
+   * card: the card is selected and entered, as a second click would, and the
+   * press handed to the annotation controller as the reader's own press on
+   * it would be — a click opens it (or its comment), a drag takes it out.
+   * True when that is what happened.
    */
-  openAnnotationAt(id: NodeId, e: MouseEvent): boolean {
+  grabAnnotationAt(id: NodeId, e: PointerEvent): boolean {
     const { core } = this.deps
+    if (this.deps.getEnteredNodeId() === id || core.isParseFailed()) {
+      return false
+    }
     const reader = core.getRuntime(id)?.pdfReader
-    if (!reader || core.isParseFailed()) return false
+    if (!reader) return false
     const noteId = reader.noteAtPoint(e.clientX, e.clientY)
     const annotationId =
       noteId ?? reader.annotationAtPoint(e.clientX, e.clientY)
     if (annotationId === null) return false
     core.setSelection([id])
     if (!this.deps.enterCard(id)) return false
-    // On its comment dot, the comment is what was aimed at.
-    if (noteId !== null) this.annotationController.openComment(reader, noteId)
-    else this.annotationController.openAnnotation(reader, annotationId)
+    this.annotationController.takePress(
+      reader,
+      e,
+      annotationId,
+      noteId !== null,
+    )
     return true
   }
 
-  /** Whether a pointer on a PDF card whose content has not been entered
-   * is over one of its annotations — where a click would open it
-   * (`openAnnotationAt`). An entered card's reader says so itself. */
-  isOverAnnotation(id: NodeId, e: MouseEvent): boolean {
-    if (this.deps.getEnteredNodeId() === id) return false
+  /** What a press at the pointer on the card `id` would do to something in
+   * its content, for the cursor to say: take an annotation of a PDF card not
+   * entered (`grabAnnotationAt`) — `grab` — or open a comment dot or follow
+   * a link into one of the board's PDFs — `open`. An entered card's reader
+   * says so itself. */
+  contentAffordanceAt(id: NodeId, e: MouseEvent): 'grab' | 'open' | null {
+    if (this.pdfLinkAt(id, e) !== null) return 'open'
+    if (this.deps.getEnteredNodeId() === id) return null
     const reader = this.deps.core.getRuntime(id)?.pdfReader
-    if (!reader) return false
-    return (
-      reader.noteAtPoint(e.clientX, e.clientY) !== null ||
-      reader.annotationAtPoint(e.clientX, e.clientY) !== null
-    )
+    if (!reader) return null
+    if (reader.noteAtPoint(e.clientX, e.clientY) !== null) return 'open'
+    return reader.annotationAtPoint(e.clientX, e.clientY) !== null
+      ? 'grab'
+      : null
   }
 
   /** The pointer on the board is at `e`, over the card `id` (or none): on
@@ -482,12 +493,6 @@ export class PdfIntegration {
       if (!best || node.w > best.w) best = node
     }
     return best?.id ?? null
-  }
-
-  /** Whether the pointer on the card `id` is over a link into one of the
-   * board's PDFs — where a click follows it (`followPdfLinkAt`). */
-  isOverPdfLink(id: NodeId, e: MouseEvent): boolean {
-    return this.pdfLinkAt(id, e) !== null
   }
 
   /** The link into one of the board's PDFs at the pointer on the card `id`:

@@ -84,11 +84,12 @@ const GROUP_HINTED_CLASS = 'yolo-whiteboard-group-hinted'
 /** On the card the pointer is over — the same state that parks the handle
  * layer on it (`hoveredNodeId`), shown on the card itself. */
 const CARD_HOVERED_CLASS = 'yolo-whiteboard-card-hovered'
-/** On the hovered PDF card while the pointer is over one of its
- * annotations, which a click opens (PdfIntegration's `openAnnotationAt`). */
 /** On a card while the pointer is over something in its content a click
- * opens: an annotation on a PDF card not entered, or a link into a PDF. */
+ * opens — a comment dot on a PDF card not entered, a link into a PDF — or a
+ * press takes hold of — an annotation on a PDF card not entered
+ * (PdfIntegration's `contentAffordanceAt`). */
 const CARD_OVER_OPENABLE_CLASS = 'yolo-whiteboard-card-over-openable'
+const CARD_OVER_GRABBABLE_CLASS = 'yolo-whiteboard-card-over-grabbable'
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -254,9 +255,8 @@ export type InteractionControllerDeps = Readonly<{
     PdfIntegration,
     | 'panelContains'
     | 'followPdfLinkAt'
-    | 'openAnnotationAt'
-    | 'isOverAnnotation'
-    | 'isOverPdfLink'
+    | 'grabAnnotationAt'
+    | 'contentAffordanceAt'
     | 'hoverNoteAt'
   >
   /** Exempts a card from virtualization unmount while a gesture holds it. */
@@ -341,7 +341,6 @@ export class InteractionController {
       queueContentSync: deps.queueContentSync,
       onLiveRectsChange: deps.onLiveRectsChange,
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
-      openPdfAnnotationAt: (id, e) => deps.pdf.openAnnotationAt(id, e),
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       openOnSecondClick: (id) => {
         // Written into by a generation: the text is the stream's until it
@@ -518,6 +517,13 @@ export class InteractionController {
       // window instead — but arrives at the same place: content that is live
       // stays usable.) The card's title row remains its drag handle.
       if (this.isLiveContentTarget(e.target)) return
+      // An annotation on a PDF card not entered is taken by the press — the
+      // card entered under it — rather than the card: dragged, it comes out;
+      // clicked, it opens. Shift still adds the card to the selection.
+      if (!e.shiftKey && this.deps.pdf.grabAnnotationAt(nodeId, e)) {
+        e.preventDefault()
+        return
+      }
       this.interaction = {
         kind: 'card',
         pointerId: e.pointerId,
@@ -801,14 +807,12 @@ export class InteractionController {
     const nodeId = onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e)
     this.setHoveredNode(nodeId)
     if (nodeId !== null) {
-      this.core
-        .getRuntime(nodeId)
-        ?.el?.classList.toggle(
-          CARD_OVER_OPENABLE_CLASS,
-          !onLayer &&
-            (this.deps.pdf.isOverAnnotation(nodeId, e) ||
-              this.deps.pdf.isOverPdfLink(nodeId, e)),
-        )
+      const affordance = onLayer
+        ? null
+        : this.deps.pdf.contentAffordanceAt(nodeId, e)
+      const classes = this.core.getRuntime(nodeId)?.el?.classList
+      classes?.toggle(CARD_OVER_OPENABLE_CLASS, affordance === 'open')
+      classes?.toggle(CARD_OVER_GRABBABLE_CLASS, affordance === 'grab')
     }
     this.deps.pdf.hoverNoteAt(onLayer ? null : nodeId, e)
     this.setHintedGroup(
@@ -890,7 +894,11 @@ export class InteractionController {
     if (this.hoveredNodeId !== null) {
       this.core
         .getRuntime(this.hoveredNodeId)
-        ?.el?.classList.remove(CARD_HOVERED_CLASS, CARD_OVER_OPENABLE_CLASS)
+        ?.el?.classList.remove(
+          CARD_HOVERED_CLASS,
+          CARD_OVER_OPENABLE_CLASS,
+          CARD_OVER_GRABBABLE_CLASS,
+        )
     }
     this.hoveredNodeId = nodeId
     if (nodeId !== null) {
