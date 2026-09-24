@@ -87,6 +87,89 @@ export function rectBox(rect: PdfRectTuple, frame: PageFrame): PageBox {
   )
 }
 
+/**
+ * A highlight's boxes as the outline of one shape, so it is filled once and
+ * framed once: a quad per text item overlaps its neighbours on the same line
+ * (a bold word is an item of its own) and the lines above and below, and
+ * each overlap painted separately shows as a darker seam.
+ *
+ * The boxes are merged into lines (a box sharing most of its height with a
+ * line is on it), and lines one above the other, overlapping across and
+ * close enough down, are made to meet halfway between them. Each run of
+ * lines that meet is one stepped polygon; a run is broken where the lines
+ * do not overlap across (a column break) or leave a real gap (a paragraph
+ * skipped). Points are page fractions, clockwise from the top left.
+ */
+export function highlightOutlines(boxes: readonly PageBox[]): PagePoint[][] {
+  const lines: { left: number; top: number; right: number; bottom: number }[] =
+    []
+  const byMiddle = [...boxes].sort(
+    (a, b) => a.top + a.bottom - (b.top + b.bottom),
+  )
+  for (const box of byMiddle) {
+    const line = lines[lines.length - 1]
+    const shared = line
+      ? Math.min(line.bottom, box.bottom) - Math.max(line.top, box.top)
+      : 0
+    const least = line
+      ? Math.min(line.bottom - line.top, box.bottom - box.top)
+      : 0
+    if (line && shared >= least / 2) {
+      line.left = Math.min(line.left, box.left)
+      line.top = Math.min(line.top, box.top)
+      line.right = Math.max(line.right, box.right)
+      line.bottom = Math.max(line.bottom, box.bottom)
+    } else {
+      lines.push({ ...box })
+    }
+  }
+
+  const runs: (typeof lines)[] = []
+  for (const line of lines) {
+    const run = runs[runs.length - 1]
+    const above = run?.[run.length - 1]
+    const across = above
+      ? Math.min(above.right, line.right) - Math.max(above.left, line.left)
+      : 0
+    const gap = above ? line.top - above.bottom : 0
+    const height = above
+      ? Math.min(above.bottom - above.top, line.bottom - line.top)
+      : 0
+    if (run && above && across > 0 && gap < height * LINE_JOIN_GAP) {
+      const meet = (above.bottom + line.top) / 2
+      above.bottom = meet
+      line.top = meet
+      run.push(line)
+    } else {
+      runs.push([line])
+    }
+  }
+
+  return runs.map((run) => {
+    const right: PagePoint[] = []
+    const left: PagePoint[] = []
+    for (const line of run) {
+      right.push([line.right, line.top], [line.right, line.bottom])
+      left.push([line.left, line.top], [line.left, line.bottom])
+    }
+    // Where two lines end at the same x their corners coincide; a point
+    // repeated says nothing.
+    const points: PagePoint[] = [
+      [run[0].left, run[0].top],
+      ...right,
+      ...left.reverse(),
+    ]
+    return points.filter(
+      ([x, y], at) =>
+        at === 0 || x !== points[at - 1][0] || y !== points[at - 1][1],
+    )
+  })
+}
+
+/** How far apart, as a share of their height, two lines may be and still be
+ * drawn as one block. */
+const LINE_JOIN_GAP = 0.6
+
 function boundingBox(points: readonly PagePoint[], frame: PageFrame): PageBox {
   const xs = points.map(([x]) => x / frame.width)
   const ys = points.map(([, y]) => y / frame.height)

@@ -60,6 +60,48 @@
   mix-blend-mode: screen;
 }
 
+/* A highlight: one shape over all its lines (annotationLayer.ts), in an SVG
+ * stretched over the page, blended like the marks above. Its outline, drawn
+ * only while it is active, is a layer of its own that is not blended; the
+ * stroke stays 2px at any page size. */
+svg.yolo-whiteboard-pdf-highlight,
+svg.yolo-whiteboard-pdf-highlight-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+svg.yolo-whiteboard-pdf-highlight {
+  mix-blend-mode: multiply;
+}
+
+.theme-dark svg.yolo-whiteboard-pdf-highlight {
+  mix-blend-mode: screen;
+}
+
+.yolo-whiteboard-pdf-highlight path {
+  fill: color-mix(in srgb, var(--yolo-whiteboard-annotation) 45%, transparent);
+}
+
+.theme-dark .yolo-whiteboard-pdf-highlight path {
+  fill: color-mix(in srgb, var(--yolo-whiteboard-annotation) 40%, transparent);
+}
+
+.yolo-whiteboard-pdf-highlight-outline path {
+  display: none;
+  fill: none;
+  stroke: var(--yolo-whiteboard-annotation);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.yolo-whiteboard-pdf-highlight-outline path.yolo-whiteboard-pdf-mark-active {
+  display: inline;
+}
+
 .yolo-whiteboard-pdf-mark.yolo-whiteboard-pdf-mark-area {
   border: 2px solid var(--yolo-whiteboard-annotation);
   border-radius: 2px;

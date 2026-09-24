@@ -3,6 +3,7 @@ import type { HighlightAnchor } from '../../domain/pdfAnnotations'
 import {
   type PageFrame,
   foldForAnchor,
+  highlightOutlines,
   hitTestAnnotations,
   quadBoxes,
   quoteContext,
@@ -169,5 +170,67 @@ describe('foldForAnchor', () => {
   it('joins CJK lines with nothing and Latin lines with a space', () => {
     expect(foldForAnchor('视觉\n 原语')).toBe('视觉原语')
     expect(foldForAnchor('Visual\nPrimitives')).toBe('visual primitives')
+  })
+})
+
+describe('highlightOutlines', () => {
+  const box = (left: number, top: number, right: number, bottom: number) => ({
+    left,
+    top,
+    right,
+    bottom,
+  })
+
+  it('merges the items of a line into one box', () => {
+    // A bold word is an item of its own, taller and overlapping its
+    // neighbours.
+    expect(
+      highlightOutlines([
+        box(0.1, 0.1, 0.3, 0.12),
+        box(0.28, 0.098, 0.4, 0.121),
+        box(0.39, 0.1, 0.9, 0.12),
+      ]),
+    ).toEqual([
+      [
+        [0.1, 0.098],
+        [0.9, 0.098],
+        [0.9, 0.121],
+        [0.1, 0.121],
+        [0.1, 0.098],
+      ],
+    ])
+  })
+
+  it('makes overlapping lines meet halfway, as one stepped shape', () => {
+    const [outline] = highlightOutlines([
+      box(0.5, 0.1, 0.9, 0.125),
+      box(0.1, 0.12, 0.9, 0.145),
+      box(0.1, 0.14, 0.4, 0.165),
+    ])
+    const rounded = outline.map(([x, y]) => [x, Math.round(y * 1e4) / 1e4])
+    expect(rounded).toEqual([
+      [0.5, 0.1],
+      [0.9, 0.1],
+      [0.9, 0.1225],
+      [0.9, 0.1425],
+      [0.4, 0.1425],
+      [0.4, 0.165],
+      [0.1, 0.165],
+      [0.1, 0.1425],
+      [0.1, 0.1225],
+      [0.5, 0.1225],
+      [0.5, 0.1],
+    ])
+  })
+
+  it('keeps lines apart across a column break or a real gap', () => {
+    // Bottom of the left column, then the top of the right one.
+    expect(
+      highlightOutlines([box(0.1, 0.8, 0.45, 0.82), box(0.55, 0.1, 0.9, 0.12)]),
+    ).toHaveLength(2)
+    // A skipped paragraph.
+    expect(
+      highlightOutlines([box(0.1, 0.1, 0.9, 0.12), box(0.1, 0.2, 0.9, 0.22)]),
+    ).toHaveLength(2)
   })
 })
