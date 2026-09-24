@@ -53,7 +53,7 @@ export const SPREAD_METRICS: SpreadMetrics = Object.freeze({
   /** Between two sheets, across and down: enough to read them as separate
    * pieces of paper rather than one long page. */
   gap: 26,
-  /** The title's height; its width follows its text (`titleWidthFor`). */
+  /** The title's height; it is one sheet wide (`layoutSpreadGrid`). */
   titleHeight: 39,
   /** Between the title and the first row of sheets. */
   titleGap: 13,
@@ -145,7 +145,9 @@ export function openSpread(
     ...rest,
     x: use.title.x,
     y: use.title.y,
-    w: use.title.w,
+    // One sheet wide, whatever was saved: the title is a heading over the
+    // first column, not a box around its text (see `layoutSpreadGrid`).
+    w: use.pages[0].w,
     h: use.title.h,
     readerRect: { x: node.x, y: node.y, w: node.w, h: node.h },
   }
@@ -379,19 +381,24 @@ export function spreadWidthForColumns(
  * each row as tall as its tallest sheet, the title's top-left at `origin`.
  * Every sheet is `pageWidth` wide and as tall as its page's proportions make
  * it.
+ *
+ * The title is one sheet wide, over the first column, whatever its name:
+ * a width that follows the text could only be known once the text was laid
+ * out, and the board hit-tests, selects and draws the title by its node's
+ * size at every zoom, including the ones where nothing is laid out. A name
+ * too long for it is cut short on screen (spread.css).
  */
 export function layoutSpreadGrid(
   pages: readonly PageSize[],
   origin: Readonly<{ x: number; y: number }>,
   columns: number,
-  titleWidth: number,
   metrics = SPREAD_METRICS,
 ): SpreadLayout {
   const perRow = Math.max(1, Math.min(columns, pages.length))
   const title: SpreadRect = {
     x: origin.x,
     y: origin.y,
-    w: titleWidth,
+    w: metrics.pageWidth,
     h: metrics.titleHeight,
   }
   const rects: SpreadRect[] = []
@@ -435,7 +442,6 @@ export function reflowSpread(
     sheets.map((sheet) => ({ width: sheet.w, height: sheet.h })),
     { x: title.x, y: title.y },
     columns,
-    title.w,
     { ...metrics, pageWidth: sheets[0].w },
   )
   const rectById = new Map(
@@ -465,19 +471,6 @@ export function currentSpreadColumns(
     count += 1
   }
   return Math.max(1, count)
-}
-
-/**
- * A title's width for its text, before it has been measured: a generous
- * estimate the renderer corrects once it has laid the text out.
- */
-export function titleWidthFor(name: string, metrics = SPREAD_METRICS): number {
-  const charWidth = 11
-  const padding = 16
-  return Math.max(
-    metrics.titleHeight * 2,
-    Math.round(name.length * charWidth + padding),
-  )
 }
 
 function sheetHeight(page: PageSize, width: number): number {

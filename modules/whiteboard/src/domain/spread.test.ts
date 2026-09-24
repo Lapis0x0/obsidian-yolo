@@ -62,7 +62,6 @@ const threePages = layoutSpreadGrid(
   [LETTER, LETTER, LETTER],
   { x: 1000, y: 0 },
   2,
-  200,
 )
 
 describe('layoutSpreadGrid', () => {
@@ -70,7 +69,7 @@ describe('layoutSpreadGrid', () => {
     expect(threePages.title).toEqual({
       x: 1000,
       y: 0,
-      w: 200,
+      w: 390,
       h: SPREAD_METRICS.titleHeight,
     })
     const top = SPREAD_METRICS.titleHeight + SPREAD_METRICS.titleGap
@@ -87,7 +86,6 @@ describe('layoutSpreadGrid', () => {
       [LETTER, { width: 612, height: 1584 }, LETTER],
       { x: 0, y: 0 },
       2,
-      100,
     )
     expect(layout.pages[2].y - layout.pages[0].y).toBe(
       layout.pages[1].h + SPREAD_METRICS.gap,

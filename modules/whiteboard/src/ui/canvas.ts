@@ -55,7 +55,7 @@ import {
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
-import { basenameWithoutExtension, isMarkdownPath } from '../domain/naming'
+import { isMarkdownPath } from '../domain/naming'
 import {
   boardWithPageWindow,
   boardWithReadingWindow,
@@ -77,7 +77,6 @@ import {
   openSpread,
   reflowSpread,
   spreadPages,
-  titleWidthFor,
 } from '../domain/spread'
 import { tidyRects } from '../domain/tidy'
 import {
@@ -870,7 +869,6 @@ export class WhiteboardCanvas {
         this.editing.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
       onTextMeasured: (id, size) => this.commitTextSize(id, size),
-      onSpreadTitleMeasured: (id, w) => this.commitSpreadTitleWidth(id, w),
       onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
@@ -1264,23 +1262,6 @@ export class WhiteboardCanvas {
     const w = node.autoWidth === true ? size.w : node.w
     if (w === node.w && size.h === node.h) return
     this.commitWithoutHistory(updateNode(this.board, id, { w, h: size.h }))
-    this.edgeLayer.redrawEdgesForNodes(new Set([id]))
-    this.interaction.refreshInteractionLayer()
-    this.toolbarController.positionToolbar()
-  }
-
-  /**
-   * A spread title's measured width, written to its node — the board
-   * hit-tests, snaps and connects by the node's size, not by the element.
-   * Not a step, for the reason bare text's size is not: it follows from the
-   * name, which nobody typed.
-   */
-  private commitSpreadTitleWidth(id: NodeId, w: number): void {
-    const node = this.nodesById.get(id)
-    if (!isSpreadTitle(node) || Math.abs(node.w - w) < 1) return
-    this.commitWithoutHistory(updateNode(this.board, id, { w }))
-    const el = this.cardRenderer.getRuntime(id)?.el
-    if (el) el.style.width = `${w}px`
     this.edgeLayer.redrawEdgesForNodes(new Set([id]))
     this.interaction.refreshInteractionLayer()
     this.toolbarController.positionToolbar()
@@ -1861,7 +1842,6 @@ export class WhiteboardCanvas {
       sizes,
       { x: now.x, y: now.y },
       defaultSpreadColumns(sizes),
-      titleWidthFor(basenameWithoutExtension(now.file)),
     )
     this.commitSpreadToggle(id, openSpread(this.board, id, layout))
   }

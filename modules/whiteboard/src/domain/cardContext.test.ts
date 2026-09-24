@@ -194,7 +194,6 @@ describe('a PDF spread in a card context', () => {
     ],
     { x: 500, y: 0 },
     2,
-    100,
   )
   const board = openSpread(
     boardWith([file('pdf', pdfPath), text('t', '')], [edge('e', 'pdf', 't')]),

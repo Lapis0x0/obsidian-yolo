@@ -203,8 +203,6 @@ export type CardRendererCallbacks = Readonly<{
   /** Bare text laid itself out at a new size — what its node's `w`/`h` now
    * are (see `observeText`). */
   onTextMeasured: (id: NodeId, size: Readonly<{ w: number; h: number }>) => void
-  /** A spread's title laid its name out at `w` world units wide. */
-  onSpreadTitleMeasured: (id: NodeId, w: number) => void
   /** Called after a note card's text has been read and drawn — the first
    * moment its editor can be opened (`noteText` is known). */
   onNoteCardRendered: (id: NodeId) => void
@@ -662,16 +660,18 @@ export class CardRenderer {
   /**
    * An open spread's title: its document's name on the board, and the handle
    * for the whole document — what a group holds, an edge reaches and a drag
-   * carries the pages with (domain/spread.ts). It has no body; its width is
-   * whatever its name takes, which is measured once it is laid out and
-   * written back to the node, since the board hit-tests by the node's size.
+   * carries the pages with (domain/spread.ts). It has no body. It is one
+   * sheet wide whatever the name (`layoutSpreadGrid`); a name longer than
+   * that is cut short, and the whole of it is the tooltip.
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
     const text = doc.createElement('div')
     text.className = SPREAD_TITLE_TEXT_CLASS
-    text.textContent = basenameWithoutExtension(file)
+    const name = basenameWithoutExtension(file)
+    text.textContent = name
+    text.title = name
     el.appendChild(text)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
@@ -686,15 +686,6 @@ export class CardRenderer {
       pdfReader: null,
       missingFile: false,
       noteText: null,
-    })
-    // Read on the next frame, with the rest of that frame's layout, rather
-    // than forcing one in the middle of a mount pass.
-    el.ownerDocument.defaultView?.requestAnimationFrame(() => {
-      if (this.runtimeByNodeId.get(id)?.el !== el || !text.isConnected) return
-      // Layout width, in world units: the element sits inside the camera's
-      // transform, which `offset*` ignores.
-      const w = Math.ceil(text.offsetWidth)
-      if (w > 0) this.callbacks.onSpreadTitleMeasured(id, w)
     })
   }
 

@@ -535,10 +535,10 @@ export class OverviewLayer {
     }
   }
 
-  /** A spread's title as the DOM draws it: its name alone, in muted type, no
-   * card around it — and the accent ring when it is selected. Its width was
-   * measured from that text (cardRenderer's `mountSpreadTitle`), so it fits
-   * without wrapping or cutting. */
+  /** A spread's title as the DOM draws it: its name alone, in muted type,
+   * no card around it and no ring when selected — the line down the right of
+   * the whole document says that (spreadFrame.ts). One sheet wide, so a
+   * longer name ends in an ellipsis, as it does in the element. */
   private drawSpreadTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
@@ -552,18 +552,8 @@ export class OverviewLayer {
   ): void {
     const palette = this.palette
     if (!palette || titles.length === 0) return
+    const padding = SPREAD_TITLE_WORLD_PADDING_X * view.scale
     ctx.globalAlpha = 1
-    ctx.strokeStyle = palette.accent
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    let anySelected = false
-    for (const title of titles) {
-      if (!this.callbacks.isSelected(title.node.id)) continue
-      this.strokeRectPath(ctx, title)
-      anySelected = true
-    }
-    if (anySelected) ctx.stroke()
-    ctx.lineWidth = 1
     ctx.font = `600 ${SPREAD_TITLE_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
@@ -573,8 +563,8 @@ export class OverviewLayer {
         ? palette.text
         : palette.muted
       ctx.fillText(
-        nodeTitleText(title.node),
-        title.x + SPREAD_TITLE_WORLD_PADDING_X * view.scale,
+        this.ellipsise(ctx, nodeTitleText(title.node), title.w - padding * 2),
+        title.x + padding,
         title.y + title.h / 2,
       )
     }

@@ -6,8 +6,8 @@
 
 /* The title: the document's name and nothing around it, like a group's label
  * (the same weight and colour), sized in world units so it shrinks with the
- * sheets it names. Its box is exactly its text, which is what the node's
- * width is measured from (cardRenderer's `mountSpreadTitle`). */
+ * sheets it names. One sheet wide (domain/spread.ts's `layoutSpreadGrid`);
+ * a longer name ends in an ellipsis, and its tooltip has all of it. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
   display: block;
   border: none;
@@ -15,14 +15,14 @@
 }
 
 .yolo-whiteboard-spread-title-text {
-  width: max-content;
-  max-width: none;
+  overflow: hidden;
   padding: 0 4px;
   font-size: 24px;
   font-weight: 600;
   line-height: 39px;
   color: var(--text-muted);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered
