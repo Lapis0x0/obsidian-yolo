@@ -95,6 +95,47 @@ type ReadingWindow = Readonly<{ startLine?: number }>
  */
 type PageWindow = Readonly<{ startPage?: number }>
 
+/** A rectangle in world units — what a spread remembers for its title and
+ * each of its pages. Written to the file as an `[x, y, w, h]` tuple: a
+ * three-hundred-page spread is three hundred of them. */
+export type SpreadRect = Readonly<{
+  x: number
+  y: number
+  w: number
+  h: number
+}>
+
+/**
+ * A PDF card's other way of being drawn: its pages laid out on the board like
+ * sheets of paper, each one placed on its own, under a title that stands for
+ * the whole document.
+ *
+ * Not in JSON Canvas, and the node's own `x`/`y`/`w`/`h` stay the reader
+ * card's whichever way it is drawn: a reader that does not know the field
+ * (Obsidian Canvas) shows an ordinary PDF card where the card last was. The
+ * layout outlives `open` — putting the pages away and bringing them back puts
+ * every sheet where it was left.
+ *
+ * On the board a spread is never this field (domain/spread.ts's
+ * `expandBoard`): while it is open, the node stands for its title and each page
+ * is a `pdf-page` node of its own, so dragging, snapping, grouping and edges
+ * reach a sheet the way they reach any card. The field is what those are
+ * folded back into for the file.
+ */
+export type PdfSpread = Readonly<{
+  open: boolean
+  title: SpreadRect
+  pages: readonly SpreadRect[]
+}>
+
+/**
+ * The spread fields a file node can carry: `spread` as it is in the file,
+ * and `readerRect` only on the board, where an open spread's node is its
+ * title and the reader card's rectangle has to wait somewhere for it to be
+ * put away (domain/spread.ts). A node carries one or neither, never both.
+ */
+type SpreadDisplay = Readonly<{ spread?: PdfSpread; readerRect?: SpreadRect }>
+
 /**
  * How a text node is drawn: as a card, or as bare text written on the board.
  *
@@ -133,6 +174,7 @@ export type TextNode = BoardNodeBase &
 export type FileNode = BoardNodeBase &
   ReadingWindow &
   PageWindow &
+  SpreadDisplay &
   Readonly<{
     type: 'file'
     /** Vault-relative path to the backing file. */
@@ -161,7 +203,27 @@ export type GroupNode = BoardNodeBase &
     label?: string
   }>
 
-export type BoardNode = TextNode | FileNode | LinkNode | GroupNode
+/**
+ * One sheet of an open spread (`PdfSpread`), on the board.
+ *
+ * Never in a file: it exists only between domain/spread.ts's `expandBoard`,
+ * which makes one per page when a board is read, and `collapseBoard`, which
+ * folds them back into their PDF's node before it is written. Its id is
+ * derived from its parent's (`pdfPageNodeId`), so an edge or a selection can
+ * name it like any node.
+ */
+export type PdfPageNode = BoardNodeBase &
+  Readonly<{
+    type: 'pdf-page'
+    /** The PDF node whose spread this sheet belongs to. */
+    parent: NodeId
+    /** The parent's file, copied so a sheet can be drawn from itself. */
+    file: string
+    /** 1-based. */
+    page: number
+  }>
+
+export type BoardNode = TextNode | FileNode | LinkNode | GroupNode | PdfPageNode
 
 /** Whether a node is bare text rather than a card (`TextDisplay`). */
 export function isPlainText(
@@ -177,6 +239,15 @@ export type Edge = Readonly<{
   /** Anchor side on the source/target node. Omitted = pick from relative position at render time (not this module's job). */
   fromSide?: NodeSide
   toSide?: NodeSide
+  /**
+   * The page of a PDF node an end is attached to (1-based), when it is one
+   * sheet of the document rather than the whole of it. Not in JSON Canvas:
+   * there the edge reaches the PDF's card, which is still where it goes while
+   * the spread is put away. On the board an open spread's page is a node of
+   * its own and the edge names it instead (domain/spread.ts).
+   */
+  fromPage?: number
+  toPage?: number
   /** JSON Canvas defaults: 'none' at the source, 'arrow' at the target. */
   fromEnd: EdgeEnd
   toEnd: EdgeEnd
@@ -370,6 +441,7 @@ const FILE_NODE_KEYS = [
   'file',
   'startLine',
   'startPage',
+  'spread',
 ] as const
 const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
 const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
@@ -456,6 +528,7 @@ function parseNode(
         file,
         ...parseReadingWindow(entry),
         ...parsePageWindow(entry),
+        ...parseSpread(entry),
         extra: extractExtra(entry, FILE_NODE_KEYS),
       }
     }
@@ -532,6 +605,46 @@ function parsePageWindow(entry: Record<string, unknown>): {
   return { startPage: value }
 }
 
+/**
+ * A spread is kept only whole: a title and at least one page, every one of
+ * them a finite rectangle. Anything less is dropped, and the card is a card —
+ * expanding it again lays its pages out afresh, which loses a layout nobody
+ * could have been shown anyway.
+ */
+function parseSpread(entry: Record<string, unknown>): { spread?: PdfSpread } {
+  const raw = entry.spread
+  if (!isPlainObject(raw)) return {}
+  const title = parseSpreadRect(raw.title)
+  if (!title || !Array.isArray(raw.pages) || raw.pages.length === 0) return {}
+  const pages: SpreadRect[] = []
+  for (const value of raw.pages) {
+    const page = parseSpreadRect(value)
+    if (!page) return {}
+    pages.push(page)
+  }
+  return { spread: { open: raw.open === true, title, pages } }
+}
+
+function parseSpreadRect(value: unknown): SpreadRect | null {
+  if (!Array.isArray(value) || value.length !== 4) return null
+  if (!value.every(isFiniteNumber)) return null
+  const [x, y, w, h] = value
+  if (w <= 0 || h <= 0) return null
+  return { x, y, w, h }
+}
+
+function serializeSpread(
+  spread: PdfSpread | undefined,
+): Record<string, unknown> | undefined {
+  if (!spread) return undefined
+  const tuple = (rect: SpreadRect) => [rect.x, rect.y, rect.w, rect.h]
+  return {
+    open: spread.open ? true : undefined,
+    title: tuple(spread.title),
+    pages: spread.pages.map(tuple),
+  }
+}
+
 function parseNodeGeometry(
   entry: Record<string, unknown>,
   index: number,
@@ -586,12 +699,20 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         file: node.file,
         startLine: node.startLine,
         startPage: node.startPage,
+        spread: serializeSpread(node.spread),
         ...node.extra,
       }
     case 'link':
       return { ...common, url: node.url, ...node.extra }
     case 'group':
       return { ...common, label: node.label, ...node.extra }
+    case 'pdf-page':
+      // A board is folded back (domain/spread.ts's `collapseBoard`) before
+      // anything writes it; a sheet reaching here would be written as a node
+      // no reader knows and dropped from its PDF's spread.
+      throw new Error(
+        `serializeNode: "${node.id}" is a spread page, which only exists on the board`,
+      )
   }
 }
 
@@ -605,6 +726,8 @@ const EDGE_KNOWN_KEYS = [
   'toSide',
   'fromEnd',
   'toEnd',
+  'fromPage',
+  'toPage',
   'color',
   'label',
 ] as const
@@ -686,18 +809,31 @@ function parseEdge(
   const toEnd = isEdgeEnd(entry.toEnd) ? entry.toEnd : 'arrow'
   const color = isNonEmptyString(entry.color) ? entry.color : undefined
   const label = typeof entry.label === 'string' ? entry.label : undefined
+  const fromPage = parseEdgePage(entry.fromPage)
+  const toPage = parseEdgePage(entry.toPage)
   return {
     id,
     fromNode,
     toNode,
     fromSide,
     toSide,
+    ...(fromPage === undefined ? {} : { fromPage }),
+    ...(toPage === undefined ? {} : { toPage }),
     fromEnd,
     toEnd,
     color,
     label,
     extra: extractExtra(entry, EDGE_KNOWN_KEYS),
   }
+}
+
+/** A page an edge end names is a whole page number, from 1; anything else
+ * attaches the end to the PDF as a whole, which is what an edge without the
+ * field does. */
+function parseEdgePage(value: unknown): number | undefined {
+  return Number.isInteger(value) && (value as number) >= 1
+    ? (value as number)
+    : undefined
 }
 
 export function serializeEdge(edge: Edge): Record<string, unknown> {
@@ -707,6 +843,8 @@ export function serializeEdge(edge: Edge): Record<string, unknown> {
     toNode: edge.toNode,
     fromSide: edge.fromSide,
     toSide: edge.toSide,
+    fromPage: edge.fromPage,
+    toPage: edge.toPage,
     fromEnd: edge.fromEnd,
     toEnd: edge.toEnd,
     color: edge.color,

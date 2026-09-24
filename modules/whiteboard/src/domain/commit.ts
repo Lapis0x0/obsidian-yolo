@@ -43,6 +43,7 @@ export function planNodeCommit(
       }
     case 'link':
     case 'group':
+    case 'pdf-page':
       return { kind: 'noop' }
   }
 }

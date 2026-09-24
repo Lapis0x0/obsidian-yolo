@@ -173,6 +173,8 @@ export function describeCardContent(
       // A group nested in a source group: its own members are already in the
       // list, because containment is transitive (`nodesInsideGroup`).
       return `(a group${card.label ? ` "${card.label}"` : ''})`
+    case 'pdf-page':
+      return `(this card is page ${card.page} of the PDF ${card.file})`
   }
 }
 

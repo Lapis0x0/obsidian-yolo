@@ -1034,6 +1034,11 @@ export class CardRenderer {
       return
     }
 
+    if (node.type === 'pdf-page') {
+      this.renderPdfInto(id, runtime, node.file)
+      return
+    }
+
     // text node: markdown lives directly in the board.
     this.renderMarkdownInto(
       id,

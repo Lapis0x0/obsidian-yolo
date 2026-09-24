@@ -124,6 +124,8 @@ export function readBoardCard(board: Board, cardId: NodeId): string | null {
       const label = card.label ? ` "${card.label}"` : ''
       return `Group${label} containing ${members.length} card(s): ${members.join(' ')}`
     }
+    case 'pdf-page':
+      return `This card is page ${card.page} of ${card.file} — read that file for its content.`
   }
 }
 
@@ -173,6 +175,8 @@ function cardKind(card: BoardNode): string {
       }
     case 'group':
       return 'group'
+    case 'pdf-page':
+      return 'pdf page'
   }
 }
 
@@ -181,6 +185,8 @@ function cardHeadline(card: BoardNode): string {
   switch (card.type) {
     case 'file':
       return `${head}  ${card.file}`
+    case 'pdf-page':
+      return `${head}  ${card.file} p.${card.page}`
     case 'link':
       return `${head}  ${card.url}`
     default:

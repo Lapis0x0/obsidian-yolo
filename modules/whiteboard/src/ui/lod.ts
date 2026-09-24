@@ -80,6 +80,10 @@ export function nodeTitleText(
       return truncate(node.url, MAX_TITLE_LENGTH)
     case 'group':
       return truncate(node.label ?? '', MAX_TITLE_LENGTH)
+    case 'pdf-page': {
+      const name = basenameWithoutExtension(node.file)
+      return pageLabel ? pageLabel(name, node.page) : `${name} ${node.page}`
+    }
     case 'text': {
       const newlineIndex = node.text.indexOf('\n')
       const firstLine =
