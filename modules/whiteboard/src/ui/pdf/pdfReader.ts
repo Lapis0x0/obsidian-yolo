@@ -129,10 +129,10 @@ export type ReaderAnnotationEvents = Readonly<{
    * frame stays drawn, as a selection does, until `clearPendingArea` or the
    * next press on the pages. */
   onAreaDrawn: (reader: PdfReader, page: number, rect: PdfRectTuple) => void
-  /** A press on what the owner is acting on — the frame waiting on the
-   * page, or the annotation marked active: maybe the start of dragging it
-   * out. The press has been kept from selecting text or drawing a frame. */
-  onGrab: (reader: PdfReader, event: PointerEvent) => void
+  /** A press on something a drag can take out: an annotation (`id`), or
+   * the frame waiting on the page (null). Still a click if it does not move.
+   * The press has been kept from selecting text or drawing a frame. */
+  onGrab: (reader: PdfReader, event: PointerEvent, id: string | null) => void
   /** The reader is being destroyed. */
   onReaderDestroyed: (reader: PdfReader) => void
 }>
@@ -169,8 +169,6 @@ const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
 const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
 /** On the pages while the pointer is over something a press would pick up. */
 const GRABBABLE_CLASS = 'yolo-whiteboard-pdf-pages-grabbable'
-/** On the pages while the pointer is over an annotation a click opens. */
-const OVER_ANNOTATION_CLASS = 'yolo-whiteboard-pdf-pages-over-annotation'
 const FLASH_CLASS = 'yolo-whiteboard-pdf-flash'
 const FLASH_SHOWN_CLASS = 'yolo-whiteboard-pdf-flash-shown'
 /** How long the text a link names stays marked after the reader goes to
@@ -1346,30 +1344,36 @@ export class PdfReader {
     return hitTestAnnotations(entries, [x, y], HIT_SLOP_PX / rect.width)
   }
 
-  /** Whether a pointer is over what the owner is acting on: the waiting
-   * frame, or the active annotation — the things a press picks up. */
-  private overGrabbable(event: MouseEvent): boolean {
+  /**
+   * What a press at the pointer would pick up: the waiting frame (null), an
+   * annotation (its id), or nothing (undefined). An annotation is taken by
+   * the press rather than the text under it — a drag from inside a
+   * highlight takes the highlight out instead of selecting its words; one
+   * started outside it still selects across it. Not in area mode, where a
+   * press anywhere draws a frame.
+   */
+  private grabbableAt(event: MouseEvent): string | null | undefined {
     const pending = this.getPendingAreaRect()
-    if (pending) {
-      return (
-        event.clientX >= pending.left &&
-        event.clientX <= pending.right &&
-        event.clientY >= pending.top &&
-        event.clientY <= pending.bottom
-      )
+    if (
+      pending &&
+      event.clientX >= pending.left &&
+      event.clientX <= pending.right &&
+      event.clientY >= pending.top &&
+      event.clientY <= pending.bottom
+    ) {
+      return null
     }
-    return (
-      this.activeAnnotationId !== null &&
-      this.annotationAt(event) === this.activeAnnotationId
-    )
+    if (this.areaMode) return undefined
+    return this.annotationAt(event) ?? undefined
   }
 
   private readonly onPagesPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return
     const events = this.options.annotationEvents
-    if (events && this.overGrabbable(event)) {
+    const grabbed = events ? this.grabbableAt(event) : undefined
+    if (events && grabbed !== undefined) {
       event.preventDefault()
-      events.onGrab(this, event)
+      events.onGrab(this, event, grabbed)
       return
     }
     // A frame left waiting is let go by the next press, as a text selection
@@ -1404,21 +1408,10 @@ export class PdfReader {
   private readonly onPagesPointerMove = (event: PointerEvent): void => {
     const draft = this.areaDraft
     if (!draft) {
-      // What a press would do says so before the press: pick up what is
-      // being acted on, or open the annotation under it. Not in area mode,
-      // where a press on an annotation draws a frame like any other.
-      const idle = event.buttons === 0
-      const grabbable =
-        idle &&
-        (this.pendingArea !== null || this.activeAnnotationId !== null) &&
-        this.overGrabbable(event)
-      this.pagesEl.classList.toggle(GRABBABLE_CLASS, grabbable)
+      // What a press would pick up says so before the press.
       this.pagesEl.classList.toggle(
-        OVER_ANNOTATION_CLASS,
-        idle &&
-          !grabbable &&
-          !this.areaMode &&
-          this.annotationAt(event) !== null,
+        GRABBABLE_CLASS,
+        event.buttons === 0 && this.grabbableAt(event) !== undefined,
       )
       return
     }

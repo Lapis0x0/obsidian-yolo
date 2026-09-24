@@ -244,7 +244,7 @@ textarea.yolo-whiteboard-pdf-comment-input {
   font: inherit;
 }
 
-/* Over the waiting frame or the active annotation, a press picks it up
+/* Over the waiting frame or any annotation, a press picks it up
  * (annotationController.ts's `onGrab`): the pointer says so first. Every
  * layer of the page is covered — the text layer sets its own cursor. */
 .yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-grabbable,
@@ -310,11 +310,9 @@ textarea.yolo-whiteboard-pdf-comment-input {
   cursor: grabbing;
 }
 
-/* Over an annotation a click opens: on the pages of a reader being read, or
- * on a PDF card whose content has not been entered yet (the card takes that
- * click and opens the annotation itself). */
-.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-over-annotation,
-.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-over-annotation *,
+/* Over an annotation on a PDF card whose content has not been entered: a
+ * click there opens it (the card takes the click and opens the annotation
+ * itself); a drag still moves the card. */
 .yolo-whiteboard-card.yolo-whiteboard-card-over-annotation,
 .yolo-whiteboard-card.yolo-whiteboard-card-over-annotation * {
   cursor: pointer;

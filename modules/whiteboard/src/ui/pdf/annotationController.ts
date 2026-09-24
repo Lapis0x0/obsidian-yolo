@@ -199,7 +199,7 @@ export class AnnotationController {
       onAnnotationContextMenu: (reader, id, event) =>
         this.onAnnotationContextMenu(reader, id, event),
       onAreaDrawn: (reader, page, rect) => this.onAreaDrawn(reader, page, rect),
-      onGrab: (reader, event) => this.onGrab(reader, event),
+      onGrab: (reader, event, id) => this.onGrab(reader, event, id),
       onReaderDestroyed: (reader) => this.forgetReader(reader),
     }
   }
@@ -983,21 +983,27 @@ export class AnnotationController {
   // Dragging a frame or an annotation out
   // -----------------------------------------------------------------------
 
-  /** A press on the waiting frame or the active annotation. It stays a
-   * press — the toolbar where it is — until it moves; then it is a drag. */
-  private onGrab(reader: PdfReader, event: PointerEvent): void {
+  /** A press on an annotation (`id`) or on the waiting frame (null). It
+   * stays a press until it moves — let go there, it is a click, which opens
+   * the annotation — and a drag once it has. */
+  private onGrab(
+    reader: PdfReader,
+    event: PointerEvent,
+    id: string | null,
+  ): void {
     const mode = this.mode
-    if (!mode || mode.reader !== reader || mode.kind === 'selection') return
+    let source: Grab['source']
+    if (id !== null) source = { kind: 'annotation', id }
+    else if (mode?.kind === 'area' && mode.reader === reader) {
+      source = { kind: 'area', page: mode.page, rect: mode.rect }
+    } else return
     this.endGrab()
     this.grab = {
       reader,
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      source:
-        mode.kind === 'area'
-          ? { kind: 'area', page: mode.page, rect: mode.rect }
-          : { kind: 'annotation', id: mode.id },
+      source,
       ghost: null,
     }
     const doc = this.options.parent.ownerDocument
@@ -1017,6 +1023,9 @@ export class AnnotationController {
         this.endGrab()
         return
       }
+      // A press that kept the page from taking it also kept any selection
+      // standing; what is being carried now is the annotation.
+      grab.reader.clearTextSelection()
       this.options.parent.classList.add(GRABBING_CLASS)
       this.place()
     }
@@ -1048,8 +1057,15 @@ export class AnnotationController {
       grab.ghost && event.type === 'pointerup'
         ? this.options.excerpts.dropPoint(event)
         : null
+    const clicked = !grab.ghost && event.type === 'pointerup'
     this.endGrab()
     if (at) this.dropGrabbed(grab, at)
+    // Let go where it was pressed: a click on the annotation, which opens
+    // it — the reader never saw this press, so it reports no click.
+    if (clicked && grab.source.kind === 'annotation') {
+      grab.reader.clearTextSelection()
+      this.onAnnotationClick(grab.reader, grab.source.id)
+    }
   }
 
   /** Ends a press or a drag, dropping nothing. */
