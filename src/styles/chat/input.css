@@ -1893,6 +1893,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   box-shadow: none !important;
   pointer-events: auto;
   cursor: pointer;
+  /* 手指按住刻度上下拖动是在刻度间滑选，不能被浏览器认领成滚动，
+   * 否则 pointercancel 之后就收不到 pointermove 了。 */
+  touch-action: none;
   --yolo-message-navigator-wave: 0;
 }
 

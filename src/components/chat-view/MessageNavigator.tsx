@@ -7,6 +7,28 @@ const BAR_HEIGHT_PX = 12
 const RAIL_PADDING_PX = 8
 const WAVE_INDEX_RADIUS = Math.ceil(WAVE_RADIUS_PX / BAR_HEIGHT_PX)
 
+// Pointer position in rail content coordinates, and the bar nearest to it
+// (clamped to the ends, so a finger dragged past the rail picks the last bar).
+function locatePointerOnRail(
+  rail: HTMLElement,
+  clientY: number,
+  anchorCount: number,
+) {
+  const pointerContentY =
+    clientY -
+    rail.getBoundingClientRect().top +
+    rail.scrollTop -
+    RAIL_PADDING_PX
+  const nearestIndex = Math.max(
+    0,
+    Math.min(
+      anchorCount - 1,
+      Math.round((pointerContentY - BAR_HEIGHT_PX / 2) / BAR_HEIGHT_PX),
+    ),
+  )
+  return { pointerContentY, nearestIndex }
+}
+
 export type MessageNavigatorAnchor = {
   id: string
   index: number
@@ -63,7 +85,12 @@ const MessageNavigatorRail = memo(function MessageNavigatorRail({
           data-message-id={anchor.id}
           aria-current={anchor.id === activeMessageId ? 'location' : false}
           onPointerDown={(event) => event.preventDefault()}
-          onClick={() => onSelect(anchor.id)}
+          // Pointer selection happens on release (see the navigator's
+          // onPointerUp); a click with detail 0 is keyboard or assistive
+          // activation, which never goes through pointer events.
+          onClick={(event) => {
+            if (event.detail === 0) onSelect(anchor.id)
+          }}
           onFocus={(event) => onBarFocus(event.currentTarget)}
         >
           <span className="yolo-message-navigator__bar-line" />
@@ -90,6 +117,8 @@ function MessageNavigator({
   anchorsRef.current = anchors
   const pointerFrameRef = useRef<number | null>(null)
   const lastPointerClientYRef = useRef<number | null>(null)
+  // The pointer whose press started on a bar; only its release selects.
+  const pressedPointerIdRef = useRef<number | null>(null)
   const wavedAnchorIdsRef = useRef<Set<string>>(new Set())
   const waveStrengthByAnchorIdRef = useRef(new Map<string, string>())
   const [hoveredAnchorId, setHoveredAnchorId] = useState<string | null>(null)
@@ -131,14 +160,10 @@ function MessageNavigator({
 
     const railRect = rail.getBoundingClientRect()
     const navigatorRect = navigator.getBoundingClientRect()
-    const pointerContentY =
-      clientY - railRect.top + rail.scrollTop - RAIL_PADDING_PX
-    const nearestIndex = Math.max(
-      0,
-      Math.min(
-        currentAnchors.length - 1,
-        Math.round((pointerContentY - BAR_HEIGHT_PX / 2) / BAR_HEIGHT_PX),
-      ),
+    const { pointerContentY, nearestIndex } = locatePointerOnRail(
+      rail,
+      clientY,
+      currentAnchors.length,
     )
     const startIndex = Math.max(0, nearestIndex - WAVE_INDEX_RADIUS)
     const endIndex = Math.min(
@@ -218,9 +243,12 @@ function MessageNavigator({
         return
       }
 
+      // A null here is usually just the inline ref callback being swapped on
+      // re-render, with the same element re-attached right after, so the wave
+      // bookkeeping stays: dropping it would leave those bars lit when the
+      // wave resets. Entries for truly removed bars resolve to no element and
+      // are skipped.
       barRefs.current.delete(messageId)
-      waveStrengthByAnchorIdRef.current.delete(messageId)
-      wavedAnchorIdsRef.current.delete(messageId)
     },
     [],
   )
@@ -275,6 +303,37 @@ function MessageNavigator({
         hoveredAnchor && 'is-interacting',
       )}
       onPointerMove={(event) => scheduleWaveAtClientY(event.clientY)}
+      // Release selects the bar nearest the pointer, so a finger can scrub
+      // the rail and let go on a message. Touch capture routes the release
+      // here even when the finger ended outside the rail; a mouse released
+      // elsewhere never reaches the navigator and selects nothing.
+      onPointerDown={(event) => {
+        pressedPointerIdRef.current = event.pointerId
+      }}
+      onPointerUp={(event) => {
+        const pressedHere = pressedPointerIdRef.current === event.pointerId
+        pressedPointerIdRef.current = null
+        const rail = railRef.current
+        const currentAnchors = anchorsRef.current
+        if (
+          !pressedHere ||
+          event.button !== 0 ||
+          !rail ||
+          currentAnchors.length === 0
+        ) {
+          return
+        }
+        const { nearestIndex } = locatePointerOnRail(
+          rail,
+          event.clientY,
+          currentAnchors.length,
+        )
+        onSelect(currentAnchors[nearestIndex].id)
+      }}
+      onPointerCancel={() => {
+        pressedPointerIdRef.current = null
+        resetWave()
+      }}
       onPointerLeave={() => {
         lastPointerClientYRef.current = null
         const navigator = navigatorRef.current
