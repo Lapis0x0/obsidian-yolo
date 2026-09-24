@@ -14,7 +14,7 @@
  * own views that do not scroll either (Canvas, PDF, the editor) take it off
  * the same way, by leaf type; the status bar then floats over the board, as
  * it does over Canvas, and the creation bar stands clear of it
- * (ui/cardMenu.ts's `syncLift`). The type is index.tsx's `VIEW_TYPE`. */
+ * (ui/cardMenu.ts's `syncPlacement`). The type is index.tsx's `VIEW_TYPE`. */
 .workspace-leaf-content[data-type='yolo-whiteboard'] > .view-content {
   padding: 0;
 }

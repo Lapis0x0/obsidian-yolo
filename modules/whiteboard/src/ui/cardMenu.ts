@@ -31,11 +31,20 @@ const MENU_CLASS = 'yolo-whiteboard-card-menu'
 const MENU_HIDDEN_CLASS = 'yolo-whiteboard-card-menu-hidden'
 const MENU_COLLAPSED_CLASS = 'yolo-whiteboard-card-menu-collapsed'
 const HANDLE_CLASS = 'yolo-whiteboard-card-menu-handle'
+const HANDLE_NEAR_CLASS = 'yolo-whiteboard-card-menu-handle-near'
 /** How far the bar and its handle stand off whatever covers the bottom of
- * the board — see `syncLift`. */
+ * the board — see `syncPlacement`. */
 const LIFT_PROPERTY = '--yolo-card-menu-lift'
-/** Half the handle's grip line — creation-bar.css draws it 36px wide. */
+/** The handle's grip line as creation-bar.css draws it: 36px by 4px, on
+ * 6px of padding at the bottom of the handle. The fold lands on exactly this
+ * line. */
 const HANDLE_GRIP_HALF_WIDTH_PX = 18
+const GRIP_HEIGHT_PX = 4
+const GRIP_INSET_PX = 6
+/** The bar's bottom edge above the board's — creation-bar.css's `bottom`. */
+const MENU_INSET_PX = 16
+/** How near a pointer comes to the grip before the grip answers it. */
+const GRIP_PROXIMITY_PX = 80
 /** How close the status bar may come to either end of the grip before the
  * grip stands up out of its way. */
 const HANDLE_CLEARANCE_PX = 8
@@ -132,7 +141,19 @@ export class CardMenu {
   ) {
     const el = doc.createElement('div')
     el.className = MENU_CLASS
-    for (const action of actions) this.appendButton(el, action)
+    // Each button's distance from the nearer end, which orders the icons'
+    // part of the fold (creation-bar.css).
+    actions.forEach((action, index) => {
+      const rank = Math.min(index, actions.length - 1 - index)
+      this.appendButton(el, action).style.setProperty(
+        '--yolo-card-menu-rank',
+        String(rank),
+      )
+    })
+    el.style.setProperty(
+      '--yolo-card-menu-ranks',
+      String(Math.floor((actions.length - 1) / 2)),
+    )
     const handle = doc.createElement('div')
     handle.className = HANDLE_CLASS
     handle.setAttribute('aria-hidden', 'true')
@@ -144,13 +165,15 @@ export class CardMenu {
       target.addEventListener('pointerleave', this.onPointerLeave)
     }
     const win = doc.defaultView
-    this.resizeObserver = win ? new win.ResizeObserver(this.syncLift) : null
+    this.resizeObserver = win
+      ? new win.ResizeObserver(this.syncPlacement)
+      : null
     this.resizeObserver?.observe(parent)
     const statusBar = this.statusBar()
     if (statusBar) {
       this.resizeObserver?.observe(statusBar, { box: 'border-box' })
     }
-    this.syncLift()
+    this.syncPlacement()
   }
 
   contains(node: Node): boolean {
@@ -181,11 +204,12 @@ export class CardMenu {
   setAvailable(available: boolean): void {
     this.el.classList.toggle(MENU_HIDDEN_CLASS, !available)
     this.handleEl.classList.toggle(MENU_HIDDEN_CLASS, !available)
-    if (available) this.syncLift()
+    if (available) this.syncPlacement()
   }
 
   destroy(): void {
     this.clearCollapseTimer()
+    this.setCollapsed(false)
     this.resizeObserver?.disconnect()
     this.el.remove()
     this.handleEl.remove()
@@ -221,8 +245,35 @@ export class CardMenu {
   }
 
   private setCollapsed(collapsed: boolean): void {
+    if (this.el.classList.contains(MENU_COLLAPSED_CLASS) === collapsed) return
     this.el.classList.toggle(MENU_COLLAPSED_CLASS, collapsed)
     this.handleEl.classList.toggle(MENU_COLLAPSED_CLASS, collapsed)
+    // The grip answers an approaching pointer only while it is all there is
+    // of the bar; the listener is not left running over an open one.
+    if (collapsed) {
+      this.doc.addEventListener('pointermove', this.onProximityMove, {
+        passive: true,
+      })
+    } else {
+      this.doc.removeEventListener('pointermove', this.onProximityMove)
+      this.handleEl.classList.remove(HANDLE_NEAR_CLASS)
+    }
+  }
+
+  /** Marks the grip as approached while a mouse or pen is within
+   * `GRIP_PROXIMITY_PX` of its line — a hint that there is something to
+   * reach for, not an opening. */
+  private readonly onProximityMove = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') return
+    const box = this.handleEl.getBoundingClientRect()
+    const gripY = box.bottom - GRIP_INSET_PX - GRIP_HEIGHT_PX / 2
+    const dx = Math.max(
+      0,
+      Math.abs(event.clientX - (box.left + box.width / 2)) -
+        HANDLE_GRIP_HALF_WIDTH_PX,
+    )
+    const near = Math.hypot(dx, event.clientY - gripY) <= GRIP_PROXIMITY_PX
+    this.handleEl.classList.toggle(HANDLE_NEAR_CLASS, near)
   }
 
   private clearCollapseTimer(): void {
@@ -249,7 +300,7 @@ export class CardMenu {
    * hanging above an empty strip. Its wider hit area may then run under the
    * status bar's edge; the grip itself never does.
    */
-  private readonly syncLift = (): void => {
+  private readonly syncPlacement = (): void => {
     const area = this.parent.getBoundingClientRect()
     const bar = this.statusBar()?.getBoundingClientRect()
     const liftFor = (halfWidth: number): number => {
@@ -259,17 +310,34 @@ export class CardMenu {
         bar.left < centre + halfWidth && bar.right > centre - halfWidth
       return sharesX ? Math.max(0, area.bottom - bar.top) : 0
     }
+    const width = this.el.offsetWidth
+    const height = this.el.offsetHeight
+    const menuLift = liftFor(width / 2)
+    const handleLift = liftFor(HANDLE_GRIP_HALF_WIDTH_PX + HANDLE_CLEARANCE_PX)
+    this.el.style.setProperty(LIFT_PROPERTY, `${menuLift}px`)
+    this.handleEl.style.setProperty(LIFT_PROPERTY, `${handleLift}px`)
+    // What folds the bar onto the grip: its bottom edge dropped onto the
+    // grip's, and its box scaled to the grip's line. Unmeasurable while the
+    // bar is not displayed — `setAvailable` asks again when it is.
+    if (width === 0 || height === 0) return
     this.el.style.setProperty(
-      LIFT_PROPERTY,
-      `${liftFor(this.el.offsetWidth / 2)}px`,
+      '--yolo-card-menu-drop',
+      `${MENU_INSET_PX + menuLift - (GRIP_INSET_PX + handleLift)}px`,
     )
-    this.handleEl.style.setProperty(
-      LIFT_PROPERTY,
-      `${liftFor(HANDLE_GRIP_HALF_WIDTH_PX + HANDLE_CLEARANCE_PX)}px`,
+    this.el.style.setProperty(
+      '--yolo-card-menu-fold-x',
+      String((HANDLE_GRIP_HALF_WIDTH_PX * 2) / width),
+    )
+    this.el.style.setProperty(
+      '--yolo-card-menu-fold-y',
+      String(GRIP_HEIGHT_PX / height),
     )
   }
 
-  private appendButton(parent: HTMLElement, action: CardMenuAction): void {
+  private appendButton(
+    parent: HTMLElement,
+    action: CardMenuAction,
+  ): HTMLButtonElement {
     const button = this.doc.createElement('button')
     // `clickable-icon` is Obsidian's own icon-button treatment, the same class
     // Canvas's card menu buttons carry.
@@ -296,6 +364,7 @@ export class CardMenu {
       action.onPress(event)
     })
     parent.appendChild(button)
+    return button
   }
 
   private createIcon(name: CardMenuIconName): SVGElement {

@@ -9,7 +9,7 @@
   /* The safe area keeps it off a phone's home indicator, now the board runs
    * to the bottom of the window (root.css); the lift clears Obsidian's
    * status bar when it floats over this spot
-   * (ui/cardMenu.ts's `syncLift`). */
+   * (ui/cardMenu.ts's `syncPlacement`). */
   bottom: calc(
     16px + var(--safe-area-inset-bottom, 0px) + var(--yolo-card-menu-lift, 0px)
   );
@@ -27,26 +27,74 @@
    * a margin so the whole placement is one composited transform. */
   transform: translateX(-50%);
   pointer-events: auto;
+  /* Coming back out of the handle (see the collapsed rule below for the way
+   * in): the grip stretches back into the bar's shell straight away, and the
+   * icons arrive once it has room for them. */
+  transform-origin: 50% 100%;
   transition:
     transform var(--yolo-anim-duration-enter, 220ms)
       var(--yolo-anim-ease-out, ease-out),
-    opacity var(--yolo-anim-duration-enter, 220ms)
+    opacity calc(var(--yolo-anim-duration-enter, 220ms) / 2)
       var(--yolo-anim-ease-out, ease-out);
 }
 
-/* Tucked away (ui/cardMenu.ts's `setAutoCollapse`): sinking towards the
- * board's bottom edge as it fades, onto the handle it leaves behind. A fade rather than a slide
- * off the bottom edge, because the status bar may be sitting there — a bar
- * sliding underneath it would show wherever it was not covered. A keyboard
- * that tabs onto a button brings it back. */
+/*
+ * Tucked away (ui/cardMenu.ts's `setAutoCollapse`): the bar folds itself into
+ * the handle it leaves behind, so the handle reads as the bar put away rather
+ * than as a second control. The icons go first, from the ends inwards; then
+ * the empty shell narrows, flattens and sinks until it is exactly the grip's
+ * line — the scale and the drop are measured (`syncPlacement`) — and hands
+ * over to the grip in the last half of the fold. Handing over there also
+ * hides the one ugly moment of a non-uniform scale: a border and a corner
+ * radius squashed flat.
+ *
+ * A fold rather than a slide off the bottom edge, because the status bar may
+ * be sitting there. A keyboard that tabs onto a button brings it back.
+ */
 .yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-collapsed:not(
     :has(:focus-visible)
   ) {
-  transform: translate(-50%, calc(100% + 16px - 10px));
+  transform: translateX(-50%) translateY(var(--yolo-card-menu-drop, 0px))
+    scale(var(--yolo-card-menu-fold-x, 0.2), var(--yolo-card-menu-fold-y, 0.1));
   opacity: 0;
   pointer-events: none;
-  transition-duration: var(--yolo-anim-duration-exit, 160ms);
-  transition-timing-function: var(--yolo-anim-ease-in, ease-in);
+  transition:
+    transform var(--yolo-anim-duration-enter, 220ms)
+      var(--yolo-anim-ease-in, ease-in)
+      calc(var(--yolo-anim-duration-feedback, 120ms) / 2),
+    opacity calc(var(--yolo-anim-duration-enter, 220ms) / 2)
+      var(--yolo-anim-ease-in, ease-in)
+      calc(
+        var(--yolo-anim-duration-feedback, 120ms) / 2 +
+          var(--yolo-anim-duration-enter, 220ms) / 2
+      );
+}
+
+/* The icons' part of the fold. `--yolo-card-menu-rank` is a button's distance
+ * from the nearer end (0 at the ends), `--yolo-card-menu-ranks` the largest
+ * one (cardMenu.ts): out from the ends inwards, back from the middle outwards,
+ * each a quarter of a feedback beat after the last. */
+button.yolo-whiteboard-card-menu-button {
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out)
+    calc(
+      var(--yolo-anim-duration-enter, 220ms) / 2 +
+        (var(--yolo-card-menu-ranks, 0) - var(--yolo-card-menu-rank, 0)) *
+        var(--yolo-anim-duration-feedback, 120ms) / 4
+    );
+}
+
+.yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-collapsed:not(
+    :has(:focus-visible)
+  )
+  button.yolo-whiteboard-card-menu-button {
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-in, ease-in)
+    calc(
+      var(--yolo-card-menu-rank, 0) * var(--yolo-anim-duration-feedback, 120ms) /
+        4
+    );
 }
 
 /* What a tucked-away bar leaves: a short grip line resting on the board's
@@ -69,24 +117,46 @@
   transform: translateX(-50%);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--yolo-anim-duration-exit, 160ms)
-    var(--yolo-anim-ease-in, ease-in);
+  /* Gone the moment the bar starts back out of it. */
+  transition: opacity calc(var(--yolo-anim-duration-enter, 220ms) / 2)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+/* Takes over from the folding bar in the fold's last half — the same moment
+ * and the same length as the bar's own fade. */
+.yolo-whiteboard-card-menu-handle.yolo-whiteboard-card-menu-collapsed {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity calc(var(--yolo-anim-duration-enter, 220ms) / 2)
+    var(--yolo-anim-ease-in, ease-in)
+    calc(
+      var(--yolo-anim-duration-feedback, 120ms) / 2 +
+        var(--yolo-anim-duration-enter, 220ms) / 2
+    );
 }
 
 .yolo-whiteboard-card-menu-handle::before {
   content: '';
-  /* cardMenu.ts's HANDLE_GRIP_HALF_WIDTH_PX is half of this. */
+  /* cardMenu.ts's HANDLE_GRIP_HALF_WIDTH_PX is half of this, and
+   * GRIP_HEIGHT_PX / GRIP_INSET_PX its height and the padding under it. */
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background-color: var(--text-faint);
+  background-color: var(--text-muted);
+  opacity: 0.45;
+  transition:
+    transform var(--yolo-anim-duration-feedback, 120ms)
+      var(--yolo-anim-ease-out, ease-out),
+    opacity var(--yolo-anim-duration-feedback, 120ms)
+      var(--yolo-anim-ease-out, ease-out);
 }
 
-.yolo-whiteboard-card-menu-handle.yolo-whiteboard-card-menu-collapsed {
-  opacity: 1;
-  pointer-events: auto;
-  transition: opacity var(--yolo-anim-duration-enter, 220ms)
-    var(--yolo-anim-ease-out, ease-out);
+/* A pointer on its way (cardMenu.ts's `onProximityMove`): the grip widens and
+ * darkens a little — "here" — before it is reached. It does not open the bar;
+ * only reaching the grip does. */
+.yolo-whiteboard-card-menu-handle.yolo-whiteboard-card-menu-handle-near::before {
+  transform: scale(1.5, 1.25);
+  opacity: 0.9;
 }
 
 /* Sized like Canvas's own `.canvas-card-menu-button`, not like the selection
