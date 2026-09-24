@@ -726,8 +726,8 @@ export class WhiteboardCanvas {
     const spreadFrame = new SpreadFrame(doc, world, {
       getBoard: () => this.board,
       getSelectedIds: () => this.selectedIds,
+      getLiveRects: () => this.interaction.liveNodeRects,
       canEdit: () => this.canEdit,
-      isOverview: () => this.overview,
       worldPointFromEvent: (e) => this.worldPointFromEvent(e),
       reflow: (id, columns, key) => this.reflowSpreadTo(id, columns, key),
     })
@@ -956,7 +956,6 @@ export class WhiteboardCanvas {
     this.toolbarController = new ToolbarController(this.context, viewport, {
       isParseFailed: this.core.isParseFailed,
       canEdit: this.core.canEdit,
-      isOverview: this.core.isOverview,
       getBoard: this.core.getBoard,
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
@@ -1063,7 +1062,10 @@ export class WhiteboardCanvas {
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
       },
-      onLiveRectsChange: () => this.overviewLayer?.markDirty(),
+      onLiveRectsChange: () => {
+        this.overviewLayer?.markDirty()
+        this.spreadFrame?.sync()
+      },
       onHoverChange: (id) => this.syncSpreadHover(id),
       rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
@@ -2249,7 +2251,6 @@ export class WhiteboardCanvas {
     this.editing.syncEdgeRenameChrome()
     this.toolbarController.refreshToolbar()
     this.dropImport.refreshCardMenu()
-    this.spreadFrame?.sync()
   }
 
   /**

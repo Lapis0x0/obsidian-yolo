@@ -103,7 +103,6 @@ export const DISTRIBUTE_MENU: Readonly<
 export type ToolbarControllerCallbacks = Readonly<{
   isParseFailed: () => boolean
   canEdit: () => boolean
-  isOverview: () => boolean
   getBoard: () => Board
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
@@ -343,15 +342,14 @@ export class ToolbarController {
       })
     }
     // Spread a PDF's pages out, or put a spread away — from its title or
-    // any one of its sheets. Not in the overview tier: sheets are cards,
-    // and a card has no element down there to be built into.
+    // any one of its sheets. In the overview tier too: the board changes and
+    // the canvas draws it, and the cards are built when the zoom comes back.
     const spreadOf =
       single?.type === 'pdf-page'
         ? this.callbacks.getBoard().nodes.find((n) => n.id === single.parent)
         : single
     if (
       canEdit &&
-      !this.callbacks.isOverview() &&
       spreadOf &&
       this.callbacks.isPdfNode(spreadOf)
     ) {

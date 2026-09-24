@@ -1,7 +1,9 @@
 // The frame around a selected PDF spread (domain/spread.ts), and the one way
 // a spread is laid out again as a grid: dragging the frame's right edge.
 //
-// Shown while a spread's title is the lone selection — the title is the
+// Shown while a spread's title is the lone selection, at every zoom — the
+// overview tier is where a long document is seen whole, so where it is most
+// often laid out again. The title is the
 // document, and the frame is what "the whole document" covers on the board:
 // the union of the title and every sheet, wherever they have been put. Its
 // right edge is dragged sideways to say how wide the document should be;
@@ -22,6 +24,7 @@
 
 import { unionRect } from '../../domain/camera'
 import type { Board, NodeId } from '../../domain/fileFormat'
+import type { CardRect } from '../../domain/resize'
 import {
   currentSpreadColumns,
   isSpreadTitle,
@@ -41,8 +44,10 @@ const FRAME_PADDING = 13
 export type SpreadFrameDeps = Readonly<{
   getBoard: () => Board
   getSelectedIds: () => ReadonlySet<NodeId>
+  /** Where a drag in progress has put the cards it moves, before the board
+   * is told — the frame goes with them. */
+  getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
   canEdit: () => boolean
-  isOverview: () => boolean
   worldPointFromEvent: (e: MouseEvent) => Readonly<{ x: number; y: number }>
   /** Lays the spread out again at `columns` across, as part of the step
    * `historyKey` names. */
@@ -94,7 +99,7 @@ export class SpreadFrame {
     const board = this.deps.getBoard()
     const selected = this.deps.getSelectedIds()
     let id: NodeId | null = null
-    if (selected.size === 1 && !this.deps.isOverview()) {
+    if (selected.size === 1) {
       const only = selected.values().next().value
       const node = board.nodes.find((candidate) => candidate.id === only)
       if (isSpreadTitle(node)) id = node.id
@@ -105,8 +110,13 @@ export class SpreadFrame {
     const title =
       id === null ? undefined : board.nodes.find((node) => node.id === id)
     const sheets = id === null ? [] : spreadPages(board, id)
+    const live = this.deps.getLiveRects()
+    const at = (node: CardRect & { id: NodeId }): CardRect =>
+      live?.get(node.id) ?? node
     const bounds =
-      title && sheets.length > 0 ? unionRect([title, ...sheets]) : null
+      title && sheets.length > 0
+        ? unionRect([at(title), ...sheets.map(at)])
+        : null
     this.frameEl.classList.toggle(FRAME_HIDDEN_CLASS, bounds === null)
     if (!bounds) return
     this.frameEl.style.left = `${bounds.x - FRAME_PADDING}px`
