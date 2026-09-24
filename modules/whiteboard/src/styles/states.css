@@ -30,3 +30,51 @@
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* --- empty board ----------------------------------------------------------
+ * canvas.ts's `buildEmptyHint`: centred on the viewport, above the dot grid,
+ * never in the way of the double-click it describes. Fades rather than
+ * blinks: it leaves as the first card lands, and the card should be what
+ * moves. */
+.yolo-whiteboard-empty-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-exit, 160ms)
+    var(--yolo-anim-ease-in, ease-in);
+}
+
+.yolo-whiteboard-empty-hint.yolo-whiteboard-empty-hint-visible {
+  opacity: 1;
+  transition: opacity var(--yolo-anim-duration-enter, 220ms)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+.yolo-whiteboard-empty-hint-title {
+  max-width: 28em;
+  font-size: var(--font-ui-medium);
+  color: var(--text-muted);
+}
+
+.yolo-whiteboard-empty-hint-line {
+  max-width: 32em;
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+}
+
+.yolo-whiteboard-empty-hint-touch,
+.is-mobile .yolo-whiteboard-empty-hint-desktop {
+  display: none;
+}
+
+.is-mobile .yolo-whiteboard-empty-hint-touch {
+  display: block;
+}

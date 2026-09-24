@@ -51,6 +51,11 @@ export const en = {
     undo: 'Undo',
     redo: 'Redo',
   },
+  emptyBoard: {
+    title: 'Double-click anywhere to add a card, or drag one off the bar below',
+    desktopHint: 'Drop notes, images or PDFs here · Hold Space and drag to pan',
+    touchHint: 'Drag with one finger to pan · Pinch to zoom',
+  },
   cardMenu: {
     newCard: 'Add card',
     addNote: 'Add note',

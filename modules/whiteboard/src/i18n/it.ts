@@ -48,6 +48,13 @@ export const it = {
     undo: 'Annulla',
     redo: 'Ripeti',
   },
+  emptyBoard: {
+    title:
+      'Fai doppio clic in un punto vuoto per aggiungere una scheda, o trascinane una dalla barra qui sotto',
+    desktopHint:
+      'Trascina qui note, immagini o PDF · Tieni premuto Spazio e trascina per spostarti',
+    touchHint: 'Trascina con un dito per spostarti · Pizzica per lo zoom',
+  },
   cardMenu: {
     newCard: 'Aggiungi scheda',
     addNote: 'Aggiungi nota',

@@ -74,12 +74,26 @@
   gap: 2px;
   padding: 1px 6px;
   border-radius: var(--radius-s);
-  background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+  background: var(--background-primary);
   box-shadow: 0 0 0 1px var(--background-modifier-border);
   color: var(--text-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms) ease-out;
+}
+
+/* On a card at rest the pill is put away. It sits over the page's text, and
+ * on a board of PDF cards every one of them carried a translucent chip over
+ * its last lines; where a card is being read is only a question once the
+ * pointer is on it or it is the one selected, which is when it comes back.
+ * The reader panel's own pill is not inside a card and is always shown. */
+.yolo-whiteboard-card:not(.yolo-whiteboard-card-hovered):not(
+    .yolo-whiteboard-card-focused
+  ):not(.yolo-whiteboard-card-entered)
+  .yolo-whiteboard-pdf-indicator {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .yolo-whiteboard-pdf-indicator[hidden],

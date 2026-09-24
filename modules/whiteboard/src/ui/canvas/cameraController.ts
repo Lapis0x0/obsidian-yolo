@@ -825,6 +825,29 @@ export class CameraController {
   }
 
   /**
+   * Brings one node to the middle of the viewport at `minScale`-or-closer:
+   * 1:1 unless the node is bigger than the viewport, in which case whatever
+   * fits it, but never further out than `minScale`. What "go and open this"
+   * from far away needs — close enough to read, not a fit that blows a small
+   * card up to fill the screen.
+   */
+  focusNode(node: BoardNode, minScale: number): void {
+    const fit = this.fitViewFor([node])
+    const scale = clampScale(
+      Math.max(minScale, Math.min(1, fit?.scale ?? 1)),
+      SCALE_BOUNDS,
+    )
+    const rect = this.viewportEl.getBoundingClientRect()
+    this.moveCameraTo(
+      viewAnchoredAt(
+        { x: rect.width / 2, y: rect.height / 2 },
+        { x: node.x + node.w / 2, y: node.y + node.h / 2 },
+        scale,
+      ),
+    )
+  }
+
+  /**
    * The controls' zoom in / zoom out: one step of √2 about the middle of the
    * viewport, Obsidian Canvas's step (measured: its `zoom` is log2 of the
    * scale and each button moves it by 0.5). Steps taken while a previous one

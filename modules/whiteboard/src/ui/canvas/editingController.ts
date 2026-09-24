@@ -73,6 +73,10 @@ export type EditingControllerDeps = Readonly<{
   /** The world layer, whose class brings an edge label back into the
    * overview tier's drawing while it is typed. */
   worldEl: HTMLElement
+  /** Asked to edit a card in the overview tier, where it has no element:
+   * bring the camera in to it and open it once it is there (canvas.ts's
+   * `zoomInToEdit`). */
+  zoomInToEdit: (id: NodeId) => void
   /** Exempts a card from virtualization unmount, and lifts the exemption. */
   pin: (id: NodeId) => void
   unpin: (id: NodeId) => void
@@ -223,6 +227,13 @@ export class EditingController {
   editCard(id: NodeId): boolean {
     const node = this.core.getNode(id)
     if (!node) return false
+    // Zoomed out past the point cards have elements, "open this" still has an
+    // answer: go to it, then open it. Declining, which is what this did, left
+    // a double-click or Enter doing nothing with no hint as to why.
+    if (this.core.isOverview() && !this.core.isParseFailed()) {
+      this.deps.zoomInToEdit(id)
+      return true
+    }
     if (!this.isEditableNode(node)) return this.enterLiveContent(id)
     this.enterEditMode(id)
     return true

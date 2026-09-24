@@ -309,15 +309,9 @@ export class ToolbarController {
     }
     const tidy = this.tidyControl()
     if (tidy) items.push(tidy)
-    // Editing is the one action a card in the overview tier cannot take —
-    // it has no element to put an editor in — so the button goes away rather
-    // than being offered and declining.
-    if (
-      single &&
-      this.callbacks.isEditableNode(single) &&
-      !this.callbacks.isOverview() &&
-      canEdit
-    ) {
+    // Offered in the overview tier too: there it brings the camera in to the
+    // card first (EditingController's `editCard`).
+    if (single && this.callbacks.isEditableNode(single) && canEdit) {
       items.push({
         label: this.callbacks.t('toolbar.edit'),
         icon: 'pencil',

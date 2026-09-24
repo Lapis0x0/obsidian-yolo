@@ -47,6 +47,11 @@ export const zh = {
     undo: '撤销',
     redo: '重做',
   },
+  emptyBoard: {
+    title: '双击空白处新建卡片，或从下方工具栏拖出一张',
+    desktopHint: '把笔记、图片或 PDF 拖进来 · 按住空格拖动画布',
+    touchHint: '单指拖动画布 · 双指缩放',
+  },
   cardMenu: {
     newCard: '添加卡片',
     addNote: '添加笔记',

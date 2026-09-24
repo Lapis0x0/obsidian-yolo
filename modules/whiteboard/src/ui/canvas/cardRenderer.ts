@@ -73,6 +73,8 @@ const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 /** A deleted card playing its way out (`playExit`): pixels only, never a
  * pointer target. */
 const CARD_EXITING_CLASS = 'yolo-whiteboard-card-exiting'
+/** A body whose image or page has not arrived yet (`showLoadingUntil`). */
+const CARD_BODY_LOADING_CLASS = 'yolo-whiteboard-card-body-loading'
 
 /**
  * What a web card's frame is allowed to do.
@@ -862,7 +864,10 @@ export class CardRenderer {
     runtime.pdfReader?.destroy()
     runtime.pdfReader = null
     this.runContentRelease(runtime)
-    runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
+    runtime.bodyEl?.classList.remove(
+      CARD_BODY_LIVE_CLASS,
+      CARD_BODY_LOADING_CLASS,
+    )
     runtime.bodyEl?.classList.remove(CARD_BODY_SCROLLS_CLASS)
   }
 
@@ -1355,6 +1360,7 @@ export class CardRenderer {
       image.draggable = false
       frame.appendChild(image)
       bodyEl.replaceChildren(frame)
+      this.showLoadingUntil(bodyEl, image)
       return
     }
 
@@ -1461,6 +1467,7 @@ export class CardRenderer {
     frame.src = url
     bodyEl.replaceChildren(frame)
     bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
+    this.showLoadingUntil(bodyEl, frame)
     runtime.webFrameUrl = url
     // A detached frame keeps its page (and its timers, media and sockets)
     // running until it is collected; navigating it away first is what ends
@@ -1471,6 +1478,32 @@ export class CardRenderer {
       frame.src = 'about:blank'
       frame.remove()
     }
+  }
+
+  /**
+   * Marks a body as still loading until `el` (an image or a frame) has loaded
+   * or failed. An image or a page arriving over a slow disk or network used to
+   * be an empty white card until it painted — indistinguishable from a card
+   * with nothing in it. The stylesheet draws a quiet shimmer meanwhile, the
+   * same "working on it" a PDF card already says with its loading line.
+   */
+  private showLoadingUntil(
+    bodyEl: HTMLElement,
+    el: HTMLImageElement | HTMLIFrameElement,
+  ): void {
+    // Tested by tag rather than `instanceof`, which would ask the main
+    // window's constructor about an element that may belong to a popout's.
+    if (el.tagName === 'IMG' && (el as HTMLImageElement).complete) return
+    bodyEl.classList.add(CARD_BODY_LOADING_CLASS)
+    const done = () => {
+      // Only if the element is still the body's: a re-render may have
+      // replaced it, and its own load owns the class now.
+      if (el.isConnected && bodyEl.contains(el)) {
+        bodyEl.classList.remove(CARD_BODY_LOADING_CLASS)
+      }
+    }
+    el.addEventListener('load', done, { once: true })
+    el.addEventListener('error', done, { once: true })
   }
 
   private renderPlaceholder(

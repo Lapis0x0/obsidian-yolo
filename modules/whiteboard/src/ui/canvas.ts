@@ -128,6 +128,11 @@ import { applyColorToElement } from './selectionToolbar'
  */
 const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
 
+/** How long an edit asked for in the overview tier waits for its card to come
+ * back into the DOM before it is dropped — a glide in plus the mount queue,
+ * with room to spare. */
+const PENDING_EDIT_WAIT_MS = 2000
+
 /**
  * A world rectangle nothing can intersect — what the cards are measured
  * against in the overview tier, where none of them may stay mounted.
@@ -172,6 +177,12 @@ const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
 const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
 const ERROR_HINT_CLASS = 'yolo-whiteboard-error-hint'
 const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
+const EMPTY_HINT_CLASS = 'yolo-whiteboard-empty-hint'
+const EMPTY_HINT_VISIBLE_CLASS = 'yolo-whiteboard-empty-hint-visible'
+const EMPTY_HINT_TITLE_CLASS = 'yolo-whiteboard-empty-hint-title'
+const EMPTY_HINT_LINE_CLASS = 'yolo-whiteboard-empty-hint-line'
+const EMPTY_HINT_DESKTOP_CLASS = 'yolo-whiteboard-empty-hint-desktop'
+const EMPTY_HINT_TOUCH_CLASS = 'yolo-whiteboard-empty-hint-touch'
 
 // `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
 // type), which owns the mounted-card map it describes.
@@ -219,6 +230,9 @@ export class WhiteboardCanvas {
    * anyone looking at it, so it mounts like any other.
    */
   private readonly entering = new Map<NodeId, number>()
+  /** A card asked to be edited from the overview tier, waiting for the camera
+   * to bring it back into the DOM (`zoomInToEdit`), and when to give up. */
+  private pendingEdit: Readonly<{ id: NodeId; until: number }> | null = null
 
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
@@ -276,6 +290,8 @@ export class WhiteboardCanvas {
    * ./canvas/toolbarController.ts's own doc comment). */
   private toolbarController!: ToolbarController
 
+  /** The hint a board with nothing on it shows (`syncEmptyHint`). */
+  private emptyHintEl: HTMLElement | null = null
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
   /** Card creation, drops and the right-click menus
@@ -858,6 +874,7 @@ export class WhiteboardCanvas {
     this.registerBoardKeyLayers()
     this.editing = new EditingController({
       core: this.core,
+      zoomInToEdit: (id) => this.zoomInToEdit(id),
       cards: this.cardRenderer,
       edges: this.edgeLayer,
       worldEl: world,
@@ -999,6 +1016,7 @@ export class WhiteboardCanvas {
       onLiveRectsChange: () => this.overviewLayer?.markDirty(),
       rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
+    this.emptyHintEl = this.buildEmptyHint(doc, this.toolbarController.overlay)
     // Obsidian Canvas's top-right column, in the same overlay for the same
     // reason. The buttons act on the board, so an open card edit is ended
     // first — the same as clicking anywhere else on the board would.
@@ -1677,6 +1695,46 @@ export class WhiteboardCanvas {
     )
   }
 
+  /**
+   * Edit, asked for in the overview tier: the camera glides in to the card —
+   * to 1:1, or to whatever fits it if it is bigger than the viewport — and
+   * the editor opens once the card has an element again (`openPendingEdit`).
+   * The zoom is never below what leaves the tier, or the card would never
+   * come back to open.
+   */
+  private zoomInToEdit(id: NodeId): void {
+    const node = this.nodesById.get(id)
+    if (!node) return
+    // A quarter above where the tier ends, so a card bigger than the
+    // viewport still lands clear of the hysteresis band.
+    this.cameraController.focusNode(node, OVERVIEW_RESTORE_SCALE * 1.25)
+    this.pendingEdit = {
+      id,
+      until: this.context.getWindow().performance.now() + PENDING_EDIT_WAIT_MS,
+    }
+  }
+
+  /** Opens the card `zoomInToEdit` is waiting on, once it can be — or drops
+   * the wait, if it has taken too long or the card has gone. */
+  private openPendingEdit(now: number): void {
+    const pending = this.pendingEdit
+    if (!pending) return
+    if (now > pending.until || !this.nodesById.has(pending.id)) {
+      this.pendingEdit = null
+      return
+    }
+    if (this.overview) return
+    const runtime = this.cardRenderer.getRuntime(pending.id)
+    if (!runtime?.el) return
+    // A note card's editor needs the file's text first (enterEditMode).
+    const node = this.nodesById.get(pending.id)
+    if (node?.type === 'file' && isMarkdownPath(node.file)) {
+      if (runtime.noteText === null) return
+    }
+    this.pendingEdit = null
+    this.editing.editCard(pending.id)
+  }
+
   /** Mod+A: every node on the board. Declined on an empty board, so the key
    * travels on to Obsidian rather than being swallowed for nothing. */
   private selectAll(): boolean {
@@ -1846,6 +1904,7 @@ export class WhiteboardCanvas {
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
     this.settleOverviewLinger()
+    this.openPendingEdit(now)
     // Last: it draws the camera the world layer was just given, and the
     // geometry the queues above have just finished changing.
     this.overviewLayer?.render()
@@ -2148,6 +2207,7 @@ export class WhiteboardCanvas {
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),
     )
+    this.syncEmptyHint()
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.
@@ -2247,6 +2307,43 @@ export class WhiteboardCanvas {
     runtime.noteText = text
     runtime.missingFile = false
     this.cardRenderer.renderMarkdownInto(id, runtime, text, path)
+  }
+
+  /**
+   * What a brand-new board says: how to put the first thing on it. A blank
+   * dot grid tells someone who has never used one nothing — not that a
+   * double-click makes a card, not that files can be dropped in, not how to
+   * move around — and Canvas's own empty board has the same silence.
+   *
+   * Screen-space chrome in the toolbar's overlay, pointer-transparent so the
+   * double-click it describes lands on the board behind it. The two second
+   * lines are both built and the stylesheet shows the one for the device
+   * (`.is-mobile`), so nothing here has to know what it is running on.
+   */
+  private buildEmptyHint(doc: Document, parent: HTMLElement): HTMLElement {
+    const el = doc.createElement('div')
+    el.className = EMPTY_HINT_CLASS
+    const title = doc.createElement('div')
+    title.className = EMPTY_HINT_TITLE_CLASS
+    title.textContent = this.t('emptyBoard.title')
+    const desktop = doc.createElement('div')
+    desktop.className = `${EMPTY_HINT_LINE_CLASS} ${EMPTY_HINT_DESKTOP_CLASS}`
+    desktop.textContent = this.t('emptyBoard.desktopHint')
+    const touch = doc.createElement('div')
+    touch.className = `${EMPTY_HINT_LINE_CLASS} ${EMPTY_HINT_TOUCH_CLASS}`
+    touch.textContent = this.t('emptyBoard.touchHint')
+    el.append(title, desktop, touch)
+    parent.appendChild(el)
+    return el
+  }
+
+  /** Shown exactly while the board parsed and holds nothing. Faded out by the
+   * stylesheet as the first card arrives, so the card is what the eye follows. */
+  private syncEmptyHint(): void {
+    this.emptyHintEl?.classList.toggle(
+      EMPTY_HINT_VISIBLE_CLASS,
+      !this.parseFailed && this.board.nodes.length === 0,
+    )
   }
 
   private showError(issues: readonly BoardParseIssue[]): void {
