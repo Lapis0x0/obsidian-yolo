@@ -30,9 +30,9 @@ import { unionRect } from '../../domain/camera'
 import type { Board, NodeId } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
 import {
+  SPREAD_METRICS,
   currentSpreadColumns,
   isSpreadTitle,
-  SPREAD_METRICS,
   spreadColumnsForWidth,
   spreadPages,
 } from '../../domain/spread'
@@ -93,6 +93,12 @@ export class SpreadFrame {
   /** The last column count (edge) or page width (corner) asked for. */
   private asked = 0
   private dragCount = 0
+  /** The latest move not yet acted on, and the frame that will. A mouse
+   * reports moves far faster than the screen shows them, and each size the
+   * spread passes through is a whole new layout: one per frame is all that
+   * can be seen. */
+  private pendingMove: PointerEvent | null = null
+  private moveFrame: number | null = null
 
   constructor(
     private readonly doc: Document,
@@ -109,6 +115,11 @@ export class SpreadFrame {
     parent.appendChild(this.frameEl)
     this.edgeEl.addEventListener('pointerdown', this.onEdgePointerDown)
     this.cornerEl.addEventListener('pointerdown', this.onCornerPointerDown)
+  }
+
+  /** Whether the edge or the corner is being dragged. */
+  get dragging(): boolean {
+    return this.drag !== null
   }
 
   /** The counter-scaled chrome element (CameraController's applyZoomScale):
@@ -196,6 +207,24 @@ export class SpreadFrame {
   private readonly onPointerMove = (e: PointerEvent): void => {
     const drag = this.drag
     if (!drag || e.pointerId !== drag.pointerId) return
+    this.pendingMove = e
+    if (this.moveFrame !== null) return
+    const win = this.doc.defaultView
+    if (!win) {
+      this.flushMove()
+      return
+    }
+    this.moveFrame = win.requestAnimationFrame(() => {
+      this.moveFrame = null
+      this.flushMove()
+    })
+  }
+
+  private flushMove(): void {
+    const e = this.pendingMove
+    const drag = this.drag
+    this.pendingMove = null
+    if (!e || !drag) return
     const board = this.deps.getBoard()
     const title = board.nodes.find((node) => node.id === drag.id)
     const sheets = spreadPages(board, drag.id)
@@ -230,12 +259,17 @@ export class SpreadFrame {
 
   private readonly onPointerUp = (e: PointerEvent): void => {
     if (this.drag && e.pointerId !== this.drag.pointerId) return
+    // Where the pointer last was is where the drag ends.
+    this.flushMove()
     this.endDrag()
     this.sync()
   }
 
   private endDrag(): void {
     const win = this.doc.defaultView
+    if (this.moveFrame !== null) win?.cancelAnimationFrame(this.moveFrame)
+    this.moveFrame = null
+    this.pendingMove = null
     win?.removeEventListener('pointermove', this.onPointerMove)
     win?.removeEventListener('pointerup', this.onPointerUp)
     win?.removeEventListener('pointercancel', this.onPointerUp)

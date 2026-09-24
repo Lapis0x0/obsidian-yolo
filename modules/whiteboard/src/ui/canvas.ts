@@ -28,7 +28,6 @@ import {
 import { cameraFromView, screenToWorld } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
-import type { CardRect } from '../domain/resize'
 import {
   type ArrowDirection,
   arrowEnds,
@@ -66,8 +65,10 @@ import {
   updateEdge,
   updateNode,
 } from '../domain/operations'
+import type { CardRect } from '../domain/resize'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
 import {
+  SPREAD_METRICS,
   closeSpread,
   collapseBoard,
   defaultSpreadColumns,
@@ -78,7 +79,6 @@ import {
   openSpread,
   reflowSpread,
   scaleSpread,
-  SPREAD_METRICS,
   spreadPages,
 } from '../domain/spread'
 import { tidyRects } from '../domain/tidy'
@@ -130,15 +130,16 @@ import {
   OVERVIEW_SCALE_THRESHOLD,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
-  SVG_NS,
-  UNMOUNT_QUOTA_PER_FRAME,
-  VIEWPORT_BUFFER_PX,
-  SPREAD_SHEET_OF_SELECTED_CLASS,
   SPREAD_DEAL_MAX_DELAY_MS,
   SPREAD_DEAL_STAGGER_MS,
   SPREAD_DEAL_WINDOW_MS,
+  SPREAD_SHEET_OF_SELECTED_CLASS,
+  SVG_NS,
+  UNMOUNT_QUOTA_PER_FRAME,
+  VIEWPORT_BUFFER_PX,
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
+import { PdfDrawQueue } from './pdf/drawQueue'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -434,6 +435,16 @@ export class WhiteboardCanvas {
    * While it is, building is paced by whether frames are keeping up; at rest
    * it runs at full rate. */
   private interacting = false
+  /**
+   * Every PDF page this board draws waits its turn here (../pdf/drawQueue.ts):
+   * two at a time at rest, one while the camera moves — each draw puts a
+   * slice of main-thread work into every frame until it is done — and none
+   * while a spread's frame is being dragged, where the pages coming into
+   * view are drawn once it is let go.
+   */
+  private readonly pdfDraws = new PdfDrawQueue(() =>
+    this.spreadFrame?.dragging ? 0 : this.interacting ? 1 : 2,
+  )
 
   /** PDF reading on this board — the reading panel, annotations, excerpts,
    * links into its PDFs (./canvas/pdfIntegration.ts). Built in `ensureDom`. */
@@ -909,6 +920,8 @@ export class WhiteboardCanvas {
       onTextMeasured: (id, size) => this.commitTextSize(id, size),
       onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
       canBuildContent: () => this.canBuildContent,
+      pdfDraws: this.pdfDraws,
+      drawPriority: (id) => this.distanceFromViewCenter(id),
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
       },
@@ -2373,6 +2386,7 @@ export class WhiteboardCanvas {
     this.canBuildContent =
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
+    this.pdfDraws.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
     // Last: it draws the camera the world layer was just given, and the
@@ -2414,6 +2428,18 @@ export class WhiteboardCanvas {
       this.edgeLayer.updateVisibility(rect, this.edgePinnedIds(moved))
     }
     this.syncGroupLabelScale()
+  }
+
+  /** How far a card's middle is from the viewport's, in world units — the
+   * order PDF pages are drawn in. */
+  private distanceFromViewCenter(id: NodeId): number {
+    const node = this.nodesById.get(id)
+    if (!node) return Number.POSITIVE_INFINITY
+    const view = this.worldViewportRect(0)
+    return Math.hypot(
+      node.x + node.w / 2 - (view.left + view.right) / 2,
+      node.y + node.h / 2 - (view.top + view.bottom) / 2,
+    )
   }
 
   /** Whose edges stay drawn wherever the viewport is: the pinned cards',

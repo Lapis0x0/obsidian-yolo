@@ -61,6 +61,7 @@ import {
   placeBox,
   renderAnnotationLayer,
 } from './annotationLayer'
+import type { PdfDrawClient, PdfDrawQueue } from './drawQueue'
 import { createReaderIconButton } from './icons'
 import { PdfSearch } from './pdfSearch'
 import {
@@ -103,6 +104,11 @@ export type PdfReaderOptions = Readonly<{
   /** Asked before starting a draw or a text layer; a reader on a board holds
    * back while frames are late. Always yes when omitted. */
   canStartWork?: () => boolean
+  /** The board's queue for page draws (./drawQueue.ts), shared with every
+   * other reader on it; a reader without one draws on its own. */
+  drawQueue?: PdfDrawQueue
+  /** Where this reader stands in `drawQueue`: lower goes first. */
+  drawPriority?: () => number
   /** Called when the reading position changes — by scrolling, a page jump,
    * a search hit, or a relayout that moved the column under it. Not called
    * for a `setPosition`. */
@@ -282,6 +288,11 @@ export class PdfReader {
   private scrollerSize: Readonly<{ width: number; height: number }> | null =
     null
   private readonly search: PdfSearch
+  /** This reader, as `options.drawQueue` knows it. */
+  private readonly drawClient: PdfDrawClient = {
+    priority: () => this.options.drawPriority?.() ?? 0,
+    wake: () => this.schedule(),
+  }
 
   private handle: YoloModuleHostPdfDocumentV1 | null = null
   private unsubscribeStale: (() => void) | null = null
@@ -557,8 +568,15 @@ export class PdfReader {
   setVisible(visible: boolean): void {
     if (visible === this.visible) return
     this.visible = visible
-    if (visible) this.schedule()
-    else this.cancelFrame()
+    if (visible) {
+      this.schedule()
+      return
+    }
+    this.cancelFrame()
+    // Off screen, a draw only holds a turn that pages on screen are waiting
+    // for; the page is drawn again if it comes back before it has a picture.
+    this.options.drawQueue?.withdraw(this.drawClient)
+    for (const slot of this.active) slot.draw?.cancel()
   }
 
   /** The annotation store this reader draws, if it was given one. */
@@ -806,6 +824,7 @@ export class PdfReader {
     this.unsubscribeAnnotations?.()
     this.unsubscribeAnnotations = null
     this.selectionReported = false
+    this.options.drawQueue?.withdraw(this.drawClient)
     this.options.annotationEvents?.onReaderDestroyed(this)
     this.options.annotations?.release()
     this.search.destroy()
@@ -1089,6 +1108,10 @@ export class PdfReader {
         Math.abs(layout.tops[b.index] + layout.heights[b.index] / 2 - middle),
     )
     let deferred = false
+    // Asked afresh on every pass: a reader that no longer wants a turn must
+    // not keep one from the rest.
+    const queue = this.options.drawQueue
+    queue?.withdraw(this.drawClient)
     for (const slot of order) {
       if (!slot.page) {
         this.loadPage(slot)
@@ -1100,6 +1123,8 @@ export class PdfReader {
           deferred = true
           continue
         }
+        // Not our turn: the queue wakes this reader when it is.
+        if (queue && !queue.tryStart(this.drawClient)) continue
         this.drawPage(slot, layout)
       }
       if (this.interactive && !slot.textLayer && !slot.textTask) {
@@ -1233,6 +1258,7 @@ export class PdfReader {
       .finally(() => {
         this.drawsInFlight -= 1
         if (slot.draw === task) slot.draw = null
+        this.options.drawQueue?.finish()
         this.schedule()
       })
   }

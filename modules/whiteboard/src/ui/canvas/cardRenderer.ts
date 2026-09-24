@@ -35,10 +35,11 @@ import {
   NODE_EXIT_MS,
   NODE_EXIT_TO_SCALE,
   PLAIN_TEXT_AUTO_CLASS,
-  WEB_URL_PATTERN,
   SPREAD_SHEET_OF_SELECTED_CLASS,
+  WEB_URL_PATTERN,
 } from '../constants'
 import { type PdfPageLabels, cardMarkdownWindow, nodeTitleText } from '../lod'
+import type { PdfDrawQueue } from '../pdf/drawQueue'
 import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
 import { glideScrollBy } from '../wheelScroll'
@@ -213,6 +214,11 @@ export type CardRendererCallbacks = Readonly<{
    * moment its editor can be opened (`noteText` is known). */
   onNoteCardRendered: (id: NodeId) => void
   canBuildContent: () => boolean
+  /** The board's one queue for PDF page draws (../pdf/drawQueue.ts). */
+  pdfDraws: PdfDrawQueue
+  /** How far a card is from the middle of the viewport, for the order its
+   * pages are drawn in. */
+  drawPriority: (id: NodeId) => number
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
   getMountedCount: () => number
@@ -1465,6 +1471,8 @@ export class CardRenderer {
       interactive: this.callbacks.isFocused(id),
       t: (key) => this.callbacks.t(key),
       canStartWork: () => this.callbacks.canBuildContent(),
+      drawQueue: this.callbacks.pdfDraws,
+      drawPriority: () => this.callbacks.drawPriority(id),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
