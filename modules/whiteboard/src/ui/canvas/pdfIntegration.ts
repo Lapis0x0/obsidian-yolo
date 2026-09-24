@@ -42,6 +42,7 @@ import type {
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
 import { addNode, boardWithPageWindow } from '../../domain/operations'
 import type { Rect } from '../../domain/placement'
+import { isReadableInView } from '../../domain/virtualization'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
 import type { AnnotationStores } from '../../host/annotationStore'
 import { exportAnnotatedPdf } from '../../host/exportAnnotatedPdf'
@@ -69,6 +70,9 @@ const READER_PANEL_MIN_BOARD_WIDTH = 240
  * may be parked, evicted or never built — but writing it on every scroll
  * frame would rebuild the board index at scroll rate. */
 const READER_PANEL_COMMIT_MS = 800
+/** The narrowest a PDF card is shown on screen and still read where it is:
+ * a page about this wide sets a 10pt body at about 8px. */
+const READABLE_CARD_WIDTH_PX = 500
 
 export type PdfIntegrationDeps = Readonly<{
   core: CanvasCore
@@ -519,16 +523,54 @@ export class PdfIntegration {
    * mask), so which link was clicked is found by geometry. Only these links
    * are taken: a link to a PDF that has no card here, or to anything else,
    * is left as it was — a card's links are followed where Obsidian follows
-   * them, in its editor. True when a link was followed.
+   * them, in its editor.
+   *
+   * Read where it can be seen: a card of that PDF already on screen and
+   * shown large enough to read is entered and taken to the passage, the
+   * camera left where it is — a panel beside it would show the same pages
+   * twice. Otherwise, and whenever the panel is already showing that PDF,
+   * the panel. Either way the board stays where the reader was working.
+   * Selects what the click leaves being read. True when a link was followed.
    */
   followPdfLinkAt(id: NodeId, e: MouseEvent): boolean {
     const link = this.pdfLinkAt(id, e)
     if (!link) return false
+    const { core } = this.deps
+    const { page, selection } = link.target
+    const inPanel = this.readerPanelNodeId === link.cardId
+    const inPlace = inPanel ? null : this.readableCardFor(link.path)
+    const reader = inPlace === null ? null : core.getRuntime(inPlace)?.pdfReader
+    if (inPlace !== null && reader) {
+      core.setSelection([inPlace])
+      if (this.deps.enterCard(inPlace)) {
+        reader.revealLocation(page, selection)
+        return true
+      }
+    }
+    core.setSelection([id])
     this.openReaderPanel(link.cardId)
-    this.readerPanel
-      ?.getReader()
-      ?.revealLocation(link.target.page, link.target.selection)
+    this.readerPanel?.getReader()?.revealLocation(page, selection)
     return true
+  }
+
+  /** A card of the PDF at `path` that is read where it is: mounted, and on
+   * screen enough and large enough (`isReadableInView`). The widest, when
+   * there are several. */
+  private readableCardFor(path: string): NodeId | null {
+    const { core } = this.deps
+    if (core.isOverview()) return null
+    const view = core.worldViewportRect(0)
+    const { scale } = core.getView()
+    let best: FileNode | null = null
+    for (const node of core.getBoard().nodes) {
+      if (!isPdfNode(node) || node.file !== path) continue
+      if (!core.getRuntime(node.id)?.pdfReader) continue
+      if (!isReadableInView(node, view, scale, READABLE_CARD_WIDTH_PX)) {
+        continue
+      }
+      if (!best || node.w > best.w) best = node
+    }
+    return best?.id ?? null
   }
 
   /** Whether the pointer on the card `id` is over a link into one of the
@@ -542,7 +584,7 @@ export class PdfIntegration {
   private pdfLinkAt(
     id: NodeId,
     e: MouseEvent,
-  ): Readonly<{ cardId: NodeId; target: PdfLinkTarget }> | null {
+  ): Readonly<{ path: string; cardId: NodeId; target: PdfLinkTarget }> | null {
     const { core } = this.deps
     const runtime = core.getRuntime(id)
     const body = runtime?.bodyEl
@@ -563,7 +605,9 @@ export class PdfIntegration {
     }
     if (!file) return null
     const cardId = this.pdfCardFor(file.path, id)
-    return cardId === null ? null : { cardId, target: parsed.target }
+    return cardId === null
+      ? null
+      : { path: file.path, cardId, target: parsed.target }
   }
 
   /** The card to read a PDF in: the one the panel is already on, else the

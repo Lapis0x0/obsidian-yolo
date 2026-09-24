@@ -3,6 +3,7 @@ import {
   VirtualizationEngine,
   type WorldRect,
   computeWorldViewportRect,
+  isReadableInView,
 } from './virtualization'
 
 function card(
@@ -59,6 +60,37 @@ describe('computeWorldViewportRect', () => {
       0,
     )
     expect(rect).toEqual({ left: -100, top: 50, right: 700, bottom: 650 })
+  })
+})
+
+describe('isReadableInView', () => {
+  const view: WorldRect = { left: 0, top: 0, right: 1000, bottom: 800 }
+
+  it('takes a card mostly in view and wide enough on screen', () => {
+    expect(isReadableInView(card('a', 100, 100, 600, 400), view, 1, 500)).toBe(
+      true,
+    )
+  })
+
+  it('refuses one shown too narrow to read', () => {
+    expect(
+      isReadableInView(card('a', 100, 100, 600, 400), view, 0.5, 500),
+    ).toBe(false)
+  })
+
+  it('refuses one mostly out of view, or wholly', () => {
+    expect(isReadableInView(card('a', 800, 100, 600, 400), view, 1, 500)).toBe(
+      false,
+    )
+    expect(isReadableInView(card('a', 2000, 100, 600, 400), view, 1, 500)).toBe(
+      false,
+    )
+  })
+
+  it('takes one zoomed past the viewport that fills most of it', () => {
+    expect(
+      isReadableInView(card('a', -500, -500, 3000, 3000), view, 1, 500),
+    ).toBe(true)
   })
 })
 
