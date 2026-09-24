@@ -354,7 +354,7 @@ export class ToolbarController {
         label: this.callbacks.t(
           open ? 'toolbar.closeSpread' : 'toolbar.openSpread',
         ),
-        icon: open ? 'minimize-2' : 'files',
+        icon: open ? 'minimize-2' : 'maximize-2',
         onSelect: () => this.callbacks.toggleSpread(spreadOf.id),
       })
     }

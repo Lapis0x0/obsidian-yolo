@@ -307,7 +307,7 @@ export class DropImport {
       const open = isSpreadTitle(spreadOf)
       items.push({
         title: this.core.t(open ? 'menu.closeSpread' : 'menu.openSpread'),
-        icon: open ? 'minimize-2' : 'files',
+        icon: open ? 'minimize-2' : 'maximize-2',
         onSelect: () => this.deps.toggleSpread(spreadOf.id),
       })
     }
