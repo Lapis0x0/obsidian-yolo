@@ -7,9 +7,11 @@
  * `scrollFocusedCardBy`); the page field says where it is.
  *
  * The colours are the ones Obsidian's own PDF view uses — `--pdf-background`
- * around the pages, `--pdf-page-background` behind them before they are
- * drawn, `--pdf-shadow` under them — so a PDF on a board looks like the same
- * PDF opened in a tab. */
+ * in the seams between pages, `--pdf-page-background` behind them before they
+ * are drawn, `--pdf-shadow` under them. The pages fill the card edge to edge
+ * (readerLayout.ts's `READER_METRICS`), so the shadow is clipped at the sides
+ * and shows only in the seam, which is what keeps a light theme's seam — page
+ * white against a background barely darker — visible at all. */
 
 .yolo-whiteboard-pdf-reader {
   position: relative;

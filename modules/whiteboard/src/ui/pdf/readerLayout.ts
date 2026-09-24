@@ -32,8 +32,11 @@ export type ReaderMetrics = Readonly<{
   gap: number
 }>
 
+/** Pages run edge to edge: the card's own frame is the paper's edge, and a
+ * margin inside it read as a second frame. Only the seam between pages stays,
+ * as the one mark of a page turn. */
 export const READER_METRICS: ReaderMetrics = Object.freeze({
-  padding: 8,
+  padding: 0,
   gap: 8,
 })
 
