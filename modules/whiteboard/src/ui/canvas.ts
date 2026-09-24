@@ -76,6 +76,7 @@ import {
   nodesToDelete,
   openSpread,
   reflowSpread,
+  SPREAD_METRICS,
   spreadPages,
 } from '../domain/spread'
 import { tidyRects } from '../domain/tidy'
@@ -1848,10 +1849,13 @@ export class WhiteboardCanvas {
     const now = this.nodesById.get(id)
     if (!this.canEdit || !now || !isPdfNode(now) || isSpreadTitle(now)) return
     if (now.file !== node.file || sizes.length === 0) return
+    // The sheets are as wide as the card: one document, one width.
+    const metrics = { ...SPREAD_METRICS, pageWidth: now.w }
     const layout = layoutSpreadGrid(
       sizes,
       { x: now.x, y: now.y },
-      defaultSpreadColumns(sizes),
+      defaultSpreadColumns(sizes, metrics),
+      metrics,
     )
     this.commitSpreadToggle(id, openSpread(this.board, id, layout))
   }

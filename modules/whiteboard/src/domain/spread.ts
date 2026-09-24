@@ -38,8 +38,9 @@ import type {
  * 13-unit grid (ui/constants.ts's GRID_WORLD_STEP_PX), so a laid-out spread
  * sits on the lattice a dragged card snaps to.
  *
- * A page is as wide as a new PDF card (NEW_EMBED_CARD_SIZE), so a spread
- * reads at the size the card it came from did.
+ * `pageWidth` is a new PDF card's width (NEW_EMBED_CARD_SIZE), and only the
+ * default: a spread is laid out at its own card's width, since a document is
+ * one width whether it is read in a card or spread out.
  */
 export type SpreadMetrics = Readonly<{
   pageWidth: number
@@ -138,14 +139,32 @@ export function openSpread(
   if (index === -1) return board
   const node = board.nodes[index]
   if (node.type !== 'file' || isSpreadTitle(node)) return board
-  const use = layout ?? node.spread
-  if (!use || use.pages.length === 0) return board
+  const remembered = layout ?? node.spread
+  if (!remembered || remembered.pages.length === 0) return board
+  // A document is as wide as its card, spread out or not. A card resized
+  // while its pages were away has its sheets laid out again at the new
+  // width, as many across as they were.
+  const use =
+    layout || remembered.pages[0].w === node.w
+      ? remembered
+      : layoutSpreadGrid(
+          remembered.pages.map((rect) => ({ width: rect.w, height: rect.h })),
+          { x: node.x, y: node.y },
+          currentSpreadColumns(remembered.pages),
+          { ...SPREAD_METRICS, pageWidth: node.w },
+        )
 
+  // The card's top-left is the title's: the document stays where it is
+  // whether it is read in a card or spread out. A remembered layout goes
+  // wherever the card has been moved since (a first layout is already
+  // drawn from the card's corner, and moves nowhere).
+  const dx = node.x - use.title.x
+  const dy = node.y - use.title.y
   const { spread: _spread, ...rest } = node
   const title: FileNode = {
     ...rest,
-    x: use.title.x,
-    y: use.title.y,
+    x: node.x,
+    y: node.y,
     // One sheet wide, whatever was saved: the title is a heading over the
     // first column, not a box around its text (see `layoutSpreadGrid`).
     w: use.pages[0].w,
@@ -158,8 +177,8 @@ export function openSpread(
     parent: id,
     file: node.file,
     page: pageIndex + 1,
-    x: rect.x,
-    y: rect.y,
+    x: rect.x + dx,
+    y: rect.y + dy,
     w: rect.w,
     h: rect.h,
     extra: {},
@@ -199,9 +218,9 @@ export function openSpread(
 }
 
 /**
- * Puts a spread's pages away: the node is a reader card again, where it was
- * before, and remembers where its title and every sheet were for the next
- * time. Edges on a sheet stay attached to that page, and reach the card
+ * Puts a spread's pages away: the node is a reader card again, at the size it
+ * had, with its top-left where the title's is, and remembers where its title
+ * and every sheet were for the next time. Edges on a sheet stay attached to that page, and reach the card
  * until the pages are out again.
  */
 export function closeSpread(board: Board, id: NodeId): Board {
@@ -235,9 +254,14 @@ function foldSpread(board: Board, id: NodeId, open: boolean): Board {
       h: sheet.h,
     })),
   }
+  // Back to a card at the title's corner and the sheets' width (the
+  // title's), as tall as the reader was — see `openSpread`.
   const folded: FileNode = {
     ...rest,
-    ...readerRect,
+    x: node.x,
+    y: node.y,
+    w: node.w,
+    h: readerRect.h,
     ...(sheets.length > 0 ? { spread } : {}),
   }
   const nodes = board.nodes.slice()
@@ -461,7 +485,7 @@ export function reflowSpread(
 /** How many columns an open spread's sheets are in right now, read off the
  * first row — what the resize handle starts from. */
 export function currentSpreadColumns(
-  sheets: readonly PdfPageNode[],
+  sheets: readonly Readonly<{ y: number }>[],
   metrics = SPREAD_METRICS,
 ): number {
   if (sheets.length === 0) return 1
