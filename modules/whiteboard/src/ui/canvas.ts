@@ -956,6 +956,8 @@ export class WhiteboardCanvas {
       onResize: () => this.onResize(),
       keyLayers: this.keymap,
       runEscape: () => this.keymap.run('escape'),
+      excerptDropPoint: (e) => this.dropImport.pointerDropPoint(e),
+      setExcerptDropHint: (on) => this.dropImport.setDropHint(on),
     })
     this.dropImport = new DropImport({
       core: this.core,

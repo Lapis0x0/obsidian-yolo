@@ -3,9 +3,10 @@
 // has the shape and why) citing its page with Obsidian's own link.
 //
 // An excerpt is only a card. Nothing binds it to the PDF, to a highlight it
-// may have been taken from, or to the annotation file: making one leaves no
-// highlight behind, and deleting either never touches the other (design.md
-// §0). It is undone like any card made on the board.
+// may have been taken from, or to the annotation file: the drag that made
+// it may leave the passage marked (../pdf/annotationController.ts), but
+// deleting either never touches the other (design.md §0). It is undone like
+// any card made on the board.
 //
 // Where it goes: dropped, where it was dropped; otherwise beside the PDF card
 // it came from — the column right of the card, the next free slot down
@@ -114,12 +115,14 @@ export class PdfExcerpts {
   /**
    * A framed area as a card: the region drawn to a PNG, filed where the
    * user's attachment setting files a picture pasted into a note written at
-   * the board's path, and embedded above a link to its page.
+   * the board's path, and embedded above a link to its page. Placed as a
+   * quote is.
    */
   async addArea(
     reader: PdfReader,
     page: number,
     rect: PdfRectTuple,
+    at?: Point,
   ): Promise<boolean> {
     const { callbacks } = this
     if (!callbacks.canCreate()) return false
@@ -149,6 +152,7 @@ export class PdfExcerpts {
         reader,
         areaExcerptMarkdown(imageLink, pageLink),
         areaExcerptCardSize(size, METRICS),
+        at,
       )
       return true
     } catch (error) {

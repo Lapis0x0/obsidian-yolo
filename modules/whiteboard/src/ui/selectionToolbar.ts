@@ -53,6 +53,12 @@ const SWATCH_CLASS = 'yolo-whiteboard-color-swatch'
 const SWATCH_DEFAULT_CLASS = 'yolo-whiteboard-color-swatch-default'
 const SWATCH_CUSTOM_CLASS = 'yolo-whiteboard-color-swatch-custom'
 const SWATCH_ACTIVE_CLASS = 'yolo-whiteboard-color-swatch-active'
+const SWATCH_DOT_CLASS = 'yolo-whiteboard-toolbar-swatch-dot'
+const SPLIT_CLASS = 'yolo-whiteboard-toolbar-split'
+const SPLIT_BODY_CLASS = 'yolo-whiteboard-toolbar-split-body'
+const SPLIT_ARROW_CLASS = 'yolo-whiteboard-toolbar-split-arrow'
+/** On the toolbar: its popovers open above it rather than below. */
+const POPOVERS_ABOVE_CLASS = 'yolo-whiteboard-toolbar-popovers-above'
 
 /** Applied to anything that should paint in a node/edge colour; sets
  * `--yolo-whiteboard-color` (style.css). Shared by cards, edge paths and the
@@ -187,14 +193,27 @@ export type ToolbarMenuControl = Readonly<{
 }>
 
 /**
- * A button opening a row of fixed swatches — a palette that is not the
- * board's (the PDF highlight colours), with no "no colour" and no custom
- * colour, because every value in it has to be one of those listed.
+ * A row of fixed swatches — a palette that is not the board's (the PDF
+ * highlight colours), with no "no colour" and no custom colour, because every
+ * value in it has to be one of those listed.
+ *
+ * Drawn one of two ways. With a `primary` action it is a split button, Word's
+ * highlight button: one control whose body does the action in the current
+ * swatch and whose narrow arrow opens the row — two targets that read as one
+ * thing, because they are one choice (highlight, and in what). Without, it is
+ * a single button showing the current swatch, which opens the row.
  */
 export type ToolbarSwatchControl = Readonly<{
   kind: 'swatches'
+  /** The arrow's tooltip, or the single button's. */
   label: string
-  icon: ToolbarIconName
+  primary?: Readonly<{
+    label: string
+    icon: ToolbarIconName
+    /** Paints the body in the current swatch (the caller's colour class). */
+    className?: string
+    onSelect: () => void
+  }>
   swatches: readonly Readonly<{
     value: string
     label: string
@@ -507,14 +526,9 @@ export class SelectionToolbar {
           })
           break
         }
-        case 'swatches': {
-          const button = this.appendButton({
-            label: item.label,
-            icon: item.icon,
-            onSelect: () => this.togglePopover(button, item),
-          })
+        case 'swatches':
+          this.appendSwatchControl(item)
           break
-        }
         default:
           this.appendButton(item)
       }
@@ -581,6 +595,13 @@ export class SelectionToolbar {
     this.el.style.transform = `translate(${point.x}px, ${point.y}px)`
   }
 
+  /** Opens popovers above the row instead of under it — for a toolbar
+   * sitting above what it acts on, where a popover hanging down would cover
+   * the very thing it is about to change. */
+  setPopoversAbove(above: boolean): void {
+    this.el.classList.toggle(POPOVERS_ABOVE_CLASS, above)
+  }
+
   /** Hides the toolbar without forgetting what is in it — what a drag or a
    * camera gesture does, exactly as Obsidian Canvas hides its own menu for the
    * duration. */
@@ -614,6 +635,50 @@ export class SelectionToolbar {
   // -- internals ----------------------------------------------------------
 
   private appendButton(action: ToolbarAction): HTMLElement {
+    const button = this.createButton(action)
+    this.el.appendChild(button)
+    return button
+  }
+
+  private appendSwatchControl(control: ToolbarSwatchControl): void {
+    const primary = control.primary
+    if (!primary) {
+      const button = this.doc.createElement('button')
+      button.className = `clickable-icon ${TOOLBAR_BUTTON_CLASS}`
+      button.type = 'button'
+      button.setAttribute('aria-label', control.label)
+      const dot = this.doc.createElement('span')
+      const current = control.swatches.find(
+        (swatch) => swatch.value === control.current,
+      )
+      dot.className = `${SWATCH_DOT_CLASS}${current ? ` ${current.className}` : ''}`
+      button.appendChild(dot)
+      button.addEventListener('click', (event) => {
+        event.preventDefault()
+        this.togglePopover(button, control)
+      })
+      this.el.appendChild(button)
+      return
+    }
+    const group = this.doc.createElement('div')
+    group.className = SPLIT_CLASS
+    group.appendChild(
+      this.createButton({
+        ...primary,
+        className: `${SPLIT_BODY_CLASS}${primary.className ? ` ${primary.className}` : ''}`,
+      }),
+    )
+    const arrow = this.createButton({
+      label: control.label,
+      icon: 'chevron-down',
+      className: SPLIT_ARROW_CLASS,
+      onSelect: () => this.togglePopover(arrow, control, group),
+    })
+    group.appendChild(arrow)
+    this.el.appendChild(group)
+  }
+
+  private createButton(action: ToolbarAction): HTMLElement {
     const button = this.doc.createElement('button')
     // `clickable-icon` is Obsidian's own icon-button treatment (hover, active
     // and focus states, icon sizing) — the same class its Canvas menu uses.
@@ -626,7 +691,6 @@ export class SelectionToolbar {
       event.preventDefault()
       action.onSelect(event)
     })
-    this.el.appendChild(button)
     return button
   }
 
@@ -674,6 +738,9 @@ export class SelectionToolbar {
   private togglePopover(
     button: HTMLElement,
     control?: ToolbarMenuControl | ToolbarSwatchControl,
+    /** What the popover hangs from, when that is more than the button — a
+     * split button's row belongs to the whole control, not its arrow. */
+    anchor: HTMLElement = button,
   ): void {
     const wasOpen = this.popover?.button === button
     this.closePopover()
@@ -688,7 +755,7 @@ export class SelectionToolbar {
     } else if (!this.fillColorPopover(popover)) return
 
     this.el.appendChild(popover)
-    this.positionPopover(popover, button)
+    this.positionPopover(popover, anchor)
     this.popover = { el: popover, button }
     button.classList.add('is-active')
     if (!menu) this.markActiveSwatch()

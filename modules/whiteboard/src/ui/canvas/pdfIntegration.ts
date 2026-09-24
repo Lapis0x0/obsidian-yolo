@@ -30,6 +30,7 @@
 // Hit-testing reads the viewport's own client rect, whose left edge never
 // moves.
 
+import type { ScreenPoint } from '../../domain/camera'
 import { parsePdfLink } from '../../domain/excerpt'
 import type {
   Board,
@@ -87,6 +88,11 @@ export type PdfIntegrationDeps = Readonly<{
   keyLayers: KeyLayers
   /** The whole Escape chain — the reader keymap binds Escape too. */
   runEscape: () => boolean
+  /** Where a frame or an annotation dragged out of a reader would land on
+   * the board (world), or null where it cannot. */
+  excerptDropPoint: (e: MouseEvent) => ScreenPoint | null
+  /** The board's drop hint, for such a drag. */
+  setExcerptDropHint: (on: boolean) => void
 }>
 
 export class PdfIntegration {
@@ -134,9 +140,12 @@ export class PdfIntegration {
       getSourcePath: core.getSourcePath,
       registerKeymap: (bindings) => core.context.registerKeymap(bindings),
       excerpts: {
-        addText: (reader, excerpt) => this.pdfExcerpts.addText(reader, excerpt),
-        addArea: (reader, page, rect) =>
-          this.pdfExcerpts.addArea(reader, page, rect),
+        addText: (reader, excerpt, at) =>
+          this.pdfExcerpts.addText(reader, excerpt, at),
+        addArea: (reader, page, rect, at) =>
+          this.pdfExcerpts.addArea(reader, page, rect, at),
+        dropPoint: (event) => deps.excerptDropPoint(event),
+        setDropHint: (on) => deps.setExcerptDropHint(on),
       },
       reportError: core.reportError,
     })
@@ -416,7 +425,7 @@ export class PdfIntegration {
       !isOverCard() &&
       this.pdfExcerpts.addText(excerpt.reader, excerpt.excerpt, at)
     ) {
-      excerpt.reader.clearTextSelection()
+      this.annotationController.markDropped(excerpt)
     }
     return true
   }

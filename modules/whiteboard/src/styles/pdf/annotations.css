@@ -144,9 +144,23 @@ button.yolo-whiteboard-pdf-area-toggle.is-active {
   z-index: 2;
 }
 
-/* The one-click highlight button carries the colour it highlights in. */
+/* The one-click highlight button carries the colour it highlights in: a
+ * stroke of it under the pen's tip, where the ink would be. */
 button.yolo-whiteboard-pdf-highlight-button {
-  box-shadow: inset 0 -2px 0 var(--yolo-whiteboard-annotation);
+  position: relative;
+}
+
+button.yolo-whiteboard-pdf-highlight-button::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 14px;
+  height: 3px;
+  margin-left: -7px;
+  border-radius: 1.5px;
+  background: var(--yolo-whiteboard-annotation);
+  pointer-events: none;
 }
 
 /* The comment under the toolbar: its text, or the field editing it. */
@@ -186,4 +200,70 @@ textarea.yolo-whiteboard-pdf-comment-input {
   padding: 2px 4px;
   resize: vertical;
   font: inherit;
+}
+
+/* Over the waiting frame or the active annotation, a press picks it up
+ * (annotationController.ts's `onGrab`): the pointer says so first. Every
+ * layer of the page is covered — the text layer sets its own cursor. */
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-grabbable,
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-grabbable * {
+  cursor: grab;
+}
+
+/* What a frame or an annotation dragged out carries under the pointer: the
+ * region's picture, or the passage as its card will quote it. Faint over
+ * where it cannot land, whole over open board. Placed with `transform` by
+ * the controller; it arrives by `scale`, which composes with that. */
+.yolo-whiteboard-pdf-drag-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background-color: var(--background-primary);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out);
+  animation: yolo-whiteboard-pdf-drag-ghost-in
+    var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+.yolo-whiteboard-pdf-drag-ghost.yolo-whiteboard-pdf-drag-ghost-droppable {
+  opacity: 0.95;
+}
+
+@keyframes yolo-whiteboard-pdf-drag-ghost-in {
+  from {
+    scale: 0.92;
+  }
+}
+
+.yolo-whiteboard-pdf-drag-ghost canvas {
+  display: block;
+}
+
+.theme-dark .yolo-whiteboard-pdf-drag-ghost canvas {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+.yolo-whiteboard-pdf-drag-ghost-text {
+  display: -webkit-box;
+  width: 220px;
+  padding: 6px 10px;
+  overflow: hidden;
+  border-left: 3px solid var(--yolo-whiteboard-annotation);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.yolo-whiteboard-pdf-grabbing,
+.yolo-whiteboard-pdf-grabbing * {
+  cursor: grabbing;
 }

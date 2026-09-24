@@ -129,6 +129,10 @@ export type ReaderAnnotationEvents = Readonly<{
    * frame stays drawn, as a selection does, until `clearPendingArea` or the
    * next press on the pages. */
   onAreaDrawn: (reader: PdfReader, page: number, rect: PdfRectTuple) => void
+  /** A press on what the owner is acting on — the frame waiting on the
+   * page, or the annotation marked active: maybe the start of dragging it
+   * out. The press has been kept from selecting text or drawing a frame. */
+  onGrab: (reader: PdfReader, event: PointerEvent) => void
   /** The reader is being destroyed. */
   onReaderDestroyed: (reader: PdfReader) => void
 }>
@@ -163,6 +167,8 @@ const AREA_BUTTON_CLASS = 'yolo-whiteboard-pdf-area-toggle'
 const AREA_MODE_CLASS = 'yolo-whiteboard-pdf-reader-area-mode'
 const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
 const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
+/** On the pages while the pointer is over something a press would pick up. */
+const GRABBABLE_CLASS = 'yolo-whiteboard-pdf-pages-grabbable'
 const FLASH_CLASS = 'yolo-whiteboard-pdf-flash'
 const FLASH_SHOWN_CLASS = 'yolo-whiteboard-pdf-flash-shown'
 /** How long the text a link names stays marked after the reader goes to
@@ -510,6 +516,7 @@ export class PdfReader {
   setActiveAnnotation(id: string | null): void {
     if (id === this.activeAnnotationId) return
     this.activeAnnotationId = id
+    this.pagesEl.classList.remove(GRABBABLE_CLASS)
     for (const slot of this.active) {
       if (slot.marksEl) markActiveAnnotation(slot.marksEl, id)
     }
@@ -521,6 +528,48 @@ export class PdfReader {
     if (!annotation) return null
     const marks = this.slots[annotation.anchor.page - 1]?.marksEl
     return marks ? annotationClientRect(marks, id) : null
+  }
+
+  /** A copy of the page picture under `rect` (client pixels), no wider than
+   * `maxWidth` CSS pixels — what a drag of a framed area carries — or null
+   * where no picture is drawn. */
+  snapshot(rect: DOMRect, maxWidth: number): HTMLCanvasElement | null {
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    for (const slot of this.active) {
+      const source = slot.canvas
+      if (!source || source.width === 0 || slot.drawnRatio === 0) continue
+      const box = source.getBoundingClientRect()
+      if (cx < box.left || cx > box.right || cy < box.top || cy > box.bottom) {
+        continue
+      }
+      if (!(box.width > 0 && box.height > 0)) return null
+      const sx = source.width / box.width
+      const sy = source.height / box.height
+      const width = Math.min(rect.width, maxWidth)
+      const height = rect.height * (width / rect.width)
+      const ratio = this.window()?.devicePixelRatio ?? 1
+      const copy = this.rootEl.ownerDocument.createElement('canvas')
+      copy.width = Math.max(1, Math.round(width * ratio))
+      copy.height = Math.max(1, Math.round(height * ratio))
+      copy.style.width = `${width}px`
+      copy.style.height = `${height}px`
+      copy
+        .getContext('2d')
+        ?.drawImage(
+          source,
+          (rect.left - box.left) * sx,
+          (rect.top - box.top) * sy,
+          rect.width * sx,
+          rect.height * sy,
+          0,
+          0,
+          copy.width,
+          copy.height,
+        )
+      return copy
+    }
+    return null
   }
 
   /** A page's text items, as its text layer numbers them. */
@@ -575,6 +624,7 @@ export class PdfReader {
   clearPendingArea(): void {
     this.pendingArea?.el.remove()
     this.pendingArea = null
+    this.pagesEl.classList.remove(GRABBABLE_CLASS)
   }
 
   /**
@@ -1261,8 +1311,32 @@ export class PdfReader {
     )
   }
 
+  /** Whether a pointer is over what the owner is acting on: the waiting
+   * frame, or the active annotation — the things a press picks up. */
+  private overGrabbable(event: MouseEvent): boolean {
+    const pending = this.getPendingAreaRect()
+    if (pending) {
+      return (
+        event.clientX >= pending.left &&
+        event.clientX <= pending.right &&
+        event.clientY >= pending.top &&
+        event.clientY <= pending.bottom
+      )
+    }
+    return (
+      this.activeAnnotationId !== null &&
+      this.annotationAt(event) === this.activeAnnotationId
+    )
+  }
+
   private readonly onPagesPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return
+    const events = this.options.annotationEvents
+    if (events && this.overGrabbable(event)) {
+      event.preventDefault()
+      events.onGrab(this, event)
+      return
+    }
     // A frame left waiting is let go by the next press, as a text selection
     // is by a click elsewhere.
     this.clearPendingArea()
@@ -1294,7 +1368,16 @@ export class PdfReader {
 
   private readonly onPagesPointerMove = (event: PointerEvent): void => {
     const draft = this.areaDraft
-    if (!draft || event.pointerId !== draft.pointerId) return
+    if (!draft) {
+      // What a press would pick up says so before the press.
+      const grabbable =
+        event.buttons === 0 &&
+        (this.pendingArea !== null || this.activeAnnotationId !== null) &&
+        this.overGrabbable(event)
+      this.pagesEl.classList.toggle(GRABBABLE_CLASS, grabbable)
+      return
+    }
+    if (event.pointerId !== draft.pointerId) return
     const rect = draft.slot.el.getBoundingClientRect()
     if (!(rect.width > 0 && rect.height > 0)) return
     draft.x = clamp01((event.clientX - rect.left) / rect.width)

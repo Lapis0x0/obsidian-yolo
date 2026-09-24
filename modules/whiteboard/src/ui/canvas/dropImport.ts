@@ -368,6 +368,26 @@ export class DropImport {
     return this.core.canCreate() && this.prompt === null
   }
 
+  /**
+   * Where a card dragged out of a PDF reader by pointer — a frame or an
+   * annotation, which the platform's drag and drop cannot carry — would
+   * land: the world point under the pointer, on open canvas of a board that
+   * takes drops now; null anywhere else. The same rule `onDragOver` applies
+   * to a dragged selection.
+   */
+  pointerDropPoint(e: MouseEvent): ScreenPoint | null {
+    if (!this.acceptsDrop) return null
+    const target = asNode(e.target)
+    if (target === null || !this.deps.viewportEl.contains(target)) return null
+    if (this.deps.nodeIdAtPointer(e) !== null) return null
+    return this.core.worldPointFromEvent(e)
+  }
+
+  /** The drop hint, for a drag this class does not see (`pointerDropPoint`). */
+  setDropHint(on: boolean): void {
+    this.deps.viewportEl.classList.toggle(VIEWPORT_DROP_ACTIVE_CLASS, on)
+  }
+
   private readonly onDragOver = (e: DragEvent): void => {
     if (!this.acceptsDrop) return
     // A selection dragged out of a reader lands only on open canvas; over a
