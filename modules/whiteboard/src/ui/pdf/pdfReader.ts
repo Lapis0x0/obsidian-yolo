@@ -45,6 +45,7 @@ import type {
   AnnotationLease,
   AnnotationStore,
 } from '../../host/annotationStore'
+import { glideScrollBy } from '../wheelScroll'
 
 import {
   type PageBox,
@@ -461,11 +462,7 @@ export class PdfReader {
     const room = scroller.scrollHeight - scroller.clientHeight
     if (room <= 0) return false
     this.pendingPosition = null
-    scroller.scrollTop = Math.max(
-      0,
-      Math.min(room, scroller.scrollTop + deltaY),
-    )
-    scroller.scrollLeft += deltaX
+    glideScrollBy(scroller, deltaX, deltaY)
     return true
   }
 

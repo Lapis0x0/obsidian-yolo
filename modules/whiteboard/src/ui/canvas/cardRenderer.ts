@@ -34,6 +34,7 @@ import {
 import { cardMarkdownWindow, nodeTitleText } from '../lod'
 import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
+import { glideScrollBy } from '../wheelScroll'
 
 /** The host's one-pass Markdown renderer. Named through the Host API rather
  * than imported: the module SDK exports no alias for it. */
@@ -1207,13 +1208,8 @@ export class CardRenderer {
       '.markdown-preview-view',
     )
     if (!scroller) return false
-    const room = scroller.scrollHeight - scroller.clientHeight
-    if (room <= 0) return false
-    scroller.scrollTop = Math.max(
-      0,
-      Math.min(room, scroller.scrollTop + deltaY),
-    )
-    scroller.scrollLeft += deltaX
+    if (scroller.scrollHeight - scroller.clientHeight <= 0) return false
+    glideScrollBy(scroller, deltaX, deltaY)
     return true
   }
 
