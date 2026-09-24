@@ -148,8 +148,8 @@ export type DragGesturesDeps = Readonly<{
   /** `liveNodeRects` changed: the overview tier redraws from it. */
   onLiveRectsChange: () => void
   /** A plain click on a card may land on a link into one of the board's
-   * PDFs. */
-  followPdfLinkAt: (id: NodeId, e: PointerEvent) => void
+   * PDFs, which it follows; whether it did. */
+  followPdfLinkAt: (id: NodeId, e: PointerEvent) => boolean
   /** A click on a PDF card may land on one of its annotations, which opens
    * the card and the annotation together; whether it did. */
   openPdfAnnotationAt: (id: NodeId, e: PointerEvent) => boolean
@@ -389,7 +389,12 @@ export class DragGestures {
   finishResize(interaction: ResizeInteraction, e: PointerEvent): void {
     if (!interaction.dragging) {
       // A click, not a drag: the handle overlaps the card, so this means
-      // what the same click on the card means.
+      // what the same click on the card means — a text's citation runs along
+      // its bottom edge, under the handle there.
+      if (this.deps.followPdfLinkAt(interaction.nodeId, e)) {
+        this.core.setSelection([interaction.nodeId])
+        return
+      }
       if (
         interaction.wasSoleSelection &&
         this.deps.openOnSecondClick(interaction.nodeId)
@@ -662,6 +667,10 @@ export class DragGestures {
         this.toggleSelection(interaction.nodeId)
       } else if (this.deps.openPdfAnnotationAt(interaction.nodeId, e)) {
         return
+      } else if (this.deps.followPdfLinkAt(interaction.nodeId, e)) {
+        // A link is followed however the card was selected: aimed at, it is
+        // what the click meant, ahead of a second click's opening the card.
+        this.core.setSelection([interaction.nodeId])
       } else if (
         interaction.wasSoleSelection &&
         this.deps.openOnSecondClick(interaction.nodeId)
@@ -669,7 +678,6 @@ export class DragGestures {
         return
       } else {
         this.core.setSelection([interaction.nodeId])
-        this.deps.followPdfLinkAt(interaction.nodeId, e)
       }
       return
     }

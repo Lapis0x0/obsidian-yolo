@@ -86,7 +86,9 @@ const GROUP_HINTED_CLASS = 'yolo-whiteboard-group-hinted'
 const CARD_HOVERED_CLASS = 'yolo-whiteboard-card-hovered'
 /** On the hovered PDF card while the pointer is over one of its
  * annotations, which a click opens (PdfIntegration's `openAnnotationAt`). */
-const CARD_OVER_ANNOTATION_CLASS = 'yolo-whiteboard-card-over-annotation'
+/** On a card while the pointer is over something in its content a click
+ * opens: an annotation on a PDF card not entered, or a link into a PDF. */
+const CARD_OVER_OPENABLE_CLASS = 'yolo-whiteboard-card-over-openable'
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -254,6 +256,7 @@ export type InteractionControllerDeps = Readonly<{
     | 'followPdfLinkAt'
     | 'openAnnotationAt'
     | 'isOverAnnotation'
+    | 'isOverPdfLink'
     | 'hoverNoteAt'
   >
   /** Exempts a card from virtualization unmount while a gesture holds it. */
@@ -801,8 +804,10 @@ export class InteractionController {
       this.core
         .getRuntime(nodeId)
         ?.el?.classList.toggle(
-          CARD_OVER_ANNOTATION_CLASS,
-          !onLayer && this.deps.pdf.isOverAnnotation(nodeId, e),
+          CARD_OVER_OPENABLE_CLASS,
+          !onLayer &&
+            (this.deps.pdf.isOverAnnotation(nodeId, e) ||
+              this.deps.pdf.isOverPdfLink(nodeId, e)),
         )
     }
     this.deps.pdf.hoverNoteAt(onLayer ? null : nodeId, e)
@@ -885,7 +890,7 @@ export class InteractionController {
     if (this.hoveredNodeId !== null) {
       this.core
         .getRuntime(this.hoveredNodeId)
-        ?.el?.classList.remove(CARD_HOVERED_CLASS, CARD_OVER_ANNOTATION_CLASS)
+        ?.el?.classList.remove(CARD_HOVERED_CLASS, CARD_OVER_OPENABLE_CLASS)
     }
     this.hoveredNodeId = nodeId
     if (nodeId !== null) {

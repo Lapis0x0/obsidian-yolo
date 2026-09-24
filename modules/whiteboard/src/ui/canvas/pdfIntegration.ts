@@ -31,7 +31,7 @@
 // moves.
 
 import type { ScreenPoint } from '../../domain/camera'
-import { parsePdfLink } from '../../domain/excerpt'
+import { type PdfLinkTarget, parsePdfLink } from '../../domain/excerpt'
 import type {
   Board,
   BoardNode,
@@ -456,18 +456,6 @@ export class PdfIntegration {
   // -- links into this board's PDFs --------------------------------------
 
   /**
-   * A click on a card that landed on a link to a place in a PDF on this
-   * board (`[[x.pdf#page=N&selection=…]]`, an excerpt's citation) reads it
-   * there: the reading panel opens on that PDF's card at the page, and the
-   * text the link names is marked (PdfReader's `revealLocation`).
-   *
-   * A card's rendered content takes no pointer events (style.css's content
-   * mask), so which link was clicked is found by geometry. Only these links
-   * are taken: a link to a PDF that has no card here, or to anything else,
-   * is left as it was — a card's links are followed where Obsidian follows
-   * them, in its editor.
-   */
-  /**
    * A click on a PDF card that landed on one of its annotations — while the
    * card's content was still under its mask, so the reader never saw it. The
    * annotation is what was aimed at, not the card: the card is selected and
@@ -521,15 +509,48 @@ export class PdfIntegration {
     }
   }
 
-  followPdfLinkAt(id: NodeId, e: MouseEvent): void {
+  /**
+   * A click on a card that landed on a link to a place in a PDF on this
+   * board (`[[x.pdf#page=N&selection=…]]`, an excerpt's citation) reads it
+   * there: the reading panel opens on that PDF's card at the page, and the
+   * text the link names is marked (PdfReader's `revealLocation`).
+   *
+   * A card's rendered content takes no pointer events (style.css's content
+   * mask), so which link was clicked is found by geometry. Only these links
+   * are taken: a link to a PDF that has no card here, or to anything else,
+   * is left as it was — a card's links are followed where Obsidian follows
+   * them, in its editor. True when a link was followed.
+   */
+  followPdfLinkAt(id: NodeId, e: MouseEvent): boolean {
+    const link = this.pdfLinkAt(id, e)
+    if (!link) return false
+    this.openReaderPanel(link.cardId)
+    this.readerPanel
+      ?.getReader()
+      ?.revealLocation(link.target.page, link.target.selection)
+    return true
+  }
+
+  /** Whether the pointer on the card `id` is over a link into one of the
+   * board's PDFs — where a click follows it (`followPdfLinkAt`). */
+  isOverPdfLink(id: NodeId, e: MouseEvent): boolean {
+    return this.pdfLinkAt(id, e) !== null
+  }
+
+  /** The link into one of the board's PDFs at the pointer on the card `id`:
+   * the PDF card it reads in, and where. */
+  private pdfLinkAt(
+    id: NodeId,
+    e: MouseEvent,
+  ): Readonly<{ cardId: NodeId; target: PdfLinkTarget }> | null {
     const { core } = this.deps
     const runtime = core.getRuntime(id)
     const body = runtime?.bodyEl
-    if (!runtime || !body || core.isParseFailed()) return
+    if (!runtime || !body || core.isParseFailed()) return null
     const link = internalLinkAtPoint(body, e.clientX, e.clientY)
     const linktext = link?.getAttribute('data-href') ?? ''
     const parsed = parsePdfLink(linktext)
-    if (!parsed) return
+    if (!parsed) return null
     let file: YoloModuleHostVaultEntryV1 | null = null
     try {
       file = core.host.vault.resolveLink(
@@ -538,15 +559,11 @@ export class PdfIntegration {
       )
     } catch (error) {
       core.reportError('resolve pdf link', error)
-      return
+      return null
     }
-    if (!file) return
-    const target = this.pdfCardFor(file.path, id)
-    if (target === null) return
-    this.openReaderPanel(target)
-    this.readerPanel
-      ?.getReader()
-      ?.revealLocation(parsed.target.page, parsed.target.selection)
+    if (!file) return null
+    const cardId = this.pdfCardFor(file.path, id)
+    return cardId === null ? null : { cardId, target: parsed.target }
   }
 
   /** The card to read a PDF in: the one the panel is already on, else the

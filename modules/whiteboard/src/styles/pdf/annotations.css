@@ -413,10 +413,10 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
   cursor: grabbing;
 }
 
-/* Over an annotation on a PDF card whose content has not been entered: a
- * click there opens it (the card takes the click and opens the annotation
- * itself); a drag still moves the card. */
-.yolo-whiteboard-card.yolo-whiteboard-card-over-annotation,
-.yolo-whiteboard-card.yolo-whiteboard-card-over-annotation * {
+/* Over an annotation on a PDF card whose content has not been entered, or
+ * over a link into one of the board's PDFs: a click there opens it (the
+ * card takes the click and opens it itself); a drag still moves the card. */
+.yolo-whiteboard-card.yolo-whiteboard-card-over-openable,
+.yolo-whiteboard-card.yolo-whiteboard-card-over-openable * {
   cursor: pointer;
 }
