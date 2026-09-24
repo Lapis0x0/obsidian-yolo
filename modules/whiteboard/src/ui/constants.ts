@@ -454,10 +454,11 @@ export const NODE_ENTER_WINDOW_MS = 600
  * velocity × tau, carried by the same machinery as a wheel pan. Kept short:
  * the coast only has to say the board has some mass. At 300ms (iOS's own
  * deceleration) an ordinary pan overshot where the hand had put the board,
- * and every release became a correction; 150ms carries a flick about half as
- * far and leaves a deliberate drag almost where it was let go.
+ * and every release became a correction; 150ms still coasted further than
+ * wanted. 75ms is a settle rather than a slide — a quarter of the first
+ * figure's travel, over in about a fifth of a second.
  */
-export const PAN_FLING_TAU_MS = 150
+export const PAN_FLING_TAU_MS = 75
 /** Velocity is measured over the last stretch of the drag, not the whole of
  * it: what the hand was doing when it let go. */
 export const PAN_FLING_SAMPLE_MS = 80
