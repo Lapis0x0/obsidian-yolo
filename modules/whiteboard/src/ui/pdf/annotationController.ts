@@ -1,6 +1,12 @@
 // What happens when someone annotates a PDF on a board: the floating
 // toolbar over a text selection or a clicked annotation, the comment editor,
-// and the store edits they make (../../host/annotationStore.ts).
+// the preview of a comment under the pointer, and the store edits they make
+// (../../host/annotationStore.ts).
+//
+// A comment is its own thing, not a part of the toolbar: writing one puts
+// the toolbar away and leaves a field under the passage; a commented
+// annotation carries a dot (./annotationLayer.ts) whose comment shows on
+// hover and opens for editing on a click, without the toolbar.
 //
 // One per board view. Every reader on the board — each PDF card and the
 // reading panel — reports to the same controller (`events`), so there is one
@@ -52,6 +58,7 @@ import {
 
 import { quoteContext, resolveHighlightSelection } from './annotationGeometry'
 import { annotationColorClass } from './annotationLayer'
+import { createReaderIconButton } from './icons'
 import { generatePdfLink } from './pdfLink'
 import type {
   PdfReader,
@@ -102,6 +109,8 @@ type Grab = {
   readonly source:
     | Readonly<{ kind: 'area'; page: number; rect: PdfRectTuple }>
     | Readonly<{ kind: 'annotation'; id: string }>
+  /** Pressed on the annotation's comment dot: a click opens the comment. */
+  readonly note: boolean
   ghost: HTMLElement | null
 }
 
@@ -136,8 +145,12 @@ const OVERLAY_CLASS = 'yolo-whiteboard-pdf-annotation-overlay'
 const HIGHLIGHT_BUTTON_CLASS = 'yolo-whiteboard-pdf-highlight-button'
 const PAGES_SELECTOR = '.yolo-whiteboard-pdf-pages'
 const COMMENT_CLASS = 'yolo-whiteboard-pdf-comment'
-const COMMENT_TEXT_CLASS = 'yolo-whiteboard-pdf-comment-text'
+const COMMENT_NEW_CLASS = 'yolo-whiteboard-pdf-comment-new'
+const COMMENT_HIDDEN_CLASS = 'yolo-whiteboard-pdf-comment-hidden'
 const COMMENT_INPUT_CLASS = 'yolo-whiteboard-pdf-comment-input'
+const COMMENT_ACTIONS_CLASS = 'yolo-whiteboard-pdf-comment-actions'
+const COMMENT_BUTTON_CLASS = 'yolo-whiteboard-pdf-comment-button'
+const PREVIEW_CLASS = 'yolo-whiteboard-pdf-comment-preview'
 const GHOST_CLASS = 'yolo-whiteboard-pdf-drag-ghost'
 const GHOST_TEXT_CLASS = 'yolo-whiteboard-pdf-drag-ghost-text'
 const GHOST_DROPPABLE_CLASS = 'yolo-whiteboard-pdf-drag-ghost-droppable'
@@ -151,6 +164,15 @@ type Mode =
       selection: ReaderTextSelection
     }>
   | Readonly<{ kind: 'annotation'; reader: PdfReader; id: string }>
+  /** An annotation's comment being written. `isNew` when the annotation was
+   * made to be commented on, just now: letting it go with Escape takes the
+   * annotation back too. */
+  | Readonly<{
+      kind: 'comment'
+      reader: PdfReader
+      id: string
+      isNew: boolean
+    }>
   /** A frame drawn in area mode, not yet anything: it becomes an area
    * annotation, an excerpt, or nothing. */
   | Readonly<{
@@ -163,8 +185,12 @@ type Mode =
 export class AnnotationController {
   readonly events: ReaderAnnotationEvents
   private readonly toolbar: SelectionToolbar
-  /** The comment under the toolbar: shown, or being edited. */
+  /** The field a comment is written in, under its passage. */
   private readonly commentEl: HTMLElement
+  /** A commented annotation's comment, over its dot while the pointer
+   * is on it. */
+  private readonly previewEl: HTMLElement
+  private preview: Readonly<{ reader: PdfReader; id: string }> | null = null
   private mode: Mode | null = null
   private editor: HTMLTextAreaElement | null = null
   private editorKeymapDisposer: (() => void) | null = null
@@ -180,6 +206,10 @@ export class AnnotationController {
     this.commentEl.className = COMMENT_CLASS
     this.commentEl.hidden = true
     this.toolbar.overlay.appendChild(this.commentEl)
+    this.previewEl = doc.createElement('div')
+    this.previewEl.className = PREVIEW_CLASS
+    this.previewEl.hidden = true
+    this.toolbar.overlay.appendChild(this.previewEl)
     // A press on the toolbar must not take the focus, or collapse the text
     // selection its buttons are about to act on. The comment's text area is
     // the one thing in the overlay that needs a press to focus it.
@@ -199,7 +229,8 @@ export class AnnotationController {
       onAnnotationContextMenu: (reader, id, event) =>
         this.onAnnotationContextMenu(reader, id, event),
       onAreaDrawn: (reader, page, rect) => this.onAreaDrawn(reader, page, rect),
-      onGrab: (reader, event, id) => this.onGrab(reader, event, id),
+      onGrab: (reader, event, id, note) => this.onGrab(reader, event, id, note),
+      onNoteHover: (reader, id) => this.hoverNote(reader, id),
       onReaderDestroyed: (reader) => this.forgetReader(reader),
     }
   }
@@ -214,18 +245,20 @@ export class AnnotationController {
     return this.mode?.reader ?? null
   }
 
-  /** Escape: drops a drag in progress, steps out of the editor, then closes
-   * the toolbar. */
+  /** Escape: drops a drag in progress, lets go of a comment unwritten (and
+   * of the annotation made for it), then closes the toolbar. */
   dismiss(): boolean {
     if (this.grab?.ghost) {
       this.endGrab()
       return true
     }
-    if (this.editor) {
+    const mode = this.mode
+    if (mode?.kind === 'comment') {
       this.closeEditor(false)
+      if (mode.isNew) this.remove(mode.reader, mode.id)
+      else this.close()
       return true
     }
-    const mode = this.mode
     if (!mode) return false
     if (mode.kind === 'selection') mode.reader.clearTextSelection()
     this.close()
@@ -258,6 +291,12 @@ export class AnnotationController {
     this.open({ kind: 'annotation', reader, id })
   }
 
+  /** Opens an annotation's comment for editing, as a click on its dot
+   * would. */
+  openComment(reader: PdfReader, id: string, isNew = false): void {
+    this.open({ kind: 'comment', reader, id, isNew })
+  }
+
   /** Delete or Backspace with an annotation's toolbar open deletes it. */
   deleteActive(): boolean {
     const mode = this.mode
@@ -269,6 +308,7 @@ export class AnnotationController {
   /** A reader is going away: nothing may keep acting for it. */
   forgetReader(reader: PdfReader): void {
     if (this.grab?.reader === reader) this.endGrab()
+    if (this.preview?.reader === reader) this.hidePreview()
     if (this.mode?.reader === reader) this.close()
   }
 
@@ -344,10 +384,7 @@ export class AnnotationController {
             : 'pdf.annotate.comment',
         ),
         icon: 'message-square',
-        onSelect: () => {
-          this.open({ kind: 'annotation', reader, id })
-          this.openEditor()
-        },
+        onSelect: () => this.openComment(reader, id),
       },
       {
         title: t('pdf.annotate.excerpt'),
@@ -403,8 +440,8 @@ export class AnnotationController {
     if (!store) return
     const id = addArea(store, mode.page, mode.rect, color)
     if (id === null) return
-    this.open({ kind: 'annotation', reader: mode.reader, id })
-    if (withComment) this.openEditor()
+    if (withComment) this.openComment(mode.reader, id, true)
+    else this.open({ kind: 'annotation', reader: mode.reader, id })
   }
 
   // -----------------------------------------------------------------------
@@ -412,7 +449,8 @@ export class AnnotationController {
   // -----------------------------------------------------------------------
 
   private open(mode: Mode): void {
-    if (this.editor) this.closeEditor(true)
+    this.closeEditor(true)
+    this.hidePreview()
     const previous = this.mode
     if (previous && previous.reader !== mode.reader) {
       previous.reader.setActiveAnnotation(null)
@@ -427,20 +465,20 @@ export class AnnotationController {
       previous.reader.clearPendingArea()
     }
     this.mode = mode
-    mode.reader.setActiveAnnotation(mode.kind === 'annotation' ? mode.id : null)
+    mode.reader.setActiveAnnotation(
+      mode.kind === 'annotation' || mode.kind === 'comment' ? mode.id : null,
+    )
     this.rebuild()
     this.startFollowing()
   }
 
   private close(): void {
     this.endGrab()
-    if (this.editor) this.closeEditor(true)
+    this.closeEditor(true)
     if (this.mode?.kind === 'area') this.mode.reader.clearPendingArea()
     this.mode?.reader.setActiveAnnotation(null)
     this.mode = null
     this.toolbar.setModel(null)
-    this.commentEl.hidden = true
-    this.commentEl.replaceChildren()
     this.stopFollowing()
   }
 
@@ -449,12 +487,10 @@ export class AnnotationController {
     if (!mode) return
     if (mode.kind === 'selection') {
       this.toolbar.setModel({ items: this.selectionItems(mode) })
-      this.showComment(null)
       return
     }
     if (mode.kind === 'area') {
       this.toolbar.setModel({ items: this.areaItems(mode) })
-      this.showComment(null)
       return
     }
     const annotation = mode.reader.getAnnotationStore()?.get(mode.id)
@@ -462,10 +498,14 @@ export class AnnotationController {
       this.close()
       return
     }
+    if (mode.kind === 'comment') {
+      this.toolbar.setModel(null)
+      this.openEditor(mode)
+      return
+    }
     this.toolbar.setModel({
       items: this.annotationItems(mode.reader, annotation),
     })
-    if (!this.editor) this.showComment(annotation.comment ?? null)
   }
 
   /** The annotation colours. With `primary`, the split button that marks in
@@ -580,7 +620,7 @@ export class AnnotationController {
             : 'pdf.annotate.comment',
         ),
         icon: 'message-square',
-        onSelect: () => this.openEditor(),
+        onSelect: () => this.openComment(reader, annotation.id),
       },
     ]
     if (annotation.type === 'highlight') {
@@ -612,6 +652,8 @@ export class AnnotationController {
     if (!mode) return null
     if (mode.kind === 'selection') return mode.selection.getRect()
     if (mode.kind === 'area') return mode.reader.getPendingAreaRect()
+    if (mode.kind === 'comment')
+      return mode.reader.getAnnotationEndRect(mode.id)
     return mode.reader.getAnnotationRect(mode.id)
   }
 
@@ -637,7 +679,6 @@ export class AnnotationController {
     // What is being dragged out is under the pointer, not under the toolbar.
     if (this.grab?.ghost) {
       this.toolbar.setSuppressed(true)
-      this.commentEl.classList.add('yolo-whiteboard-pdf-comment-hidden')
       return
     }
     const rect = this.anchorRect()
@@ -648,13 +689,15 @@ export class AnnotationController {
       return
     }
     const overlay = this.toolbar.overlay.getBoundingClientRect()
+    if (this.mode?.kind === 'comment') {
+      this.placeEditor(rect, overlay)
+      return
+    }
     if (!rect || !(overlay.width > 0)) {
       this.toolbar.setSuppressed(true)
-      this.commentEl.classList.add('yolo-whiteboard-pdf-comment-hidden')
       return
     }
     this.toolbar.setSuppressed(false)
-    this.commentEl.classList.remove('yolo-whiteboard-pdf-comment-hidden')
     const size = this.toolbar.size()
     const point: ScreenPoint = toolbarScreenPosition(
       {
@@ -673,45 +716,41 @@ export class AnnotationController {
     // The colour row opens away from the text it is about to colour.
     const below = point.y > rect.top - overlay.top
     this.toolbar.setPopoversAbove(!below)
-    if (!this.commentEl.hidden) {
-      // Under the toolbar, left-aligned with it; above it when the toolbar
-      // sits below its anchor (it flipped for lack of room above).
-      const commentHeight = this.commentEl.offsetHeight
-      const y = below ? point.y + size.height + 4 : point.y - commentHeight - 4
-      this.commentEl.style.transform = `translate(${point.x}px, ${Math.max(TOOLBAR_MARGIN_PX, y)}px)`
-    }
   }
 
   // -----------------------------------------------------------------------
   // The comment
   // -----------------------------------------------------------------------
 
-  private showComment(comment: string | null): void {
-    if (comment === null) {
-      this.commentEl.hidden = true
-      this.commentEl.replaceChildren()
-      return
-    }
-    const doc = this.commentEl.ownerDocument
-    const text = doc.createElement('div')
-    text.className = COMMENT_TEXT_CLASS
-    text.textContent = comment
-    text.addEventListener('click', () => this.openEditor())
-    this.commentEl.replaceChildren(text)
-    this.commentEl.hidden = false
-  }
-
-  private openEditor(): void {
-    const mode = this.mode
-    if (mode?.kind !== 'annotation' || this.editor) return
+  /** Opens the field for the comment `mode` is writing, if it is not open. */
+  private openEditor(mode: Extract<Mode, { kind: 'comment' }>): void {
+    if (this.editor) return
     const annotation = mode.reader.getAnnotationStore()?.get(mode.id)
     if (!annotation) return
+    const t = this.options.t
     const doc = this.commentEl.ownerDocument
     const input = doc.createElement('textarea')
     input.className = COMMENT_INPUT_CLASS
-    input.rows = 3
+    input.rows = 1
     input.value = annotation.comment ?? ''
-    input.placeholder = this.options.t('pdf.annotate.commentPlaceholder')
+    input.placeholder = t('pdf.annotate.commentPlaceholder')
+    input.addEventListener('input', () => this.fitEditor())
+    // Enter writes it; Shift+Enter is a new line. Not while an input method
+    // is composing, where Enter picks the candidate.
+    input.addEventListener('keydown', (event) => {
+      if (
+        event.key !== 'Enter' ||
+        event.shiftKey ||
+        event.altKey ||
+        event.isComposing
+      ) {
+        return
+      }
+      event.preventDefault()
+      this.closeEditor(true)
+      this.close()
+    })
+    // Mod+Enter, which Obsidian's own binding would otherwise take first.
     this.editorKeymapDisposer = this.options.registerKeymap([
       {
         modifiers: ['Mod'],
@@ -719,21 +758,68 @@ export class AnnotationController {
         handler: () => {
           if (this.editor !== input) return false
           this.closeEditor(true)
+          this.close()
           return true
         },
       },
     ])
+    // Focus leaving it — a press anywhere else — writes it and puts it away.
     input.addEventListener('blur', () => {
-      if (this.editor === input) this.closeEditor(true)
+      if (this.editor !== input) return
+      this.closeEditor(true)
+      this.close()
     })
+    const children: Node[] = [input]
+    // A comment already written can be taken off, or confirmed; a new one is
+    // only the field.
+    if (!mode.isNew) {
+      const actions = doc.createElement('div')
+      actions.className = COMMENT_ACTIONS_CLASS
+      actions.append(
+        createReaderIconButton(
+          doc,
+          COMMENT_BUTTON_CLASS,
+          'trash-2',
+          t('pdf.annotate.deleteComment'),
+          () => {
+            this.closeEditor(false)
+            this.writableStore(mode.reader)?.update(mode.id, { comment: '' })
+            this.close()
+          },
+        ),
+        createReaderIconButton(
+          doc,
+          COMMENT_BUTTON_CLASS,
+          'check',
+          t('pdf.annotate.saveComment'),
+          () => {
+            this.closeEditor(true)
+            this.close()
+          },
+        ),
+      )
+      children.push(actions)
+    }
     this.editor = input
-    this.commentEl.replaceChildren(input)
+    this.commentEl.classList.toggle(COMMENT_NEW_CLASS, mode.isNew)
+    this.commentEl.replaceChildren(...children)
     this.commentEl.hidden = false
+    this.fitEditor()
     this.place()
     input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
   }
 
-  /** Ends editing, writing what was typed unless `save` is false. */
+  /** Grows the field with what is written in it, up to its CSS max-height. */
+  private fitEditor(): void {
+    const input = this.editor
+    if (!input) return
+    input.setCssProps({ height: 'auto' })
+    input.setCssProps({ height: `${input.scrollHeight}px` })
+  }
+
+  /** Puts the comment field away, writing what was typed unless `save` is
+   * false. What the mode does next is the caller's. */
   private closeEditor(save: boolean): void {
     const input = this.editor
     if (!input) return
@@ -743,15 +829,94 @@ export class AnnotationController {
     const mode = this.mode
     if (
       save &&
-      mode?.kind === 'annotation' &&
+      mode?.kind === 'comment' &&
       mode.reader.getAnnotationStore()?.get(mode.id)
     ) {
       this.writableStore(mode.reader)?.update(mode.id, {
         comment: input.value,
       })
     }
-    input.remove()
-    if (this.mode) this.rebuild()
+    this.commentEl.hidden = true
+    this.commentEl.replaceChildren()
+  }
+
+  /** Under the passage's last line, from where it starts; above the whole
+   * passage when there is no room below. */
+  private placeEditor(end: DOMRect | null, overlay: DOMRect): void {
+    const mode = this.mode
+    if (!end || !(overlay.width > 0) || mode?.kind !== 'comment') {
+      this.commentEl.classList.add(COMMENT_HIDDEN_CLASS)
+      return
+    }
+    this.commentEl.classList.remove(COMMENT_HIDDEN_CLASS)
+    const width = this.commentEl.offsetWidth
+    const height = this.commentEl.offsetHeight
+    const x = Math.max(
+      TOOLBAR_MARGIN_PX,
+      Math.min(
+        end.left - overlay.left,
+        overlay.width - width - TOOLBAR_MARGIN_PX,
+      ),
+    )
+    let y = end.bottom - overlay.top + TOOLBAR_GAP_PX
+    if (y + height > overlay.height - TOOLBAR_MARGIN_PX) {
+      const whole = mode.reader.getAnnotationRect(mode.id) ?? end
+      y = whole.top - overlay.top - TOOLBAR_GAP_PX - height
+    }
+    this.commentEl.style.transform = `translate(${x}px, ${Math.max(TOOLBAR_MARGIN_PX, y)}px)`
+  }
+
+  // -----------------------------------------------------------------------
+  // The comment under the pointer
+  // -----------------------------------------------------------------------
+
+  /** The pointer came onto a comment dot (`id`), or left it (null): its
+   * comment is previewed over it. The reader reports its own; the board
+   * reports those on a card not entered, which the reader never sees. */
+  hoverNote(reader: PdfReader, id: string | null): void {
+    if (id === null) {
+      if (this.preview?.reader === reader) this.hidePreview()
+      return
+    }
+    const comment = reader.getAnnotationStore()?.get(id)?.comment?.trim()
+    // Not while it is open for editing, nor while something is carried.
+    if (
+      !comment ||
+      this.grab ||
+      (this.mode?.kind === 'comment' && this.mode.id === id)
+    ) {
+      this.hidePreview()
+      return
+    }
+    const note = reader.getNoteRect(id)
+    const overlay = this.toolbar.overlay.getBoundingClientRect()
+    if (!note || !(overlay.width > 0)) {
+      this.hidePreview()
+      return
+    }
+    this.preview = { reader, id }
+    this.previewEl.textContent = comment
+    this.previewEl.hidden = false
+    // Centred over the dot; under it when there is no room above.
+    const width = this.previewEl.offsetWidth
+    const height = this.previewEl.offsetHeight
+    const x = Math.max(
+      TOOLBAR_MARGIN_PX,
+      Math.min(
+        note.left + note.width / 2 - overlay.left - width / 2,
+        overlay.width - width - TOOLBAR_MARGIN_PX,
+      ),
+    )
+    let y = note.top - overlay.top - TOOLBAR_GAP_PX - height
+    if (y < TOOLBAR_MARGIN_PX) y = note.bottom - overlay.top + TOOLBAR_GAP_PX
+    this.previewEl.style.transform = `translate(${x}px, ${y}px)`
+  }
+
+  private hidePreview(): void {
+    if (!this.preview) return
+    this.preview = null
+    this.previewEl.hidden = true
+    this.previewEl.textContent = ''
   }
 
   // -----------------------------------------------------------------------
@@ -798,8 +963,7 @@ export class AnnotationController {
     if (!store.add(created)) return
     reader.clearTextSelection()
     if (withComment && created.length > 0) {
-      this.open({ kind: 'annotation', reader, id: created[0].id })
-      this.openEditor()
+      this.openComment(reader, created[0].id, true)
     } else {
       this.close()
     }
@@ -862,7 +1026,13 @@ export class AnnotationController {
     const store = this.writableStore(reader)
     if (!store) return
     store.remove(id)
-    if (this.mode?.kind === 'annotation' && this.mode.id === id) this.close()
+    const mode = this.mode
+    if (
+      (mode?.kind === 'annotation' || mode?.kind === 'comment') &&
+      mode.id === id
+    ) {
+      this.close()
+    }
   }
 
   /** The reader's store, when it takes edits. One that does not is showing
@@ -990,6 +1160,7 @@ export class AnnotationController {
     reader: PdfReader,
     event: PointerEvent,
     id: string | null,
+    note: boolean,
   ): void {
     const mode = this.mode
     let source: Grab['source']
@@ -998,12 +1169,14 @@ export class AnnotationController {
       source = { kind: 'area', page: mode.page, rect: mode.rect }
     } else return
     this.endGrab()
+    this.hidePreview()
     this.grab = {
       reader,
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       source,
+      note,
       ghost: null,
     }
     const doc = this.options.parent.ownerDocument
@@ -1064,7 +1237,8 @@ export class AnnotationController {
     // it — the reader never saw this press, so it reports no click.
     if (clicked && grab.source.kind === 'annotation') {
       grab.reader.clearTextSelection()
-      this.onAnnotationClick(grab.reader, grab.source.id)
+      if (grab.note) this.openComment(grab.reader, grab.source.id)
+      else this.onAnnotationClick(grab.reader, grab.source.id)
     }
   }
 

@@ -54,6 +54,7 @@ import {
   quadBoxes,
 } from './annotationGeometry'
 import {
+  NOTE_CLASS,
   annotationClientRect,
   boxesFor,
   markActiveAnnotation,
@@ -131,8 +132,17 @@ export type ReaderAnnotationEvents = Readonly<{
   onAreaDrawn: (reader: PdfReader, page: number, rect: PdfRectTuple) => void
   /** A press on something a drag can take out: an annotation (`id`), or
    * the frame waiting on the page (null). Still a click if it does not move.
-   * The press has been kept from selecting text or drawing a frame. */
-  onGrab: (reader: PdfReader, event: PointerEvent, id: string | null) => void
+   * The press has been kept from selecting text or drawing a frame. `note`
+   * when it was on the annotation's comment dot rather than on its mark. */
+  onGrab: (
+    reader: PdfReader,
+    event: PointerEvent,
+    id: string | null,
+    note: boolean,
+  ) => void
+  /** The pointer came onto a comment dot (`id`), or left the one it
+   * reported. */
+  onNoteHover: (reader: PdfReader, id: string | null) => void
   /** The reader is being destroyed. */
   onReaderDestroyed: (reader: PdfReader) => void
 }>
@@ -169,6 +179,8 @@ const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
 const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
 /** On the pages while the pointer is over something a press would pick up. */
 const GRABBABLE_CLASS = 'yolo-whiteboard-pdf-pages-grabbable'
+/** On the pages while the pointer is over a comment dot. */
+const ON_NOTE_CLASS = 'yolo-whiteboard-pdf-pages-on-note'
 const FLASH_CLASS = 'yolo-whiteboard-pdf-flash'
 const FLASH_SHOWN_CLASS = 'yolo-whiteboard-pdf-flash-shown'
 /** How long the text a link names stays marked after the reader goes to
@@ -297,6 +309,8 @@ export class PdfReader {
   /** A selection was reported and has not been reported gone. */
   private selectionReported = false
   private activeAnnotationId: string | null = null
+  /** The comment dot last reported under the pointer. */
+  private hoveredNote: string | null = null
 
   constructor(options: PdfReaderOptions) {
     this.options = options
@@ -377,6 +391,7 @@ export class PdfReader {
       )
       this.pagesEl.addEventListener('pointerdown', this.onPagesPointerDown)
       this.pagesEl.addEventListener('pointermove', this.onPagesPointerMove)
+      this.pagesEl.addEventListener('pointerleave', this.onPagesPointerLeave)
       this.pagesEl.addEventListener('contextmenu', this.onPagesContextMenu)
       doc.addEventListener('pointerup', this.onDocumentPointerUp)
       doc.addEventListener('pointercancel', this.onDocumentPointerUp)
@@ -530,6 +545,64 @@ export class PdfReader {
     return marks ? annotationClientRect(marks, id) : null
   }
 
+  /** Where an annotation's last line (or its frame) is on screen: what its
+   * comment is written under. Null when its page is not drawn. */
+  getAnnotationEndRect(id: string): DOMRect | null {
+    const annotation = this.store?.get(id)
+    if (!annotation) return null
+    const slot = this.slots[annotation.anchor.page - 1]
+    if (!slot?.marksEl || !slot.frame) return null
+    const last = boxesFor(annotation, slot.frame).at(-1)
+    const page = slot.el.getBoundingClientRect()
+    if (!last || !(page.width > 0)) return null
+    const Rect = this.rootEl.ownerDocument.defaultView?.DOMRect ?? DOMRect
+    return new Rect(
+      page.left + last.left * page.width,
+      page.top + last.top * page.height,
+      (last.right - last.left) * page.width,
+      (last.bottom - last.top) * page.height,
+    )
+  }
+
+  /** Where an annotation's comment dot is on screen, or null when it has
+   * none drawn. */
+  getNoteRect(id: string): DOMRect | null {
+    const annotation = this.store?.get(id)
+    if (!annotation) return null
+    const marks = this.slots[annotation.anchor.page - 1]?.marksEl
+    for (const note of this.notesIn(marks)) {
+      if (note.dataset.annotationId === id) return note.getBoundingClientRect()
+    }
+    return null
+  }
+
+  /** The annotation whose comment dot is at a point on screen, or null.
+   * The dots are drawn in the annotation layer, which takes no pointer,
+   * so they are found by where they are drawn. */
+  noteAtPoint(clientX: number, clientY: number): string | null {
+    if (this.areaMode) return null
+    for (const slot of this.active) {
+      for (const note of this.notesIn(slot.marksEl)) {
+        const rect = note.getBoundingClientRect()
+        if (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        ) {
+          return note.dataset.annotationId ?? null
+        }
+      }
+    }
+    return null
+  }
+
+  private notesIn(marks: HTMLElement | null | undefined): HTMLElement[] {
+    return marks
+      ? Array.from(marks.querySelectorAll<HTMLElement>(`.${NOTE_CLASS}`))
+      : []
+  }
+
   /** A copy of the page picture under `rect` (client pixels), no wider than
    * `maxWidth` CSS pixels — what a drag of a framed area carries — or null
    * where no picture is drawn. */
@@ -679,6 +752,7 @@ export class PdfReader {
     const doc = this.rootEl.ownerDocument
     this.pagesEl.removeEventListener('pointerdown', this.onPagesPointerDown)
     this.pagesEl.removeEventListener('pointermove', this.onPagesPointerMove)
+    this.pagesEl.removeEventListener('pointerleave', this.onPagesPointerLeave)
     this.pagesEl.removeEventListener('contextmenu', this.onPagesContextMenu)
     doc.removeEventListener('pointerup', this.onDocumentPointerUp)
     doc.removeEventListener('pointercancel', this.onDocumentPointerUp)
@@ -1370,10 +1444,16 @@ export class PdfReader {
   private readonly onPagesPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return
     const events = this.options.annotationEvents
+    const note = events ? this.noteAtPoint(event.clientX, event.clientY) : null
+    if (events && note !== null) {
+      event.preventDefault()
+      events.onGrab(this, event, note, true)
+      return
+    }
     const grabbed = events ? this.grabbableAt(event) : undefined
     if (events && grabbed !== undefined) {
       event.preventDefault()
-      events.onGrab(this, event, grabbed)
+      events.onGrab(this, event, grabbed, false)
       return
     }
     // A frame left waiting is let go by the next press, as a text selection
@@ -1408,10 +1488,18 @@ export class PdfReader {
   private readonly onPagesPointerMove = (event: PointerEvent): void => {
     const draft = this.areaDraft
     if (!draft) {
+      const note =
+        event.buttons === 0
+          ? this.noteAtPoint(event.clientX, event.clientY)
+          : null
+      this.hoverNote(note)
       // What a press would pick up says so before the press.
+      this.pagesEl.classList.toggle(ON_NOTE_CLASS, note !== null)
       this.pagesEl.classList.toggle(
         GRABBABLE_CLASS,
-        event.buttons === 0 && this.grabbableAt(event) !== undefined,
+        note === null &&
+          event.buttons === 0 &&
+          this.grabbableAt(event) !== undefined,
       )
       return
     }
@@ -1421,6 +1509,17 @@ export class PdfReader {
     draft.x = clamp01((event.clientX - rect.left) / rect.width)
     draft.y = clamp01((event.clientY - rect.top) / rect.height)
     this.placeAreaDraft()
+  }
+
+  private readonly onPagesPointerLeave = (): void => {
+    this.pagesEl.classList.remove(ON_NOTE_CLASS)
+    this.hoverNote(null)
+  }
+
+  private hoverNote(id: string | null): void {
+    if (id === this.hoveredNote) return
+    this.hoveredNote = id
+    this.options.annotationEvents?.onNoteHover(this, id)
   }
 
   private placeAreaDraft(): void {

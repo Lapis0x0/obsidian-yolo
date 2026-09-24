@@ -172,6 +172,8 @@ export const zh = {
       comment: '批注',
       editComment: '编辑批注',
       commentPlaceholder: '写批注…',
+      saveComment: '保存批注',
+      deleteComment: '删除批注',
       quoteToChat: '引用到聊天',
       excerpt: '摘录到白板',
       copyLink: '复制链接',

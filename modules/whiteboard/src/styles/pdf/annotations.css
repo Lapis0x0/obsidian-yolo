@@ -118,15 +118,32 @@ svg.yolo-whiteboard-pdf-highlight {
   outline-offset: 1px;
 }
 
-/* A commented annotation's dot, just past the end of its first line. */
+/* A commented annotation's dot, just past where it ends. The element is
+ * the room a pointer has to hover or click it (annotationController.ts's
+ * preview and editor) — the layer takes no pointer, so the reader finds it
+ * by where it is drawn — and the dot is drawn in its middle. */
 .yolo-whiteboard-pdf-mark-note {
   position: absolute;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 2px;
+  width: 14px;
+  height: 14px;
+  transform: translate(-2px, -50%);
+}
+
+.yolo-whiteboard-pdf-mark-note::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 8px;
+  height: 8px;
+  margin: auto;
   border-radius: 50%;
   background: var(--yolo-whiteboard-annotation);
   box-shadow: 0 0 0 1.5px var(--background-primary);
+}
+
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-on-note,
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-on-note * {
+  cursor: pointer;
 }
 
 /* Area mode: a drag on a page frames a region. The text layer steps out of
@@ -205,21 +222,28 @@ button.yolo-whiteboard-pdf-highlight-button::after {
   pointer-events: none;
 }
 
-/* The comment under the toolbar: its text, or the field editing it. */
+/* The field a comment is written in, under its passage: one line that
+ * grows with what is written, and — for a comment already written — its
+ * delete and confirm buttons beside it. */
 .yolo-whiteboard-pdf-comment {
   position: absolute;
   left: 0;
   top: 0;
-  width: 260px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 320px;
   max-width: calc(100% - 16px);
-  padding: 6px 8px;
+  padding: 4px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 4px);
+  border-radius: var(--radius-m, 8px);
   background-color: var(--background-primary);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  box-shadow: var(--shadow-s);
   pointer-events: auto;
+}
+
+.yolo-whiteboard-pdf-comment.yolo-whiteboard-pdf-comment-new {
+  width: 300px;
 }
 
 .yolo-whiteboard-pdf-comment[hidden],
@@ -227,21 +251,65 @@ button.yolo-whiteboard-pdf-highlight-button::after {
   display: none;
 }
 
-.yolo-whiteboard-pdf-comment-text {
-  max-height: 12em;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  cursor: text;
-}
-
 textarea.yolo-whiteboard-pdf-comment-input {
   display: block;
-  width: 100%;
-  min-height: 4.5em;
-  padding: 2px 4px;
-  resize: vertical;
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  max-height: 10em;
+  margin: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
   font: inherit;
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-height-tight);
+  resize: none;
+  overflow-y: auto;
+}
+
+textarea.yolo-whiteboard-pdf-comment-input:focus,
+textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
+  border: 0;
+  box-shadow: none;
+}
+
+.yolo-whiteboard-pdf-comment-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 2px;
+}
+
+/* A commented annotation's comment, over its dot while the pointer is on
+ * it. Only shown: the pointer passes through it. */
+.yolo-whiteboard-pdf-comment-preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: min(240px, calc(100% - 16px));
+  max-height: 12em;
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background-color: var(--background-secondary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-pdf-comment-preview[hidden] {
+  display: none;
 }
 
 /* Over the waiting frame or any annotation, a press picks it up

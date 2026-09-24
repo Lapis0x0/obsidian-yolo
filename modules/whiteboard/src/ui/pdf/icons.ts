@@ -1,5 +1,6 @@
 // Lucide geometry for the PDF reader's own chrome (./pdfReader.ts,
-// ./pdfSearch.ts, ./readerPanel.ts), inlined the way the canvas's other
+// ./pdfSearch.ts, ./readerPanel.ts, and the comment editor in
+// ./annotationController.ts), inlined the way the canvas's other
 // chrome does it (../canvasControls.ts, ../cardMenu.ts): the module has no
 // icon dependency, and a handful of paths is not worth one. Circles are
 // written as two arcs so every icon is a list of paths.
@@ -11,12 +12,22 @@ export type ReaderIconName =
   | 'x'
   | 'square-dashed'
   | 'ellipsis'
+  | 'check'
+  | 'trash-2'
 
 const ICONS: Readonly<Record<ReaderIconName, readonly string[]>> = {
   search: ['M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0', 'm21 21-4.3-4.3'],
   'chevron-up': ['m18 15-6-6-6 6'],
   'chevron-down': ['m6 9 6 6 6-6'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
+  check: ['M20 6 9 17l-5-5'],
+  'trash-2': [
+    'M3 6h18',
+    'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6',
+    'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2',
+    'M10 11v6',
+    'M14 11v6',
+  ],
   ellipsis: [
     'M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
     'M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',

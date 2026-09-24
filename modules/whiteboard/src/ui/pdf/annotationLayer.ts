@@ -36,7 +36,11 @@ const HIGHLIGHT_OUTLINE_CLASS = 'yolo-whiteboard-pdf-highlight-outline'
 const SHAPE_SELECTOR = `.${MARK_CLASS}, .${HIGHLIGHT_CLASS} path`
 const MARK_AREA_CLASS = 'yolo-whiteboard-pdf-mark-area'
 const MARK_ACTIVE_CLASS = 'yolo-whiteboard-pdf-mark-active'
-const NOTE_CLASS = 'yolo-whiteboard-pdf-mark-note'
+/** How far down its last line a highlight's dot sits: low, near where the
+ * words stand, rather than in the line's middle. */
+const NOTE_LINE_FRACTION = 0.95
+/** A commented annotation's dot. */
+export const NOTE_CLASS = 'yolo-whiteboard-pdf-mark-note'
 
 /** The class that paints something in an annotation colour (style.css sets
  * `--yolo-whiteboard-annotation` from it). */
@@ -104,16 +108,17 @@ export function renderAnnotationLayer(
         children.push(svg)
       }
     }
-    // A commented annotation says so just past the end of its first line
-    // (or the corner of its frame): a dot in its own colour.
+    // A commented annotation says so where it ends: a dot in its own colour
+    // just past its last line (or the corner of its frame) — the reader's to
+    // hover and click (`noteAtPoint`), since this layer takes no pointer.
     if (annotation.comment && boxes.length > 0) {
-      const first = boxes[0]
+      const last = boxes[boxes.length - 1]
       const note = doc.createElement('div')
       note.className = `${NOTE_CLASS} ${colorClass}`
       note.dataset.annotationId = annotation.id
       note.setCssProps({
-        left: `${first.right * 100}%`,
-        top: `${(annotation.type === 'area' ? first.top : (first.top + first.bottom) / 2) * 100}%`,
+        left: `${last.right * 100}%`,
+        top: `${(annotation.type === 'area' ? last.top : last.top + (last.bottom - last.top) * NOTE_LINE_FRACTION) * 100}%`,
       })
       children.push(note)
     }

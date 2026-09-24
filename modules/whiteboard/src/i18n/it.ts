@@ -178,6 +178,8 @@ export const it = {
       comment: 'Commento',
       editComment: 'Modifica commento',
       commentPlaceholder: 'Scrivi un commento…',
+      saveComment: 'Salva commento',
+      deleteComment: 'Elimina commento',
       quoteToChat: 'Cita nella chat',
       excerpt: 'Estrai sulla lavagna',
       copyLink: 'Copia link',

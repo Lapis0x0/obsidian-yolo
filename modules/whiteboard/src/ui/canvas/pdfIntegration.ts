@@ -111,6 +111,8 @@ export class PdfIntegration {
   /** The PDF annotation toolbar and comment editor, over the whole view
    * (../pdf/annotationController.ts). */
   private readonly annotationController: AnnotationController
+  /** The comment dot `hoverNoteAt` last previewed. */
+  private hoveredNote: Readonly<{ reader: PdfReader; id: string }> | null = null
   private readonly pdfExcerpts: PdfExcerpts
 
   constructor(private readonly deps: PdfIntegrationDeps) {
@@ -474,11 +476,15 @@ export class PdfIntegration {
     const { core } = this.deps
     const reader = core.getRuntime(id)?.pdfReader
     if (!reader || core.isParseFailed()) return false
-    const annotationId = reader.annotationAtPoint(e.clientX, e.clientY)
+    const noteId = reader.noteAtPoint(e.clientX, e.clientY)
+    const annotationId =
+      noteId ?? reader.annotationAtPoint(e.clientX, e.clientY)
     if (annotationId === null) return false
     core.setSelection([id])
     if (!this.deps.enterCard(id)) return false
-    this.annotationController.openAnnotation(reader, annotationId)
+    // On its comment dot, the comment is what was aimed at.
+    if (noteId !== null) this.annotationController.openComment(reader, noteId)
+    else this.annotationController.openAnnotation(reader, annotationId)
     return true
   }
 
@@ -488,7 +494,29 @@ export class PdfIntegration {
   isOverAnnotation(id: NodeId, e: MouseEvent): boolean {
     if (this.deps.getEnteredNodeId() === id) return false
     const reader = this.deps.core.getRuntime(id)?.pdfReader
-    return reader?.annotationAtPoint(e.clientX, e.clientY) != null
+    if (!reader) return false
+    return (
+      reader.noteAtPoint(e.clientX, e.clientY) !== null ||
+      reader.annotationAtPoint(e.clientX, e.clientY) !== null
+    )
+  }
+
+  /** The pointer on the board is at `e`, over the card `id` (or none): on
+   * a comment dot of a PDF card whose content has not been entered, that
+   * comment is previewed, as the reader shows it once entered. */
+  hoverNoteAt(id: NodeId | null, e: MouseEvent): void {
+    const reader =
+      id !== null && this.deps.getEnteredNodeId() !== id
+        ? (this.deps.core.getRuntime(id)?.pdfReader ?? null)
+        : null
+    const note = reader?.noteAtPoint(e.clientX, e.clientY) ?? null
+    const hovered = this.hoveredNote
+    if (hovered?.reader === reader && hovered?.id === note) return
+    if (hovered) this.annotationController.hoverNote(hovered.reader, null)
+    this.hoveredNote = reader && note !== null ? { reader, id: note } : null
+    if (reader && note !== null) {
+      this.annotationController.hoverNote(reader, note)
+    }
   }
 
   followPdfLinkAt(id: NodeId, e: MouseEvent): void {

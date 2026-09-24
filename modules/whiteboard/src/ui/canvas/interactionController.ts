@@ -254,6 +254,7 @@ export type InteractionControllerDeps = Readonly<{
     | 'followPdfLinkAt'
     | 'openAnnotationAt'
     | 'isOverAnnotation'
+    | 'hoverNoteAt'
   >
   /** Exempts a card from virtualization unmount while a gesture holds it. */
   pin: (id: NodeId) => void
@@ -744,6 +745,7 @@ export class InteractionController {
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
     this.deps.toolbar.setToolbarSuppressed(true)
+    this.deps.pdf.hoverNoteAt(null, e)
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
@@ -803,6 +805,7 @@ export class InteractionController {
           !onLayer && this.deps.pdf.isOverAnnotation(nodeId, e),
         )
     }
+    this.deps.pdf.hoverNoteAt(onLayer ? null : nodeId, e)
     this.setHintedGroup(
       nodeId === null && !onLayer && !this.core.isOverview()
         ? innermostFrameAt(this.groupNodes(), this.core.worldPointFromEvent(e))

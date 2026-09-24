@@ -180,6 +180,8 @@ export const en = {
       comment: 'Comment',
       editComment: 'Edit comment',
       commentPlaceholder: 'Write a comment…',
+      saveComment: 'Save comment',
+      deleteComment: 'Delete comment',
       quoteToChat: 'Quote in chat',
       excerpt: 'Excerpt to board',
       copyLink: 'Copy link',
