@@ -158,31 +158,34 @@
   opacity: 0.8;
 }
 
-/* Its connection points stand just outside the handles rather than in their
- * middle. A card is tall enough that the dot takes a fraction of its side
- * handle; a line of text is about as tall as the dot, which would leave its
- * sides nothing to be resized by. They show as a card's do: the one on the
- * side the pointer is at. */
+/* Its connection points sit on the outer half of their handles, just past
+ * the text's edge, rather than in their middle. A card is tall enough that
+ * the dot takes a fraction of its side handle; a line of text is about as
+ * tall as the dot, which would leave its sides nothing to be resized by — so
+ * the half over the text resizes and the half outside it connects. Not
+ * further out than that: the handle grows as the board zooms in, and a dot a
+ * whole handle away drifted off from the edge its arrow lands on. They show
+ * as a card's do: the one on the side the pointer is at. */
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-connection-point[data-side='left'] {
   left: auto;
-  right: 100%;
+  right: 50%;
 }
 
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-connection-point[data-side='right'] {
   right: auto;
-  left: 100%;
+  left: 50%;
 }
 
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-connection-point[data-side='top'] {
   top: auto;
-  bottom: 100%;
+  bottom: 50%;
 }
 
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-connection-point[data-side='bottom'] {
   bottom: auto;
-  top: 100%;
+  top: 50%;
 }

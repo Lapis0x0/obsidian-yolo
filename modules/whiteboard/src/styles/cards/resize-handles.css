@@ -122,15 +122,21 @@
   right: 1px;
 }
 
+/* The dot is drawn at three quarters of the hit area: the area is sized to
+ * be easy to land on, and a dot that filled it read as a blob beside the
+ * card rather than a point on its edge. */
 .yolo-whiteboard-connection-point::after {
   content: ' ';
+  position: absolute;
+  inset: 0;
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 75%;
+  height: 75%;
+  margin: auto;
   box-sizing: border-box;
   border-radius: 50%;
   background-color: var(--interactive-accent);
-  border: 3px solid var(--background-modifier-border);
+  border: 2px solid var(--background-modifier-border);
   opacity: 0;
 }
 
