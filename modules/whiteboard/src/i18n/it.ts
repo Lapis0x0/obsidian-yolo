@@ -154,6 +154,7 @@ export const it = {
     openFailed: 'Impossibile aprire questo PDF',
     pageInput: 'Pagina',
     pageTitle: '{name} · p. {page}',
+    sheetTitle: 'p. {page}',
     search: 'Trova nel documento',
     searchPlaceholder: 'Trova…',
     searchPrevious: 'Precedente (Maiusc+Invio)',

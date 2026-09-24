@@ -10,7 +10,7 @@
  * width is measured from (cardRenderer's `mountSpreadTitle`). */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
   display: block;
-  border-color: transparent;
+  border: none;
   background-color: transparent;
 }
 
@@ -25,12 +25,6 @@
   white-space: nowrap;
 }
 
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ) {
-  border-color: transparent;
-}
-
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered
   .yolo-whiteboard-spread-title-text,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected
@@ -38,11 +32,25 @@
   color: var(--text-normal);
 }
 
+/* No ring when selected and no lifted shadow: the title is a name, not a
+ * card, and the line down the right of the whole document (the frame below)
+ * is what says it is selected. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected {
+  box-shadow: none;
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
+.yolo-whiteboard-card.yolo-whiteboard-spread-title::after {
+  content: none;
+}
+
 /* The sheets of the document whose title is under the pointer (the canvas's
- * `syncSpreadHover`): which pieces of paper are one paper. */
-.yolo-whiteboard-card.yolo-whiteboard-spread-sheet.yolo-whiteboard-spread-sibling {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
+ * `syncSpreadHover`): which pieces of paper are one paper. The border a
+ * pointed-at card gets, not a selection's accent: pointing selects nothing. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-sheet.yolo-whiteboard-spread-sibling:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  border-color: var(--background-modifier-border-focus);
 }
 
 /* A sheet is a page of paper: square corners, no frame of its own beyond the
@@ -104,21 +112,19 @@
   pointer-events: auto;
 }
 
-/* The frame around a selected spread (ui/canvas/spreadFrame.ts). It says
- * what "the whole document" covers and takes no pointer, except at its right
- * edge: dragged sideways, that lays every sheet out again a whole column at a
- * time. Chrome in world coordinates, weighted by the zoom multiplier the
- * camera writes on this element, like the resize handles. */
+/* The frame around a selected spread (ui/canvas/spreadFrame.ts): the space
+ * "the whole document" covers, drawn as one thing only — a faint line down
+ * its right side, as bare text is marked (text.css), because that side is
+ * the one that does something. Dragged sideways, it lays every sheet out
+ * again a whole column at a time. Chrome in world coordinates, weighted by
+ * the zoom multiplier the camera writes on this element, like the resize
+ * handles. */
 .yolo-whiteboard-spread-frame {
   --yolo-whiteboard-spread-frame-line: calc(
-    1.5px * var(--yolo-whiteboard-zoom-multiplier, 1)
+    2px * var(--yolo-whiteboard-zoom-multiplier, 1)
   );
   position: absolute;
   z-index: 2;
-  box-sizing: border-box;
-  border: var(--yolo-whiteboard-spread-frame-line) dashed
-    var(--interactive-accent);
-  border-radius: calc(6px * var(--yolo-whiteboard-zoom-multiplier, 1));
   pointer-events: none;
 }
 
@@ -126,9 +132,9 @@
   display: none;
 }
 
-/* A strip straddling the right edge, wider than the line so it can be
- * found; the line it sits on turns solid and heavier under the pointer, and
- * stays so for the length of a drag. */
+/* A strip centred on the right side, wider than the line so it can be
+ * found; the line turns the accent under the pointer, and stays so for the
+ * length of a drag. */
 .yolo-whiteboard-spread-frame-edge {
   --yolo-whiteboard-spread-edge: calc(
     12px * var(--yolo-whiteboard-zoom-multiplier, 1)
@@ -136,10 +142,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  right: calc(
-    var(--yolo-whiteboard-spread-edge) * -0.5 -
-      var(--yolo-whiteboard-spread-frame-line) * 0.5
-  );
+  right: calc(var(--yolo-whiteboard-spread-edge) * -0.5);
   width: var(--yolo-whiteboard-spread-edge);
   cursor: ew-resize;
   pointer-events: auto;
@@ -150,15 +153,16 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(50% - var(--yolo-whiteboard-spread-frame-line));
-  width: calc(var(--yolo-whiteboard-spread-frame-line) * 2);
+  left: calc(50% - var(--yolo-whiteboard-spread-frame-line) * 0.5);
+  width: var(--yolo-whiteboard-spread-frame-line);
   border-radius: var(--yolo-whiteboard-spread-frame-line);
-  background: var(--interactive-accent);
-  opacity: 0;
+  background-color: var(--text-faint);
+  opacity: 0.5;
 }
 
 .yolo-whiteboard-spread-frame-edge:hover::before,
 .yolo-whiteboard-spread-frame-dragging
   .yolo-whiteboard-spread-frame-edge::before {
+  background-color: var(--interactive-accent);
   opacity: 1;
 }

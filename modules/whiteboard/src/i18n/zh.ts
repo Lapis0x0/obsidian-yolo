@@ -148,6 +148,7 @@ export const zh = {
     openFailed: '无法打开这个 PDF',
     pageInput: '页码',
     pageTitle: '{name} · 第 {page} 页',
+    sheetTitle: '第 {page} 页',
     search: '在文档中查找',
     searchPlaceholder: '查找…',
     searchPrevious: '上一个（Shift+Enter）',

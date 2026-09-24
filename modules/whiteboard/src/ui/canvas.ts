@@ -132,7 +132,7 @@ import {
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
 } from './constants'
-import { blockStartLine, nextOverviewState } from './lod'
+import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -746,7 +746,7 @@ export class WhiteboardCanvas {
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
       getLiveRects: () => this.interaction.liveNodeRects,
-      pdfPageLabel: this.pdfPageLabel,
+      pdfPageLabels: this.pdfPageLabels,
     })
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
@@ -889,7 +889,7 @@ export class WhiteboardCanvas {
       },
       openAnnotations: (path) => this.annotationStores.acquire(path),
       getAnnotationEvents: () => this.pdf.annotationEvents,
-      pdfPageLabel: this.pdfPageLabel,
+      pdfPageLabels: this.pdfPageLabels,
       reportError: this.core.reportError,
       t: this.core.t,
     })
@@ -1536,12 +1536,15 @@ export class WhiteboardCanvas {
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
    * field's doc comment for what the state means. */
-  /** "name · p. N" for a PDF card's title once it has been read past its
-   * first page (ui/lod.ts's `nodeTitleText`). */
-  private readonly pdfPageLabel = (name: string, page: number): string =>
-    this.t('pdf.pageTitle')
-      .replace('{name}', name)
-      .replace('{page}', String(page))
+  /** What a PDF card's or a spread sheet's title says about its page
+   * (ui/lod.ts's `nodeTitleText`), in the current locale. */
+  private readonly pdfPageLabels: PdfPageLabels = {
+    card: (name, page) =>
+      this.t('pdf.pageTitle')
+        .replace('{name}', name)
+        .replace('{page}', String(page)),
+    sheet: (page) => this.t('pdf.sheetTitle').replace('{page}', String(page)),
+  }
 
   private applyFocusedNode(): void {
     const next =

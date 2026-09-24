@@ -247,6 +247,19 @@ export const OVERVIEW_TITLE_MIN_CARD_PX = 40
  * stay in step. */
 export const TITLE_BLOCK_WORLD_FONT_PX = 32
 
+/** Line height of a card's title block, as a multiple of its font size, and
+ * the block's padding in world units — the same stylesheet rule. The overview
+ * canvas wraps a title into the box these leave, as the element does. */
+export const TITLE_BLOCK_LINE_HEIGHT = 1.25
+export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
+
+/** A PDF spread's title, in world units — spread.css's
+ * `.yolo-whiteboard-spread-title-text`: its font size and the padding before
+ * the text. The overview canvas draws the title as that bare line of text,
+ * not as a card, so it keeps its face below the tier. */
+export const SPREAD_TITLE_WORLD_FONT_PX = 24
+export const SPREAD_TITLE_WORLD_PADDING_X = 4
+
 /** Alpha of the colour wash over an overview card — style.css's
  * `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */

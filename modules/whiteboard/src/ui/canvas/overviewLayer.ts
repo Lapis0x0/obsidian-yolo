@@ -42,6 +42,7 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
+import { isSpreadTitle } from '../../domain/spread'
 import {
   type CanvasView,
   computeWorldViewportRect,
@@ -58,14 +59,21 @@ import {
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
+  SPREAD_TITLE_WORLD_FONT_PX,
+  SPREAD_TITLE_WORLD_PADDING_X,
+  TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
+  TITLE_BLOCK_WORLD_PADDING,
 } from '../constants'
-import { nodeTitleText } from '../lod'
+import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
 /** How dark bare text's block of ink is drawn, zoomed out past reading it. */
 const OVERVIEW_TEXT_ALPHA = 0.18
+/** Past this many wrapped titles the cache starts over rather than growing
+ * with every card a long session has ever shown. */
+const TITLE_LINES_CACHE_LIMIT = 2000
 
 /**
  * Concrete colour values for one draw.
@@ -91,6 +99,7 @@ type Palette = Readonly<{
   border: string
   accent: string
   text: string
+  muted: string
   background: string
   fontFamily: string
 }>
@@ -119,9 +128,9 @@ export type OverviewLayerCallbacks = Readonly<{
    * element; here it is the same numbers, drawn.
    */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
-  /** Localized "name · p. N" for a PDF card read past page 1 — see
+  /** What a PDF card's or a sheet's title says about its page — see
    * ui/lod.ts's `nodeTitleText`. */
-  pdfPageLabel: (name: string, page: number) => string
+  pdfPageLabels: PdfPageLabels
 }>
 
 /**
@@ -135,6 +144,10 @@ export class OverviewLayer {
   private active = false
   private dirty = false
   private palette: Palette | null = null
+  /** Titles already broken into lines, by text and the card's world size.
+   * Kept in world units, so a zoom does not invalidate them; dropped with the
+   * palette, whose font they were measured in. */
+  private readonly titleLines = new Map<string, readonly string[]>()
   /** Viewport size in CSS pixels, pushed in rather than measured: reading it
    * here would force a layout flush on a frame that has just written the
    * world's transform. `WhiteboardCanvas` already measures the viewport on its
@@ -191,6 +204,7 @@ export class OverviewLayer {
     if (!win) return
     this.themeObserver = new win.MutationObserver(() => {
       this.palette = null
+      this.titleLines.clear()
       this.dirty = true
     })
     this.themeObserver.observe(doc.body, {
@@ -216,6 +230,7 @@ export class OverviewLayer {
     this.lastView = null
     if (active) {
       this.palette = null
+      this.titleLines.clear()
       this.dirty = true
       return
     }
@@ -315,6 +330,7 @@ export class OverviewLayer {
       border: read('--background-modifier-border', '#dcddde'),
       accent: read('--interactive-accent', '#7c3aed'),
       text: read('--text-normal', '#222222'),
+      muted: read('--text-muted', '#5c5c5c'),
       background: read('--background-primary', '#ffffff'),
       fontFamily: style.fontFamily || 'sans-serif',
     }
@@ -393,6 +409,7 @@ export class OverviewLayer {
       h: number
     }[] = []
     const texts: typeof visible = []
+    const spreadTitles: typeof visible = []
     for (const node of nodes) {
       const rect = live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
@@ -404,6 +421,7 @@ export class OverviewLayer {
       }
       const item = { node, x, y, w, h }
       if (isPlainText(node)) texts.push(item)
+      else if (isSpreadTitle(node)) spreadTitles.push(item)
       else visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is a block of ink,
@@ -428,6 +446,7 @@ export class OverviewLayer {
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
+    this.drawSpreadTitles(ctx, view, spreadTitles)
     if (visible.length === 0) return
 
     // 1. The opaque surface, in one path.
@@ -495,24 +514,95 @@ export class OverviewLayer {
     ctx.lineWidth = 1
 
     // 5. Titles, where a card is wide enough on screen to hold one. The type
-    //    is the DOM card's title block — 32 world units, so it shrinks with
-    //    the card — which is what makes the switch between tiers invisible.
+    //    and the box it wraps in are the DOM card's title block — 32 world
+    //    units, so it shrinks with the card — which is what makes the switch
+    //    between tiers invisible.
     const fontPx = TITLE_BLOCK_WORLD_FONT_PX * view.scale
-    ctx.font = `600 ${fontPx}px ${palette.fontFamily}`
+    const lineHeight = fontPx * TITLE_BLOCK_LINE_HEIGHT
+    ctx.font = `500 ${fontPx}px ${palette.fontFamily}`
     ctx.fillStyle = palette.text
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const card of visible) {
       if (card.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      const title = nodeTitleText(card.node, this.callbacks.pdfPageLabel)
+      const title = nodeTitleText(card.node, this.callbacks.pdfPageLabels)
       if (title.length === 0) continue
+      const lines = this.wrapTitle(ctx, title, card.node, view.scale)
+      const top = card.y + card.h / 2 - ((lines.length - 1) * lineHeight) / 2
+      for (let i = 0; i < lines.length; i += 1) {
+        ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
+      }
+    }
+  }
+
+  /** A spread's title as the DOM draws it: its name alone, in muted type, no
+   * card around it — and the accent ring when it is selected. Its width was
+   * measured from that text (cardRenderer's `mountSpreadTitle`), so it fits
+   * without wrapping or cutting. */
+  private drawSpreadTitles(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    titles: readonly Readonly<{
+      node: BoardNode
+      x: number
+      y: number
+      w: number
+      h: number
+    }>[],
+  ): void {
+    const palette = this.palette
+    if (!palette || titles.length === 0) return
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = palette.accent
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    let anySelected = false
+    for (const title of titles) {
+      if (!this.callbacks.isSelected(title.node.id)) continue
+      this.strokeRectPath(ctx, title)
+      anySelected = true
+    }
+    if (anySelected) ctx.stroke()
+    ctx.lineWidth = 1
+    ctx.font = `600 ${SPREAD_TITLE_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    for (const title of titles) {
+      if (title.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
+      ctx.fillStyle = this.callbacks.isSelected(title.node.id)
+        ? palette.text
+        : palette.muted
       ctx.fillText(
-        title,
-        card.x + card.w / 2,
-        card.y + card.h / 2,
-        Math.max(1, card.w - 4),
+        nodeTitleText(title.node),
+        title.x + SPREAD_TITLE_WORLD_PADDING_X * view.scale,
+        title.y + title.h / 2,
       )
     }
+  }
+
+  /** A card's title in the lines its title block would give it. Measured at
+   * the font the context has now and taken back to world units, where the
+   * answer does not change as the camera zooms. */
+  private wrapTitle(
+    ctx: CanvasRenderingContext2D,
+    title: string,
+    node: BoardNode,
+    scale: number,
+  ): readonly string[] {
+    const key = `${node.w}x${node.h}\n${title}`
+    const cached = this.titleLines.get(key)
+    if (cached) return cached
+    if (this.titleLines.size >= TITLE_LINES_CACHE_LIMIT) this.titleLines.clear()
+    const padding = TITLE_BLOCK_WORLD_PADDING
+    const lineHeight = TITLE_BLOCK_WORLD_FONT_PX * TITLE_BLOCK_LINE_HEIGHT
+    const lines = wrapTitleLines(
+      title,
+      node.w - padding.x * 2,
+      Math.max(1, Math.floor((node.h - padding.y * 2) / lineHeight)),
+      (text) => ctx.measureText(text).width / scale,
+    )
+    this.titleLines.set(key, lines)
+    return lines
   }
 
   /** Adds a card's border to the current path, inset by half a line so the

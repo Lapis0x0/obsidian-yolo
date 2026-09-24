@@ -33,10 +33,14 @@
   padding: 8px 12px;
   overflow: hidden;
   font-size: 32px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.25;
   color: var(--text-normal);
   text-align: center;
+  /* A file name is often one long word (underscores, no spaces): it wraps
+   * inside rather than running off the card. The overview canvas breaks it
+   * the same way (ui/lod.ts's wrapTitleLines). */
+  overflow-wrap: anywhere;
   background: color-mix(
     in oklch,
     var(--yolo-whiteboard-color) 10%,

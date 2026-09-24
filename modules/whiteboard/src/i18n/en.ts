@@ -156,6 +156,7 @@ export const en = {
     openFailed: 'Could not open this PDF',
     pageInput: 'Page',
     pageTitle: '{name} · p. {page}',
+    sheetTitle: 'p. {page}',
     search: 'Find in document',
     searchPlaceholder: 'Find…',
     searchPrevious: 'Previous (Shift+Enter)',

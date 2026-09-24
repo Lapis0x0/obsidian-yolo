@@ -37,7 +37,7 @@ import {
   PLAIN_TEXT_AUTO_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
-import { cardMarkdownWindow, nodeTitleText } from '../lod'
+import { type PdfPageLabels, cardMarkdownWindow, nodeTitleText } from '../lod'
 import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
 import { glideScrollBy } from '../wheelScroll'
@@ -229,9 +229,9 @@ export type CardRendererCallbacks = Readonly<{
   openAnnotations: (path: string) => AnnotationLease
   /** Where the board's readers report selections and annotation clicks. */
   getAnnotationEvents: () => ReaderAnnotationEvents | undefined
-  /** "name · p. N", localized: what a PDF card's title block says once it
-   * has been read past page 1 (ui/lod.ts's `nodeTitleText`). */
-  pdfPageLabel: (name: string, page: number) => string
+  /** What a PDF card's or a sheet's title block says about its page
+   * (ui/lod.ts's `nodeTitleText`). */
+  pdfPageLabels: PdfPageLabels
   reportError: (stage: string, error: unknown) => void
   t: (key: string, fallback?: string) => string
 }>
@@ -632,7 +632,7 @@ export class CardRenderer {
     if (!plain) {
       const titleBlock = doc.createElement('div')
       titleBlock.className = CARD_TITLE_BLOCK_CLASS
-      titleBlock.textContent = nodeTitleText(node, this.callbacks.pdfPageLabel)
+      titleBlock.textContent = nodeTitleText(node, this.callbacks.pdfPageLabels)
       el.appendChild(titleBlock)
     }
 
