@@ -55,6 +55,7 @@ import {
   DragGestures,
   type NodeInteraction,
   type ResizeInteraction,
+  isSoleSelection,
 } from './dragGestures'
 import type { DropImport } from './dropImport'
 import type { EdgeLayer } from './edgeLayer'
@@ -226,7 +227,12 @@ export type InteractionControllerDeps = Readonly<{
   >
   editing: Pick<
     EditingController,
-    'isEditing' | 'isRenaming' | 'beginRename' | 'editCard' | 'enterEditMode'
+    | 'isEditing'
+    | 'isRenaming'
+    | 'beginRename'
+    | 'editCard'
+    | 'enterEditMode'
+    | 'isEditableNode'
   >
   generation: Pick<CardGeneration, 'isGenerating' | 'stop'>
   menus: Pick<
@@ -320,6 +326,14 @@ export class InteractionController {
       onLiveRectsChange: deps.onLiveRectsChange,
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
+      openOnSecondClick: (id) => {
+        const node = this.core.getNode(id)
+        if (!node || !deps.editing.isEditableNode(node)) return false
+        // Written into by a generation: the text is the stream's until it
+        // settles, and a click is not asking to stop it.
+        if (deps.generation.isGenerating(id)) return false
+        return deps.editing.editCard(id)
+      },
       viewportCenterWorld: () => deps.menus.viewportCenterWorld(),
       begin,
       getLayerNodeId,
@@ -496,6 +510,7 @@ export class InteractionController {
         startClient: { x: e.clientX, y: e.clientY },
         startWorld: this.core.worldPointFromEvent(e),
         additive: e.shiftKey,
+        wasSoleSelection: isSoleSelection(this.core.getSelectedIds(), nodeId),
         dragging: false,
         ids: [],
         startPositions: new Map(),

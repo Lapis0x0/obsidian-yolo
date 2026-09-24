@@ -447,6 +447,15 @@ export class SelectionToolbar {
     this.overlayEl.className = OVERLAY_CLASS
     this.el = doc.createElement('div')
     this.el.className = `${TOOLBAR_CLASS} ${TOOLBAR_HIDDEN_CLASS}`
+    // A press on the toolbar must not take focus from the card being edited:
+    // the toolbar stays up while a card is typed into, and a press that blurred
+    // the editor would end the edit — and rebuild this toolbar out from under
+    // the click it was in the middle of. A field in a popover (the custom
+    // colour) still takes focus as a field should.
+    this.el.addEventListener('mousedown', (event) => {
+      const target = event.target as Element | null
+      if (target?.closest('input, textarea') == null) event.preventDefault()
+    })
     this.overlayEl.appendChild(this.el)
     parent.appendChild(this.overlayEl)
   }

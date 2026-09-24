@@ -69,6 +69,10 @@ export type NodeInteraction = {
   /** Shift was held: a press that never moves toggles this card in and out of
    * the selection instead of replacing it. */
   readonly additive: boolean
+  /** The card was already the one selected when pressed: a press that never
+   * moves is then a second click, which opens it (`finishNode`). Read at
+   * press time, because the first click of a pair is what selects it. */
+  readonly wasSoleSelection: boolean
   dragging: boolean
   ids: NodeId[]
   readonly startPositions: Map<NodeId, Readonly<{ x: number; y: number }>>
@@ -97,6 +101,9 @@ export type ResizeInteraction = {
   /** As `NodeInteraction.startWorld`. */
   readonly startWorld: ScreenPoint
   readonly startRect: CardRect
+  /** As `NodeInteraction.wasSoleSelection`: the handles' inner half lies on
+   * the card, and a click there means what a click on the card means. */
+  readonly wasSoleSelection: boolean
   dragging: boolean
   /** As `NodeInteraction.snapCandidates`, frozen when the press becomes a
    * drag rather than at press time — most presses on a handle are clicks. */
@@ -142,6 +149,13 @@ export type DragGesturesDeps = Readonly<{
   /** A plain click on a card may land on a link into one of the board's
    * PDFs. */
   followPdfLinkAt: (id: NodeId, e: PointerEvent) => void
+  /**
+   * A click on the card that was already the lone selection: open it for
+   * typing, and answer whether it did. Declined for a card with nothing to
+   * type into, where the click keeps meaning what it meant (a PDF card's
+   * click follows the link under it).
+   */
+  openOnSecondClick: (id: NodeId) => boolean
   /** The edge set changed (an Alt-drag copied edges along with its cards). */
   rebuildEdgesSvg: () => void
   viewportCenterWorld: () => ScreenPoint
@@ -189,8 +203,10 @@ export class DragGestures {
   // -----------------------------------------------------------------------
   // Card press: click-to-select vs. drag-to-move, disambiguated by
   // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) selects
-  // the card; editing is a second, deliberate step — double-click, or Enter
-  // on the selection (matching Obsidian Canvas). Selecting first is
+  // the card; editing is a second, deliberate step — a second click on the
+  // selected card, a double-click (which is the same two clicks, quickly),
+  // or Enter on the selection. The second click is Miro's and Figma's, and
+  // the one a touch screen can do: a double-tap is nobody's instinct there. Selecting first is
   // what makes a single click safe: the card can then be dragged, deleted,
   // resized or wired up without a caret landing in it and an editor
   // mounting on every glance. A brand-new card is the exception and opens
@@ -235,6 +251,7 @@ export class DragGestures {
       startClient: { x: e.clientX, y: e.clientY },
       startWorld: this.core.worldPointFromEvent(e),
       startRect: rectOfCard(card),
+      wasSoleSelection: isSoleSelection(this.core.getSelectedIds(), nodeId),
       dragging: false,
       snapCandidates: [],
     })
@@ -347,6 +364,12 @@ export class DragGestures {
     if (!interaction.dragging) {
       // A click, not a drag: the handle overlaps the card, so this means
       // what the same click on the card means.
+      if (
+        interaction.wasSoleSelection &&
+        this.deps.openOnSecondClick(interaction.nodeId)
+      ) {
+        return
+      }
       this.core.setSelection([interaction.nodeId])
       return
     }
@@ -601,6 +624,11 @@ export class DragGestures {
     if (!interaction.dragging) {
       if (interaction.additive) {
         this.toggleSelection(interaction.nodeId)
+      } else if (
+        interaction.wasSoleSelection &&
+        this.deps.openOnSecondClick(interaction.nodeId)
+      ) {
+        return
       } else {
         this.core.setSelection([interaction.nodeId])
         this.deps.followPdfLinkAt(interaction.nodeId, e)
@@ -770,4 +798,12 @@ export class DragGestures {
     if (!next.delete(id)) next.add(id)
     this.core.setSelection(Array.from(next))
   }
+}
+
+/** Whether `id` is the one and only selected node. */
+export function isSoleSelection(
+  selected: ReadonlySet<NodeId>,
+  id: NodeId,
+): boolean {
+  return selected.size === 1 && selected.has(id)
 }

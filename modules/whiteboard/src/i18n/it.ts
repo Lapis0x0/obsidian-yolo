@@ -74,7 +74,6 @@ export const it = {
   },
   toolbar: {
     color: 'Imposta colore',
-    edit: 'Modifica',
     tidy: 'Riordina',
     arrows: 'Frecce',
     edgeLabel: 'Etichetta',

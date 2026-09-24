@@ -76,7 +76,6 @@ export const en = {
   // Floating toolbar over the current selection.
   toolbar: {
     color: 'Set colour',
-    edit: 'Edit',
     tidy: 'Tidy up',
     arrows: 'Arrows',
     edgeLabel: 'Label',

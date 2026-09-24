@@ -106,7 +106,6 @@ export type ToolbarControllerCallbacks = Readonly<{
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
-  isEditableNode: (node: BoardNode) => boolean
   /** A file card showing a PDF — what "open in the reading panel" applies
    * to. */
   isPdfNode: (node: BoardNode) => boolean
@@ -121,9 +120,13 @@ export type ToolbarControllerCallbacks = Readonly<{
 
   deleteNodes: (ids: readonly NodeId[]) => void
   deleteEdges: (ids: readonly EdgeId[]) => void
-  zoomToSelection: () => void
+  /** Frames these nodes — what the toolbar's focus button does for whatever
+   * the toolbar is about (a selection, or the card being edited). */
+  zoomToNodes: (nodes: readonly BoardNode[]) => void
+  /** The card whose editor is open, or null. The toolbar stays with a card
+   * while it is typed into, although a card being edited is not selected. */
+  getEditingNodeId: () => NodeId | null
   createGroupFromSelection: () => void
-  editCard: (id: NodeId) => void
   beginRename: (
     target:
       | Readonly<{ kind: 'group'; id: NodeId }>
@@ -241,12 +244,12 @@ export class ToolbarController {
       )
       return point ? { x: point.x, y: point.y, w: 0, h: 0 } : null
     }
-    const selectedIds = this.callbacks.getSelectedIds()
-    if (selectedIds.size === 0) return null
+    const targetIds = this.targetIds()
+    if (targetIds.size === 0) return null
     return unionRect(
       this.callbacks
         .getBoard()
-        .nodes.filter((node) => selectedIds.has(node.id))
+        .nodes.filter((node) => targetIds.has(node.id))
         .map((node) => ({ x: node.x, y: node.y, w: node.w, h: node.h })),
     )
   }
@@ -256,27 +259,42 @@ export class ToolbarController {
     if (this.callbacks.getSelectedEdgeIds().size > 0) {
       return this.buildEdgeToolbarModel()
     }
-    if (this.callbacks.getSelectedIds().size > 0) {
-      return this.buildNodeToolbarModel()
-    }
+    if (this.targetIds().size > 0) return this.buildNodeToolbarModel()
     return null
   }
 
-  private buildNodeToolbarModel(): ToolbarModel | null {
+  /**
+   * The nodes the toolbar is about: the selection, or — with nothing selected
+   * — the card being edited. Editing clears the selection so that Backspace
+   * and Escape belong to the editor (EditingController's `enterEditMode`),
+   * but what the card can have done to it does not change because it is
+   * being typed into; losing delete, colour and focus at the moment the user
+   * is working on the card was the wrong way round.
+   */
+  private targetIds(): ReadonlySet<NodeId> {
     const selectedIds = this.callbacks.getSelectedIds()
+    if (selectedIds.size > 0) return selectedIds
+    const editing = this.callbacks.getEditingNodeId()
+    return editing === null ? selectedIds : new Set([editing])
+  }
+
+  private buildNodeToolbarModel(): ToolbarModel | null {
+    const targetIds = this.targetIds()
     const nodes = this.callbacks
       .getBoard()
-      .nodes.filter((node) => selectedIds.has(node.id))
+      .nodes.filter((node) => targetIds.has(node.id))
     if (nodes.length === 0) return null
     const single = nodes.length === 1 ? nodes[0] : null
     const ids = nodes.map((node) => node.id)
     const canEdit = this.callbacks.canEdit()
 
     // The row is Obsidian Canvas's, in its order: delete, colour, focus,
-    // group, align — then the one button that is ours, editing what is
-    // selected. Nothing is behind an overflow button, because everything a
-    // selection can do either fits on the row or belongs to the right-click
-    // menu; see canvas.ts's `selectionMenuItems`.
+    // group, align. No edit button: a second click on the selected card opens
+    // it (DragGestures' `finishNode`), as do a double-click and Enter, and a
+    // button that only repeated them was one more icon on every selection.
+    // Nothing is behind an overflow button, because everything a selection
+    // can do either fits on the row or belongs to the right-click menu; see
+    // canvas.ts's `selectionMenuItems`.
     const items: ToolbarItem[] = []
     if (canEdit) {
       items.push({
@@ -296,9 +314,7 @@ export class ToolbarController {
     items.push({
       label: this.callbacks.t('menu.zoomToSelection'),
       icon: 'scan-search',
-      onSelect: () => {
-        this.callbacks.zoomToSelection()
-      },
+      onSelect: () => this.callbacks.zoomToNodes(nodes),
     })
     if (canEdit && nodes.length > 1) {
       items.push({
@@ -309,15 +325,6 @@ export class ToolbarController {
     }
     const tidy = this.tidyControl()
     if (tidy) items.push(tidy)
-    // Offered in the overview tier too: there it brings the camera in to the
-    // card first (EditingController's `editCard`).
-    if (single && this.callbacks.isEditableNode(single) && canEdit) {
-      items.push({
-        label: this.callbacks.t('toolbar.edit'),
-        icon: 'pencil',
-        onSelect: () => this.callbacks.editCard(single.id),
-      })
-    }
     // A PDF card's own button: read it in the panel beside the board. Offered
     // in the overview tier too — the panel needs no card element.
     if (single && this.callbacks.isPdfNode(single)) {
@@ -327,9 +334,9 @@ export class ToolbarController {
         onSelect: () => this.callbacks.openReader(single.id),
       })
     }
-    // A group has no content to edit, so the pencil in its place renames it —
-    // the same command its label's double-click carries, which is otherwise
-    // the only way to find it.
+    // A group has no content to type into, so its pencil renames it — the
+    // same command its label's double-click carries, which is otherwise the
+    // only way to find it.
     if (single?.type === 'group' && canEdit) {
       items.push({
         label: this.callbacks.t('menu.renameGroup'),

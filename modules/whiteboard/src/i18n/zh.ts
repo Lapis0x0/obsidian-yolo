@@ -71,7 +71,6 @@ export const zh = {
   },
   toolbar: {
     color: '设置颜色',
-    edit: '编辑',
     tidy: '整理',
     arrows: '箭头',
     edgeLabel: '标签',

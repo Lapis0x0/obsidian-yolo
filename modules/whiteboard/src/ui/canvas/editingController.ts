@@ -77,6 +77,10 @@ export type EditingControllerDeps = Readonly<{
    * bring the camera in to it and open it once it is there (canvas.ts's
    * `zoomInToEdit`). */
   zoomInToEdit: (id: NodeId) => void
+  /** An editor opened or closed: the selection toolbar follows the card
+   * being edited, which is not a selection change it would otherwise hear
+   * about. */
+  onEditingChange: () => void
   /** Exempts a card from virtualization unmount, and lifts the exemption. */
   pin: (id: NodeId) => void
   unpin: (id: NodeId) => void
@@ -444,6 +448,7 @@ export class EditingController {
       historyKey: `edit-${this.nextEditSessionId()}`,
       persistTimer: null,
     }
+    this.deps.onEditingChange()
     editor.focus()
     // Open where the card was being read. Both surfaces speak the same
     // fractional source line, so nothing is mapped between them; what is left
@@ -535,6 +540,12 @@ export class EditingController {
     // caused by pressing somewhere else is overwritten by whatever that
     // press selects, a moment later in the same gesture.
     if (this.core.getNode(id) !== undefined) this.core.setSelection([id])
+    else this.deps.onEditingChange()
+  }
+
+  /** The card whose editor is open, or null. */
+  getEditingNodeId(): NodeId | null {
+    return this.editing?.nodeId ?? null
   }
 
   /** Commits the active edit (if any) through the single `finishEdit` path

@@ -875,6 +875,7 @@ export class WhiteboardCanvas {
     this.editing = new EditingController({
       core: this.core,
       zoomInToEdit: (id) => this.zoomInToEdit(id),
+      onEditingChange: () => this.toolbarController.refreshToolbar(),
       cards: this.cardRenderer,
       edges: this.edgeLayer,
       worldEl: world,
@@ -919,7 +920,6 @@ export class WhiteboardCanvas {
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
-      isEditableNode: (node) => this.editing.isEditableNode(node),
       isPdfNode: (node) => isPdfNode(node),
       openReader: (id) => this.pdf.openReaderPanel(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
@@ -931,9 +931,11 @@ export class WhiteboardCanvas {
       t: this.core.t,
       deleteNodes: (ids) => this.deleteNodes(ids),
       deleteEdges: (ids) => this.deleteEdges(ids),
-      zoomToSelection: () => this.cameraController.zoomToSelection(),
+      zoomToNodes: (nodes) => {
+        this.cameraController.fitCameraToNodes(nodes)
+      },
+      getEditingNodeId: () => this.editing.getEditingNodeId(),
       createGroupFromSelection: () => this.createGroupFromSelection(),
-      editCard: (id) => this.editing.editCard(id),
       beginRename: (target) => this.editing.beginRename(target),
       applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
       applyColorToEdge: (edgeId, color) => this.applyColorToEdge(edgeId, color),
