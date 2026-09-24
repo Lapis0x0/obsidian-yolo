@@ -59,7 +59,7 @@ export function computeWorldViewportRect(
 /** Whether a card's footprint overlaps a world rectangle — the viewport test
  * both virtualization and the canvas's alignment candidates are asking. */
 export function intersectsViewport(
-  card: VirtualCardRect,
+  card: Omit<VirtualCardRect, 'id'>,
   rect: WorldRect,
 ): boolean {
   return (
@@ -89,19 +89,21 @@ export function isMostlyInView(
 
 /**
  * A card counts as "should be visible" if it geometrically intersects the
- * (buffered) viewport, OR it is pinned (currently being interacted with —
- * dragged, edited, selected). This single `vis` value feeds both the mount
- * and unmount branches in `recompute()` below, so a pinned off-screen card
- * does get queued for mount, not just protected from unmount — in practice
- * this rarely matters since a card is normally pinned only once it is
- * already on screen and being interacted with.
+ * (buffered) viewport where it is seen — its place in `moved` while a
+ * gesture carries it — OR it is pinned (being edited or resized). This
+ * single `vis` value feeds both the mount and unmount branches in
+ * `recompute()` below, so a pinned off-screen card does get queued for
+ * mount, not just protected from unmount. That is why a drag does not pin
+ * what it carries, and reports where it has carried it instead.
  */
 function wantsVisible(
   card: VirtualCardRect,
   rect: WorldRect,
   pinnedIds: ReadonlySet<string>,
+  moved: ReadonlyMap<string, Omit<VirtualCardRect, 'id'>> | null,
 ): boolean {
-  return pinnedIds.has(card.id) || intersectsViewport(card, rect)
+  if (pinnedIds.has(card.id)) return true
+  return intersectsViewport(moved?.get(card.id) ?? card, rect)
 }
 
 export class VirtualizationEngine {
@@ -150,14 +152,21 @@ export class VirtualizationEngine {
    * viewport rect and pinned set, and queues the diff. Call this on a
    * debounce (not every frame) — recompute throttling and drain-quota
    * throttling are two independent knobs, both owned by the caller.
+   *
+   * `moved` is where a gesture in progress has put the cards it moves,
+   * before the board is told: those are asked about where they are seen,
+   * not where the board last had them. A drag carries its cards across the
+   * viewport, and one that carries three hundred — a PDF spread under its
+   * title — must mount the ones that come into view, not all of them.
    */
   recompute(
     cards: readonly VirtualCardRect[],
     viewportRect: WorldRect,
     pinnedIds: ReadonlySet<string>,
+    moved: ReadonlyMap<string, Omit<VirtualCardRect, 'id'>> | null = null,
   ): void {
     for (const card of cards) {
-      const vis = wantsVisible(card, viewportRect, pinnedIds)
+      const vis = wantsVisible(card, viewportRect, pinnedIds, moved)
       const isMounted = this.mountedIds.has(card.id)
       if (vis && !isMounted) {
         if (!this.mountQueueSet.has(card.id)) {

@@ -434,6 +434,12 @@ export class InteractionController {
     return this.drag.liveNodeRects
   }
 
+  /** A card was just mounted; if a drag is carrying it, it joins the drag
+   * where the drag has it (see `DragGestures.adoptMountedCard`). */
+  adoptMountedCard(id: NodeId): void {
+    this.drag.adoptMountedCard(id)
+  }
+
   /** Which modifier waves alignment away, and how a shortcut is spelled. */
   onMacOS(): boolean {
     return this.drag.onMacOS()

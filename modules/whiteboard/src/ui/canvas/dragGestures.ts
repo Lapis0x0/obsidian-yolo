@@ -188,6 +188,9 @@ export class DragGestures {
    * permanent one to keep in step with a world layer that is rebuilt on every
    * reload. */
   private createGhostEl: HTMLElement | null = null
+  /** The drag whose cards are being carried, from its first move to its
+   * drop — what `adoptMountedCard` dresses a card mounted meanwhile for. */
+  private carried: NodeInteraction | null = null
   /** Resolved once, on first use (see `onMacOS`). */
   private isMacOS: boolean | null = null
   /** Makes each Alt-drag's history key its own. */
@@ -381,6 +384,7 @@ export class DragGestures {
    * would otherwise have to be told separately by every caller. */
   setLiveNodeRects(rects: ReadonlyMap<NodeId, CardRect> | null): void {
     this.liveRects = rects
+    if (!rects) this.carried = null
     this.deps.onLiveRectsChange()
   }
 
@@ -464,15 +468,32 @@ export class DragGestures {
     )
     if (duplicate) this.leaveCopyBehind(interaction)
     interaction.snapCandidates = this.snapCandidates(new Set(interaction.ids))
+    // Not pinned: what a drag carries is mounted where it is carried to
+    // (`liveNodeRects`, which virtualization reads), so a title dragging
+    // three hundred PDF pages mounts the few in view, not all of them. The
+    // ones that come into view on the way are dressed by `adoptMountedCard`.
     for (const id of interaction.ids) {
       const card = this.core.getNode(id)
       if (!card) continue
       interaction.startPositions.set(id, { x: card.x, y: card.y })
-      // Exempt every dragged card from virtualization unmount for the
-      // duration of the drag (mirrors the existing editing-card pin).
-      this.deps.pin(id)
       this.core.getRuntime(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
     }
+    this.carried = interaction
+  }
+
+  /**
+   * A card that a drag in progress carries has just been mounted: it comes
+   * in where the board has it, and is put where the drag has it — the same
+   * transform and class the cards mounted from the start were given.
+   */
+  adoptMountedCard(id: NodeId): void {
+    const interaction = this.carried
+    const start = interaction?.startPositions.get(id)
+    const live = this.liveRects?.get(id)
+    const el = this.core.getRuntime(id)?.el
+    if (!start || !live || !el) return
+    el.classList.add(CARD_DRAGGING_CLASS)
+    el.style.transform = `translate(${live.x - start.x}px, ${live.y - start.y}px)`
   }
 
   /**
@@ -684,8 +705,8 @@ export class DragGestures {
     }
     // The board holds these positions now; the drag's copy of them retires.
     this.setLiveNodeRects(null)
+    this.carried = null
     for (const id of interaction.ids) {
-      this.deps.unpin(id)
       const el = this.core.getRuntime(id)?.el
       if (!el) continue
       el.classList.remove(CARD_DRAGGING_CLASS)

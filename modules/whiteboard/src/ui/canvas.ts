@@ -28,6 +28,7 @@ import {
 import { cameraFromView, screenToWorld } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
+import type { CardRect } from '../domain/resize'
 import {
   type ArrowDirection,
   arrowEnds,
@@ -400,6 +401,16 @@ export class WhiteboardCanvas {
   private domReady = false
   private rootEl: HTMLElement | null = null
   private viewportEl!: HTMLElement
+  /** The viewport's size, read once after each resize (`onResize`) rather
+   * than on every visibility tick or toolbar placement: reading it is a
+   * layout read, and every one of those readers runs after something has
+   * just written to the world — a drag's transforms, a frame's mounts — so
+   * each read forced the whole world to be laid out there and then. */
+  private viewportSize: Readonly<{ width: number; height: number }> | null =
+    null
+  /** Forgets `viewportSize` whenever the viewport changes size, including
+   * the changes no `onResize` reports (a tab shown again, a panel opened). */
+  private viewportObserver: ResizeObserver | null = null
   private worldEl!: HTMLElement
   private errorEl: HTMLElement | null = null
 
@@ -594,6 +605,7 @@ export class WhiteboardCanvas {
   }
 
   onResize(): void {
+    this.viewportSize = null
     this.pdf.refitPanel()
     if (this.parseFailed) return
     // How far out the wheel may zoom is derived from the viewport's size.
@@ -638,6 +650,8 @@ export class WhiteboardCanvas {
     this.overviewLayer = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
+    this.viewportObserver?.disconnect()
+    this.viewportObserver = null
     this.teardownAllCards()
     this.preheatRenderer?.unload()
     this.preheatRenderer = null
@@ -780,6 +794,14 @@ export class WhiteboardCanvas {
 
     this.rootEl = root
     this.viewportEl = viewport
+    this.viewportSize = null
+    const win = doc.defaultView
+    this.viewportObserver = win?.ResizeObserver
+      ? new win.ResizeObserver(() => {
+          this.viewportSize = null
+        })
+      : null
+    this.viewportObserver?.observe(viewport)
     this.worldEl = world
     this.errorEl = error
     this.cameraController = new CameraController(
@@ -980,10 +1002,7 @@ export class WhiteboardCanvas {
       toggleSpread: (id) => void this.toggleSpread(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
       getView: this.core.getView,
-      getViewportSize: () => ({
-        width: this.viewportEl.clientWidth,
-        height: this.viewportEl.clientHeight,
-      }),
+      getViewportSize: () => this.getViewportSize(),
       t: this.core.t,
       deleteNodes: (ids) => this.deleteNodes(ids),
       deleteEdges: (ids) => this.deleteEdges(ids),
@@ -2364,15 +2383,7 @@ export class WhiteboardCanvas {
 
   private recomputeVisibility(): void {
     if (this.parseFailed || !this.viewportEl) return
-    // One measurement, before anything on this tick writes to the document.
-    // Reading `clientWidth` is a layout read, so a read placed after the
-    // mounts and the edge class flips below forces Blink to recalculate style
-    // and lay out the whole world synchronously, inside the rAF callback —
-    // measured at ~13ms a tick on a three thousand card board, which is a
-    // dropped frame every 70ms for a number that has not changed. Both
-    // consumers below want the same size, so it is taken once here.
-    const width = this.viewportEl.clientWidth
-    const height = this.viewportEl.clientHeight
+    const { width, height } = this.getViewportSize()
     const rect = computeWorldViewportRect(
       width,
       height,
@@ -2381,14 +2392,15 @@ export class WhiteboardCanvas {
     )
     this.overviewLayer?.setViewportSize(width, height)
     this.updateOverviewState()
+    const moved = this.interaction.liveNodeRects
     if (this.overview) {
       // Two populations, one engine: groups keep their DOM at every tier
       // and are asked the ordinary question, cards are asked one they
       // cannot answer yes to.
-      this.engine.recompute(this.groupNodes, rect, this.pinnedIds)
+      this.engine.recompute(this.groupNodes, rect, this.pinnedIds, moved)
       this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
     } else {
-      this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
+      this.engine.recompute(this.board.nodes, rect, this.pinnedIds, moved)
     }
     // Edges answer to the same viewport, on the same tick — see
     // edgeLayer.ts's `updateVisibility`. Not in the overview tier: there the
@@ -2398,20 +2410,45 @@ export class WhiteboardCanvas {
     // elements per tick, which a `display: none` ancestor does not save (only
     // layout is skipped for a hidden subtree, not style). Leaving the tier
     // runs this again on the same tick, with the real rectangle.
-    if (!this.overview) this.edgeLayer.updateVisibility(rect, this.pinnedIds)
+    if (!this.overview) {
+      this.edgeLayer.updateVisibility(rect, this.edgePinnedIds(moved))
+    }
     this.syncGroupLabelScale()
+  }
+
+  /** Whose edges stay drawn wherever the viewport is: the pinned cards',
+   * and those of the cards a gesture is carrying, which are drawn where the
+   * gesture has them rather than where the viewport test would look. */
+  private edgePinnedIds(
+    moved: ReadonlyMap<NodeId, CardRect> | null,
+  ): ReadonlySet<NodeId> {
+    if (!moved || moved.size === 0) return this.pinnedIds
+    return new Set([...this.pinnedIds, ...moved.keys()])
   }
 
   /** The viewport in world coordinates, grown by `buffer` screen pixels —
    * by default the virtualization buffer, which is what decides which cards
    * are mounted and which edges are drawn. */
   private worldViewportRect(buffer = VIEWPORT_BUFFER_PX): WorldRect {
+    const { width, height } = this.getViewportSize()
     return computeWorldViewportRect(
-      this.viewportEl.clientWidth,
-      this.viewportEl.clientHeight,
+      width,
+      height,
       this.cameraController.view,
       buffer,
     )
+  }
+
+  /** See `viewportSize`. A size of nothing is not kept: the view measured
+   * before it was laid out, and the next reader should look again. */
+  private getViewportSize(): Readonly<{ width: number; height: number }> {
+    if (this.viewportSize) return this.viewportSize
+    const size = {
+      width: this.viewportEl.clientWidth,
+      height: this.viewportEl.clientHeight,
+    }
+    if (size.width > 0 && size.height > 0) this.viewportSize = size
+    return size
   }
 
   /**
@@ -2539,6 +2576,7 @@ export class WhiteboardCanvas {
       this.entering.size > 0 ? this.context.getWindow().performance.now() : 0
     for (const id of toMount) {
       this.cardRenderer.mountNode(id)
+      this.interaction.adoptMountedCard(id)
       this.playSpreadDeal(id)
       const addedAt = this.entering.get(id)
       if (addedAt === undefined) continue

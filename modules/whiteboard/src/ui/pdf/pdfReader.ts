@@ -271,6 +271,16 @@ export class PdfReader {
   private readonly countEl: HTMLElement
   private readonly statusEl: HTMLElement
   private readonly resizeObserver: ResizeObserver | null
+  /**
+   * The scroller's size, as its resize observer last reported it. Kept
+   * rather than read: a board mounts several readers a frame, each asking
+   * right after its own DOM went in, and every `clientWidth` there made the
+   * browser lay the whole board out on the spot — the largest single cost of
+   * dragging a PDF spread into view. Null until the first report, and the
+   * report schedules the pass that needs it.
+   */
+  private scrollerSize: Readonly<{ width: number; height: number }> | null =
+    null
   private readonly search: PdfSearch
 
   private handle: YoloModuleHostPdfDocumentV1 | null = null
@@ -422,7 +432,11 @@ export class PdfReader {
 
     const win = doc.defaultView
     this.resizeObserver = win?.ResizeObserver
-      ? new win.ResizeObserver(() => this.schedule())
+      ? new win.ResizeObserver((entries) => {
+          const box = entries[entries.length - 1]?.contentRect
+          if (box) this.scrollerSize = { width: box.width, height: box.height }
+          this.schedule()
+        })
       : null
     this.resizeObserver?.observe(this.scrollerEl)
 
@@ -941,7 +955,7 @@ export class PdfReader {
    * — it is not in the document, or is hidden.
    */
   private relayout(position: number): void {
-    const width = this.scrollerEl.clientWidth
+    const width = this.scrollerSize?.width ?? 0
     if (!(width > 0)) {
       this.position = position
       return
@@ -972,6 +986,12 @@ export class PdfReader {
   /** Puts `position` at the top, or holds it (`pendingPosition`) while the
    * scroller has nowhere to scroll. */
   private applyScroll(layout: ReaderLayout, position: number): void {
+    // A sheet shows its one page and never scrolls; writing its scroll
+    // position would only make the browser lay the board out to clamp it.
+    if (this.sheet !== null) {
+      this.pendingPosition = null
+      return
+    }
     const scroller = this.scrollerEl
     const target = scrollTopFor(layout, position)
     if (target > 1 && scroller.scrollHeight - scroller.clientHeight < 1) {
@@ -1007,7 +1027,7 @@ export class PdfReader {
     this.frameId = null
     if (this.destroyed || !this.visible || !this.handle) return
     const scroller = this.scrollerEl
-    const width = scroller.clientWidth
+    const width = this.scrollerSize?.width ?? 0
     if (!(width > 0)) return
     if (!this.layout || Math.abs(width - this.layoutWidth) > 0.5) {
       const hadLayout = this.layout !== null
@@ -1031,8 +1051,8 @@ export class PdfReader {
       this.pendingSilently = false
       this.markReported()
     }
-    const scrollTop = scroller.scrollTop
-    const height = scroller.clientHeight
+    const scrollTop = this.sheet !== null ? 0 : scroller.scrollTop
+    const height = this.scrollerSize?.height ?? 0
     if (!(height > 0)) return
 
     if (this.sheet === null) this.reportPosition(positionAt(layout, scrollTop))
