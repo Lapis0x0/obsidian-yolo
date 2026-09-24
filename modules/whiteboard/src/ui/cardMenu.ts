@@ -22,8 +22,15 @@
 //
 // Popout safety: every element is created from the `Document` handed in.
 
+import { CARD_MENU_COLLAPSE_DELAY_MS } from './constants'
+
 const MENU_CLASS = 'yolo-whiteboard-card-menu'
 const MENU_HIDDEN_CLASS = 'yolo-whiteboard-card-menu-hidden'
+const MENU_COLLAPSED_CLASS = 'yolo-whiteboard-card-menu-collapsed'
+const HANDLE_CLASS = 'yolo-whiteboard-card-menu-handle'
+/** How far the bar and its handle stand off whatever covers the bottom of
+ * the board — see `syncLift`. */
+const LIFT_PROPERTY = '--yolo-card-menu-lift'
 const BUTTON_CLASS = 'yolo-whiteboard-card-menu-button'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -90,21 +97,61 @@ export type CardMenuAction = Readonly<{
 
 export class CardMenu {
   private readonly el: HTMLElement
+  /** What is left of the bar while it is tucked away: a short grip line where
+   * its bottom edge was, and the place a pointer brings it back from. */
+  private readonly handleEl: HTMLElement
+  /** Whether the bar tucks itself away when no pointer is over it — decided
+   * by the owner (`setAutoCollapse`), not by this renderer. */
+  private autoCollapse = false
+  /** A mouse or pen over the bar or its handle. A touch never hovers: a tap
+   * on the handle opens the bar, and it stays open until the owner says the
+   * board is being worked on again. */
+  private hovered = false
+  private collapseTimer: number | null = null
+  private readonly resizeObserver: ResizeObserver | null
 
   constructor(
     private readonly doc: Document,
-    parent: HTMLElement,
+    private readonly parent: HTMLElement,
     actions: readonly CardMenuAction[],
   ) {
     const el = doc.createElement('div')
     el.className = MENU_CLASS
     for (const action of actions) this.appendButton(el, action)
-    parent.appendChild(el)
+    const handle = doc.createElement('div')
+    handle.className = HANDLE_CLASS
+    handle.setAttribute('aria-hidden', 'true')
+    parent.append(el, handle)
     this.el = el
+    this.handleEl = handle
+    for (const target of [el, handle]) {
+      target.addEventListener('pointerenter', this.onPointerEnter)
+      target.addEventListener('pointerleave', this.onPointerLeave)
+    }
+    const win = doc.defaultView
+    this.resizeObserver = win ? new win.ResizeObserver(this.syncLift) : null
+    this.resizeObserver?.observe(parent)
+    const statusBar = this.statusBar()
+    if (statusBar) {
+      this.resizeObserver?.observe(statusBar, { box: 'border-box' })
+    }
+    this.syncLift()
   }
 
   contains(node: Node): boolean {
-    return this.el === node || this.el.contains(node)
+    return this.el.contains(node) || this.handleEl.contains(node)
+  }
+
+  /**
+   * Whether the bar gets out of the way when it is not being reached for.
+   * Turned on once the board is being worked on, and off while there is
+   * nothing on it — an empty board's hint points at this bar. Turning it on
+   * again (every press on the board does) tucks away a bar a tap opened.
+   */
+  setAutoCollapse(enabled: boolean): void {
+    this.autoCollapse = enabled
+    this.clearCollapseTimer()
+    this.setCollapsed(enabled && !this.hovered)
   }
 
   /**
@@ -115,10 +162,75 @@ export class CardMenu {
    */
   setAvailable(available: boolean): void {
     this.el.classList.toggle(MENU_HIDDEN_CLASS, !available)
+    this.handleEl.classList.toggle(MENU_HIDDEN_CLASS, !available)
+    if (available) this.syncLift()
   }
 
   destroy(): void {
+    this.clearCollapseTimer()
+    this.resizeObserver?.disconnect()
     this.el.remove()
+    this.handleEl.remove()
+  }
+
+  private readonly onPointerEnter = (event: PointerEvent): void => {
+    if (event.pointerType !== 'touch') this.hovered = true
+    this.clearCollapseTimer()
+    this.setCollapsed(false)
+  }
+
+  /** Leaving tucks the bar away after a beat, not at once: a pointer that
+   * grazes past, or crosses from the handle onto the bar it just opened,
+   * must not set it flapping. */
+  private readonly onPointerLeave = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') return
+    this.hovered = false
+    if (!this.autoCollapse) return
+    this.clearCollapseTimer()
+    this.collapseTimer =
+      this.doc.defaultView?.setTimeout(() => {
+        this.collapseTimer = null
+        if (this.autoCollapse && !this.hovered) this.setCollapsed(true)
+      }, CARD_MENU_COLLAPSE_DELAY_MS) ?? null
+  }
+
+  private setCollapsed(collapsed: boolean): void {
+    this.el.classList.toggle(MENU_COLLAPSED_CLASS, collapsed)
+    this.handleEl.classList.toggle(MENU_COLLAPSED_CLASS, collapsed)
+  }
+
+  private clearCollapseTimer(): void {
+    if (this.collapseTimer === null) return
+    this.doc.defaultView?.clearTimeout(this.collapseTimer)
+    this.collapseTimer = null
+  }
+
+  /** Obsidian's status bar, which on desktop floats over the bottom right of
+   * the workspace; absent in a popout and on mobile. */
+  private statusBar(): HTMLElement | null {
+    return this.doc.querySelector<HTMLElement>('.status-bar')
+  }
+
+  /**
+   * Stands the bar and its handle clear of the status bar, when the two share
+   * the bottom of the board. The status bar grows leftward from the window's
+   * right edge, so in a narrow pane it reaches under the middle of the board,
+   * where this bar sits — and a handle a few pixels off the bottom would be
+   * underneath it outright.
+   */
+  private readonly syncLift = (): void => {
+    const area = this.parent.getBoundingClientRect()
+    const bar = this.statusBar()?.getBoundingClientRect()
+    let lift = 0
+    if (bar && bar.height > 0 && area.height > 0) {
+      const centre = area.left + area.width / 2
+      const half = this.el.offsetWidth / 2
+      const sharesX = bar.left < centre + half && bar.right > centre - half
+      if (sharesX) lift = Math.max(0, area.bottom - bar.top)
+    }
+    for (const target of [this.el, this.handleEl]) {
+      target.style.setProperty(LIFT_PROPERTY, `${lift}px`)
+    }
   }
 
   private appendButton(parent: HTMLElement, action: CardMenuAction): void {

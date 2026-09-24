@@ -157,12 +157,21 @@ export class DropImport {
     deps.viewportEl.addEventListener('dragover', this.onDragOver)
     deps.viewportEl.addEventListener('dragleave', this.onDragLeave)
     deps.viewportEl.addEventListener('drop', this.onDrop)
+    deps.viewportEl.addEventListener('pointerdown', this.onBoardActivity)
+    deps.viewportEl.addEventListener('wheel', this.onBoardActivity, {
+      passive: true,
+    })
   }
 
   destroy(): void {
     this.deps.viewportEl.removeEventListener('dragover', this.onDragOver)
     this.deps.viewportEl.removeEventListener('dragleave', this.onDragLeave)
     this.deps.viewportEl.removeEventListener('drop', this.onDrop)
+    this.deps.viewportEl.removeEventListener(
+      'pointerdown',
+      this.onBoardActivity,
+    )
+    this.deps.viewportEl.removeEventListener('wheel', this.onBoardActivity)
     this.prompt?.close()
     this.prompt = null
     this.cardMenu.destroy()
@@ -518,6 +527,22 @@ export class DropImport {
 
   refreshCardMenu(): void {
     this.cardMenu?.setAvailable(this.core.canCreate())
+    if (this.core.getBoard().nodes.length === 0) {
+      this.cardMenu?.setAutoCollapse(false)
+    }
+  }
+
+  /**
+   * The creation bar stays out while a board is being opened and looked at,
+   * and tucks itself away once the board is being worked on — any press or
+   * wheel on it — coming back when the pointer reaches for it
+   * (ui/cardMenu.ts). Not on an empty board: there it is the way in, and the
+   * board's hint points at it.
+   */
+  private readonly onBoardActivity = (event: Event): void => {
+    if (this.deps.overlay.contains(event.target as Node | null)) return
+    if (this.core.getBoard().nodes.length === 0) return
+    this.cardMenu.setAutoCollapse(true)
   }
 
   /** One entry on the bar: the same creation from the keyboard, which names

@@ -684,3 +684,11 @@ export const CARD_CONTENT_EXTRA_LINES = 4
  * cost the budget exists to avoid.
  */
 export const CARD_CONTENT_MAX_CHARS = 4000
+
+/**
+ * How long the creation bar waits after the pointer leaves it before tucking
+ * itself away (ui/cardMenu.ts): long enough that a pointer grazing past, or
+ * crossing from the handle onto the bar it just opened, does not set it
+ * flapping.
+ */
+export const CARD_MENU_COLLAPSE_DELAY_MS = 300

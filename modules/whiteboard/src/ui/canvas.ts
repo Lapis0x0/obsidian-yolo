@@ -2346,6 +2346,8 @@ export class WhiteboardCanvas {
       EMPTY_HINT_VISIBLE_CLASS,
       !this.parseFailed && this.board.nodes.length === 0,
     )
+    // An emptied board brings the creation bar back out for good.
+    this.dropImport?.refreshCardMenu()
   }
 
   private showError(issues: readonly BoardParseIssue[]): void {

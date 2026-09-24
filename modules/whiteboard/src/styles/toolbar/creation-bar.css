@@ -6,7 +6,13 @@
 .yolo-whiteboard-card-menu {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  /* The safe area keeps it off a phone's home indicator, now the board runs
+   * to the bottom of the window (root.css); the lift clears Obsidian's
+   * status bar when it floats over this spot
+   * (ui/cardMenu.ts's `syncLift`). */
+  bottom: calc(
+    16px + var(--safe-area-inset-bottom, 0px) + var(--yolo-card-menu-lift, 0px)
+  );
   display: flex;
   align-items: stretch;
   gap: 1px;
@@ -21,6 +27,65 @@
    * a margin so the whole placement is one composited transform. */
   transform: translateX(-50%);
   pointer-events: auto;
+  transition:
+    transform var(--yolo-anim-duration-enter, 220ms)
+      var(--yolo-anim-ease-out, ease-out),
+    opacity var(--yolo-anim-duration-enter, 220ms)
+      var(--yolo-anim-ease-out, ease-out);
+}
+
+/* Tucked away (ui/cardMenu.ts's `setAutoCollapse`): sinking towards the
+ * board's bottom edge as it fades, onto the handle it leaves behind. A fade rather than a slide
+ * off the bottom edge, because the status bar may be sitting there — a bar
+ * sliding underneath it would show wherever it was not covered. A keyboard
+ * that tabs onto a button brings it back. */
+.yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-collapsed:not(
+    :has(:focus-visible)
+  ) {
+  transform: translate(-50%, calc(100% + 16px - 10px));
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--yolo-anim-duration-exit, 160ms);
+  transition-timing-function: var(--yolo-anim-ease-in, ease-in);
+}
+
+/* What a tucked-away bar leaves: a short grip line resting on the board's
+ * bottom edge — tucked *into* that edge, not hovering where the bar's own
+ * bottom was. The element is wider and taller than the line — it is where a
+ * pointer brings the bar back, and a 4px target is not one. */
+.yolo-whiteboard-card-menu-handle {
+  position: absolute;
+  left: 50%;
+  bottom: calc(
+    var(--safe-area-inset-bottom, 0px) + var(--yolo-card-menu-lift, 0px)
+  );
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 160px;
+  height: 24px;
+  padding-bottom: 6px;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-exit, 160ms)
+    var(--yolo-anim-ease-in, ease-in);
+}
+
+.yolo-whiteboard-card-menu-handle::before {
+  content: '';
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--text-faint);
+}
+
+.yolo-whiteboard-card-menu-handle.yolo-whiteboard-card-menu-collapsed {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity var(--yolo-anim-duration-enter, 220ms)
+    var(--yolo-anim-ease-out, ease-out);
 }
 
 /* Sized like Canvas's own `.canvas-card-menu-button`, not like the selection
@@ -85,6 +150,7 @@ button.yolo-whiteboard-card-menu-button:active {
  * disabled state: a bar of four dead buttons is worse than no bar, and the
  * reason it is gone (the whole board is a field of title blocks) is visible
  * on the canvas itself. */
-.yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-hidden {
+.yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-hidden,
+.yolo-whiteboard-card-menu-handle.yolo-whiteboard-card-menu-hidden {
   display: none;
 }
