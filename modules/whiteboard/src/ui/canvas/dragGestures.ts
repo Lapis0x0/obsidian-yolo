@@ -150,10 +150,10 @@ export type DragGesturesDeps = Readonly<{
    * PDFs. */
   followPdfLinkAt: (id: NodeId, e: PointerEvent) => void
   /**
-   * A click on the card that was already the lone selection: open it for
-   * typing, and answer whether it did. Declined for a card with nothing to
-   * type into, where the click keeps meaning what it meant (a PDF card's
-   * click follows the link under it).
+   * A click on the card that was already the lone selection: open it the
+   * way a double-click does — for typing, or into its live content (a PDF
+   * to select text in) — and answer whether it did. Declined for a card with
+   * neither, where the click stays a click on it.
    */
   openOnSecondClick: (id: NodeId) => boolean
   /** The edge set changed (an Alt-drag copied edges along with its cards). */

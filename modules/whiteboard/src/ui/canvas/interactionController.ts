@@ -327,8 +327,6 @@ export class InteractionController {
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       openOnSecondClick: (id) => {
-        const node = this.core.getNode(id)
-        if (!node || !deps.editing.isEditableNode(node)) return false
         // Written into by a generation: the text is the stream's until it
         // settles, and a click is not asking to stop it.
         if (deps.generation.isGenerating(id)) return false
