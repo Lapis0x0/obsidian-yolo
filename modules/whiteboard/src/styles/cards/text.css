@@ -1,6 +1,6 @@
 /* --- bare text (fileFormat.ts's `plain`) ------------------------------------
  * A text node written straight on the board: the card's element with the card
- * taken away. No frame and no fill at rest. Its height is its content's
+ * taken away. No frame and no fill, in any state. Its height is its content's
  * (cardRenderer.ts's `releaseTextSize`); nothing here sets one. */
 
 .yolo-whiteboard-card.yolo-whiteboard-text {
@@ -11,32 +11,40 @@
   background-color: transparent;
   /* A coloured card's wash (color.css): bare text is coloured in its ink. */
   background-image: none;
-  /* Its states are drawn with this instead: one thin line, stood a little
-   * off the glyphs so it frames the text rather than boxing it in. */
-  outline: 1px solid transparent;
-  outline-offset: 3px;
 }
 
-/* Not a card's rings: a card is outlined twice when selected because its
- * border is already there to be doubled. */
+/* A card's selection rings, which are what made selected text read as a
+ * selected card. */
 .yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-selected,
 .yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-editing {
   box-shadow: none;
 }
 
-/* Under the pointer, a faint line says there is something here to pick up —
- * the only sign of where invisible text's box is. */
-.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-hovered {
-  outline-color: var(--background-modifier-border-hover);
+/* Lifted without a shadow: a shadow is a card's, and under bare text it would
+ * draw the card this is not. At rest its mark is not drawn at all. */
+.yolo-whiteboard-card.yolo-whiteboard-text::before,
+.yolo-whiteboard-card.yolo-whiteboard-text::after {
+  content: none;
 }
 
-/* Selected and being typed into are one line, the same: a selection that is
- * opened for typing does not change how it is marked. Neutral, one step
- * firmer than hover — not the accent a card's selection draws, which is
- * what made a selected text read as a selected card. */
-.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-selected,
-.yolo-whiteboard-card.yolo-whiteboard-text.yolo-whiteboard-card-editing {
-  outline-color: var(--text-faint);
+/* Selected, and being typed into, it is marked by one faint line down its
+ * right side, as tall as the text — not a line around it. Where a text starts
+ * its first word already says; where its lines stop is the one edge nothing
+ * shows, since its box can run wider than its words. Pointed at, the same
+ * line is where its width is taken hold of (the handle layer below). The same
+ * in both states, so opening a selection for typing changes nothing. */
+.yolo-whiteboard-card.yolo-whiteboard-text:is(
+    .yolo-whiteboard-card-selected,
+    .yolo-whiteboard-card-editing
+  )::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px 0 auto;
+  width: 2px;
+  border-radius: 1px;
+  background-color: var(--text-faint);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* Width that follows the longest line, up to where prose stops being
@@ -55,12 +63,6 @@
  * content is as wide as what is typed. */
 .yolo-whiteboard-text-auto .markdown-source-view.mod-cm6 .cm-content {
   width: auto;
-}
-
-/* Lifted without a shadow: a shadow is a card's, and under bare text it would
- * draw the card this is not. */
-.yolo-whiteboard-card.yolo-whiteboard-text::before {
-  content: none;
 }
 
 /* All of it is shown, so nothing clips it, fades it or scrolls it. */
@@ -131,6 +133,29 @@
 .yolo-whiteboard-interaction-layer-text
   .yolo-whiteboard-resizer:is([data-resize='top'], [data-resize='bottom']) {
   cursor: grab;
+}
+
+/* Its width is taken hold of at its right side, so that is where the pointer
+ * finds a line: the selection's line, a shade firmer, drawn on the handle so it
+ * shows whether or not the text is selected. Centred where the selection's
+ * sits, 2px past the text's edge (the handle is centred on the edge). */
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-resizer[data-resize='right']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% + 1px);
+  width: 2px;
+  border-radius: 1px;
+  background-color: var(--text-faint);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-interaction-layer-text
+  .yolo-whiteboard-resizer[data-resize='right']:hover::before {
+  opacity: 0.8;
 }
 
 /* Its connection points stand just outside the handles rather than in their
