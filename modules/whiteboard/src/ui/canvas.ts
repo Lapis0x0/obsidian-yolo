@@ -133,6 +133,9 @@ import {
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
   SPREAD_SHEET_OF_SELECTED_CLASS,
+  SPREAD_DEAL_MAX_DELAY_MS,
+  SPREAD_DEAL_STAGGER_MS,
+  SPREAD_DEAL_WINDOW_MS,
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { applyColorToElement } from './selectionToolbar'
@@ -254,6 +257,14 @@ export class WhiteboardCanvas {
   private pendingEdit: Readonly<{ id: NodeId; until: number }> | null = null
   /** The spread whose title the pointer is on (`syncSpreadHover`). */
   private hoveredSpreadId: NodeId | null = null
+  /** The spread being dealt out of its card's corner — see `playSpreadDeal`. */
+  private spreadDeal: Readonly<{
+    parent: NodeId
+    origin: Readonly<{ x: number; y: number }>
+    startedAt: number
+  }> | null = null
+  /** Spreads whose sheets are being gathered back before they close. */
+  private readonly spreadsFolding = new Set<NodeId>()
 
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
@@ -1847,12 +1858,14 @@ export class WhiteboardCanvas {
     const id = target?.type === 'pdf-page' ? target.parent : asked
     const node = this.nodesById.get(id)
     if (isSpreadTitle(node)) {
-      this.commitSpreadToggle(id, closeSpread(this.board, id))
+      await this.foldSpreadAway(id)
       return
     }
     if (!node || !isPdfNode(node)) return
     if (node.spread) {
+      this.beginSpreadDeal(id, node)
       this.commitSpreadToggle(id, openSpread(this.board, id))
+      this.dealOnOverview(id)
       return
     }
     let sizes: readonly Readonly<{ width: number; height: number }>[]
@@ -1874,7 +1887,171 @@ export class WhiteboardCanvas {
       defaultSpreadColumns(sizes, metrics),
       metrics,
     )
+    this.beginSpreadDeal(id, now)
     this.commitSpreadToggle(id, openSpread(this.board, id, layout))
+    this.dealOnOverview(id)
+  }
+
+  /** The overview tier's deal: the canvas carries each sheet out of the
+   * card's corner, in the same order and timing as `playSpreadDeal`. */
+  private dealOnOverview(id: NodeId): void {
+    const deal = this.spreadDeal
+    if (!this.overview || !deal || deal.parent !== id) return
+    this.spreadDeal = null
+    for (const sheet of spreadPages(this.board, id)) {
+      this.overviewLayer?.animate(sheet.id, {
+        direction: 'in',
+        offset: { x: deal.origin.x - sheet.x, y: deal.origin.y - sheet.y },
+        delay: Math.min(
+          (sheet.page - 1) * SPREAD_DEAL_STAGGER_MS,
+          SPREAD_DEAL_MAX_DELAY_MS,
+        ),
+      })
+    }
+  }
+
+  private prefersReducedMotion(): boolean {
+    // A JS-driven animation, so the reduced-motion degrade is ours to make
+    // (CLAUDE.md) — the global CSS fallback does not reach WAAPI.
+    return this.context
+      .getWindow()
+      .matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  /** Arms the deal for a spread about to open from `card`: its sheets will
+   * leave the card's corner as they mount (`playSpreadDeal`), or, in the
+   * overview tier where nothing mounts, as the canvas draws them
+   * (`dealOnOverview`). */
+  private beginSpreadDeal(id: NodeId, card: BoardNode): void {
+    this.spreadDeal = this.prefersReducedMotion()
+      ? null
+      : {
+          parent: id,
+          origin: { x: card.x, y: card.y },
+          startedAt: this.context.getWindow().performance.now(),
+        }
+  }
+
+  /**
+   * A sheet of the spread just opened, dealt from the card's corner to its
+   * place: the page is seen coming out of the card it was in. Page order
+   * sets when it leaves (constants.ts's SPREAD_DEAL_*). Only `transform` and
+   * `opacity`, as a Web Animation, so nothing is left on the element.
+   */
+  private playSpreadDeal(id: NodeId): void {
+    const deal = this.spreadDeal
+    if (!deal) return
+    const now = this.context.getWindow().performance.now()
+    if (now - deal.startedAt > SPREAD_DEAL_WINDOW_MS) {
+      this.spreadDeal = null
+      return
+    }
+    const node = this.nodesById.get(id)
+    if (node?.type !== 'pdf-page' || node.parent !== deal.parent) return
+    const el = this.cardRenderer.getRuntime(id)?.el
+    if (!el) return
+    const dx = deal.origin.x - node.x
+    const dy = deal.origin.y - node.y
+    el.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 },
+        { transform: 'none', opacity: 1 },
+      ],
+      {
+        duration: ARRANGE_ANIMATION_MS,
+        easing: ARRANGE_ANIMATION_EASING,
+        delay: Math.min(
+          (node.page - 1) * SPREAD_DEAL_STAGGER_MS,
+          SPREAD_DEAL_MAX_DELAY_MS,
+        ),
+        fill: 'backwards',
+      },
+    )
+  }
+
+  /**
+   * Closes a spread the way it opened, backwards: the sheets on screen slide
+   * into the title's corner and fade, and only then is the spread closed and
+   * the card faded in where they went. A second ask while they travel is the
+   * same ask, and is let go.
+   */
+  private async foldSpreadAway(id: NodeId): Promise<void> {
+    if (this.spreadsFolding.has(id)) return
+    const title = this.nodesById.get(id)
+    if (!title) return
+    const gathering: Animation[] = []
+    const onOverview = this.overview && !this.prefersReducedMotion()
+    if (onOverview) {
+      // No elements to animate: the canvas gathers the sheets instead, and
+      // the spread closes when they have arrived.
+      for (const sheet of spreadPages(this.board, id)) {
+        this.overviewLayer?.animate(sheet.id, {
+          direction: 'out',
+          offset: { x: title.x - sheet.x, y: title.y - sheet.y },
+          delay: 0,
+        })
+      }
+      this.spreadsFolding.add(id)
+      await new Promise((resolve) =>
+        this.context.getWindow().setTimeout(resolve, ARRANGE_ANIMATION_MS),
+      )
+      this.spreadsFolding.delete(id)
+      if (!isSpreadTitle(this.nodesById.get(id))) {
+        this.overviewLayer?.stopAnimating(
+          spreadPages(this.board, id).map((sheet) => sheet.id),
+        )
+        return
+      }
+      this.commitSpreadToggle(id, closeSpread(this.board, id))
+      this.overviewLayer?.animate(id, {
+        direction: 'in',
+        offset: { x: 0, y: 0 },
+        delay: 0,
+      })
+      return
+    }
+    if (!this.prefersReducedMotion()) {
+      for (const sheet of spreadPages(this.board, id)) {
+        const el = this.cardRenderer.getRuntime(sheet.id)?.el
+        if (!el) continue
+        const dx = title.x - sheet.x
+        const dy = title.y - sheet.y
+        gathering.push(
+          el.animate(
+            [
+              { transform: 'none', opacity: 1 },
+              { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 },
+            ],
+            {
+              duration: ARRANGE_ANIMATION_MS,
+              easing: ARRANGE_ANIMATION_EASING,
+              fill: 'forwards',
+            },
+          ),
+        )
+      }
+    }
+    if (gathering.length > 0) {
+      this.spreadsFolding.add(id)
+      // A sheet torn down mid-flight cancels its animation; that is not a
+      // reason to leave the spread open.
+      await Promise.allSettled(gathering.map((animation) => animation.finished))
+      this.spreadsFolding.delete(id)
+    }
+    if (!isSpreadTitle(this.nodesById.get(id))) {
+      // Closed or undone some other way meanwhile: the sheets that are still
+      // there are shown again, not left gathered and invisible.
+      for (const animation of gathering) animation.cancel()
+      return
+    }
+    this.commitSpreadToggle(id, closeSpread(this.board, id))
+    if (gathering.length === 0) return
+    this.cardRenderer
+      .getRuntime(id)
+      ?.el?.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: ARRANGE_ANIMATION_MS,
+        easing: ARRANGE_ANIMATION_EASING,
+      })
   }
 
   /**
@@ -2096,10 +2273,7 @@ export class WhiteboardCanvas {
     moved: readonly { el: HTMLElement; dx: number; dy: number }[],
   ): void {
     if (moved.length === 0) return
-    const win = this.context.getWindow()
-    // A JS-driven animation, so the reduced-motion degrade is ours to make
-    // (CLAUDE.md) — the global CSS fallback does not reach WAAPI.
-    if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (this.prefersReducedMotion()) return
     for (const { el, dx, dy } of moved) {
       el.animate(
         [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
@@ -2365,6 +2539,7 @@ export class WhiteboardCanvas {
       this.entering.size > 0 ? this.context.getWindow().performance.now() : 0
     for (const id of toMount) {
       this.cardRenderer.mountNode(id)
+      this.playSpreadDeal(id)
       const addedAt = this.entering.get(id)
       if (addedAt === undefined) continue
       this.entering.delete(id)

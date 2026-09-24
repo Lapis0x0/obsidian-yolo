@@ -48,6 +48,7 @@ import {
   computeWorldViewportRect,
 } from '../../domain/virtualization'
 import {
+  ARRANGE_ANIMATION_MS,
   EDGE_ARROW_WORLD_PX,
   EDGE_LABEL_FONT_PX,
   EDGE_LABEL_MAX_WIDTH_EM,
@@ -150,6 +151,16 @@ export class OverviewLayer {
    * Kept in world units, so a zoom does not invalidate them; dropped with the
    * palette, whose font they were measured in. */
   private readonly titleLines = new Map<string, readonly string[]>()
+  /** Cards in flight — see `animate`. */
+  private readonly motions = new Map<
+    NodeId,
+    Readonly<{
+      direction: 'in' | 'out'
+      offset: Readonly<{ x: number; y: number }>
+      delay: number
+      start: number
+    }>
+  >()
   /** Where each spread title's line was last drawn, in world units. */
   private readonly titleRects = new Map<
     NodeId,
@@ -241,6 +252,7 @@ export class OverviewLayer {
       this.dirty = true
       return
     }
+    this.motions.clear()
     this.clear()
   }
 
@@ -280,7 +292,103 @@ export class OverviewLayer {
     // other way round -- the order the DOM tiers paint in.
     this.drawEdges(ctx, view, live)
     this.drawCards(ctx, view, live)
+    this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
+  }
+
+  /**
+   * Moves a card in from `offset` (world units from where it is) while it
+   * fades in, or out to it while it fades away — the overview tier's side of
+   * a PDF spread being dealt out or gathered back (canvas.ts). The DOM tiers
+   * do this with Web Animations on the elements; here there are no elements,
+   * so the canvas carries the motion and redraws every frame until it ends.
+   * A card that has gone out stays unseen until it leaves the board.
+   */
+  animate(
+    id: NodeId,
+    motion: Readonly<{
+      direction: 'in' | 'out'
+      offset: Readonly<{ x: number; y: number }>
+      delay: number
+    }>,
+  ): void {
+    if (!this.active) return
+    this.motions.set(id, {
+      ...motion,
+      start: this.context.getWindow().performance.now(),
+    })
+    this.dirty = true
+  }
+
+  /** Puts cards back where they are, at full opacity, mid-motion or not. */
+  stopAnimating(ids: Iterable<NodeId>): void {
+    for (const id of ids) this.motions.delete(id)
+    this.dirty = true
+  }
+
+  /** The cards in motion, each at its own place and opacity; the next frame
+   * is owed while any is still moving. */
+  private drawMotions(ctx: CanvasRenderingContext2D, view: CanvasView): void {
+    const palette = this.palette
+    if (!palette || this.motions.size === 0) return
+    const now = this.context.getWindow().performance.now()
+    let moving = false
+    for (const [id, motion] of this.motions) {
+      const node = this.callbacks.getNode(id)
+      const elapsed = now - motion.start - motion.delay
+      const t = Math.min(1, Math.max(0, elapsed / ARRANGE_ANIMATION_MS))
+      if (!node) {
+        this.motions.delete(id)
+        continue
+      }
+      // Drawn here on the frame it arrives too — `drawCards` skipped it
+      // this frame — and handed back to `drawCards` from the next.
+      if (motion.direction === 'in' && t >= 1) this.motions.delete(id)
+      if (t < 1) moving = true
+      // ARRANGE_ANIMATION_EASING's curve, near enough for 220ms: fast out
+      // of the start, settling into the end.
+      const eased = 1 - (1 - t) ** 4
+      const away = motion.direction === 'in' ? 1 - eased : eased
+      const alpha = 1 - away
+      if (alpha <= 0) continue
+      const x = (node.x + motion.offset.x * away) * view.scale + view.tx
+      const y = (node.y + motion.offset.y * away) * view.scale + view.ty
+      const w = node.w * view.scale
+      const h = node.h * view.scale
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = palette.background
+      ctx.fillRect(x, y, w, h)
+      // The wash every card wears here (`drawCards`), or the card would land
+      // white and turn grey the frame it stops moving.
+      ctx.globalAlpha = alpha * OVERVIEW_CARD_WASH_ALPHA
+      ctx.fillStyle = this.colorOf(node, palette) ?? palette.neutral
+      ctx.fillRect(x, y, w, h)
+      // The border it will have when it lands (`drawCards`): a selection's
+      // ring, the faint accent of a selected spread's sheet, or the plain
+      // one — so nothing changes the frame it stops.
+      const selected = this.callbacks.isSelected(node.id)
+      const ofSelected =
+        !selected &&
+        node.type === 'pdf-page' &&
+        this.callbacks.isSelected(node.parent)
+      ctx.globalAlpha = ofSelected ? alpha * 0.45 : alpha
+      ctx.lineWidth = selected ? 2 : 1
+      ctx.strokeStyle = selected || ofSelected ? palette.accent : palette.border
+      ctx.beginPath()
+      this.strokeRectPath(ctx, { x, y, w, h })
+      ctx.stroke()
+      ctx.globalAlpha = alpha
+      ctx.lineWidth = 1
+      if (w < OVERVIEW_TITLE_MIN_CARD_PX) continue
+      const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
+      ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
+      ctx.fillStyle = palette.text
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(title, x + w / 2, y + h / 2, w)
+    }
+    ctx.globalAlpha = 1
+    if (moving) this.dirty = true
   }
 
   destroy(): void {
@@ -418,6 +526,8 @@ export class OverviewLayer {
     const texts: typeof visible = []
     const spreadTitles: typeof visible = []
     for (const node of nodes) {
+      // Drawn on their own, at their own opacity (`drawMotions`).
+      if (this.motions.has(node.id)) continue
       const rect = live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
       const y = rect.y * view.scale + view.ty

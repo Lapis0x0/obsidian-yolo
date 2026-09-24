@@ -457,6 +457,18 @@ export const ARRANGE_ANIMATION_MS = 220
 export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 /**
+ * A PDF spread being opened deals its sheets out of the card's corner, one
+ * after another in page order: each leaves this long after the one before,
+ * and none later than the cap, so a long document is dealt in the same
+ * breath as a short one. Sheets that mount within the window after the
+ * spread opens (virtualization mounts a few per frame) are dealt too; later
+ * ones, brought on screen by a pan, just appear.
+ */
+export const SPREAD_DEAL_STAGGER_MS = 12
+export const SPREAD_DEAL_MAX_DELAY_MS = 200
+export const SPREAD_DEAL_WINDOW_MS = 500
+
+/**
  * A node arriving on the board (created, pasted, restored by an undo) and one
  * leaving it (deleted, cut). The same mirror of the host's motion tokens as
  * the arrangement above: entering is `--yolo-anim-duration-enter` on the
