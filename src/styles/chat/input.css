@@ -1992,12 +1992,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   }
 }
 
-@media (max-width: 768px) {
-  .yolo-message-navigator {
-    display: none;
-  }
-}
-
 .yolo-chat-compaction-divider {
   display: flex;
   flex-direction: column;
