@@ -41,6 +41,7 @@ import type {
 } from '../../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
 import { addNode, boardWithPageWindow } from '../../domain/operations'
+import type { Rect } from '../../domain/placement'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
 import type { AnnotationStores } from '../../host/annotationStore'
 import { exportAnnotatedPdf } from '../../host/exportAnnotatedPdf'
@@ -88,11 +89,15 @@ export type PdfIntegrationDeps = Readonly<{
   keyLayers: KeyLayers
   /** The whole Escape chain — the reader keymap binds Escape too. */
   runEscape: () => boolean
+  /** Lets the pointer into a selected card's content (the editing
+   * controller's `editCard`); whether it did. */
+  enterCard: (id: NodeId) => boolean
   /** Where a frame or an annotation dragged out of a reader would land on
    * the board (world), or null where it cannot. */
   excerptDropPoint: (e: MouseEvent) => ScreenPoint | null
-  /** The board's drop hint, for such a drag. */
-  setExcerptDropHint: (on: boolean) => void
+  /** Shows the card an excerpt being dragged would become, where it would
+   * land (world), or takes it away. */
+  showExcerptLanding: (rect: Rect | null) => void
 }>
 
 export class PdfIntegration {
@@ -145,7 +150,10 @@ export class PdfIntegration {
         addArea: (reader, page, rect, at) =>
           this.pdfExcerpts.addArea(reader, page, rect, at),
         dropPoint: (event) => deps.excerptDropPoint(event),
-        setDropHint: (on) => deps.setExcerptDropHint(on),
+        showLanding: (landing) =>
+          deps.showExcerptLanding(
+            landing && this.pdfExcerpts.landing(landing.content, landing.at),
+          ),
       },
       reportError: core.reportError,
     })
@@ -407,6 +415,17 @@ export class PdfIntegration {
     return this.annotationController.isExcerptDrag(e)
   }
 
+  /** Such a drag over the board: the card it would make, where it would
+   * land (`at`, world), or nothing where it cannot. */
+  previewExcerpt(e: DragEvent, at: ScreenPoint | null): void {
+    const quote = this.annotationController.draggedQuote(e)
+    this.deps.showExcerptLanding(
+      at && quote !== null
+        ? this.pdfExcerpts.landing({ kind: 'text', quote }, at)
+        : null,
+    )
+  }
+
   /**
    * Text selected in one of this view's PDF readers, dragged out: an excerpt
    * card where it was dropped (./pdfExcerpts.ts) — only on open canvas, which
@@ -444,6 +463,34 @@ export class PdfIntegration {
    * is left as it was — a card's links are followed where Obsidian follows
    * them, in its editor.
    */
+  /**
+   * A click on a PDF card that landed on one of its annotations — while the
+   * card's content was still under its mask, so the reader never saw it. The
+   * annotation is what was aimed at, not the card: the card is selected and
+   * entered, as a second click would, and the annotation opened, as a click
+   * on it inside would. True when that is what happened.
+   */
+  openAnnotationAt(id: NodeId, e: MouseEvent): boolean {
+    const { core } = this.deps
+    const reader = core.getRuntime(id)?.pdfReader
+    if (!reader || core.isParseFailed()) return false
+    const annotationId = reader.annotationAtPoint(e.clientX, e.clientY)
+    if (annotationId === null) return false
+    core.setSelection([id])
+    if (!this.deps.enterCard(id)) return false
+    this.annotationController.openAnnotation(reader, annotationId)
+    return true
+  }
+
+  /** Whether a pointer on a PDF card whose content has not been entered
+   * is over one of its annotations — where a click would open it
+   * (`openAnnotationAt`). An entered card's reader says so itself. */
+  isOverAnnotation(id: NodeId, e: MouseEvent): boolean {
+    if (this.deps.getEnteredNodeId() === id) return false
+    const reader = this.deps.core.getRuntime(id)?.pdfReader
+    return reader?.annotationAtPoint(e.clientX, e.clientY) != null
+  }
+
   followPdfLinkAt(id: NodeId, e: MouseEvent): void {
     const { core } = this.deps
     const runtime = core.getRuntime(id)

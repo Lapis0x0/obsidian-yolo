@@ -18,6 +18,7 @@
 
 import {
   type ExcerptCardMetrics,
+  type ExcerptContent,
   type TextExcerpt,
   areaExcerptCardSize,
   areaExcerptFileName,
@@ -162,6 +163,19 @@ export class PdfExcerpts {
     }
   }
 
+  /**
+   * Where a card made from `content` and dropped at `at` (world) would be:
+   * the rectangle `place` gives it, for the board to show while it is still
+   * being dragged.
+   */
+  landing(content: ExcerptContent, at: Point): Rect {
+    const size =
+      content.kind === 'text'
+        ? textExcerptCardSize(content.quote, METRICS)
+        : areaExcerptCardSize(areaPictureSize(content.rect), METRICS)
+    return { ...centredOn(at, size), w: size.w, h: size.h }
+  }
+
   private place(
     reader: PdfReader,
     text: string,
@@ -171,7 +185,7 @@ export class PdfExcerpts {
     const { callbacks } = this
     const board = callbacks.getBoard()
     const position = at
-      ? { x: at.x - size.w / 2, y: at.y - size.h / 2 }
+      ? centredOn(at, size)
       : this.besideSource(board, reader, size)
     const node: TextNode = {
       id: callbacks.nextNodeId(board),
@@ -203,6 +217,23 @@ export class PdfExcerpts {
     return source
       ? placeBeside(obstacles, size, source)
       : placeCard(obstacles, size)
+  }
+}
+
+/** Where a card of `size` sits to be centred on `at`. */
+function centredOn(at: Point, size: Readonly<{ w: number; h: number }>): Point {
+  return { x: at.x - size.w / 2, y: at.y - size.h / 2 }
+}
+
+/** The picture `addArea` draws for an area, sized before it is drawn. */
+function areaPictureSize(rect: PdfRectTuple): {
+  width: number
+  height: number
+} {
+  const scale = areaScale(rect)
+  return {
+    width: Math.round(Math.abs(rect[2] - rect[0]) * scale),
+    height: Math.round(Math.abs(rect[3] - rect[1]) * scale),
   }
 }
 

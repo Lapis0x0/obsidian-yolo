@@ -953,15 +953,17 @@ export class WhiteboardCanvas {
       annotationPrefs: this.annotationPrefs,
       getPdfPosition: (id) => this.cardRenderer.getPdfPosition(id),
       getEnteredNodeId: () => this.editing.getEnteredNodeId(),
+      enterCard: (id) => this.editing.editCard(id),
       onResize: () => this.onResize(),
       keyLayers: this.keymap,
       runEscape: () => this.keymap.run('escape'),
       excerptDropPoint: (e) => this.dropImport.pointerDropPoint(e),
-      setExcerptDropHint: (on) => this.dropImport.setDropHint(on),
+      showExcerptLanding: (rect) => this.dropImport.showLandingSlot(rect),
     })
     this.dropImport = new DropImport({
       core: this.core,
       viewportEl: viewport,
+      worldEl: world,
       overlay: this.toolbarController.overlay,
       closePopover: () => this.toolbarController.closePopover(),
       onPromptChange: () => this.keymap.syncSelectionScope(),
@@ -972,6 +974,7 @@ export class WhiteboardCanvas {
       commitEditOn: (id) => this.editing.blurEditor([id]),
       purgeNodeRuntime: (id) => this.purgeNodeRuntime(id),
       isExcerptDrag: (e) => this.pdf.isExcerptDrag(e),
+      previewExcerpt: (e, at) => this.pdf.previewExcerpt(e, at),
       dropExcerpt: (e, at, isOverCard) =>
         this.pdf.dropExcerpt(e, at, isOverCard),
       openReader: (id) => this.pdf.openReaderPanel(id),

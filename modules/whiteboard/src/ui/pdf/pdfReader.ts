@@ -169,6 +169,8 @@ const MARKS_CLASS = 'yolo-whiteboard-pdf-marks'
 const AREA_DRAFT_CLASS = 'yolo-whiteboard-pdf-area-draft'
 /** On the pages while the pointer is over something a press would pick up. */
 const GRABBABLE_CLASS = 'yolo-whiteboard-pdf-pages-grabbable'
+/** On the pages while the pointer is over an annotation a click opens. */
+const OVER_ANNOTATION_CLASS = 'yolo-whiteboard-pdf-pages-over-annotation'
 const FLASH_CLASS = 'yolo-whiteboard-pdf-flash'
 const FLASH_SHOWN_CLASS = 'yolo-whiteboard-pdf-flash-shown'
 /** How long the text a link names stays marked after the reader goes to
@@ -1296,19 +1298,52 @@ export class PdfReader {
   }
 
   private annotationAt(event: MouseEvent): string | null {
-    const store = this.store
     const at = this.pointOnPage(event)
-    if (!store || !at?.slot.frame) return null
-    const frame = at.slot.frame
-    const entries = store.forPage(at.slot.index + 1).map((annotation) => ({
+    return at ? this.annotationOnPage(at.slot, at.x, at.y, at.rect) : null
+  }
+
+  /**
+   * The annotation drawn at a point on screen, or null — for a press the
+   * pages never received, such as one on a card whose content has not been
+   * entered, where the card's mask takes every press.
+   */
+  annotationAtPoint(clientX: number, clientY: number): string | null {
+    for (const slot of this.active) {
+      const rect = slot.el.getBoundingClientRect()
+      if (
+        !(rect.width > 0 && rect.height > 0) ||
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      ) {
+        continue
+      }
+      return this.annotationOnPage(
+        slot,
+        (clientX - rect.left) / rect.width,
+        (clientY - rect.top) / rect.height,
+        rect,
+      )
+    }
+    return null
+  }
+
+  /** The annotation at page fractions `x`, `y` of a page shown at `rect`. */
+  private annotationOnPage(
+    slot: Slot,
+    x: number,
+    y: number,
+    rect: DOMRect,
+  ): string | null {
+    const store = this.store
+    const frame = slot.frame
+    if (!store || !frame) return null
+    const entries = store.forPage(slot.index + 1).map((annotation) => ({
       id: annotation.id,
       boxes: boxesFor(annotation, frame),
     }))
-    return hitTestAnnotations(
-      entries,
-      [at.x, at.y],
-      HIT_SLOP_PX / at.rect.width,
-    )
+    return hitTestAnnotations(entries, [x, y], HIT_SLOP_PX / rect.width)
   }
 
   /** Whether a pointer is over what the owner is acting on: the waiting
@@ -1369,12 +1404,22 @@ export class PdfReader {
   private readonly onPagesPointerMove = (event: PointerEvent): void => {
     const draft = this.areaDraft
     if (!draft) {
-      // What a press would pick up says so before the press.
+      // What a press would do says so before the press: pick up what is
+      // being acted on, or open the annotation under it. Not in area mode,
+      // where a press on an annotation draws a frame like any other.
+      const idle = event.buttons === 0
       const grabbable =
-        event.buttons === 0 &&
+        idle &&
         (this.pendingArea !== null || this.activeAnnotationId !== null) &&
         this.overGrabbable(event)
       this.pagesEl.classList.toggle(GRABBABLE_CLASS, grabbable)
+      this.pagesEl.classList.toggle(
+        OVER_ANNOTATION_CLASS,
+        idle &&
+          !grabbable &&
+          !this.areaMode &&
+          this.annotationAt(event) !== null,
+      )
       return
     }
     if (event.pointerId !== draft.pointerId) return

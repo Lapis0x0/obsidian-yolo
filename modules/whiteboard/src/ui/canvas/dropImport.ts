@@ -36,6 +36,7 @@ import {
   sanitizeFileName,
 } from '../../domain/naming'
 import { addNode, replaceNode } from '../../domain/operations'
+import type { Rect } from '../../domain/placement'
 import type { CardSize } from '../../domain/resize'
 import {
   CardMenu,
@@ -60,6 +61,10 @@ import { isPdfNode } from './pdfIntegration'
 import { ALIGN_MENU, DISTRIBUTE_MENU } from './toolbarController'
 
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
+/** Where a card dragged out of a PDF will land, drawn in the world layer
+ * (`showLandingSlot`). */
+const LANDING_SLOT_CLASS = 'yolo-whiteboard-landing-slot'
+const LANDING_SLOT_SHOWN_CLASS = 'yolo-whiteboard-landing-slot-shown'
 
 /** Which label a rename acts on — the selection menu's "rename group". */
 type RenameTarget = Readonly<{ kind: 'group'; id: NodeId }>
@@ -69,6 +74,9 @@ export type DropImportDeps = Readonly<{
   /** The board's viewport: the drop target, and what "the middle of the
    * screen" is measured in. */
   viewportEl: HTMLElement
+  /** The camera-transformed layer the cards are in: the landing slot is
+   * drawn there, so it is sized and moved by the camera as a card is. */
+  worldEl: HTMLElement
   /** The toolbar's overlay layer, where the creation bar and the prompt
    * live (see SelectionToolbar.overlay). */
   overlay: HTMLElement
@@ -90,6 +98,9 @@ export type DropImportDeps = Readonly<{
   purgeNodeRuntime: (id: NodeId) => void
   // The PDF card's entries.
   isExcerptDrag: (e: DragEvent) => boolean
+  /** A dragged selection is over the board: where it would land (world),
+   * or null where it cannot. */
+  previewExcerpt: (e: DragEvent, at: ScreenPoint | null) => void
   dropExcerpt: (
     e: DragEvent,
     at: ScreenPoint,
@@ -117,6 +128,8 @@ export class DropImport {
    * one just created from the note prompt, whose text is not known until the
    * first read lands (`enterEditMode` declines before it). */
   private editWhenNoteRendered: NodeId | null = null
+
+  private landingSlot: HTMLElement | null = null
 
   constructor(private readonly deps: DropImportDeps) {
     this.core = deps.core
@@ -164,6 +177,8 @@ export class DropImport {
   }
 
   destroy(): void {
+    this.landingSlot?.remove()
+    this.landingSlot = null
     this.deps.viewportEl.removeEventListener('dragover', this.onDragOver)
     this.deps.viewportEl.removeEventListener('dragleave', this.onDragLeave)
     this.deps.viewportEl.removeEventListener('drop', this.onDrop)
@@ -383,18 +398,52 @@ export class DropImport {
     return this.core.worldPointFromEvent(e)
   }
 
-  /** The drop hint, for a drag this class does not see (`pointerDropPoint`). */
-  setDropHint(on: boolean): void {
-    this.deps.viewportEl.classList.toggle(VIEWPORT_DROP_ACTIVE_CLASS, on)
+  /**
+   * Shows where a card dragged out of a PDF will land — `rect` in world
+   * units, the card it will be — or, with null, takes the slot away.
+   *
+   * An excerpt's drag shows this instead of the board-wide drop hint. That
+   * hint is for a file from outside, whose card nobody can see coming; an
+   * excerpt's card has a known size and a known place, and saying exactly
+   * that, where the pointer is, says more than lighting up the whole board.
+   */
+  showLandingSlot(rect: Readonly<Rect> | null): void {
+    if (!rect) {
+      this.landingSlot?.classList.remove(LANDING_SLOT_SHOWN_CLASS)
+      return
+    }
+    let slot = this.landingSlot
+    if (!slot) {
+      slot = this.deps.worldEl.ownerDocument.createElement('div')
+      slot.className = LANDING_SLOT_CLASS
+      this.landingSlot = slot
+    }
+    // Last in the world layer: over the cards it would overlap, since that
+    // overlap is part of what it is showing.
+    if (slot !== this.deps.worldEl.lastElementChild) {
+      this.deps.worldEl.appendChild(slot)
+    }
+    slot.setCssProps({
+      width: `${rect.w}px`,
+      height: `${rect.h}px`,
+      transform: `translate(${rect.x}px, ${rect.y}px)`,
+    })
+    slot.classList.add(LANDING_SLOT_SHOWN_CLASS)
   }
 
   private readonly onDragOver = (e: DragEvent): void => {
     if (!this.acceptsDrop) return
     // A selection dragged out of a reader lands only on open canvas; over a
     // card it is not a drop at all.
-    if (this.deps.isExcerptDrag(e) && this.deps.nodeIdAtPointer(e) !== null) {
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
-      this.deps.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
+    if (this.deps.isExcerptDrag(e)) {
+      if (this.deps.nodeIdAtPointer(e) !== null) {
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+        this.deps.previewExcerpt(e, null)
+        return
+      }
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+      this.deps.previewExcerpt(e, this.core.worldPointFromEvent(e))
       return
     }
     e.preventDefault()
@@ -408,10 +457,12 @@ export class DropImport {
     const related = asNode(e.relatedTarget)
     if (related !== null && this.deps.viewportEl.contains(related)) return
     this.deps.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
+    this.showLandingSlot(null)
   }
 
   private readonly onDrop = (e: DragEvent): void => {
     this.deps.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
+    this.showLandingSlot(null)
     if (!this.acceptsDrop) return
     e.preventDefault()
     const at = this.core.worldPointFromEvent(e)

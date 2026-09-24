@@ -30,7 +30,7 @@
 // in a popout window; everything here is built from the view's document.
 
 import { type ScreenPoint } from '../../domain/camera'
-import type { TextExcerpt } from '../../domain/excerpt'
+import type { ExcerptContent, TextExcerpt } from '../../domain/excerpt'
 import {
   ANNOTATION_COLORS,
   type AnnotationColor,
@@ -78,8 +78,11 @@ export type ExcerptSink = Readonly<{
   /** Where on the board a pointer drag let go at `event` would land, or
    * null where it cannot (off the board, over a card). */
   dropPoint: (event: MouseEvent) => ScreenPoint | null
-  /** The board's "drop here" hint, for a pointer drag over it. */
-  setDropHint: (on: boolean) => void
+  /** Shows the card `content` would become, landed at `at` (world), or —
+   * with null — shows none. */
+  showLanding: (
+    landing: Readonly<{ at: ScreenPoint; content: ExcerptContent }> | null,
+  ) => void
 }>
 
 /** A text selection being dragged out of a reader. */
@@ -237,12 +240,22 @@ export class AnnotationController {
     )
   }
 
+  /** The passage a dragged selection carries, or null for any other drag. */
+  draggedQuote(event: DragEvent): string | null {
+    return this.isExcerptDrag(event) ? (this.drag?.excerpt.quote ?? null) : null
+  }
+
   /** The selection a drop carries, taken: a drop is one excerpt. */
   takeExcerptDrag(event: DragEvent): ExcerptDrag | null {
     if (!this.isExcerptDrag(event)) return null
     const drag = this.drag
     this.drag = null
     return drag
+  }
+
+  /** Opens an annotation's toolbar as a click on it would. */
+  openAnnotation(reader: PdfReader, id: string): void {
+    this.open({ kind: 'annotation', reader, id })
   }
 
   /** Delete or Backspace with an annotation's toolbar open deletes it. */
@@ -961,6 +974,9 @@ export class AnnotationController {
 
   private readonly onDragEnd = (): void => {
     this.drag = null
+    // A drag let go anywhere but the board — or taken back with Escape —
+    // hears of it only here.
+    this.options.excerpts.showLanding(null)
   }
 
   // -----------------------------------------------------------------------
@@ -1008,9 +1024,21 @@ export class AnnotationController {
     const ghost = grab.ghost
     // Centred on the pointer, where the card it becomes will be centred.
     ghost.style.transform = `translate(${event.clientX - overlay.left - ghost.offsetWidth / 2}px, ${event.clientY - overlay.top - ghost.offsetHeight / 2}px)`
-    const droppable = this.options.excerpts.dropPoint(event) !== null
-    ghost.classList.toggle(GHOST_DROPPABLE_CLASS, droppable)
-    this.options.excerpts.setDropHint(droppable)
+    const at = this.options.excerpts.dropPoint(event)
+    const content = at && this.grabbedContent(grab)
+    ghost.classList.toggle(GHOST_DROPPABLE_CLASS, content !== null)
+    this.options.excerpts.showLanding(at && content && { at, content })
+  }
+
+  /** What the grabbed thing will be once dropped, or null when it is gone. */
+  private grabbedContent(grab: Grab): ExcerptContent | null {
+    const { source } = grab
+    if (source.kind === 'area') return { kind: 'area', rect: source.rect }
+    const annotation = grab.reader.getAnnotationStore()?.get(source.id)
+    if (!annotation) return null
+    return annotation.type === 'area'
+      ? { kind: 'area', rect: annotation.anchor.rect }
+      : { kind: 'text', quote: annotation.anchor.quote.exact }
   }
 
   private readonly onGrabUp = (event: PointerEvent): void => {
@@ -1036,7 +1064,7 @@ export class AnnotationController {
     if (!grab.ghost) return
     grab.ghost.remove()
     this.options.parent.classList.remove(GRABBING_CLASS)
-    this.options.excerpts.setDropHint(false)
+    this.options.excerpts.showLanding(null)
     if (this.mode) this.place()
   }
 

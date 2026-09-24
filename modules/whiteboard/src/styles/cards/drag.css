@@ -206,10 +206,15 @@
  * editor. Figma, tldraw and Miro all separate the two the same way.
  *
  * `:not(.yolo-whiteboard-card-dragging)` is Canvas's clause, and still right:
- * while the card is being moved the pointer belongs to the drag. */
+ * while the card is being moved the pointer belongs to the drag.
+ *
+ * The card's `grab` cursor goes with the drag it promised: a press on an
+ * entered body is the content's, so the content says what it does (text,
+ * a link) and the rest of it is plain. */
 .yolo-whiteboard-card-entered:not(.yolo-whiteboard-card-dragging)
   .yolo-whiteboard-card-body-live {
   pointer-events: auto;
+  cursor: auto;
 }
 
 /* An entered card says so: the board has given its content surface away, and

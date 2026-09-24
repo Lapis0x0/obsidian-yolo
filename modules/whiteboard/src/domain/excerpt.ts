@@ -22,7 +22,7 @@
 // Also the other direction: reading `#page=…&selection=…` back out of a link
 // someone clicked. Pure: no DOM, no host.
 
-import type { SelectionTuple } from './pdfAnnotations'
+import type { PdfRectTuple, SelectionTuple } from './pdfAnnotations'
 
 /** A passage to excerpt: its text, and where the link under it points. */
 export type TextExcerpt = Readonly<{
@@ -31,6 +31,12 @@ export type TextExcerpt = Readonly<{
   selection: SelectionTuple | null
   quote: string
 }>
+
+/** What an excerpt being dragged will become — enough to know the size of
+ * its card before it is made. */
+export type ExcerptContent =
+  | Readonly<{ kind: 'text'; quote: string }>
+  | Readonly<{ kind: 'area'; rect: PdfRectTuple }>
 
 /** Where a PDF link points inside its file. */
 export type PdfLinkTarget = Readonly<{

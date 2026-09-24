@@ -81,6 +81,9 @@ const GROUP_HINTED_CLASS = 'yolo-whiteboard-group-hinted'
 /** On the card the pointer is over — the same state that parks the handle
  * layer on it (`hoveredNodeId`), shown on the card itself. */
 const CARD_HOVERED_CLASS = 'yolo-whiteboard-card-hovered'
+/** On the hovered PDF card while the pointer is over one of its
+ * annotations, which a click opens (PdfIntegration's `openAnnotationAt`). */
+const CARD_OVER_ANNOTATION_CLASS = 'yolo-whiteboard-card-over-annotation'
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -242,7 +245,13 @@ export type InteractionControllerDeps = Readonly<{
     | 'selectionMenuItems'
     | 'viewportCenterWorld'
   >
-  pdf: Pick<PdfIntegration, 'panelContains' | 'followPdfLinkAt'>
+  pdf: Pick<
+    PdfIntegration,
+    | 'panelContains'
+    | 'followPdfLinkAt'
+    | 'openAnnotationAt'
+    | 'isOverAnnotation'
+  >
   /** Exempts a card from virtualization unmount while a gesture holds it. */
   pin: (id: NodeId) => void
   unpin: (id: NodeId) => void
@@ -325,6 +334,7 @@ export class InteractionController {
       queueContentSync: deps.queueContentSync,
       onLiveRectsChange: deps.onLiveRectsChange,
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
+      openPdfAnnotationAt: (id, e) => deps.pdf.openAnnotationAt(id, e),
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       openOnSecondClick: (id) => {
         // Written into by a generation: the text is the stream's until it
@@ -782,6 +792,14 @@ export class InteractionController {
       target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     const nodeId = onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e)
     this.setHoveredNode(nodeId)
+    if (nodeId !== null) {
+      this.core
+        .getRuntime(nodeId)
+        ?.el?.classList.toggle(
+          CARD_OVER_ANNOTATION_CLASS,
+          !onLayer && this.deps.pdf.isOverAnnotation(nodeId, e),
+        )
+    }
     this.setHintedGroup(
       nodeId === null && !onLayer && !this.core.isOverview()
         ? innermostFrameAt(this.groupNodes(), this.core.worldPointFromEvent(e))
@@ -861,7 +879,7 @@ export class InteractionController {
     if (this.hoveredNodeId !== null) {
       this.core
         .getRuntime(this.hoveredNodeId)
-        ?.el?.classList.remove(CARD_HOVERED_CLASS)
+        ?.el?.classList.remove(CARD_HOVERED_CLASS, CARD_OVER_ANNOTATION_CLASS)
     }
     this.hoveredNodeId = nodeId
     if (nodeId !== null) {

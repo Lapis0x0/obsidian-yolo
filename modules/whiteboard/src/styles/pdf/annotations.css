@@ -309,3 +309,13 @@ textarea.yolo-whiteboard-pdf-comment-input {
 .yolo-whiteboard-pdf-grabbing * {
   cursor: grabbing;
 }
+
+/* Over an annotation a click opens: on the pages of a reader being read, or
+ * on a PDF card whose content has not been entered yet (the card takes that
+ * click and opens the annotation itself). */
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-over-annotation,
+.yolo-whiteboard-pdf-pages.yolo-whiteboard-pdf-pages-over-annotation *,
+.yolo-whiteboard-card.yolo-whiteboard-card-over-annotation,
+.yolo-whiteboard-card.yolo-whiteboard-card-over-annotation * {
+  cursor: pointer;
+}

@@ -149,3 +149,31 @@
   .yolo-whiteboard-edge-label:not([contenteditable]) {
   display: none;
 }
+
+/* Where a card dragged out of a PDF will land (dropImport.ts's
+ * `showLandingSlot`): the card it will be, as an empty dashed outline, in
+ * the world layer so the camera sizes it as it sizes cards. Fades in and
+ * out; follows the pointer without easing, as the card under it would. */
+.yolo-whiteboard-landing-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1.5px dashed
+    color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+  border-radius: var(--radius-m, 6px);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 6%,
+    transparent
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-exit, 160ms)
+    var(--yolo-anim-ease-in, ease-in);
+}
+
+.yolo-whiteboard-landing-slot.yolo-whiteboard-landing-slot-shown {
+  opacity: 1;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out, ease-out);
+}

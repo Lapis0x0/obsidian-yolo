@@ -149,6 +149,9 @@ export type DragGesturesDeps = Readonly<{
   /** A plain click on a card may land on a link into one of the board's
    * PDFs. */
   followPdfLinkAt: (id: NodeId, e: PointerEvent) => void
+  /** A click on a PDF card may land on one of its annotations, which opens
+   * the card and the annotation together; whether it did. */
+  openPdfAnnotationAt: (id: NodeId, e: PointerEvent) => boolean
   /**
    * A click on the card that was already the lone selection: open it the
    * way a double-click does — for typing, or into its live content (a PDF
@@ -624,6 +627,8 @@ export class DragGestures {
     if (!interaction.dragging) {
       if (interaction.additive) {
         this.toggleSelection(interaction.nodeId)
+      } else if (this.deps.openPdfAnnotationAt(interaction.nodeId, e)) {
+        return
       } else if (
         interaction.wasSoleSelection &&
         this.deps.openOnSecondClick(interaction.nodeId)
