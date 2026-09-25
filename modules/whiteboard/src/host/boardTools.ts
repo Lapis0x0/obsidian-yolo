@@ -114,13 +114,23 @@ async function editBoard(
   const path = readPath(input)
   if (typeof path !== 'string') return path
   const edit = input as Parameters<typeof applyBoardEdit>[1]
+  const creates = Array.isArray(edit.create) ? edit.create : []
+  // A card for a file that is not there is a broken card reported as a
+  // success; rejected here like any other invalid operation, so the model
+  // corrects the path instead of the user finding the card later.
+  for (const [index, op] of creates.entries()) {
+    if (typeof op?.file !== 'string' || op.file.trim() === '') continue
+    if (!isVaultFile(host, op.file)) {
+      return toolError(
+        `create[${index}].file: no file at "${op.file}" in the vault.`,
+      )
+    }
+  }
   // Measured before the edit, which is applied synchronously: a PDF's card
   // is sized from its first page (`fileCardSize`).
   const fileSizes = await fileCardSizes(
     host.pdf,
-    (Array.isArray(edit.create) ? edit.create : []).flatMap((op) =>
-      typeof op?.file === 'string' ? [op.file] : [],
-    ),
+    creates.flatMap((op) => (typeof op?.file === 'string' ? [op.file] : [])),
   )
   const context = {
     newNodeId: mintNodeId,
@@ -218,6 +228,15 @@ async function createBoard(
   }
   return {
     content: `Created ${path}. It is empty; add cards with edit_board.`,
+  }
+}
+
+function isVaultFile(host: YoloModuleHostApiV1, path: string): boolean {
+  try {
+    return host.vault.getEntry(path)?.kind === 'file'
+  } catch {
+    // A path the vault refuses outright (absolute, dot segments) is not one.
+    return false
   }
 }
 
