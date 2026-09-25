@@ -103,7 +103,7 @@ export const it = {
   file: {
     newWhiteboardBaseName: 'Lavagna',
     newNoteBaseName: 'Senza titolo',
-    newHtmlBaseName: 'Pagina web',
+    importedBaseName: 'Senza titolo',
   },
   confirm: {
     importAllTitle: 'Importa i file Canvas',

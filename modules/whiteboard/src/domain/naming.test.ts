@@ -6,7 +6,7 @@ import {
   generateAnnotatedPdfFileName,
   generateBoardFileName,
   generateCardNoteFileName,
-  generateDroppedHtmlFileName,
+  importedFileName,
   isCanvasPath,
   isMarkdownPath,
 } from './naming'
@@ -205,35 +205,17 @@ describe('generateAnnotatedPdfFileName', () => {
   })
 })
 
-describe('generateDroppedHtmlFileName', () => {
-  it('keeps the name the document arrived with', () => {
-    expect(
-      generateDroppedHtmlFileName('Quarterly report.html', '网页', new Set()),
-    ).toBe('Quarterly report.html')
-  })
-
-  it('normalizes .htm to .html — one spelling in the vault', () => {
-    expect(generateDroppedHtmlFileName('legacy.HTM', '网页', new Set())).toBe(
-      'legacy.html',
+describe('importedFileName', () => {
+  it('keeps the name the file arrived with', () => {
+    expect(importedFileName('Quarterly report.pdf', '未命名')).toBe(
+      'Quarterly report.pdf',
     )
   })
 
   it('sanitizes a name the vault could not hold, and falls back when nothing survives', () => {
-    expect(
-      generateDroppedHtmlFileName('Q3: "final"?.html', '网页', new Set()),
-    ).toBe('Q3 final.html')
-    expect(generateDroppedHtmlFileName('<>.html', '网页', new Set())).toBe(
-      '网页.html',
+    expect(importedFileName('Q3: "final"?.html', '未命名')).toBe(
+      'Q3 final.html',
     )
-  })
-
-  it('shares the whiteboard conflict rule', () => {
-    expect(
-      generateDroppedHtmlFileName(
-        'report.html',
-        '网页',
-        new Set(['report.html', 'report 1.html']),
-      ),
-    ).toBe('report 2.html')
+    expect(importedFileName('<>.png', '未命名')).toBe('未命名.png')
   })
 })

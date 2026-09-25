@@ -90,7 +90,6 @@ const PDF_EXTENSION = 'pdf'
 
 /** The extension a dropped HTML document is saved under. `.htm` is read but
  * never written: one spelling in, one spelling out. */
-export const HTML_EXTENSION = '.html'
 
 export function fileNodeKind(path: string): FileNodeKind {
   if (isMarkdownPath(path)) return 'markdown'
@@ -179,24 +178,21 @@ export function generateCardNoteFileName(
 }
 
 /**
- * File name for an HTML document dropped onto the board from outside the
- * vault. `fileName` is what the operating system called it, extension and
- * all; `fallbackBaseName` names the file when nothing legal survives
- * sanitizing (a document called `<>.html` is still a document).
- *
- * The extension is normalized rather than kept: `.htm` reads the same as
- * `.html` (`fileNodeKind`) and there is no reason for the vault to grow two
- * spellings of one thing. The same numeric-suffix conflict rule as whiteboards
- * and card notes applies.
+ * The name a file brought in from outside the vault is filed under
+ * (ui/canvas/externalFiles.ts). `fileName` is what the operating system
+ * called it, which may hold characters a vault name cannot (a macOS name can
+ * hold `?` and `:`); `fallbackBaseName` names it when nothing legal survives
+ * sanitizing. Its extension — the kind of card it makes (`fileNodeKind`) —
+ * is kept. A free name is the attachment path's to find, not this.
  */
-export function generateDroppedHtmlFileName(
+export function importedFileName(
   fileName: string,
   fallbackBaseName: string,
-  existingNames: ReadonlySet<string>,
 ): string {
   const baseName =
     sanitizeFileName(basenameWithoutExtension(fileName)) || fallbackBaseName
-  return generateUniqueFileName(baseName, HTML_EXTENSION, existingNames)
+  const extension = extensionOf(fileName)
+  return extension ? `${baseName}.${extension}` : baseName
 }
 
 /** What a text card becomes when it is converted into a note: the file's

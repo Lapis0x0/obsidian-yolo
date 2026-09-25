@@ -32,7 +32,6 @@ import {
   fileNodeKind,
   folderPathOf,
   generateCardNoteFileName,
-  generateDroppedHtmlFileName,
   sanitizeFileName,
 } from '../../domain/naming'
 import { addNode, replaceNode, updateNode } from '../../domain/operations'
@@ -61,6 +60,7 @@ import {
 } from '../promptOverlay'
 
 import type { CanvasCore } from './core'
+import { importExternalFiles } from './externalFiles'
 import { isPdfNode } from './pdfIntegration'
 import { ALIGN_MENU, DISTRIBUTE_MENU } from './toolbarController'
 
@@ -545,18 +545,10 @@ export class DropImport {
   }
 
   /**
-   * Takes documents dropped from outside the vault and makes cards of them.
-   *
-   * Only HTML, for now, and by the same rule everything else on this board
-   * follows: a card kind exists or it does not, and `fileNodeKind` is the one
-   * table that says so. An image dropped from the desktop is a card we could
-   * make too, but Obsidian already owns "import an attachment" with a
-   * configurable destination folder, and duplicating that policy here is the
-   * kind of second implementation this module is supposed to avoid — an HTML
-   * document has no such path anywhere in Obsidian, which is why it gets one.
-   *
-   * The copy lands beside the board, where a card converted to a note already
-   * goes: the board is what the file belongs to.
+   * Makes cards of files dropped from outside the vault: every kind that has
+   * a card of its own (`fileNodeKind`, the table the renderer dispatches on),
+   * brought in as attachments exactly as a paste brings them
+   * (./externalFiles.ts) — one way in from outside, however they arrive.
    */
   private async importDroppedFiles(
     files: readonly File[],
@@ -564,49 +556,23 @@ export class DropImport {
   ): Promise<void> {
     // Checked at both ends: the prompt's drop zone reaches this too, and a
     // board whose file failed to parse between opening that panel and
-    // dropping on it should not have files written beside it for cards it
-    // will refuse.
+    // dropping on it should not have files written for cards it will refuse.
     if (!this.core.canCreate()) return
     const importable = files.filter(
-      (file) => fileNodeKind(file.name) === 'html',
+      (file) => fileNodeKind(file.name) !== 'unsupported',
     )
     if (importable.length === 0) {
       this.core.host.ui.notice(this.core.t('notice.dropUnsupported'))
       return
     }
-    const paths: string[] = []
-    try {
-      // No ensureFolder: the board's own folder exists by definition.
-      const folderPath = this.boardFolderPath()
-      const taken = new Set(
-        this.core.host.vault
-          .listChildren(folderPath)
-          .filter((entry) => entry.kind === 'file')
-          .map((entry) => entry.name),
-      )
-      for (const file of importable) {
-        const fileName = generateDroppedHtmlFileName(
-          file.name,
-          this.core.t('file.newHtmlBaseName'),
-          taken,
-        )
-        // Written one at a time rather than in parallel: the names are chosen
-        // against a set this loop is also adding to, so two documents dropped
-        // together cannot be handed the same one.
-        taken.add(fileName)
-        const path = folderPath ? `${folderPath}/${fileName}` : fileName
-        await this.core.host.vault.createBinary(path, await file.arrayBuffer())
-        paths.push(path)
-      }
-    } catch (error) {
-      this.core.reportError('importDroppedFiles', error)
-      this.core.host.ui.notice(this.core.t('error.dropFailed'))
-      // Whatever did land is still a card worth having; only the rest is lost.
-      if (paths.length === 0) return
-    }
+    const paths = await importExternalFiles(
+      this.core,
+      importable,
+      this.core.t('error.dropFailed'),
+    )
     // The board may have been closed, or failed to parse, while the files
     // were written.
-    if (!this.core.canCreate()) return
+    if (paths.length === 0 || !this.core.canCreate()) return
     this.addFileCards(paths, at)
   }
 

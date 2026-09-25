@@ -106,7 +106,7 @@ export const en = {
   file: {
     newWhiteboardBaseName: 'Whiteboard',
     newNoteBaseName: 'Untitled',
-    newHtmlBaseName: 'Web page',
+    importedBaseName: 'Untitled',
   },
   confirm: {
     importAllTitle: 'Import Canvas files',

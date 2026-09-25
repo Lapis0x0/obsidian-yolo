@@ -38,6 +38,7 @@ import {
 } from '../constants'
 
 import type { CanvasCore } from './core'
+import { importExternalFiles } from './externalFiles'
 import { isTypingIntoField } from './keymapController'
 
 export type ClipboardControllerDeps = Readonly<{
@@ -168,43 +169,30 @@ export class ClipboardController {
       : this.core.worldPointFromEvent(this.pointer)
   }
 
-  /**
-   * Files from outside the vault become attachments, filed where the user's
-   * attachment setting files a picture pasted into a note written at the
-   * board's path, and a card each.
-   */
+  /** Files from outside the vault, as attachments (./externalFiles.ts), and
+   * a card each. */
   private async pasteFiles(files: readonly File[], at: ScreenPoint) {
-    const { vault } = this.core.host
-    const sourcePath = this.core.getSourcePath()
-    const nodes: BoardNode[] = []
-    try {
-      // One at a time: each free path is chosen against the files already
-      // written, so two pasted together cannot be handed the same one.
-      for (const [index, file] of files.entries()) {
-        const path = await vault.getAvailableAttachmentPath(
-          file.name,
-          sourcePath,
-        )
-        await vault.createBinary(path, await file.arrayBuffer())
-        const offset = index * DROP_STAGGER_PX
-        nodes.push({
-          id: `pasted-${index}`,
-          type: 'file',
-          x: offset,
-          y: offset,
-          w: NEW_EMBED_CARD_SIZE.w,
-          h: NEW_EMBED_CARD_SIZE.h,
-          file: path,
-          extra: {},
-        })
-      }
-    } catch (error) {
-      this.core.reportError('pasteFiles', error)
-      this.core.host.ui.notice(this.core.t('error.pasteFailed'))
-    }
+    const paths = await importExternalFiles(
+      this.core,
+      files,
+      this.core.t('error.pasteFailed'),
+    )
     // The board may have been closed, or broken, while the files were
     // written; the attachments stay, as a pasted one would in a note.
-    if (nodes.length === 0 || !this.core.canEdit()) return
+    if (paths.length === 0 || !this.core.canEdit()) return
+    const nodes = paths.map((file, index): BoardNode => {
+      const offset = index * DROP_STAGGER_PX
+      return {
+        id: `pasted-${index}`,
+        type: 'file',
+        x: offset,
+        y: offset,
+        w: NEW_EMBED_CARD_SIZE.w,
+        h: NEW_EMBED_CARD_SIZE.h,
+        file,
+        extra: {},
+      }
+    })
     this.place({ nodes, edges: [] }, at)
   }
 

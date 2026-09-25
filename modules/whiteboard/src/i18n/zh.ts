@@ -100,7 +100,7 @@ export const zh = {
   file: {
     newWhiteboardBaseName: '白板',
     newNoteBaseName: '未命名',
-    newHtmlBaseName: '网页',
+    importedBaseName: '未命名',
   },
   confirm: {
     importAllTitle: '导入 Canvas 文件',
