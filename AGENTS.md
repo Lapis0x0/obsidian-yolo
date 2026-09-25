@@ -42,7 +42,7 @@ Verify what you touched: host code → type-check + relevant tests; module code 
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
 - A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
 - The host's refusal to text-edit a module-owned structured format is an unconditional static extension check (`src/core/tools/structured-vault-formats.ts`); never make it query a runtime registry, or the same call on the same file would behave differently depending on which modules a machine happens to have installed.
-- Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations, run `npm run module:build`, and commit the regenerated artifacts rather than editing generated metadata.
+- Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations and run `npm run module:build` rather than editing generated metadata. Versioned artifact directories (`modules/<id>/<version>/`) are git-ignored and never committed — a release rebuilds them and publishes them to GitHub Releases; only the regenerated `modules/bundled.json` is committed.
 
 ### Runtime Components
 
