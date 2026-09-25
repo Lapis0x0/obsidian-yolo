@@ -2432,6 +2432,9 @@ export type TranslationKeys = {
     updateInCommunityPlugins: string
     manualInstallOnGitHub: string
     modulesFollowedCore: string
+    updatesAvailable: string
+    updateAll: string
+    updated: string
   }
 
   // Module-provided file views (e.g. a module registering a custom file

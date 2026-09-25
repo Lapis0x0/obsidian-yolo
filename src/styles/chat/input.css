@@ -2622,6 +2622,48 @@ button.yolo-assistant-annotation-marker.is-active {
   color: var(--text-normal);
 }
 
+/* ── one tab per update when the card holds several ── */
+.yolo-update-toast-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+button.yolo-update-toast-tab {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  height: auto;
+  padding: 3px 9px;
+  border: none !important;
+  border-radius: 6px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  cursor: var(--cursor);
+}
+
+button.yolo-update-toast-tab:hover {
+  background: var(--background-modifier-hover) !important;
+  color: var(--text-normal);
+}
+
+button.yolo-update-toast-tab.is-active {
+  background: var(--background-modifier-hover) !important;
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-tab-version {
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
 /* ── divider + body ── */
 .yolo-update-toast-divider {
   height: 1px;

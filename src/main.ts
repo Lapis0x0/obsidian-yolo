@@ -4167,6 +4167,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     await this.moduleUpdateController?.update(key)
   }
 
+  async applyAllModuleUpdates(): Promise<void> {
+    await this.moduleUpdateController?.updateAll()
+  }
+
   getModuleSettingsContributionRegistry(): ModuleSettingsContributionRegistry {
     return this.moduleSettingsContributions
   }

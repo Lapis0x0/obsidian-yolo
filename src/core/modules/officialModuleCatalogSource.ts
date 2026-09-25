@@ -187,13 +187,31 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
         resolvedVersions[module.id] = latest
         entries.push(catalogEntry(module, latest.version, locale))
       } else {
+        const entry = catalogEntry(
+          module,
+          compatibility.activeVersion ?? '',
+          locale,
+          compatibilityIssues,
+        )
+        const awaitsCore =
+          compatibility.activeVersion !== undefined &&
+          compatibilityIssues.length === 1 &&
+          compatibilityIssues[0].kind === 'host-api' &&
+          compareModuleVersions(latest.version, compatibility.activeVersion) > 0
         entries.push(
-          catalogEntry(
-            module,
-            compatibility.activeVersion ?? '',
-            locale,
-            compatibilityIssues,
-          ),
+          awaitsCore
+            ? Object.freeze({
+                ...entry,
+                awaitingCoreUpdate: Object.freeze({
+                  version: latest.version,
+                  ...(latest.releaseNotes
+                    ? {
+                        releaseNotes: Object.freeze({ ...latest.releaseNotes }),
+                      }
+                    : {}),
+                }),
+              })
+            : entry,
         )
       }
     }

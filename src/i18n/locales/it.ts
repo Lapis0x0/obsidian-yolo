@@ -2529,6 +2529,9 @@ export const it: DeepPartial<TranslationKeys> = {
     manualInstallOnGitHub:
       'Non riesci ad aggiornare? Installa manualmente da GitHub',
     modulesFollowedCore: '{modules} aggiornato insieme a YOLO',
+    updatesAvailable: '{count} aggiornamenti disponibili',
+    updateAll: 'Aggiorna tutto',
+    updated: 'Aggiornato',
   },
   moduleFileView: {
     inactivePlaceholder:

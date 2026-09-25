@@ -27,6 +27,12 @@ export type ModuleUpdateOffer = Readonly<{
   name: string
   currentVersion: string
   latestVersion: string
+  /**
+   * Needs the Host API of the pending core update, so it cannot be installed
+   * from here: it is shown beside that core update, and installed by
+   * `installAll` once the new core is running.
+   */
+  awaitingCoreUpdate: boolean
   releaseNotes: ReleaseNotesByLanguage | null
   notesUnavailable: boolean
   status: ModuleUpdateStatus
@@ -78,8 +84,8 @@ export class ModuleUpdateController {
     this.candidates.clear()
 
     for (const module of this.options.service.getSnapshot().modules) {
-      if (!isPromptableUpdate(module)) continue
-      const latestVersion = module.catalog!.version
+      const latestVersion = offeredVersion(module)
+      if (latestVersion === null) continue
       const key = offerKey(module.id, latestVersion)
       if (
         this.dismissedForSession.has(key) ||
@@ -87,9 +93,12 @@ export class ModuleUpdateController {
       ) {
         continue
       }
-      const candidate = this.options.service.getInstallCandidate(module.id)
-      if (!candidate || candidate.expectedVersion !== latestVersion) continue
-      this.candidates.set(key, candidate)
+      const awaitingCoreUpdate = !isPromptableUpdate(module)
+      if (!awaitingCoreUpdate) {
+        const candidate = this.options.service.getInstallCandidate(module.id)
+        if (!candidate || candidate.expectedVersion !== latestVersion) continue
+        this.candidates.set(key, candidate)
+      }
       const current = previous.get(key)
       next.push(
         current ??
@@ -100,6 +109,7 @@ export class ModuleUpdateController {
             name: module.name,
             currentVersion: module.installed!.version,
             latestVersion,
+            awaitingCoreUpdate,
             releaseNotes: null,
             notesUnavailable: false,
             status: 'available',
@@ -112,7 +122,9 @@ export class ModuleUpdateController {
     await Promise.allSettled(next.map((offer) => this.loadNotes(offer.key)))
     if (this.options.getAutoDownloadEnabled()) {
       for (const offer of this.offers) {
-        if (offer.status === 'available') void this.prepare(offer.key)
+        if (offer.status === 'available' && !offer.awaitingCoreUpdate) {
+          void this.prepare(offer.key)
+        }
       }
     }
   }
@@ -153,6 +165,14 @@ export class ModuleUpdateController {
     return installed
   }
 
+  /** Installs the offers that can be installed now, one after another. */
+  async updateAll(): Promise<void> {
+    for (const offer of this.offers) {
+      if (offer.awaitingCoreUpdate || offer.status === 'success') continue
+      await this.update(offer.key)
+    }
+  }
+
   dismissForSession(key: string): void {
     this.dismissedForSession.add(key)
     this.publish(this.offers.filter((offer) => offer.key !== key))
@@ -166,6 +186,7 @@ export class ModuleUpdateController {
 
   async update(key: string): Promise<void> {
     let offer = this.find(key)
+    if (offer.awaitingCoreUpdate) return
     if (offer.status !== 'ready') {
       await this.prepare(key)
       offer = this.find(key)
@@ -220,7 +241,9 @@ export class ModuleUpdateController {
     const module = this.options.service
       .getSnapshot()
       .modules.find((value) => value.id === offer.moduleId)
-    const descriptor = module?.catalog?.releaseNotes
+    const descriptor = offer.awaitingCoreUpdate
+      ? module?.catalog?.awaitingCoreUpdate?.releaseNotes
+      : module?.catalog?.releaseNotes
     if (!descriptor) {
       this.patch(key, { notesUnavailable: true })
       return
@@ -320,6 +343,15 @@ function isPromptableUpdate(module: ModuleRecord): boolean {
       module.installed &&
       module.catalog,
   )
+}
+
+/** The version a module's update offer is for, or null when it has none. */
+function offeredVersion(module: ModuleRecord): string | null {
+  if (isPromptableUpdate(module)) return module.catalog!.version
+  const awaiting = module.catalog?.awaitingCoreUpdate
+  return awaiting && module.enabled === true && module.installed
+    ? awaiting.version
+    : null
 }
 
 function offerKey(moduleId: string, version: string): string {

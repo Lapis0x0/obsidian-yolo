@@ -1126,6 +1126,16 @@ export type ModuleCatalogEntry = {
     sha256: string
   }>
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]
+  /**
+   * A newer version the catalog has that this host cannot run yet, held back
+   * by the Host API alone. Release order makes it an update that comes with
+   * the core update: a core always converges before any module needing its
+   * Host API is tagged, so the latest core in the same feed runs it.
+   */
+  awaitingCoreUpdate?: Readonly<{
+    version: string
+    releaseNotes?: ModuleCatalogEntry['releaseNotes']
+  }>
 }
 
 export type InstalledModuleState = {

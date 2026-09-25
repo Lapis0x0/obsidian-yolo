@@ -126,6 +126,39 @@ describe('OfficialModuleCatalogSource latest-only policy', () => {
     expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
   })
 
+  it('keeps a newer version held back only by the Host API as awaiting the core update', async () => {
+    const newer = {
+      ...version('2.0.0', '^2.0.0'),
+      releaseNotes: {
+        url: 'https://example.com/release-note.md',
+        byteSize: 5,
+        sha256: 'c'.repeat(64),
+      },
+    }
+    const fixture = source(catalog([newer]), '1.2.0')
+    await expect(fixture.source.load()).resolves.toMatchObject([
+      {
+        id: 'learning',
+        version: '1.2.0',
+        compatibilityIssues: [{ kind: 'host-api' }],
+        awaitingCoreUpdate: {
+          version: '2.0.0',
+          releaseNotes: newer.releaseNotes,
+        },
+      },
+    ])
+    expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
+  })
+
+  it('does not mark an update as awaiting the core when the platform rules it out', async () => {
+    const fixture = source(
+      catalog([version('2.0.0', '^2.0.0', ['mobile'])]),
+      '1.2.0',
+    )
+    const [entry] = await fixture.source.load()
+    expect(entry?.awaitingCoreUpdate).toBeUndefined()
+  })
+
   it('replaces the snapshot only after a fresh Feed succeeds', async () => {
     const fixture = source(
       catalog([version('1.1.0')]),

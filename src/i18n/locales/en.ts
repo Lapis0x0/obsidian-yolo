@@ -2811,6 +2811,9 @@ export const en: TranslationKeys = {
     updateInCommunityPlugins: 'Update in community plugins',
     manualInstallOnGitHub: "Can't update? Install manually from GitHub",
     modulesFollowedCore: '{modules} updated along with YOLO',
+    updatesAvailable: '{count} updates available',
+    updateAll: 'Update all',
+    updated: 'Updated',
   },
   moduleFileView: {
     inactivePlaceholder:

@@ -176,4 +176,51 @@ describe('module update controller', () => {
     ).resolves.toEqual([])
     consoleError.mockRestore()
   })
+
+  it('offers an update awaiting the core without preparing or installing it', async () => {
+    const moduleService = service()
+    moduleService.getSnapshot.mockReturnValue({
+      status: 'ready',
+      errors: {},
+      modules: [
+        {
+          id: 'learning',
+          name: 'Learning',
+          description: '',
+          version: '1.0.0',
+          status: 'active',
+          enabled: true,
+          desiredInstalled: true,
+          installed: { id: 'learning', version: '1.0.0', active: true },
+          catalog: {
+            id: 'learning',
+            version: '1.0.0',
+            compatibilityIssues: [{ kind: 'host-api' }],
+            awaitingCoreUpdate: { version: '1.1.0', releaseNotes: descriptor },
+          },
+        },
+      ],
+    })
+    const controller = new ModuleUpdateController({
+      service: moduleService,
+      getAutoDownloadEnabled: () => true,
+      getMutedVersions: () => ({}),
+      muteVersion: jest.fn(async () => undefined),
+      request: jest.fn(async () => response(noteBytes)),
+      subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
+    })
+
+    await controller.refresh()
+    expect(controller.getSnapshot()).toMatchObject([
+      {
+        key: 'learning@1.1.0',
+        awaitingCoreUpdate: true,
+        releaseNotes: { en: '## 1.1.0 Learning update\n\n- Better reviews' },
+      },
+    ])
+    await controller.updateAll()
+    expect(moduleService.prepare).not.toHaveBeenCalled()
+    expect(moduleService.install).not.toHaveBeenCalled()
+    await expect(controller.installAll()).resolves.toEqual([])
+  })
 })
