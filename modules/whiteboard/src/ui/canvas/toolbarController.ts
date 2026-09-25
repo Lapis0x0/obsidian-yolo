@@ -109,6 +109,9 @@ export type ToolbarControllerCallbacks = Readonly<{
   /** Where a drag or resize has the cards it carries right now, before the
    * board is told (canvas.ts's `liveNodeRects`). */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
+  /** Where a PDF's title line is drawn when that is not its node's
+   * rectangle — the overview tier grows it to stay readable. */
+  getDrawnTitleRect: (id: NodeId) => CardRect | null
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
@@ -254,7 +257,8 @@ export class ToolbarController {
    * from, which is the only place on a curve that reads as "the edge itself".
    * A folded PDF card counts its title with it, so the toolbar stands over
    * the title, where it stands over an open spread's. A card a gesture is
-   * carrying counts where it is drawn.
+   * carrying counts where it is drawn, and so does a title the overview tier
+   * draws larger than its node.
    */
   private toolbarBounds(): ToolbarBounds | null {
     const selectedEdgeIds = this.callbacks.getSelectedEdgeIds()
@@ -278,6 +282,8 @@ export class ToolbarController {
           ? withTitleAbove(bounds)
           : bounds,
       )
+      const drawn = this.callbacks.getDrawnTitleRect(id)
+      if (drawn) rects.push(drawn)
     }
     return rects.length > 0 ? unionRect(rects) : null
   }

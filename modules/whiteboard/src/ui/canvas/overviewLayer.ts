@@ -819,6 +819,14 @@ export class OverviewLayer {
     ctx.lineWidth = 1
   }
 
+  /** Where the canvas last drew a PDF's title line (world units), which at
+   * this tier grows past its node to stay readable; null when it drew none,
+   * or the tier is not showing. */
+  titleRect(id: NodeId): CardRect | null {
+    if (!this.active) return null
+    return this.titleRects.get(id) ?? null
+  }
+
   /** The PDF whose drawn title line is under `point` (world units), if any —
    * the line reaches past its node's rectangle at this tier. */
   spreadTitleAt(point: Readonly<{ x: number; y: number }>): NodeId | null {

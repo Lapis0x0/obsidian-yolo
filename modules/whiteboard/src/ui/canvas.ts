@@ -1038,6 +1038,7 @@ export class WhiteboardCanvas {
       getBoard: this.core.getBoard,
       getNode: this.core.getNode,
       getLiveRects: () => this.interaction.liveNodeRects,
+      getDrawnTitleRect: (id) => this.overviewLayer?.titleRect(id) ?? null,
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
@@ -2426,11 +2427,12 @@ export class WhiteboardCanvas {
     this.pdfThumbnails?.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
-    // Over the cards as this frame draws them — see ToolbarController.
-    this.toolbarController.syncPosition()
-    // Last: it draws the camera the world layer was just given, and the
-    // geometry the queues above have just finished changing.
+    // It draws the camera the world layer was just given, and the geometry
+    // the queues above have just finished changing.
     this.overviewLayer?.render()
+    // Over the cards as this frame draws them, the overview's titles
+    // included — see ToolbarController.
+    this.toolbarController.syncPosition()
     this.rafId = this.context.getWindow().requestAnimationFrame(this.frame)
   }
 
