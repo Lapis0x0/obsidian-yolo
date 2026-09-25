@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 40,
+  "revision": 41,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.9.7",
@@ -101,8 +101,8 @@
           "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
         }
       },
-      "version": "0.0.3",
-      "hostApi": "^1.9.0",
+      "version": "0.0.4",
+      "hostApi": "^1.10.0",
       "platforms": [
         "desktop",
         "mobile"
@@ -114,23 +114,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.3",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.4",
       "releaseNotes": {
-        "en": "## 0.0.3 AI Comes to the Whiteboard ✨\n\n- Added Quick Ask support to the whiteboard.\n- Added zoom and undo buttons to the top-right corner of the whiteboard, consistent with Obsidian Canvas.\n- Added support for creating a new note when adding a note.\n- Added Space + left-drag panning, and fixed Shift + scroll wheel not panning horizontally on Windows.\n- Optimized the initial card size and improved the prompt design of the related whiteboard tools.\n- Added a dedicated sidebar icon for the whiteboard.\n- Quick Ask on cards requires YOLO Core 1.6.9.5 or later.",
-        "zh": "## 0.0.3 白板接入 AI ✨\n\n- 白板支持 Quick Ask。\n- 白板右上角新增缩放与撤销按钮，与 Obsidian Canvas 保持一致。\n- 支持在添加笔记时新建笔记。\n- 白板支持空格加左键拖动平移，并修复 Windows 上 Shift 加滚轮无法横向平移的问题。\n- 优化白板初始卡片尺寸，并优化相关白板工具的提示词设计。\n- 为白板添加专属侧边栏图标。\n- 卡片内的 Quick Ask 需要 YOLO Core 1.6.9.5 及以上版本。"
+        "en": "## 0.0.4 PDF Reading 📄\n\n- The whiteboard now supports PDF reading: read directly in cards and the reading panel, highlight and annotate, excerpt into cards, and export PDFs with your annotations.\n- PDFs can now be spread out page by page.\n- Greatly improved PDF reading performance.\n- Improved the smoothness of whiteboard interactions for a better experience.\n- Added copy, cut, and paste for cards.\n- Fixed card preset colors not showing in some themes.\n- Requires YOLO Core 1.6.9.6 or later.",
+        "zh": "## 0.0.4 PDF 阅读 📄\n\n- 白板支持 PDF 阅读：在卡片和阅读面板中直接阅读、高亮批注、摘录成卡片，并可导出带注释的 PDF。\n- PDF 阅读支持逐页平铺。\n- 大幅优化 PDF 的阅读性能。\n- 优化白板交互流畅度，改善用户体验。\n- 支持复制、剪切、粘贴卡片。\n- 修复部分主题下卡片预设颜色不显示的问题。\n- 需要 YOLO Core 1.6.9.6 及以上版本。"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.3/release-note.md",
-        "byteSize": 1060,
-        "sha256": "4409e7f772fbe49865d2162437c9b61e95176ce1331e6f68f2469930137671cb"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.4/release-note.md",
+        "byteSize": 942,
+        "sha256": "55621fa5e1601a605a094d30cadc4cf2ddffd3abb713b4c14142bb90d30ab89a"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/whiteboard/0.0.3/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.3/module.json",
-        "byteSize": 1866,
-        "sha256": "87dbb041139e0e4a131ad3ed1380b3711d834e8738d61e8475f4c3ef3deb3beb"
+        "mirrorPath": "modules/whiteboard/0.0.4/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.4/module.json",
+        "byteSize": 1867,
+        "sha256": "49b4b4be4258019238a30cc2518720ba5d0dd49219c43eca69e934f404b72dc1"
       }
     }
   ]
