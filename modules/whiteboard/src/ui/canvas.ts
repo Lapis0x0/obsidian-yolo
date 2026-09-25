@@ -793,6 +793,9 @@ export class WhiteboardCanvas {
         return entry?.kind === 'file' ? entry.mtime : null
       },
       wanted: () => this.wantedThumbnails(),
+      resolution: () =>
+        this.cameraController.view.scale *
+        (this.context.getWindow().devicePixelRatio || 1),
       idle: () => !this.interacting && !spreadFrame.dragging,
       onChange: (path, page) => this.onThumbnailChange(path, page),
       reportError: (stage, error) => this.reportError(stage, error),
@@ -2465,7 +2468,7 @@ export class WhiteboardCanvas {
         node.y + node.h / 2 - cy,
       )
       if (node.type === 'pdf-page') {
-        yield { path: node.file, page: node.page, distance }
+        yield { path: node.file, page: node.page, width: node.w, distance }
         continue
       }
       if (!isPdfNode(node) || isSpreadTitle(node)) continue
@@ -2474,7 +2477,7 @@ export class WhiteboardCanvas {
       const first = Math.floor(node.startPage ?? 1)
       const shown = Math.ceil(node.h / (node.w * FOLDED_PAGE_MIN_ASPECT)) + 1
       for (let page = first; page < first + shown; page += 1) {
-        yield { path: node.file, page, distance }
+        yield { path: node.file, page, width: node.w, distance }
       }
     }
   }

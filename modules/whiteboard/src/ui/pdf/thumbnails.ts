@@ -20,6 +20,14 @@
 // What is held here is only what the board shows: a spread folded away lets
 // go of its pictures, and over the budget the pages furthest from the
 // viewport do.
+//
+// And each at the size it is shown at (`LEVELS`), not the size it is kept
+// at: zoomed out, a page is a few dozen pixels wide and the screen holds
+// hundreds of them, so a thumbnail held whole costs many times what it
+// shows. Held at the smallest level that covers it on screen, what the
+// pages take follows the screen's pixels rather than their number — four
+// spreads side by side at 7% had outgrown the budget at full size, and fit
+// in a quarter of it this way.
 
 import type { PdfThumbnailStore } from '../../host/pdfThumbnailStore'
 
@@ -29,8 +37,16 @@ import type { PdfDrawClient, PdfDrawQueue } from './drawQueue'
  * overview (where a sheet is at most ~270 device pixels wide) up to the
  * threshold, and a fair stand-in for the moment before a sheet is drawn. */
 export const PDF_THUMBNAIL_WIDTH = 160
-/** How much the pictures held may take, in bytes: about 360 pages. */
+/** The widths, in device pixels, a thumbnail is held at: the smallest that
+ * covers the page as the screen shows it (`levelFor`). The device keeps the
+ * largest, and a smaller one is decoded from it — which costs no more than
+ * decoding it whole — or scaled down from the one held. */
+const LEVELS = [40, 80, PDF_THUMBNAIL_WIDTH] as const
+/** How much the pictures held may take, in bytes: about 360 pages at the
+ * largest level, and far more at the ones a zoomed-out board holds. */
 const BUDGET_BYTES = 48 * 1024 * 1024
+/** Pages brought down to a smaller level at once. */
+const SHRINKS_AT_ONCE = 24
 /** Pages read back from the device at once. */
 const READS_AT_ONCE = 6
 /** Draws an ordinary page's slot always go ahead of: a thumbnail is only
@@ -41,13 +57,18 @@ const BEHIND_READERS = 1e12
 const ENCODING = 'image/webp'
 const ENCODING_QUALITY = 0.8
 
-/** What the whiteboard's pages look like to this: a page of a file, and how
- * far it is from the middle of the viewport. */
+/** What the whiteboard's pages look like to this: a page of a file, how
+ * wide it is on the board, and how far it is from the middle of the
+ * viewport (both in world units). */
 export type WantedThumbnail = Readonly<{
   path: string
   page: number
+  width: number
   distance: number
 }>
+
+/** A wanted page, and the level it should be held at now. */
+type Want = WantedThumbnail & Readonly<{ level: number }>
 
 export type PdfThumbnailsDeps = Readonly<{
   pdf: YoloModuleHostPdfV1
@@ -59,6 +80,8 @@ export type PdfThumbnailsDeps = Readonly<{
   mtime: (path: string) => number | null
   /** Every page that should have a thumbnail, now. */
   wanted: () => Iterable<WantedThumbnail>
+  /** Device pixels per world unit, as the board is shown now. */
+  resolution: () => number
   /** Whether the board is still: thumbnails are drawn only then. */
   idle: () => boolean
   /** A page's thumbnail arrived (or a file's were all dropped). */
@@ -68,6 +91,8 @@ export type PdfThumbnailsDeps = Readonly<{
 
 type Entry = {
   bitmap: ImageBitmap
+  /** Which of `LEVELS` the bitmap is. */
+  level: number
   /** The same picture as a dark theme shows it, made when first asked
    * for. */
   dark: ImageBitmap | null
@@ -95,12 +120,16 @@ export class PdfThumbnails {
   private readonly failed = new Set<string>()
   /** Pages being read back from the device. */
   private readonly reading = new Set<string>()
+  /** Pages being brought down to a smaller level. */
+  private readonly shrinking = new Set<string>()
   private bytes = 0
   private drawing = false
   private destroyed = false
-  /** Every wanted page had a thumbnail (or had failed) when last looked:
-   * nothing to look for until the board's spreads change (`retain`). */
+  /** Every wanted page had a thumbnail at its level (or had failed) when
+   * last looked, at `completeAt`'s resolution: nothing to look for until
+   * the board's spreads change (`retain`) or the zoom does. */
   private complete = false
+  private completeAt = 0
   /** The page the queue last saw this client for, so its priority is
    * where the next thumbnail would go. */
   private next: WantedThumbnail | null = null
@@ -116,7 +145,10 @@ export class PdfThumbnails {
     const entry = this.entries.get(key(path, page))
     if (!entry) return null
     if (!dark) return entry.bitmap
-    entry.dark ??= this.inverted(entry.bitmap)
+    if (!entry.dark) {
+      entry.dark = this.inverted(entry.bitmap)
+      if (entry.dark) this.bytes += bitmapBytes(entry.dark)
+    }
     return entry.dark ?? entry.bitmap
   }
 
@@ -127,19 +159,31 @@ export class PdfThumbnails {
    * is nothing to do.
    */
   pump(): void {
-    if (this.destroyed || this.complete) return
-    const toRead: WantedThumbnail[] = []
-    let toDraw: WantedThumbnail | null = null
+    if (this.destroyed) return
+    const resolution = this.deps.resolution()
+    if (this.complete && resolution === this.completeAt) return
+    this.complete = false
+    const toRead: Want[] = []
+    let toDraw: Want | null = null
+    const toShrink: Want[] = []
     let farthestHeld: WantedThumbnail | null = null
     /** Some page's file has not been answered for yet by the store. */
     let waiting = false
     for (const wanted of this.deps.wanted()) {
       const k = key(wanted.path, wanted.page)
-      if (this.entries.has(k)) {
+      const want = { ...wanted, level: levelFor(wanted.width * resolution) }
+      const entry = this.entries.get(k)
+      if (entry) {
         if (!farthestHeld || wanted.distance > farthestHeld.distance) {
           farthestHeld = wanted
         }
-        continue
+        if (entry.level > want.level) {
+          if (!this.shrinking.has(k)) toShrink.push(want)
+          continue
+        }
+        if (entry.level === want.level) continue
+        // Too small for how it is shown now: a larger one is read, and this
+        // one stays up until it arrives.
       }
       if (this.failed.has(k) || this.reading.has(k)) continue
       const file = this.file(wanted.path)
@@ -147,26 +191,52 @@ export class PdfThumbnails {
       if (!file.stored) {
         waiting = true
       } else if (file.stored.has(wanted.page)) {
-        toRead.push(wanted)
-      } else if (!toDraw || wanted.distance < toDraw.distance) {
-        toDraw = wanted
+        toRead.push(want)
+      } else if (!entry && (!toDraw || wanted.distance < toDraw.distance)) {
+        toDraw = want
       }
     }
 
-    toRead.sort((a, b) => a.distance - b.distance)
+    // Down a level: only once the board is still — a zoom passing through
+    // would have them scaled down and read back up again — or to make room.
+    const full = this.bytes >= BUDGET_BYTES
+    if (toShrink.length > 0 && (full || this.deps.idle())) {
+      for (const want of toShrink) {
+        if (this.shrinking.size >= SHRINKS_AT_ONCE) break
+        this.shrink(want)
+      }
+    }
+
+    // A page with nothing before one that is merely too small.
+    const held = (want: Want) =>
+      this.entries.has(key(want.path, want.page)) ? 1 : 0
+    toRead.sort((a, b) => held(a) - held(b) || a.distance - b.distance)
     const nearest =
       toDraw && (!toRead[0] || toDraw.distance < toRead[0].distance)
         ? toDraw
         : (toRead[0] ?? null)
     if (!nearest) {
-      if (!waiting && this.reading.size === 0 && !this.drawing) {
+      if (
+        !waiting &&
+        toShrink.length === 0 &&
+        this.reading.size === 0 &&
+        this.shrinking.size === 0 &&
+        !this.drawing
+      ) {
         this.complete = true
+        this.completeAt = resolution
       }
       this.deps.queue.withdraw(this.client)
       return
     }
     const canDraw = !this.drawing && this.deps.idle()
-    if (this.bytes >= BUDGET_BYTES) {
+    if (full) {
+      // Room is made by bringing pages down a level first, and only then by
+      // letting go of the farthest.
+      if (toShrink.length > 0 || this.shrinking.size > 0) {
+        this.deps.queue.withdraw(this.client)
+        return
+      }
       // Full: a page nearer than the farthest one held takes its place —
       // once it can be had now, or a page would go for nothing.
       const canTake =
@@ -182,10 +252,10 @@ export class PdfThumbnails {
       this.forget(key(farthestHeld.path, farthestHeld.page))
     }
 
-    for (const wanted of toRead) {
+    for (const want of toRead) {
       if (this.reading.size >= READS_AT_ONCE) break
-      if (toDraw && wanted.distance > toDraw.distance) break
-      this.read(wanted)
+      if (toDraw && want.distance > toDraw.distance) break
+      this.read(want)
     }
 
     if (!toDraw || !canDraw) {
@@ -264,7 +334,7 @@ export class PdfThumbnails {
     return file
   }
 
-  private read(wanted: WantedThumbnail): void {
+  private read(wanted: Want): void {
     const file = this.files.get(wanted.path)
     if (!file?.stored) return
     const k = key(wanted.path, wanted.page)
@@ -283,12 +353,15 @@ export class PdfThumbnails {
       }
       const win = this.deps.doc.defaultView
       if (!win) return
-      const bitmap = await win.createImageBitmap(new Blob([data]))
+      const bitmap = await win.createImageBitmap(
+        new Blob([data]),
+        resizedTo(wanted.level),
+      )
       if (this.destroyed || this.files.get(file.path) !== file) {
         bitmap.close()
         return
       }
-      this.hold(k, bitmap)
+      this.hold(k, bitmap, wanted.level)
       this.deps.onChange(file.path, wanted.page)
     })()
       .catch((error: unknown) => {
@@ -302,7 +375,7 @@ export class PdfThumbnails {
       })
   }
 
-  private async draw(wanted: WantedThumbnail): Promise<void> {
+  private async draw(wanted: Want): Promise<void> {
     const file = this.files.get(wanted.path)
     if (!file) return
     const canvas = this.deps.doc.createElement('canvas')
@@ -327,14 +400,14 @@ export class PdfThumbnails {
       const win = this.deps.doc.defaultView
       if (!win || this.destroyed || this.files.get(file.path) !== file) return
       const [bitmap, encoded] = await Promise.all([
-        win.createImageBitmap(canvas),
+        win.createImageBitmap(canvas, resizedTo(wanted.level)),
         encode(canvas),
       ])
       if (this.destroyed || this.files.get(file.path) !== file) {
         bitmap.close()
         return
       }
-      this.hold(key(wanted.path, wanted.page), bitmap)
+      this.hold(key(wanted.path, wanted.page), bitmap, wanted.level)
       if (encoded) {
         this.deps.store.write(
           file.path,
@@ -374,10 +447,40 @@ export class PdfThumbnails {
     return opened
   }
 
-  private hold(k: string, bitmap: ImageBitmap): void {
+  /** Brings a page held larger than it is shown down to `want.level`,
+   * from the picture already held. */
+  private shrink(want: Want): void {
+    const k = key(want.path, want.page)
+    const entry = this.entries.get(k)
+    const win = this.deps.doc.defaultView
+    if (!entry || !win) return
+    this.shrinking.add(k)
+    void win
+      .createImageBitmap(entry.bitmap, resizedTo(want.level))
+      .then(
+        (bitmap) => {
+          // Let go of, or replaced, meanwhile.
+          if (this.destroyed || this.entries.get(k) !== entry) {
+            bitmap.close()
+            return
+          }
+          this.hold(k, bitmap, want.level)
+        },
+        (error: unknown) => {
+          if (this.entries.get(k) === entry) {
+            this.deps.reportError('pdf thumbnail shrink', error)
+          }
+        },
+      )
+      .finally(() => {
+        this.shrinking.delete(k)
+      })
+  }
+
+  private hold(k: string, bitmap: ImageBitmap, level: number): void {
     this.forget(k)
-    this.entries.set(k, { bitmap, dark: null })
-    this.bytes += bitmap.width * bitmap.height * 4
+    this.entries.set(k, { bitmap, level, dark: null })
+    this.bytes += bitmapBytes(bitmap)
   }
 
   private dropFile(path: string): void {
@@ -403,7 +506,8 @@ export class PdfThumbnails {
     const entry = this.entries.get(k)
     if (!entry) return
     this.entries.delete(k)
-    this.bytes -= entry.bitmap.width * entry.bitmap.height * 4
+    this.bytes -= bitmapBytes(entry.bitmap)
+    if (entry.dark) this.bytes -= bitmapBytes(entry.dark)
     this.close(entry)
   }
 
@@ -425,6 +529,22 @@ export class PdfThumbnails {
     return canvas.transferToImageBitmap()
   }
 }
+
+/** The level that covers a page `width` device pixels wide on screen. */
+function levelFor(width: number): number {
+  return LEVELS.find((level) => level >= width) ?? PDF_THUMBNAIL_WIDTH
+}
+
+/** Decoding options for a picture at `level`: the device's is the largest,
+ * decoded as it is. */
+function resizedTo(level: number): ImageBitmapOptions | undefined {
+  return level < PDF_THUMBNAIL_WIDTH
+    ? { resizeWidth: level, resizeQuality: 'medium' }
+    : undefined
+}
+
+const bitmapBytes = (bitmap: ImageBitmap): number =>
+  bitmap.width * bitmap.height * 4
 
 function encode(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise((resolve) =>
