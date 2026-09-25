@@ -89,6 +89,7 @@ import {
 } from '../domain/virtualization'
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
+import type { PdfThumbnailStore } from '../host/pdfThumbnailStore'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
@@ -466,6 +467,7 @@ export class WhiteboardCanvas {
     private readonly readerPanelPrefs: ReaderPanelPrefs,
     private readonly annotationStores: AnnotationStores,
     private readonly annotationPrefs: AnnotationPrefs,
+    private readonly pdfThumbnailStore: PdfThumbnailStore,
   ) {
     this.core = {
       context: this.context,
@@ -782,8 +784,13 @@ export class WhiteboardCanvas {
     this.pdfThumbnails?.destroy()
     this.pdfThumbnails = new PdfThumbnails({
       pdf: this.host.pdf,
+      store: this.pdfThumbnailStore,
       queue: this.pdfDraws,
       doc,
+      mtime: (path) => {
+        const entry = this.host.vault.getEntry(path)
+        return entry?.kind === 'file' ? entry.mtime : null
+      },
       wanted: () => this.wantedThumbnails(),
       idle: () => !this.interacting && !spreadFrame.dragging,
       onChange: (path, page) => this.onThumbnailChange(path, page),
@@ -1241,6 +1248,11 @@ export class WhiteboardCanvas {
    * pointer listeners; released in `dispose()`. */
   private setupVaultSubscription(): void {
     this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
+      if (event.type !== 'create') {
+        this.pdfThumbnails?.fileChanged(
+          event.type === 'rename' ? event.oldPath : event.entry.path,
+        )
+      }
       if (event.type === 'delete' && this.pdf.onFileDeleted(event.entry.path)) {
         return
       }

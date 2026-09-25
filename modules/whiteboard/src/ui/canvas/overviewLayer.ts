@@ -341,6 +341,9 @@ export class OverviewLayer {
     const palette = this.palette
     if (!palette || this.motions.size === 0) return
     const now = this.context.getWindow().performance.now()
+    /** A card came to rest this frame: the next is still owed, since it is
+     * `drawCards` that draws it from there on. */
+    let landed = false
     let moving = false
     for (const [id, motion] of this.motions) {
       const node = this.callbacks.getNode(id)
@@ -352,7 +355,10 @@ export class OverviewLayer {
       }
       // Drawn here on the frame it arrives too — `drawCards` skipped it
       // this frame — and handed back to `drawCards` from the next.
-      if (motion.direction === 'in' && t >= 1) this.motions.delete(id)
+      if (motion.direction === 'in' && t >= 1) {
+        this.motions.delete(id)
+        landed = true
+      }
       if (t < 1) moving = true
       // ARRANGE_ANIMATION_EASING's curve, near enough for 220ms: fast out
       // of the start, settling into the end.
@@ -372,6 +378,16 @@ export class OverviewLayer {
       ctx.globalAlpha = alpha * OVERVIEW_CARD_WASH_ALPHA
       ctx.fillStyle = this.colorOf(node, palette) ?? palette.neutral
       ctx.fillRect(x, y, w, h)
+      // A page's picture, as it will be drawn once it lands (`drawCards`),
+      // and then no title.
+      const picture =
+        node.type === 'pdf-page'
+          ? this.callbacks.pageThumbnail(node.file, node.page, palette.dark)
+          : null
+      if (picture) {
+        ctx.globalAlpha = alpha
+        ctx.drawImage(picture, x, y, w, h)
+      }
       // The border it will have when it lands (`drawCards`): a selection's
       // ring, the faint accent of a selected spread's sheet, or the plain
       // one — so nothing changes the frame it stops.
@@ -388,7 +404,7 @@ export class OverviewLayer {
       ctx.stroke()
       ctx.globalAlpha = alpha
       ctx.lineWidth = 1
-      if (w < OVERVIEW_TITLE_MIN_CARD_PX) continue
+      if (picture || w < OVERVIEW_TITLE_MIN_CARD_PX) continue
       const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
       ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
       ctx.fillStyle = palette.text
@@ -397,7 +413,7 @@ export class OverviewLayer {
       ctx.fillText(title, x + w / 2, y + h / 2, w)
     }
     ctx.globalAlpha = 1
-    if (moving) this.dirty = true
+    if (moving || landed) this.dirty = true
   }
 
   destroy(): void {

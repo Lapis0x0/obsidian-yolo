@@ -21,6 +21,7 @@ import {
   importCanvasFileAndOpen,
 } from './host/importCanvasFile'
 import { OpenBoards } from './host/openBoards'
+import { PdfThumbnailStore } from './host/pdfThumbnailStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import { createWhiteboardLocalizedText } from './i18n'
@@ -58,6 +59,12 @@ yolo.registerModule({
       host.privateStorage.synchronized,
       reportError,
     )
+    // PDF page thumbnails, kept on this device for every board.
+    const pdfThumbnailStore = new PdfThumbnailStore(
+      host.privateStorage.deviceLocal,
+      reportError,
+    )
+    host.lifecycle.add(() => pdfThumbnailStore.dispose())
 
     host.workspace.registerFileView({
       viewType: VIEW_TYPE,
@@ -75,6 +82,7 @@ yolo.registerModule({
           readerPanelPrefs,
           annotationStores,
           annotationPrefs,
+          pdfThumbnailStore,
         )
         const forgetOpenBoard = openBoards.add(canvas)
         return {
