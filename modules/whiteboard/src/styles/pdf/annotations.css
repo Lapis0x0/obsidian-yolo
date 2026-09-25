@@ -60,10 +60,12 @@
   mix-blend-mode: screen;
 }
 
-/* A highlight: one shape over all its lines (annotationLayer.ts), in an SVG
- * stretched over the page, blended like the marks above. Its outline, drawn
- * only while it is active, is a layer of its own that is not blended; the
- * stroke stays 2px at any page size. */
+/* A highlight: one shape over all its lines (annotationLayer.ts), a path in
+ * the SVG of the page's highlights stretched over it, which is blended like
+ * the marks above — once for the page, not once a highlight: every blended
+ * element is a compositing group of its own. The outlines, drawn only while
+ * one is active, are an SVG of their own that is not blended; the stroke
+ * stays 2px at any page size. */
 svg.yolo-whiteboard-pdf-highlight,
 svg.yolo-whiteboard-pdf-highlight-outline {
   position: absolute;

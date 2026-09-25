@@ -5,8 +5,9 @@
 // Positioned in percentages of the page (./annotationGeometry.ts explains the
 // space), so a layer never has to be redrawn for a resize or a zoom — only
 // when the page's annotations change. A framed area is a box; a highlight is
-// one shape over all its lines (`highlightOutlines`), an SVG stretched over
-// the page, filled once and — while active — outlined once. The layer takes no pointer
+// one shape over all its lines (`highlightOutlines`), a path in the SVG of
+// the page's highlights stretched over it, filled once and — while active —
+// outlined once. The layer takes no pointer
 // events: the text layer above it has to keep receiving the presses that
 // select text, so the reader finds which annotation a click meant by
 // geometry (`hitTestAnnotations`) instead of by event target.
@@ -27,9 +28,9 @@ import {
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const MARK_CLASS = 'yolo-whiteboard-pdf-mark'
-/** A highlight's fill, and the outline drawn over it while it is active:
- * two layers, since the fill is blended into the page and the outline is
- * not. */
+/** The SVGs of a page's highlight fills, and of the outlines drawn over
+ * them while one is active: two layers, since the fills are blended into
+ * the page and the outlines are not. */
 const HIGHLIGHT_CLASS = 'yolo-whiteboard-pdf-highlight'
 const HIGHLIGHT_OUTLINE_CLASS = 'yolo-whiteboard-pdf-highlight-outline'
 /** What an annotation is measured by and marked active on. */
@@ -95,7 +96,13 @@ export function outlinesFor(
   return outlines
 }
 
-/** Redraws `layer` with `annotations`, marking `activeId`. */
+/** Redraws `layer` with `annotations`, marking `activeId`.
+ *
+ * Every highlight on the page is a path in the same two SVGs — the fills,
+ * blended into the page, and the outlines over them — rather than a pair of
+ * its own: each blended element is a compositing group of its own, and a
+ * page of highlights each blended on their own made a board of them drop
+ * to a third of its frame rate. */
 export function renderAnnotationLayer(
   layer: HTMLElement,
   annotations: readonly PdfAnnotation[],
@@ -103,7 +110,9 @@ export function renderAnnotationLayer(
   activeId: string | null,
 ): void {
   const doc = layer.ownerDocument
-  const children: Element[] = []
+  const marks: Element[] = []
+  const fills: Element[] = []
+  const outlines: Element[] = []
   for (const annotation of annotations) {
     const boxes = boxesFor(annotation, frame)
     const colorClass = annotationColorClass(annotation.color)
@@ -115,21 +124,17 @@ export function renderAnnotationLayer(
         mark.classList.toggle(MARK_ACTIVE_CLASS, active)
         mark.dataset.annotationId = annotation.id
         placeBox(mark, box)
-        children.push(mark)
+        marks.push(mark)
       }
     } else if (boxes.length > 0) {
       const d = outlinePath(highlightOutlines(boxes))
-      for (const className of [HIGHLIGHT_CLASS, HIGHLIGHT_OUTLINE_CLASS]) {
-        const svg = doc.createElementNS(SVG_NS, 'svg')
-        svg.setAttribute('class', `${className} ${colorClass}`)
-        svg.setAttribute('viewBox', '0 0 1 1')
-        svg.setAttribute('preserveAspectRatio', 'none')
+      for (const paths of [fills, outlines]) {
         const path = doc.createElementNS(SVG_NS, 'path')
+        path.setAttribute('class', colorClass)
         path.setAttribute('d', d)
         path.classList.toggle(MARK_ACTIVE_CLASS, active)
         path.dataset.annotationId = annotation.id
-        svg.appendChild(path)
-        children.push(svg)
+        paths.push(path)
       }
     }
     // A commented annotation says so where it ends: a dot in its own colour
@@ -144,10 +149,24 @@ export function renderAnnotationLayer(
         left: `${last.right * 100}%`,
         top: `${(annotation.type === 'area' ? last.top : last.top + (last.bottom - last.top) * NOTE_LINE_FRACTION) * 100}%`,
       })
-      children.push(note)
+      marks.push(note)
     }
   }
-  layer.replaceChildren(...children)
+  const pageSvg = (className: string, paths: readonly Element[]) => {
+    const svg = doc.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('class', className)
+    svg.setAttribute('viewBox', '0 0 1 1')
+    svg.setAttribute('preserveAspectRatio', 'none')
+    svg.replaceChildren(...paths)
+    return svg
+  }
+  layer.replaceChildren(
+    ...(fills.length > 0 ? [pageSvg(HIGHLIGHT_CLASS, fills)] : []),
+    ...marks,
+    ...(outlines.length > 0
+      ? [pageSvg(HIGHLIGHT_OUTLINE_CLASS, outlines)]
+      : []),
+  )
 }
 
 /** Moves the active mark without redrawing the layer. */
