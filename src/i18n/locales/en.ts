@@ -2810,6 +2810,7 @@ export const en: TranslationKeys = {
     viewOnGitHub: 'View on GitHub',
     updateInCommunityPlugins: 'Update in community plugins',
     manualInstallOnGitHub: "Can't update? Install manually from GitHub",
+    modulesFollowedCore: '{modules} updated along with YOLO',
   },
   moduleFileView: {
     inactivePlaceholder:

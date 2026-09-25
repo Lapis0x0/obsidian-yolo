@@ -183,6 +183,10 @@ import {
   checkInstallationIntegrityLayer1And2,
 } from './core/update/installationIntegrity'
 import {
+  readLastLaunchedCoreVersion,
+  writeLastLaunchedCoreVersion,
+} from './core/update/lastLaunchedCoreVersion'
+import {
   ModuleUpdateController,
   type ModuleUpdateOffer,
 } from './core/update/moduleUpdateController'
@@ -3952,10 +3956,43 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         // Catalog refresh always runs — it feeds the module list in settings.
         // Only the toast-facing offers (and their auto-download) are gated.
         await this.moduleService?.checkForUpdates()
+        // Not gated by the notice setting: turning prompts off means "don't
+        // interrupt me", not "leave my modules behind the core".
+        await this.followCoreUpdate()
         if (!this.settings.pluginUpdateNoticeEnabled) return
         await this.moduleUpdateController?.refresh()
       })(),
     ])
+  }
+
+  /**
+   * Brings modules up to date after the core itself changed version — through
+   * the update toast or by hand in community plugins alike. A coordinated
+   * release is one click on the core update; the modules it ships alongside,
+   * including any that need the new Host API, follow here on the next start.
+   * An unknown previous version (first start with this rule) counts as a
+   * change: only pending updates of enabled modules are installed, so a
+   * fresh install has nothing to do.
+   */
+  private async followCoreUpdate(): Promise<void> {
+    const controller = this.moduleUpdateController
+    if (!controller) return
+    const currentVersion = this.manifest.version
+    if (readLastLaunchedCoreVersion(this.app) === currentVersion) return
+    const installed = await controller.installAll()
+    writeLastLaunchedCoreVersion(this.app, currentVersion)
+    if (installed.length === 0) return
+    new Notice(
+      this.t(
+        'update.modulesFollowedCore',
+        '{modules} updated along with YOLO',
+      ).replace(
+        '{modules}',
+        installed
+          .map((module) => `${module.name} ${module.version}`)
+          .join(', '),
+      ),
+    )
   }
 
   async openChatView(options?: {

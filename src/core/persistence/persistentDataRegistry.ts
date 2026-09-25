@@ -203,6 +203,16 @@ export const PERSISTENT_DATA_REGISTRY = [
     reason: 'local module installation state',
   },
   {
+    id: 'host.last-launched-core-version',
+    owner: 'host',
+    kind: 'runtime-state',
+    scope: 'device-local',
+    followsBaseDir: false,
+    transfer: 'excluded',
+    redaction: 'none',
+    reason: 'detects a core update so modules can follow it',
+  },
+  {
     id: 'module.private-device-local',
     owner: 'module',
     kind: 'runtime-state',

@@ -2528,6 +2528,7 @@ export const it: DeepPartial<TranslationKeys> = {
     updateInCommunityPlugins: 'Aggiorna dai plugin community',
     manualInstallOnGitHub:
       'Non riesci ad aggiornare? Installa manualmente da GitHub',
+    modulesFollowedCore: '{modules} aggiornato insieme a YOLO',
   },
   moduleFileView: {
     inactivePlaceholder:

@@ -34,6 +34,8 @@ export type ModuleUpdateOffer = Readonly<{
   error?: string
 }>
 
+export type InstalledModuleUpdate = Readonly<{ name: string; version: string }>
+
 type ModuleUpdateRequest = (
   request: RequestUrlParam,
 ) => Promise<RequestUrlResponse>
@@ -113,6 +115,42 @@ export class ModuleUpdateController {
         if (offer.status === 'available') void this.prepare(offer.key)
       }
     }
+  }
+
+  /**
+   * Installs every module update the toast would offer, without offering it.
+   *
+   * The follow-up to a core update: a coordinated release ships its modules'
+   * updates beside the core's, and a module that needs the new Host API only
+   * becomes installable once the new core is running. The user's one click
+   * on the core update is the consent for these, so nothing is shown before;
+   * a module skipped with "don't remind me" stays skipped. A failure leaves
+   * that module to the ordinary toast on the next `refresh`.
+   */
+  async installAll(): Promise<readonly InstalledModuleUpdate[]> {
+    if (this.disposed) return []
+    const muted = this.options.getMutedVersions()
+    const installed: InstalledModuleUpdate[] = []
+    for (const module of this.options.service.getSnapshot().modules) {
+      if (!isPromptableUpdate(module)) continue
+      const latestVersion = module.catalog!.version
+      if (muted[module.id] === latestVersion) continue
+      const candidate = this.options.service.getInstallCandidate(module.id)
+      if (!candidate || candidate.expectedVersion !== latestVersion) continue
+      try {
+        await this.options.service.install(candidate)
+      } catch (error) {
+        console.error(
+          `[YOLO] Following the core update failed for module "${module.id}"`,
+          error,
+        )
+        continue
+      }
+      installed.push(
+        Object.freeze({ name: module.name, version: latestVersion }),
+      )
+    }
+    return installed
   }
 
   dismissForSession(key: string): void {

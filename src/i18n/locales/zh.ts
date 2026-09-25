@@ -2641,6 +2641,7 @@ export const zh: TranslationKeys = {
     viewOnGitHub: '在 GitHub 查看',
     updateInCommunityPlugins: '在社区插件中更新',
     manualInstallOnGitHub: '无法更新？前往 GitHub 手动安装',
+    modulesFollowedCore: '{modules} 已随 YOLO 一起更新',
   },
   moduleFileView: {
     inactivePlaceholder: '该文件类型由一个当前未启用的模块提供。',

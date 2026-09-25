@@ -132,4 +132,48 @@ describe('module update controller', () => {
     await controller.refresh()
     expect(controller.getSnapshot()).toEqual([])
   })
+
+  it('installs every unmuted update without offering it', async () => {
+    const moduleService = service()
+    const controller = new ModuleUpdateController({
+      service: moduleService,
+      getAutoDownloadEnabled: () => false,
+      getMutedVersions: () => ({}),
+      muteVersion: jest.fn(async () => undefined),
+    })
+
+    await expect(controller.installAll()).resolves.toEqual([
+      { name: 'Learning', version: '1.1.0' },
+    ])
+    expect(moduleService.install).toHaveBeenCalledTimes(1)
+    expect(controller.getSnapshot()).toEqual([])
+  })
+
+  it('leaves a muted version and a failed install out of the follow-up', async () => {
+    const muted = service()
+    await expect(
+      new ModuleUpdateController({
+        service: muted,
+        getAutoDownloadEnabled: () => false,
+        getMutedVersions: () => ({ learning: '1.1.0' }),
+        muteVersion: jest.fn(async () => undefined),
+      }).installAll(),
+    ).resolves.toEqual([])
+    expect(muted.install).not.toHaveBeenCalled()
+
+    const failing = service()
+    failing.install.mockRejectedValueOnce(new Error('network'))
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    await expect(
+      new ModuleUpdateController({
+        service: failing,
+        getAutoDownloadEnabled: () => false,
+        getMutedVersions: () => ({}),
+        muteVersion: jest.fn(async () => undefined),
+      }).installAll(),
+    ).resolves.toEqual([])
+    consoleError.mockRestore()
+  })
 })

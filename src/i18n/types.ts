@@ -2431,6 +2431,7 @@ export type TranslationKeys = {
     viewOnGitHub: string
     updateInCommunityPlugins: string
     manualInstallOnGitHub: string
+    modulesFollowedCore: string
   }
 
   // Module-provided file views (e.g. a module registering a custom file
