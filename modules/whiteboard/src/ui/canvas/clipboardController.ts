@@ -35,7 +35,7 @@ import {
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
   WEB_URL_PATTERN,
-  newFileCardSize,
+  fileCardSizes,
 } from '../constants'
 
 import type { CanvasCore } from './core'
@@ -178,12 +178,15 @@ export class ClipboardController {
       files,
       this.core.t('error.pasteFailed'),
     )
+    if (paths.length === 0) return
+    const sizes = await fileCardSizes(this.core.host.pdf, paths)
     // The board may have been closed, or broken, while the files were
-    // written; the attachments stay, as a pasted one would in a note.
-    if (paths.length === 0 || !this.core.canEdit()) return
+    // written and measured; the attachments stay, as a pasted one would in a
+    // note.
+    if (!this.core.canEdit()) return
     const nodes = paths.map((file, index): BoardNode => {
       const offset = index * DROP_STAGGER_PX
-      const size = newFileCardSize(file)
+      const size = sizes.get(file) ?? NEW_EMBED_CARD_SIZE
       return {
         id: `pasted-${index}`,
         type: 'file',

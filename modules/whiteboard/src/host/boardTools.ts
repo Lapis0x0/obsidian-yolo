@@ -27,7 +27,7 @@ import {
   GRID_WORLD_STEP_PX,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
-  newFileCardSize,
+  fileCardSizes,
 } from '../ui/constants'
 
 import { boardToolSchemas } from './boardToolSchemas'
@@ -114,12 +114,20 @@ async function editBoard(
   const path = readPath(input)
   if (typeof path !== 'string') return path
   const edit = input as Parameters<typeof applyBoardEdit>[1]
+  // Measured before the edit, which is applied synchronously: a PDF's card
+  // is sized from its first page (`fileCardSize`).
+  const fileSizes = await fileCardSizes(
+    host.pdf,
+    (Array.isArray(edit.create) ? edit.create : []).flatMap((op) =>
+      typeof op?.file === 'string' ? [op.file] : [],
+    ),
+  )
   const context = {
     newNodeId: mintNodeId,
     newEdgeId: mintEdgeId,
     gridStep: GRID_WORLD_STEP_PX,
     textCardSize: NEW_CARD_SIZE,
-    fileCardSize: newFileCardSize,
+    fileCardSize: (file: string) => fileSizes.get(file) ?? NEW_EMBED_CARD_SIZE,
     embedCardSize: NEW_EMBED_CARD_SIZE,
   }
 

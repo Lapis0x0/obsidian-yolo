@@ -51,7 +51,7 @@ import {
   NEW_EMBED_CARD_SIZE,
   NEW_TEXT_SIZE,
   WEB_URL_PATTERN,
-  newFileCardSize,
+  fileCardSizes,
 } from '../constants'
 import { asNode } from '../eventTarget'
 import {
@@ -537,7 +537,7 @@ export class DropImport {
         this.core.host.ui.notice(this.core.t('notice.dropUnsupported'))
         return
       }
-      this.addFileCards(
+      void this.placeFileCards(
         droppable.map((entry) => entry.path),
         at,
       )
@@ -576,10 +576,10 @@ export class DropImport {
       importable,
       this.core.t('error.dropFailed'),
     )
-    // The board may have been closed, or failed to parse, while the files
-    // were written.
-    if (paths.length === 0 || !this.core.canEdit()) return
-    this.addFileCards(paths, at)
+    // Whether the board is still there to take them is `addFileCards`'s to
+    // ask, after the measuring too.
+    if (paths.length === 0) return
+    await this.placeFileCards(paths, at)
   }
 
   // -----------------------------------------------------------------------
@@ -737,7 +737,7 @@ export class DropImport {
         ),
         emptyText: this.core.t('prompt.noMedia'),
       },
-      onSubmit: (path) => this.addFileCards([path], center),
+      onSubmit: (path) => void this.placeFileCards([path], center),
     })
   }
 
@@ -890,16 +890,34 @@ export class DropImport {
     this.deps.enterEditMode(node.id)
   }
 
-  /** Adds one file card per vault path, staggered from `world`. Which kind of
-   * card each becomes is decided at render time from its extension, so this
-   * is one path for notes, images, audio and video alike. */
-  private addFileCards(paths: readonly string[], world: ScreenPoint): NodeId[] {
+  /** `addFileCards` at the size each file's card is made at, which for a
+   * PDF means reading its first page first (`fileCardSize`). */
+  private async placeFileCards(
+    paths: readonly string[],
+    world: ScreenPoint,
+  ): Promise<void> {
+    const sizes = await fileCardSizes(this.core.host.pdf, paths)
+    // The board may have been closed, or broken, meanwhile — which
+    // `addFileCards` asks about itself.
+    this.addFileCards(paths, world, sizes)
+  }
+
+  /** Adds one file card per vault path, staggered from `world`, at `sizes`
+   * (an embed card's where it says nothing: a note just written, which has
+   * nothing to measure). Which kind of card each becomes is decided at
+   * render time from its extension, so this is one path for notes, images,
+   * audio, video and PDFs alike. */
+  private addFileCards(
+    paths: readonly string[],
+    world: ScreenPoint,
+    sizes: ReadonlyMap<string, CardSize> = new Map(),
+  ): NodeId[] {
     if (!this.core.canEdit() || paths.length === 0) return []
     let board = this.core.getBoard()
     const ids: NodeId[] = []
     for (const [index, path] of paths.entries()) {
       const offset = index * DROP_STAGGER_PX
-      const size = newFileCardSize(path)
+      const size = sizes.get(path) ?? NEW_EMBED_CARD_SIZE
       const id = this.core.nextNodeId(board)
       ids.push(id)
       board = addNode(board, {

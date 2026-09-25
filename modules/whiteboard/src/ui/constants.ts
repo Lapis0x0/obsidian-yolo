@@ -426,24 +426,63 @@ export const NEW_EMBED_CARD_SIZE = Object.freeze({
 })
 
 /**
- * Size a PDF card is created at: an embed card's width, and the height its
- * first page needs at that width. The square above showed seven tenths of a
- * page, which reads as a document cut off. Set for A4 (√2 : 1), the paper
- * most documents are set on, to the nearest whole cell; a Letter page leaves
- * a little paper below. Measuring the file's own first page instead would
- * make a new card wait for the file to open, or resize under the user after.
+ * Size a PDF card is created at, given its first page's size: an embed
+ * card's width, and the height that page needs at it — the whole first page
+ * and nothing of the next, whatever paper the document is set on (A4,
+ * Letter, landscape). A square showed seven tenths of an A4 page, and no one
+ * fixed ratio fits both of the papers papers come on. Rounded down to a whole
+ * cell, which trims at most a cell of the page's bottom margin rather than
+ * showing a sliver of the page after it.
  */
+export function pdfCardSize(
+  page: Readonly<{ width: number; height: number }>,
+): Readonly<{ w: number; h: number }> {
+  if (!(page.width > 0 && page.height > 0)) return NEW_PDF_CARD_SIZE
+  const w = NEW_EMBED_CARD_SIZE.w
+  const cells = Math.floor((w * page.height) / page.width / GRID_WORLD_STEP_PX)
+  return { w, h: Math.max(MIN_CARD_SIZE.h, cells * GRID_WORLD_STEP_PX) }
+}
+
+/** A PDF card's size when its first page cannot be read: A4 (√2 : 1), the
+ * paper most documents are set on. The card's reader says what is wrong. */
 export const NEW_PDF_CARD_SIZE = Object.freeze({
   w: NEW_EMBED_CARD_SIZE.w,
-  h: GRID_WORLD_STEP_PX * Math.round(NEW_EMBED_CARD_CELLS * Math.SQRT2),
+  h: GRID_WORLD_STEP_PX * Math.floor(NEW_EMBED_CARD_CELLS * Math.SQRT2),
 })
 
-/** The size a card showing the vault file at `path` is created at, however
- * it is made — dropped, pasted, picked, or by the agent. */
-export function newFileCardSize(
+/**
+ * The size a card showing the vault file at `path` is created at, however it
+ * is made — dropped, pasted, picked, or by the agent. A PDF's is measured
+ * from its first page (`pdfCardSize`), which costs opening the file: about a
+ * tenth of a second once the engine is loaded, before a card that would open
+ * it anyway.
+ */
+export async function fileCardSize(
+  pdf: YoloModuleHostApiV1['pdf'],
   path: string,
-): Readonly<{ w: number; h: number }> {
-  return fileNodeKind(path) === 'pdf' ? NEW_PDF_CARD_SIZE : NEW_EMBED_CARD_SIZE
+): Promise<Readonly<{ w: number; h: number }>> {
+  if (fileNodeKind(path) !== 'pdf') return NEW_EMBED_CARD_SIZE
+  try {
+    const document = await pdf.open(path)
+    try {
+      return pdfCardSize(await document.getPage(1))
+    } finally {
+      document.release()
+    }
+  } catch {
+    return NEW_PDF_CARD_SIZE
+  }
+}
+
+/** `fileCardSize` for each of `paths`, measured together. */
+export async function fileCardSizes(
+  pdf: YoloModuleHostApiV1['pdf'],
+  paths: readonly string[],
+): Promise<Map<string, Readonly<{ w: number; h: number }>>> {
+  const sizes = await Promise.all(
+    paths.map(async (path) => [path, await fileCardSize(pdf, path)] as const),
+  )
+  return new Map(sizes)
 }
 
 /** World-space stagger between cards created by one multi-file drop, so
