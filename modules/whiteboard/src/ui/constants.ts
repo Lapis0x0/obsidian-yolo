@@ -5,6 +5,8 @@
 // zero-dependency contract (it doesn't need these; only src/ui/canvas.ts's
 // rAF loop does).
 
+import { fileNodeKind } from '../domain/naming'
+
 /** Camera scale clamp range. `min` is the floor for a board that fits inside
  * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN. */
 export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
@@ -422,6 +424,27 @@ export const NEW_EMBED_CARD_SIZE = Object.freeze({
   w: GRID_WORLD_STEP_PX * NEW_EMBED_CARD_CELLS,
   h: GRID_WORLD_STEP_PX * NEW_EMBED_CARD_CELLS,
 })
+
+/**
+ * Size a PDF card is created at: an embed card's width, and the height its
+ * first page needs at that width. The square above showed seven tenths of a
+ * page, which reads as a document cut off. Set for A4 (√2 : 1), the paper
+ * most documents are set on, to the nearest whole cell; a Letter page leaves
+ * a little paper below. Measuring the file's own first page instead would
+ * make a new card wait for the file to open, or resize under the user after.
+ */
+export const NEW_PDF_CARD_SIZE = Object.freeze({
+  w: NEW_EMBED_CARD_SIZE.w,
+  h: GRID_WORLD_STEP_PX * Math.round(NEW_EMBED_CARD_CELLS * Math.SQRT2),
+})
+
+/** The size a card showing the vault file at `path` is created at, however
+ * it is made — dropped, pasted, picked, or by the agent. */
+export function newFileCardSize(
+  path: string,
+): Readonly<{ w: number; h: number }> {
+  return fileNodeKind(path) === 'pdf' ? NEW_PDF_CARD_SIZE : NEW_EMBED_CARD_SIZE
+}
 
 /** World-space stagger between cards created by one multi-file drop, so
  * three dropped notes read as three cards rather than one. */

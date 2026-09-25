@@ -35,6 +35,7 @@ import {
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
   WEB_URL_PATTERN,
+  newFileCardSize,
 } from '../constants'
 
 import type { CanvasCore } from './core'
@@ -182,13 +183,14 @@ export class ClipboardController {
     if (paths.length === 0 || !this.core.canEdit()) return
     const nodes = paths.map((file, index): BoardNode => {
       const offset = index * DROP_STAGGER_PX
+      const size = newFileCardSize(file)
       return {
         id: `pasted-${index}`,
         type: 'file',
         x: offset,
         y: offset,
-        w: NEW_EMBED_CARD_SIZE.w,
-        h: NEW_EMBED_CARD_SIZE.h,
+        w: size.w,
+        h: size.h,
         file,
         extra: {},
       }

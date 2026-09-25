@@ -51,6 +51,7 @@ import {
   NEW_EMBED_CARD_SIZE,
   NEW_TEXT_SIZE,
   WEB_URL_PATTERN,
+  newFileCardSize,
 } from '../constants'
 import { asNode } from '../eventTarget'
 import {
@@ -898,15 +899,16 @@ export class DropImport {
     const ids: NodeId[] = []
     for (const [index, path] of paths.entries()) {
       const offset = index * DROP_STAGGER_PX
+      const size = newFileCardSize(path)
       const id = this.core.nextNodeId(board)
       ids.push(id)
       board = addNode(board, {
         id,
         type: 'file',
-        x: Math.round(world.x - NEW_EMBED_CARD_SIZE.w / 2 + offset),
-        y: Math.round(world.y - NEW_EMBED_CARD_SIZE.h / 2 + offset),
-        w: NEW_EMBED_CARD_SIZE.w,
-        h: NEW_EMBED_CARD_SIZE.h,
+        x: Math.round(world.x - size.w / 2 + offset),
+        y: Math.round(world.y - size.h / 2 + offset),
+        w: size.w,
+        h: size.h,
         file: path,
         extra: {},
       })

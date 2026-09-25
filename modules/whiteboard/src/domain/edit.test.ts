@@ -18,6 +18,7 @@ function contextWith(): BoardEditContext {
     newEdgeId: () => `e-${(edges += 1)}`,
     gridStep: 20,
     textCardSize: { w: 260, h: 182 },
+    fileCardSize: () => ({ w: 390, h: 390 }),
     embedCardSize: { w: 390, h: 390 },
   }
 }

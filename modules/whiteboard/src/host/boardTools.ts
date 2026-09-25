@@ -27,6 +27,7 @@ import {
   GRID_WORLD_STEP_PX,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  newFileCardSize,
 } from '../ui/constants'
 
 import { boardToolSchemas } from './boardToolSchemas'
@@ -118,6 +119,7 @@ async function editBoard(
     newEdgeId: mintEdgeId,
     gridStep: GRID_WORLD_STEP_PX,
     textCardSize: NEW_CARD_SIZE,
+    fileCardSize: newFileCardSize,
     embedCardSize: NEW_EMBED_CARD_SIZE,
   }
 
