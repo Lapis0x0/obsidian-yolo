@@ -43,7 +43,7 @@ import {
 } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
-import { isSpreadTitle } from '../../domain/spread'
+import { SPREAD_METRICS, isSpreadTitle } from '../../domain/spread'
 import {
   type CanvasView,
   computeWorldViewportRect,
@@ -62,7 +62,6 @@ import {
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
-  PDF_CARD_TITLE_WORLD,
   SPREAD_TITLE_WORLD,
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
@@ -569,12 +568,14 @@ export class OverviewLayer {
       if (isPlainText(node)) texts.push(item)
       else if (isSpreadTitle(node)) titles.push({ ...item, folded: false })
       else visible.push(item)
+      // Its title stands where its spread's does (domain/spread.ts's
+      // `foldedCardOrigin`).
       if (isFoldedPdf(node)) {
-        const th = PDF_CARD_TITLE_WORLD.height * view.scale
+        const th = SPREAD_METRICS.titleHeight * view.scale
         titles.push({
           node,
           x,
-          y: y - PDF_CARD_TITLE_WORLD.gapAbove * view.scale - th,
+          y: y - SPREAD_METRICS.titleGap * view.scale - th,
           w,
           h: th,
           folded: true,
@@ -721,10 +722,10 @@ export class OverviewLayer {
     }
   }
 
-  /** A PDF's title as the DOM draws it: a spread's (spread.css) one line
-   * with the type, the name and the page count, no box — and a card's ring
-   * when it is selected; a folded card's (drag.css) the same line without
-   * the count, over the card, whose own ring is its selection. */
+  /** A PDF's title as the DOM draws it (spread.css): one line with the
+   * type, the name and the page count, no box — and a card's ring when it is
+   * selected. A folded card's is the same line in the same place, ring and
+   * all, without the count. */
   private drawPdfTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
@@ -757,9 +758,7 @@ export class OverviewLayer {
       const count = title.folded
         ? ''
         : this.callbacks.spreadPageCountLabel(title.node.id)
-      const pad = title.folded
-        ? PDF_CARD_TITLE_WORLD.left * u
-        : SPREAD_TITLE_WORLD.padding * u
+      const pad = SPREAD_TITLE_WORLD.padding * u
       ctx.font = badgeFont
       const badgeW =
         ctx.measureText(badgeText).width +
@@ -772,9 +771,12 @@ export class OverviewLayer {
       const box = {
         x: title.x,
         y: title.y + title.h - h,
-        w: title.folded
-          ? pad + badgeW + gap + nameW
-          : Math.max(title.w, pad + badgeW + gap + nameW + gap + countW + pad),
+        w: Math.max(
+          title.w,
+          title.folded
+            ? pad + badgeW + gap + nameW + pad
+            : pad + badgeW + gap + nameW + gap + countW + pad,
+        ),
         h,
       }
       // Where it was drawn is where it is pointed at: the line reaches past
@@ -786,7 +788,7 @@ export class OverviewLayer {
         w: box.w / view.scale,
         h: box.h / view.scale,
       })
-      if (!title.folded && this.callbacks.isSelected(title.node.id)) {
+      if (this.callbacks.isSelected(title.node.id)) {
         ctx.strokeStyle = palette.accent
         ctx.lineWidth = 2
         ctx.beginPath()

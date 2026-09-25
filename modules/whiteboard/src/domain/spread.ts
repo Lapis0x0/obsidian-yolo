@@ -150,22 +150,24 @@ export function openSpread(
       ? remembered
       : layoutSpreadGrid(
           remembered.pages.map((rect) => ({ width: rect.w, height: rect.h })),
-          { x: node.x, y: node.y },
+          spreadTitleOrigin(node, remembered.title.h),
           currentSpreadColumns(remembered.pages),
           { ...SPREAD_METRICS, pageWidth: node.w },
         )
 
-  // The card's top-left is the title's: the document stays where it is
-  // whether it is read in a card or spread out. A remembered layout goes
-  // wherever the card has been moved since (a first layout is already
-  // drawn from the card's corner, and moves nowhere).
-  const dx = node.x - use.title.x
-  const dy = node.y - use.title.y
+  // The card's top-left is the first row's, and the title stands over it:
+  // the title and the first page stay where they are whether the document is
+  // read in a card or spread out (`foldedCardOrigin`). A remembered layout
+  // goes wherever the card has been moved since (a first layout is already
+  // drawn from over the card, and moves nowhere).
+  const origin = spreadTitleOrigin(node, use.title.h)
+  const dx = origin.x - use.title.x
+  const dy = origin.y - use.title.y
   const { spread: _spread, ...rest } = node
   const title: FileNode = {
     ...rest,
-    x: node.x,
-    y: node.y,
+    x: origin.x,
+    y: origin.y,
     // One sheet wide, whatever was saved: the title is a heading over the
     // first column, not a box around its text (see `layoutSpreadGrid`).
     w: use.pages[0].w,
@@ -225,8 +227,8 @@ export function openSpread(
 
 /**
  * Puts a spread's pages away: the node is a reader card again, at the size it
- * had, with its top-left where the title's is, and remembers where its title
- * and every sheet were for the next time. Edges on a sheet stay attached to that page, and reach the card
+ * had, with its top-left where the first row's is (`foldedCardOrigin`), and
+ * remembers where its title and every sheet were for the next time. Edges on a sheet stay attached to that page, and reach the card
  * until the pages are out again.
  */
 export function closeSpread(board: Board, id: NodeId): Board {
@@ -261,12 +263,11 @@ function foldSpread(board: Board, id: NodeId, open: boolean): Board {
       ...(sheet.color === undefined ? {} : { color: sheet.color }),
     })),
   }
-  // Back to a card at the title's corner and the sheets' width (the
-  // title's), as tall as the reader was — see `openSpread`.
+  // Back to a card under the title and at the sheets' width (the title's),
+  // as tall as the reader was — see `openSpread`.
   const folded: FileNode = {
     ...rest,
-    x: node.x,
-    y: node.y,
+    ...foldedCardOrigin(node),
     w: node.w,
     h: readerRect.h,
     ...(sheets.length > 0 ? { spread } : {}),
@@ -288,6 +289,39 @@ function foldSpread(board: Board, id: NodeId, open: boolean): Board {
     }
   })
   return { ...board, nodes, edges: edgesChanged ? edges : board.edges }
+}
+
+/**
+ * Where a spread's card goes when it is folded: under its title, at the top
+ * of the first row of sheets — where the first page is. The card's own title
+ * is drawn in the same place as the spread's, so neither the title nor the
+ * first page moves when the document is spread out or put away.
+ */
+export function foldedCardOrigin(
+  title: Readonly<{ x: number; y: number; h: number }>,
+  metrics = SPREAD_METRICS,
+): Readonly<{ x: number; y: number }> {
+  return { x: title.x, y: title.y + title.h + metrics.titleGap }
+}
+
+/** A folded PDF card with the title that stands over it (`foldedCardOrigin`):
+ * what of the board the document takes up, from the same top edge as its
+ * spread's title. */
+export function withTitleAbove(
+  card: Readonly<{ x: number; y: number; w: number; h: number }>,
+  metrics = SPREAD_METRICS,
+): Readonly<{ x: number; y: number; w: number; h: number }> {
+  const lead = metrics.titleHeight + metrics.titleGap
+  return { x: card.x, y: card.y - lead, w: card.w, h: card.h + lead }
+}
+
+/** `foldedCardOrigin` backwards: where the title of a card's spread stands. */
+function spreadTitleOrigin(
+  card: Readonly<{ x: number; y: number }>,
+  titleHeight: number,
+  metrics = SPREAD_METRICS,
+): Readonly<{ x: number; y: number }> {
+  return { x: card.x, y: card.y - titleHeight - metrics.titleGap }
 }
 
 /** Takes off every sheet whose PDF is not spread out on this board, with the

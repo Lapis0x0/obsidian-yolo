@@ -64,6 +64,9 @@ const threePages = layoutSpreadGrid(
   { x: 1000, y: 0 },
   2,
 )
+/** How far under its title a PDF card sits — where its first row of sheets
+ * is (`foldedCardOrigin`). A card at (1000, LEAD) opens as `threePages`. */
+const LEAD = SPREAD_METRICS.titleHeight + SPREAD_METRICS.titleGap
 
 describe('layoutSpreadGrid', () => {
   it('puts the title at the origin and the sheets in rows under it', () => {
@@ -110,7 +113,7 @@ describe('column counts', () => {
 
 describe('openSpread / closeSpread', () => {
   it('turns the node into its title and adds a sheet per page after it', () => {
-    const before = board([pdf('p', { x: 1000, y: 0 }), pdf('q')])
+    const before = board([pdf('p', { x: 1000, y: LEAD }), pdf('q')])
     const open = openSpread(before, 'p', threePages)
     expect(open.nodes.map((node) => node.id)).toEqual([
       'p',
@@ -123,7 +126,7 @@ describe('openSpread / closeSpread', () => {
     expect(isSpreadTitle(title)).toBe(true)
     expect(title).toMatchObject({
       ...threePages.title,
-      readerRect: { x: 1000, y: 0 },
+      readerRect: { x: 1000, y: LEAD },
     })
     expect(open.nodes[2]).toMatchObject({
       type: 'pdf-page',
@@ -176,9 +179,23 @@ describe('openSpread / closeSpread', () => {
     expect(reopened.nodes.find((n) => n.id === 'p/p3')?.x).toBe(-500)
   })
 
+  it('keeps the title and the first page where they are, open or folded', () => {
+    const card = pdf('p', { x: 1000, y: LEAD, h: 600 })
+    const open = openSpread(board([card]), 'p', threePages)
+    // The first page is where the card was, the title over it.
+    expect(spreadPages(open, 'p')[0]).toMatchObject({ x: card.x, y: card.y })
+    expect(open.nodes[0]).toMatchObject({ x: card.x, y: card.y - LEAD })
+    // And the card comes back to the first page's place.
+    expect(closeSpread(open, 'p').nodes[0]).toMatchObject({
+      x: card.x,
+      y: card.y,
+      h: 600,
+    })
+  })
+
   it('keeps the card and the title at one corner and one width', () => {
     const open = openSpread(
-      board([pdf('p', { x: 1000, y: 0, h: 600 })]),
+      board([pdf('p', { x: 1000, y: LEAD, h: 600 })]),
       'p',
       threePages,
     )
@@ -192,10 +209,11 @@ describe('openSpread / closeSpread', () => {
       ),
     }
     const card = closeSpread(moved, 'p').nodes[0] as FileNode
-    // Where the title was, as wide as the sheets, as tall as the reader.
+    // Under the title, where the first row was, as wide as the sheets, as
+    // tall as the reader.
     expect(card).toMatchObject({
       x: title.x + 50,
-      y: title.y + 70,
+      y: title.y + 70 + LEAD,
       w: threePages.pages[0].w,
       h: 600,
     })
@@ -204,7 +222,10 @@ describe('openSpread / closeSpread', () => {
     const shifted = { ...closeSpread(moved, 'p') }
     shifted.nodes = [{ ...card, x: card.x - 200, y: card.y + 10 }]
     const reopened = openSpread(shifted, 'p')
-    expect(reopened.nodes[0]).toMatchObject({ x: card.x - 200, y: card.y + 10 })
+    expect(reopened.nodes[0]).toMatchObject({
+      x: card.x - 200,
+      y: card.y + 10 - LEAD,
+    })
     expect(reopened.nodes[1]).toMatchObject({
       x: threePages.pages[0].x + 50 - 200,
       y: threePages.pages[0].y + 70 + 10,
@@ -213,7 +234,7 @@ describe('openSpread / closeSpread', () => {
 
   it('lays the sheets out again at the width of a card resized while closed', () => {
     const open = openSpread(
-      board([pdf('p', { x: 1000, y: 0 })]),
+      board([pdf('p', { x: 1000, y: LEAD })]),
       'p',
       threePages,
     )
@@ -239,7 +260,7 @@ describe('openSpread / closeSpread', () => {
 describe('scaleSpread', () => {
   it('scales the whole document about the title corner', () => {
     const open = openSpread(
-      board([pdf('p', { x: 1000, y: 0 })]),
+      board([pdf('p', { x: 1000, y: LEAD })]),
       'p',
       threePages,
     )
@@ -260,14 +281,14 @@ describe('scaleSpread', () => {
 describe('the file round trip', () => {
   it('writes an open spread as one node with the reader card rectangle', () => {
     const open = openSpread(
-      board([pdf('p', { x: 1000, y: 0 })]),
+      board([pdf('p', { x: 1000, y: LEAD })]),
       'p',
       threePages,
     )
     const file = collapseBoard(open)
     expect(file.nodes).toHaveLength(1)
     const node = file.nodes[0] as FileNode
-    expect(node).toMatchObject({ x: 1000, y: 0 })
+    expect(node).toMatchObject({ x: 1000, y: LEAD })
     expect(node.spread?.open).toBe(true)
 
     const text = serializeBoard(file)
@@ -291,7 +312,7 @@ describe('the file round trip', () => {
 
   it('keeps a page colour through the file and a closed spread', () => {
     const open = openSpread(
-      board([pdf('p', { x: 1000, y: 0 })]),
+      board([pdf('p', { x: 1000, y: LEAD })]),
       'p',
       threePages,
     )
@@ -362,7 +383,7 @@ describe('the file round trip', () => {
 
 describe('the document as a whole', () => {
   const open = openSpread(
-    board([pdf('p', { x: 1000, y: 0 }), pdf('q', { x: -2000 })]),
+    board([pdf('p', { x: 1000, y: LEAD }), pdf('q', { x: -2000 })]),
     'p',
     threePages,
   )
@@ -424,7 +445,11 @@ describe('the document as a whole', () => {
 
 describe('reflowSpread', () => {
   it('lays every sheet out afresh under the title', () => {
-    const open = openSpread(board([pdf('p')]), 'p', threePages)
+    const open = openSpread(
+      board([pdf('p', { x: 1000, y: LEAD })]),
+      'p',
+      threePages,
+    )
     const scattered = {
       ...open,
       nodes: open.nodes.map((node) =>

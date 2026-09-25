@@ -53,11 +53,20 @@
   border-radius: inherit;
 }
 
-.yolo-whiteboard-card-hovered > .yolo-whiteboard-spread-title-line {
+/* A folded PDF card wears its title on the same line (drag.css's
+ * `.yolo-whiteboard-card-title-pdf`), and so the same borders: the title
+ * does not change as the pages come out or go back. */
+.yolo-whiteboard-card-hovered > .yolo-whiteboard-spread-title-line,
+.yolo-whiteboard-card-hovered
+  > .yolo-whiteboard-card-title-pdf
+  > .yolo-whiteboard-spread-title-line {
   border-color: var(--background-modifier-border-focus);
 }
 
-.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line {
+.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line,
+.yolo-whiteboard-card-selected
+  > .yolo-whiteboard-card-title-pdf
+  > .yolo-whiteboard-spread-title-line {
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 1px var(--interactive-accent);
 }

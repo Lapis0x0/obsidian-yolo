@@ -266,15 +266,6 @@ export const SPREAD_TITLE_WORLD = {
   countFont: 13,
 } as const
 
-/** A folded PDF card's title, in world units — drag.css's
- * `.yolo-whiteboard-card-title-pdf`: the spread title's line without its box
- * or its page count, over the card as every card's title is. */
-export const PDF_CARD_TITLE_WORLD = {
-  left: 2,
-  height: 20,
-  gapAbove: 3,
-} as const
-
 /** Alpha of the colour wash over an overview card — style.css's
  * `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */

@@ -34,7 +34,7 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import { arrangeTargets } from '../../domain/groups'
-import { isSpreadTitle } from '../../domain/spread'
+import { isSpreadTitle, withTitleAbove } from '../../domain/spread'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
 import type { CanvasView } from '../../domain/virtualization'
 import { TOOLBAR_GAP_PX, TOOLBAR_MARGIN_PX } from '../constants'
@@ -239,6 +239,8 @@ export class ToolbarController {
    * World rectangle the toolbar is anchored to: the union of the selected
    * nodes, or — for an edge — a zero-size rect at the point its label hangs
    * from, which is the only place on a curve that reads as "the edge itself".
+   * A folded PDF card counts its title with it, so the toolbar stands over
+   * the title, where it stands over an open spread's.
    */
   private toolbarBounds(): ToolbarBounds | null {
     const selectedEdgeIds = this.callbacks.getSelectedEdgeIds()
@@ -254,7 +256,12 @@ export class ToolbarController {
       this.callbacks
         .getBoard()
         .nodes.filter((node) => targetIds.has(node.id))
-        .map((node) => ({ x: node.x, y: node.y, w: node.w, h: node.h })),
+        .map((node) => {
+          const rect = { x: node.x, y: node.y, w: node.w, h: node.h }
+          return this.callbacks.isPdfNode(node) && !isSpreadTitle(node)
+            ? withTitleAbove(rect)
+            : rect
+        }),
     )
   }
 

@@ -78,8 +78,8 @@ const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
-/** A PDF card's title: the type and the name, as its spread's title says
- * them (`pdfTitleParts`). */
+/** A PDF card's title: its spread's title line (`pdfTitleParts`), in the
+ * place the spread's title stands, so the two are one title. */
 const CARD_TITLE_PDF_CLASS = 'yolo-whiteboard-card-title-pdf'
 const CARD_TITLE_BLOCK_CLASS = 'yolo-whiteboard-card-title-block'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
@@ -619,7 +619,10 @@ export class CardRenderer {
       title.className = CARD_TITLE_CLASS
       if (node.type === 'file' && fileNodeKind(node.file) === 'pdf') {
         title.classList.add(CARD_TITLE_PDF_CLASS)
-        title.append(...pdfTitleParts(doc, node.file))
+        const line = doc.createElement('div')
+        line.className = SPREAD_TITLE_LINE_CLASS
+        line.append(...pdfTitleParts(doc, node.file))
+        title.appendChild(line)
       } else {
         title.textContent = chromeTitle
       }

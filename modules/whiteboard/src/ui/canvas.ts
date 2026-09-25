@@ -73,6 +73,7 @@ import {
   collapseBoard,
   defaultSpreadColumns,
   expandBoard,
+  foldedCardOrigin,
   isSpreadTitle,
   layoutSpreadGrid,
   nodesToDelete,
@@ -1947,11 +1948,12 @@ export class WhiteboardCanvas {
     const now = this.nodesById.get(id)
     if (!this.canEdit || !now || !isPdfNode(now) || isSpreadTitle(now)) return
     if (now.file !== node.file || sizes.length === 0) return
-    // The sheets are as wide as the card: one document, one width.
+    // The sheets are as wide as the card: one document, one width. The first
+    // row is where the card is, under the title (`foldedCardOrigin`).
     const metrics = { ...SPREAD_METRICS, pageWidth: now.w }
     const layout = layoutSpreadGrid(
       sizes,
-      { x: now.x, y: now.y },
+      { x: now.x, y: now.y - metrics.titleHeight - metrics.titleGap },
       defaultSpreadColumns(sizes, metrics),
       metrics,
     )
@@ -2039,14 +2041,16 @@ export class WhiteboardCanvas {
 
   /**
    * Closes a spread the way it opened, backwards: the sheets on screen slide
-   * into the title's corner and fade, and only then is the spread closed and
-   * the card faded in where they went. A second ask while they travel is the
+   * into the corner the card comes back to (under the title, where the first
+   * page is) and fade, and only then is the spread closed and the card faded
+   * in where they went. A second ask while they travel is the
    * same ask, and is let go.
    */
   private async foldSpreadAway(id: NodeId): Promise<void> {
     if (this.spreadsFolding.has(id)) return
     const title = this.nodesById.get(id)
     if (!title) return
+    const corner = foldedCardOrigin(title)
     const gathering: Animation[] = []
     const onOverview = this.overview && !this.prefersReducedMotion()
     if (onOverview) {
@@ -2055,7 +2059,7 @@ export class WhiteboardCanvas {
       for (const sheet of spreadPages(this.board, id)) {
         this.overviewLayer?.animate(sheet.id, {
           direction: 'out',
-          offset: { x: title.x - sheet.x, y: title.y - sheet.y },
+          offset: { x: corner.x - sheet.x, y: corner.y - sheet.y },
           delay: 0,
         })
       }
@@ -2082,8 +2086,8 @@ export class WhiteboardCanvas {
       for (const sheet of spreadPages(this.board, id)) {
         const el = this.cardRenderer.getRuntime(sheet.id)?.el
         if (!el) continue
-        const dx = title.x - sheet.x
-        const dy = title.y - sheet.y
+        const dx = corner.x - sheet.x
+        const dy = corner.y - sheet.y
         gathering.push(
           el.animate(
             [
