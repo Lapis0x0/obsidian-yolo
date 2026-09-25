@@ -411,9 +411,14 @@ export class DropImport {
    * without it the board both lights its drop outline for a drag aimed at the
    * panel and, for a drop that lands beside the panel rather than on it,
    * makes a card nobody can see.
+   *
+   * Open in the overview tier too, unlike the rest of creation: what a drop
+   * makes is a file card, which needs no editor and is drawn there as it
+   * will be up close — a PDF is its pages either way — and a paste already
+   * lands files there.
    */
   private get acceptsDrop(): boolean {
-    return this.core.canCreate() && this.prompt === null
+    return this.core.canEdit() && this.prompt === null
   }
 
   /**
@@ -557,7 +562,7 @@ export class DropImport {
     // Checked at both ends: the prompt's drop zone reaches this too, and a
     // board whose file failed to parse between opening that panel and
     // dropping on it should not have files written for cards it will refuse.
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     const importable = files.filter(
       (file) => fileNodeKind(file.name) !== 'unsupported',
     )
@@ -572,7 +577,7 @@ export class DropImport {
     )
     // The board may have been closed, or failed to parse, while the files
     // were written.
-    if (paths.length === 0 || !this.core.canCreate()) return
+    if (paths.length === 0 || !this.core.canEdit()) return
     this.addFileCards(paths, at)
   }
 
