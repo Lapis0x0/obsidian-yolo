@@ -263,7 +263,6 @@ export const SPREAD_TITLE_WORLD = {
   badgePadding: 6,
   badgeHeight: 20,
   nameFont: 16,
-  countFont: 13,
 } as const
 
 /** Alpha of the colour wash over an overview card — style.css's

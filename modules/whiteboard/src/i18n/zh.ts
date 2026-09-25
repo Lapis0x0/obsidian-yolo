@@ -149,7 +149,6 @@ export const zh = {
     pageInput: '页码',
     pageTitle: '{name} · 第 {page} 页',
     sheetTitle: '第 {page} 页',
-    pageCount: '{count} 页',
     search: '在文档中查找',
     searchPlaceholder: '查找…',
     searchPrevious: '上一个（Shift+Enter）',

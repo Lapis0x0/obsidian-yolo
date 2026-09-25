@@ -813,7 +813,6 @@ export class WhiteboardCanvas {
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
-      spreadPageCountLabel: (id) => this.spreadPageCountLabel(id),
       pageThumbnail: (path, page, dark) =>
         this.pdfThumbnails?.get(path, page, dark) ?? null,
     })
@@ -967,7 +966,6 @@ export class WhiteboardCanvas {
       },
       openAnnotations: (path) => this.annotationStores.acquire(path),
       getAnnotationEvents: () => this.pdf.annotationEvents,
-      spreadPageCountLabel: (id) => this.spreadPageCountLabel(id),
       pdfPageLabels: this.pdfPageLabels,
       reportError: this.core.reportError,
       t: this.core.t,
@@ -1618,14 +1616,6 @@ export class WhiteboardCanvas {
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
    * field's doc comment for what the state means. */
-  /** "25 pages" for an open spread's title, in the current locale. */
-  private spreadPageCountLabel(id: NodeId): string {
-    return this.t('pdf.pageCount').replace(
-      '{count}',
-      String(spreadPages(this.board, id).length),
-    )
-  }
-
   /** What a PDF card's or a spread sheet's title says about its page
    * (ui/lod.ts's `nodeTitleText`), in the current locale. */
   private readonly pdfPageLabels: PdfPageLabels = {

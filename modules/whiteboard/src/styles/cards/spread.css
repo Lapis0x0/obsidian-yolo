@@ -90,15 +90,6 @@
   white-space: nowrap;
 }
 
-.yolo-whiteboard-spread-title-count {
-  flex: none;
-  margin-left: auto;
-  padding-left: 8px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* The sheets of the document whose title is under the pointer (the canvas's
  * `syncSpreadHover`): which pieces of paper are one paper. The border a

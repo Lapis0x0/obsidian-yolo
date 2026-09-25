@@ -69,7 +69,6 @@ const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
 const SPREAD_TITLE_TEXT_CLASS = 'yolo-whiteboard-spread-title-text'
 const SPREAD_TITLE_LINE_CLASS = 'yolo-whiteboard-spread-title-line'
 const SPREAD_TITLE_BADGE_CLASS = 'yolo-whiteboard-spread-title-badge'
-const SPREAD_TITLE_COUNT_CLASS = 'yolo-whiteboard-spread-title-count'
 /** One sheet of a spread: a card that is a page of paper, edge to edge. */
 const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
 /** The page number in a sheet's corner. */
@@ -194,8 +193,6 @@ export type NodeRuntime = {
  */
 export type CardRendererCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
-  /** "25 pages", localized, for an open spread's title. */
-  spreadPageCountLabel: (id: NodeId) => string
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
@@ -687,7 +684,7 @@ export class CardRenderer {
 
   /**
    * An open spread's title: the line over its first sheet that says what the
-   * document is — type, name, length — and the handle for the whole of it:
+   * document is — its type and name, as its folded card's says it — and the handle for the whole of it:
    * what a group holds, an edge reaches and a drag carries the pages with
    * (domain/spread.ts). It has no body. The node is one sheet wide
    * (`layoutSpreadGrid`); the line it shows is as wide as the whole name
@@ -696,12 +693,9 @@ export class CardRenderer {
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
-    const count = doc.createElement('span')
-    count.className = SPREAD_TITLE_COUNT_CLASS
-    count.textContent = this.callbacks.spreadPageCountLabel(id)
     const line = doc.createElement('div')
     line.className = SPREAD_TITLE_LINE_CLASS
-    line.append(...pdfTitleParts(doc, file), count)
+    line.append(...pdfTitleParts(doc, file))
     el.appendChild(line)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {

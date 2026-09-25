@@ -136,8 +136,6 @@ export type OverviewLayerCallbacks = Readonly<{
   /** What a PDF card's or a sheet's title says about its page — see
    * ui/lod.ts's `nodeTitleText`. */
   pdfPageLabels: PdfPageLabels
-  /** "25 pages", localized, for an open spread's title. */
-  spreadPageCountLabel: (id: NodeId) => string
   /** A small picture of a spread's page (ui/pdf/thumbnails.ts), as the
    * theme shows it, or null while it has none. */
   pageThumbnail: (
@@ -381,7 +379,7 @@ export class OverviewLayer {
       ctx.fillStyle = this.colorOf(node, palette) ?? palette.neutral
       ctx.fillRect(x, y, w, h)
       // Its pages, as they will be drawn once it lands (`drawCards`), and
-      // then no title.
+      // then no title: a PDF's stays put, drawn by `drawCards` throughout.
       ctx.globalAlpha = alpha
       const pictured = this.drawPicture(
         ctx,
@@ -554,8 +552,7 @@ export class OverviewLayer {
     const texts: typeof visible = []
     const titles: PdfTitle[] = []
     for (const node of nodes) {
-      // Drawn on their own, at their own opacity (`drawMotions`).
-      if (this.motions.has(node.id)) continue
+      const moving = this.motions.has(node.id)
       const rect = live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
       const y = rect.y * view.scale + view.ty
@@ -565,11 +562,9 @@ export class OverviewLayer {
         continue
       }
       const item = { node, x, y, w, h }
-      if (isPlainText(node)) texts.push(item)
-      else if (isSpreadTitle(node)) titles.push({ ...item, folded: false })
-      else visible.push(item)
       // Its title stands where its spread's does (domain/spread.ts's
-      // `foldedCardOrigin`).
+      // `foldedCardOrigin`), and stays drawn here while the card fades in
+      // under it: a spread folding keeps its title in place throughout.
       if (isFoldedPdf(node)) {
         const th = SPREAD_METRICS.titleHeight * view.scale
         titles.push({
@@ -578,9 +573,14 @@ export class OverviewLayer {
           y: y - SPREAD_METRICS.titleGap * view.scale - th,
           w,
           h: th,
-          folded: true,
         })
       }
+      // The rest of it is drawn on its own, at its own opacity
+      // (`drawMotions`).
+      if (moving) continue
+      if (isPlainText(node)) texts.push(item)
+      else if (isSpreadTitle(node)) titles.push(item)
+      else visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is a block of ink,
     // in its colour, as greyed-out text is drawn — and a selection ring when
@@ -723,9 +723,9 @@ export class OverviewLayer {
   }
 
   /** A PDF's title as the DOM draws it (spread.css): one line with the
-   * type, the name and the page count, no box — and a card's ring when it is
-   * selected. A folded card's is the same line in the same place, ring and
-   * all, without the count. */
+   * type and the name, no box — and a card's ring when it is selected. An
+   * open spread's and its folded card's are the same line in the same
+   * place, so folding one changes nothing about it. */
   private drawPdfTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
@@ -749,15 +749,11 @@ export class OverviewLayer {
     const badgeText = 'PDF'
     const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
     const nameFont = `500 ${SPREAD_TITLE_WORLD.nameFont * u}px ${palette.fontFamily}`
-    const countFont = `${SPREAD_TITLE_WORLD.countFont * u}px ${palette.fontFamily}`
     ctx.globalAlpha = 1
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'left'
     for (const title of titles) {
       const name = nodeTitleText(title.node)
-      const count = title.folded
-        ? ''
-        : this.callbacks.spreadPageCountLabel(title.node.id)
       const pad = SPREAD_TITLE_WORLD.padding * u
       ctx.font = badgeFont
       const badgeW =
@@ -765,18 +761,11 @@ export class OverviewLayer {
         SPREAD_TITLE_WORLD.badgePadding * 2 * u
       ctx.font = nameFont
       const nameW = ctx.measureText(name).width
-      ctx.font = countFont
-      const countW = ctx.measureText(count).width
       const h = title.h * grow
       const box = {
         x: title.x,
         y: title.y + title.h - h,
-        w: Math.max(
-          title.w,
-          title.folded
-            ? pad + badgeW + gap + nameW + pad
-            : pad + badgeW + gap + nameW + gap + countW + pad,
-        ),
+        w: Math.max(title.w, pad + badgeW + gap + nameW + pad),
         h,
       }
       // Where it was drawn is where it is pointed at: the line reaches past
@@ -811,9 +800,6 @@ export class OverviewLayer {
       ctx.font = nameFont
       ctx.fillStyle = palette.text
       ctx.fillText(name, box.x + pad + badgeW + gap, mid)
-      ctx.font = countFont
-      ctx.fillStyle = palette.muted
-      ctx.fillText(count, box.x + box.w - pad - countW, mid)
     }
     ctx.lineWidth = 1
   }
@@ -1206,7 +1192,6 @@ type PdfTitle = Readonly<{
   y: number
   w: number
   h: number
-  folded: boolean
 }>
 
 /** A PDF card as its reader: not an open spread's title. */
