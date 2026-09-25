@@ -795,7 +795,6 @@ export class OverviewLayer {
         this.strokeRectPath(ctx, box)
         ctx.stroke()
       }
-      if (title.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
       const mid = box.y + box.h / 2
       // The type, on its tint.
       const badgeH = SPREAD_TITLE_WORLD.badgeHeight * u
