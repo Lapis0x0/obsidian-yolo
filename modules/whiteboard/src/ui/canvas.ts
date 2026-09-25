@@ -142,6 +142,7 @@ import {
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
+import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PdfThumbnails, type WantedThumbnail } from './pdf/thumbnails'
 import { applyColorToElement } from './selectionToolbar'
 
@@ -456,6 +457,9 @@ export class WhiteboardCanvas {
   /** Small pictures of every open spread's pages, made while the board is
    * still (./pdf/thumbnails.ts). */
   private pdfThumbnails: PdfThumbnails | null = null
+  /** The annotations of the PDFs whose pages have thumbnails, which the
+   * overview draws over them (./pdf/pictureAnnotations.ts). */
+  private pictureAnnotations: PictureAnnotations | null = null
 
   /** PDF reading on this board — the reading panel, annotations, excerpts,
    * links into its PDFs (./canvas/pdfIntegration.ts). Built in `ensureDom`. */
@@ -672,6 +676,8 @@ export class WhiteboardCanvas {
     this.spreadFrame = null
     this.pdfThumbnails?.destroy()
     this.pdfThumbnails = null
+    this.pictureAnnotations?.destroy()
+    this.pictureAnnotations = null
     this.viewportObserver?.disconnect()
     this.viewportObserver = null
     this.teardownAllCards()
@@ -800,6 +806,11 @@ export class WhiteboardCanvas {
       onChange: (path, page) => this.onThumbnailChange(path, page),
       reportError: (stage, error) => this.reportError(stage, error),
     })
+    this.pictureAnnotations?.destroy()
+    this.pictureAnnotations = new PictureAnnotations(
+      this.annotationStores,
+      () => this.overviewLayer?.markDirty(),
+    )
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
@@ -817,6 +828,12 @@ export class WhiteboardCanvas {
       pdfPageLabels: this.pdfPageLabels,
       pageThumbnail: (path, page, dark) =>
         this.pdfThumbnails?.get(path, page, dark) ?? null,
+      pageAnnotations: (path, page) => {
+        const annotations = this.pictureAnnotations?.forPage(path, page)
+        if (!annotations?.length) return null
+        const frame = this.pdfThumbnails?.frame(path, page)
+        return frame ? { frame, annotations } : null
+      },
     })
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
@@ -2792,6 +2809,9 @@ export class WhiteboardCanvas {
     this.syncEmptyHint()
     this.spreadFrame?.sync()
     this.pdfThumbnails?.retain()
+    this.pictureAnnotations?.retain(
+      new Set(Array.from(this.wantedThumbnails(), (wanted) => wanted.path)),
+    )
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.

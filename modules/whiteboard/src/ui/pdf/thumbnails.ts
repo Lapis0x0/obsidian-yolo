@@ -28,9 +28,17 @@
 // pages take follows the screen's pixels rather than their number — four
 // spreads side by side at 7% had outgrown the budget at full size, and fit
 // in a quarter of it this way.
+//
+// With each thumbnail goes where the page's PDF points land on it (`frame`),
+// measured as it is drawn and kept beside it: the overview draws a page's
+// annotations over its thumbnail by it, without opening the PDF.
 
-import type { PdfThumbnailStore } from '../../host/pdfThumbnailStore'
+import type {
+  PageGeometry,
+  PdfThumbnailStore,
+} from '../../host/pdfThumbnailStore'
 
+import type { PageFrame } from './annotationGeometry'
 import type { PdfDrawClient, PdfDrawQueue } from './drawQueue'
 
 /** A thumbnail's width in pixels, whatever the page's shape: sharp in the
@@ -105,6 +113,9 @@ type FileState = {
   readonly mtime: number
   /** The pages kept on the device; null until the store has answered. */
   stored: Set<number> | null
+  /** Where each page's PDF points land on it, for the pages there is a
+   * thumbnail of. */
+  readonly frames: Map<number, PageFrame>
   /** Opened for the first page that has to be drawn. */
   document: Promise<YoloModuleHostPdfDocumentV1> | null
   disposeStale: (() => void) | null
@@ -150,6 +161,12 @@ export class PdfThumbnails {
       if (entry.dark) this.bytes += bitmapBytes(entry.dark)
     }
     return entry.dark ?? entry.bitmap
+  }
+
+  /** Where the page's PDF points land on its thumbnail; null while there
+   * is none. */
+  frame(path: string, page: number): PageFrame | null {
+    return this.files.get(path)?.frames.get(page) ?? null
   }
 
   /**
@@ -318,13 +335,18 @@ export class PdfThumbnails {
       path,
       mtime,
       stored: null,
+      frames: new Map(),
       document: null,
       disposeStale: null,
     }
     this.files.set(path, file)
     void this.deps.store.pages(path, mtime).then(
       (pages) => {
-        if (this.files.get(path) === file) file.stored = new Set(pages)
+        if (this.files.get(path) !== file) return
+        file.stored = new Set(pages.keys())
+        for (const [page, geometry] of pages) {
+          file.frames.set(page, frameOf(geometry))
+        }
       },
       (error: unknown) => {
         this.deps.reportError('pdf thumbnail pages', error)
@@ -394,6 +416,7 @@ export class PdfThumbnails {
         scale: PDF_THUMBNAIL_WIDTH / page.width,
         pixelRatio: 1,
       }).promise
+      const geometry = measureGeometry(page)
       // A page far from anything drawn keeps its parsed operations only
       // for the reader that draws it next; there may be none.
       page.cleanup()
@@ -408,12 +431,14 @@ export class PdfThumbnails {
         return
       }
       this.hold(key(wanted.path, wanted.page), bitmap, wanted.level)
+      file.frames.set(wanted.page, frameOf(geometry))
       if (encoded) {
         this.deps.store.write(
           file.path,
           file.mtime,
           wanted.page,
           await encoded.arrayBuffer(),
+          geometry,
         )
         file.stored?.add(wanted.page)
       }
@@ -527,6 +552,28 @@ export class PdfThumbnails {
     ctx.filter = 'invert(0.88) hue-rotate(180deg)'
     ctx.drawImage(bitmap, 0, 0)
     return canvas.transferToImageBitmap()
+  }
+}
+
+/** The page's size and its PDF-to-viewport transform at scale 1, read off
+ * three points: the transform is affine. */
+function measureGeometry(page: YoloModuleHostPdfPageV1): PageGeometry {
+  const [e, f] = page.toViewportPoint([0, 0], 1)
+  const [ax, bx] = page.toViewportPoint([1, 0], 1)
+  const [cy, dy] = page.toViewportPoint([0, 1], 1)
+  return {
+    width: page.width,
+    height: page.height,
+    transform: [ax - e, bx - f, cy - e, dy - f, e, f],
+  }
+}
+
+function frameOf(geometry: PageGeometry): PageFrame {
+  const [a, b, c, d, e, f] = geometry.transform
+  return {
+    width: geometry.width,
+    height: geometry.height,
+    toViewport: ([x, y]) => [a * x + c * y + e, b * x + d * y + f],
   }
 }
 

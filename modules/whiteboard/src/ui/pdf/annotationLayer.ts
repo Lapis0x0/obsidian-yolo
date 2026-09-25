@@ -71,6 +71,30 @@ export function boxesFor(
   return boxes
 }
 
+const outlineCache = new WeakMap<
+  PdfAnnotation,
+  WeakMap<PageFrame, PagePoint[][]>
+>()
+
+/** A highlight's shape on a page (`highlightOutlines`), kept like its
+ * boxes: the overview draws it every frame (../canvas/overviewLayer.ts). */
+export function outlinesFor(
+  annotation: PdfAnnotation,
+  frame: PageFrame,
+): PagePoint[][] {
+  let perFrame = outlineCache.get(annotation)
+  if (!perFrame) {
+    perFrame = new WeakMap()
+    outlineCache.set(annotation, perFrame)
+  }
+  let outlines = perFrame.get(frame)
+  if (!outlines) {
+    outlines = highlightOutlines(boxesFor(annotation, frame))
+    perFrame.set(frame, outlines)
+  }
+  return outlines
+}
+
 /** Redraws `layer` with `annotations`, marking `activeId`. */
 export function renderAnnotationLayer(
   layer: HTMLElement,

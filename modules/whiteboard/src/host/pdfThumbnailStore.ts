@@ -5,8 +5,8 @@
 // Device-local private storage (an IndexedDB database of this vault): a
 // thumbnail is made from a file and can always be made again, so it has no
 // business syncing. Each version of a file — its path as last modified at a
-// time — has a folder of its own: an image per page and the list of pages in
-// it. An index names the folders with their size and when they were last
+// time — has a folder of its own: an image per page, and the list of pages
+// in it with each page's geometry (`PageGeometry`). An index names the folders with their size and when they were last
 // used; past the budget, the files used longest ago go first, whole — a
 // spread is opened as a whole, and half its pages would be worth little.
 //
@@ -19,12 +19,29 @@ type PrivateScope = YoloModuleHostApiV1['privateStorage']['deviceLocal']
 
 const ROOT = 'pdf-thumbnails'
 const INDEX_KEY = `${ROOT}/index.json`
-const PAGES_FILE = 'pages.txt'
+const PAGES_FILE = 'pages.json'
+const INDEX_VERSION = 2
 /** About 20 000 pages. */
 const BUDGET_BYTES = 200 * 1024 * 1024
 /** How long after a change the page lists and the index are written: a
  * spread's pages come in one after another, and each write is read back. */
 const FLUSH_DELAY_MS = 1500
+
+/**
+ * Where a page's PDF points land on it: its size at scale 1, the page's own
+ * rotation applied, and the affine transform `[a, b, c, d, e, f]` from PDF
+ * user space to that size (the page's view box and rotation). Recorded as
+ * the thumbnail is made, with the page open — so what is drawn over a
+ * thumbnail by PDF coordinates (the overview's annotations) is placed
+ * without opening the PDF. Of the file's version, like the picture.
+ */
+export type PageGeometry = Readonly<{
+  width: number
+  height: number
+  transform: readonly number[]
+}>
+
+type PageList = Map<number, PageGeometry>
 
 type StoredFile = {
   readonly path: string
@@ -33,7 +50,7 @@ type StoredFile = {
   bytes: number
   usedAt: number
   /** The pages in the folder, read when first asked for. */
-  pages: Promise<Set<number>> | null
+  pages: Promise<PageList> | null
 }
 
 type IndexRecord = Readonly<{
@@ -43,7 +60,7 @@ type IndexRecord = Readonly<{
   usedAt: number
 }>
 
-const EMPTY: ReadonlySet<number> = new Set()
+const EMPTY: ReadonlyMap<number, PageGeometry> = new Map()
 
 export class PdfThumbnailStore {
   private files: Promise<Map<string, StoredFile>> | null = null
@@ -63,14 +80,17 @@ export class PdfThumbnailStore {
     private readonly budgetBytes = BUDGET_BYTES,
   ) {}
 
-  /** The pages stored of the file as last modified at `mtime`. An older
-   * version of it is let go of here. */
-  async pages(path: string, mtime: number): Promise<ReadonlySet<number>> {
+  /** The pages stored of the file as last modified at `mtime`, with their
+   * geometry. An older version of it is let go of here. */
+  async pages(
+    path: string,
+    mtime: number,
+  ): Promise<ReadonlyMap<number, PageGeometry>> {
     const file = await this.current(path, mtime, false)
     if (!file) return EMPTY
     file.usedAt = Date.now()
     this.markIndex()
-    return new Set(await this.pageList(file))
+    return new Map(await this.pageList(file))
   }
 
   /** A stored page's image, or null when it is not there. */
@@ -86,15 +106,21 @@ export class PdfThumbnailStore {
     return data
   }
 
-  /** Keeps a page's image, in the background. */
-  write(path: string, mtime: number, page: number, data: ArrayBuffer): void {
+  /** Keeps a page's image and geometry, in the background. */
+  write(
+    path: string,
+    mtime: number,
+    page: number,
+    data: ArrayBuffer,
+    geometry: PageGeometry,
+  ): void {
     void this.enqueue(async () => {
       const file = await this.current(path, mtime, true)
       if (!file) return
       const pages = await this.pageList(file)
       if (pages.has(page)) return
       await this.storage.writeBinary(pageKey(file, page), data)
-      pages.add(page)
+      pages.set(page, geometry)
       file.bytes += data.byteLength
       file.usedAt = Date.now()
       this.dirty.add(file)
@@ -131,22 +157,22 @@ export class PdfThumbnailStore {
       dir: folderName(path, mtime),
       bytes: 0,
       usedAt: Date.now(),
-      pages: Promise.resolve(new Set()),
+      pages: Promise.resolve(new Map()),
     }
     files.set(path, file)
     this.markIndex()
     return file
   }
 
-  private pageList(file: StoredFile): Promise<Set<number>> {
+  private pageList(file: StoredFile): Promise<PageList> {
     const pages =
       file.pages ??
       this.storage
-        .readText(`${ROOT}/${file.dir}/${PAGES_FILE}`)
+        .readJson(`${ROOT}/${file.dir}/${PAGES_FILE}`)
         .then(parsePages)
         .catch((error: unknown) => {
           this.reportError('pdf thumbnail pages', error)
-          return new Set<number>()
+          return new Map<number, PageGeometry>()
         })
     file.pages = pages
     return pages
@@ -227,9 +253,9 @@ export class PdfThumbnailStore {
       this.dirty.delete(file)
       if (files.get(file.path) !== file) continue
       const pages = await this.pageList(file)
-      await this.storage.writeText(
+      await this.storage.writeJson(
         `${ROOT}/${file.dir}/${PAGES_FILE}`,
-        [...pages].join(','),
+        Object.fromEntries(pages),
       )
     }
     if (!this.indexDirty) return
@@ -243,7 +269,10 @@ export class PdfThumbnailStore {
         usedAt: file.usedAt,
       }
     }
-    await this.storage.writeJson(INDEX_KEY, { version: 1, files: records })
+    await this.storage.writeJson(INDEX_KEY, {
+      version: INDEX_VERSION,
+      files: records,
+    })
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -256,17 +285,35 @@ export class PdfThumbnailStore {
 const pageKey = (file: StoredFile, page: number): string =>
   `${ROOT}/${file.dir}/${page}`
 
-function parsePages(text: string | null): Set<number> {
-  const pages = new Set<number>()
-  for (const part of text?.split(',') ?? []) {
-    const page = Number(part)
-    if (Number.isInteger(page) && page > 0) pages.add(page)
+function parsePages(stored: unknown): PageList {
+  const pages: PageList = new Map()
+  if (!isObject(stored)) return pages
+  for (const [key, value] of Object.entries(stored)) {
+    const page = Number(key)
+    if (!Number.isInteger(page) || page <= 0 || !isObject(value)) continue
+    const { width, height, transform } = value
+    if (
+      typeof width !== 'number' ||
+      typeof height !== 'number' ||
+      !Array.isArray(transform) ||
+      transform.length !== 6 ||
+      !transform.every((n) => typeof n === 'number')
+    ) {
+      continue
+    }
+    pages.set(page, { width, height, transform })
   }
   return pages
 }
 
 function indexRecords(stored: unknown): Record<string, IndexRecord> {
-  if (!isObject(stored) || stored.version !== 1 || !isObject(stored.files)) {
+  // Another version's index, and so its folders, are let go of whole: they
+  // are swept as strays.
+  if (
+    !isObject(stored) ||
+    stored.version !== INDEX_VERSION ||
+    !isObject(stored.files)
+  ) {
     return {}
   }
   const records: Record<string, IndexRecord> = {}

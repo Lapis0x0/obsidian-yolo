@@ -47,6 +47,7 @@ function fakeStorage() {
 }
 
 const bytes = (length: number) => new ArrayBuffer(length)
+const geometry = { width: 595, height: 842, transform: [1, 0, 0, -1, 0, 842] }
 
 /** Lets every queued write and the index flush land. */
 async function settle(): Promise<void> {
@@ -64,12 +65,13 @@ describe('PdfThumbnailStore', () => {
   it('gives back the pages written, to a later store too', async () => {
     const { storage } = fakeStorage()
     const store = new PdfThumbnailStore(storage, reportError)
-    store.write('a.pdf', 1, 3, bytes(10))
-    store.write('a.pdf', 1, 7, bytes(10))
+    store.write('a.pdf', 1, 3, bytes(10), geometry)
+    store.write('a.pdf', 1, 7, bytes(10), geometry)
     await settle()
 
     const later = new PdfThumbnailStore(storage, reportError)
-    expect([...(await later.pages('a.pdf', 1))].sort()).toEqual([3, 7])
+    expect([...(await later.pages('a.pdf', 1)).keys()].sort()).toEqual([3, 7])
+    expect((await later.pages('a.pdf', 1)).get(7)).toEqual(geometry)
     expect((await later.read('a.pdf', 1, 7))?.byteLength).toBe(10)
     expect(reportError).not.toHaveBeenCalled()
   })
@@ -77,7 +79,7 @@ describe('PdfThumbnailStore', () => {
   it('lets go of an older version of a file', async () => {
     const { blobs, storage } = fakeStorage()
     const store = new PdfThumbnailStore(storage, reportError)
-    store.write('a.pdf', 1, 1, bytes(10))
+    store.write('a.pdf', 1, 1, bytes(10), geometry)
     await settle()
     const oldKeys = [...blobs.keys()].filter((key) => key.endsWith('/1'))
 
@@ -85,7 +87,7 @@ describe('PdfThumbnailStore', () => {
     await settle()
     for (const key of oldKeys) expect(blobs.has(key)).toBe(false)
     // An asker holding the old version gets nothing either.
-    store.write('a.pdf', 2, 1, bytes(10))
+    store.write('a.pdf', 2, 1, bytes(10), geometry)
     await settle()
     expect((await store.pages('a.pdf', 1)).size).toBe(0)
     expect((await store.pages('a.pdf', 2)).size).toBe(1)
@@ -95,17 +97,17 @@ describe('PdfThumbnailStore', () => {
     const { storage } = fakeStorage()
     const store = new PdfThumbnailStore(storage, reportError, 35)
     jest.setSystemTime(1000)
-    store.write('old.pdf', 1, 1, bytes(10))
-    store.write('old.pdf', 1, 2, bytes(10))
+    store.write('old.pdf', 1, 1, bytes(10), geometry)
+    store.write('old.pdf', 1, 2, bytes(10), geometry)
     await settle()
     jest.setSystemTime(2000)
-    store.write('used.pdf', 1, 1, bytes(10))
+    store.write('used.pdf', 1, 1, bytes(10), geometry)
     await settle()
     // Used again: now newer than old.pdf.
     jest.setSystemTime(3000)
     await store.pages('old.pdf', 1)
     jest.setSystemTime(4000)
-    store.write('new.pdf', 1, 1, bytes(10))
+    store.write('new.pdf', 1, 1, bytes(10), geometry)
     await settle()
 
     const later = new PdfThumbnailStore(storage, reportError, 35)
@@ -118,7 +120,7 @@ describe('PdfThumbnailStore', () => {
     const { blobs, storage } = fakeStorage()
     blobs.set('pdf-thumbnails/stray/1', bytes(10))
     const store = new PdfThumbnailStore(storage, reportError)
-    store.write('a.pdf', 1, 1, bytes(10))
+    store.write('a.pdf', 1, 1, bytes(10), geometry)
     await settle()
     expect(blobs.has('pdf-thumbnails/stray/1')).toBe(false)
     // The folder the first write made is not a stray.
