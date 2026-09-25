@@ -635,8 +635,6 @@ export class WhiteboardCanvas {
     this.cameraController.invalidateScaleFloor()
     this.recomputeVisibility()
     this.drainQueues()
-    // The toolbar is clamped against the viewport's size, which just changed.
-    this.toolbarController.positionToolbar()
   }
 
   /**
@@ -872,7 +870,6 @@ export class WhiteboardCanvas {
             deltaX,
             deltaY,
           ),
-        positionToolbar: () => this.toolbarController.positionToolbar(),
         setInteracting: (interacting) => {
           this.interacting = interacting
         },
@@ -1039,6 +1036,8 @@ export class WhiteboardCanvas {
       isParseFailed: this.core.isParseFailed,
       canEdit: this.core.canEdit,
       getBoard: this.core.getBoard,
+      getNode: this.core.getNode,
+      getLiveRects: () => this.interaction.liveNodeRects,
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
@@ -1352,7 +1351,6 @@ export class WhiteboardCanvas {
     this.commitWithoutHistory(updateNode(this.board, id, { w, h: size.h }))
     this.edgeLayer.redrawEdgesForNodes(new Set([id]))
     this.interaction.refreshInteractionLayer()
-    this.toolbarController.positionToolbar()
   }
 
   /**
@@ -2192,7 +2190,6 @@ export class WhiteboardCanvas {
     }
     this.edgeLayer.redrawEdgesForNodes(changed)
     this.interaction.refreshInteractionLayer()
-    this.toolbarController.positionToolbar()
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -2324,7 +2321,6 @@ export class WhiteboardCanvas {
     if (options?.animate !== false) this.animateArrangement(moved)
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.interaction.refreshInteractionLayer()
-    this.toolbarController.positionToolbar()
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -2430,6 +2426,8 @@ export class WhiteboardCanvas {
     this.pdfThumbnails?.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
+    // Over the cards as this frame draws them — see ToolbarController.
+    this.toolbarController.syncPosition()
     // Last: it draws the camera the world layer was just given, and the
     // geometry the queues above have just finished changing.
     this.overviewLayer?.render()

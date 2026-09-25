@@ -34,7 +34,6 @@ function createController(): CameraController {
       isParseFailed: () => false,
       isEditingWheelTarget: () => false,
       scrollFocusedCardBy: () => false,
-      positionToolbar: () => undefined,
       setInteracting: () => undefined,
       getSelectedNodes: () => [],
       getAllNodes: () => [],

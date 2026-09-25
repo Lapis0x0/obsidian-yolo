@@ -34,6 +34,7 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import { arrangeTargets } from '../../domain/groups'
+import type { CardRect } from '../../domain/resize'
 import { isSpreadTitle, withTitleAbove } from '../../domain/spread'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
 import type { CanvasView } from '../../domain/virtualization'
@@ -104,6 +105,10 @@ export type ToolbarControllerCallbacks = Readonly<{
   isParseFailed: () => boolean
   canEdit: () => boolean
   getBoard: () => Board
+  getNode: (id: NodeId) => BoardNode | undefined
+  /** Where a drag or resize has the cards it carries right now, before the
+   * board is told (canvas.ts's `liveNodeRects`). */
+  getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
@@ -159,9 +164,14 @@ export type ToolbarControllerCallbacks = Readonly<{
  * Two responsibilities, kept apart because they run at very different rates:
  * `refreshToolbar` decides *what* the toolbar contains and runs on discrete
  * events (selection, degrade state, an edge appearing or going away);
- * `positionToolbar` decides *where* it is and runs on every camera frame.
- * Rebuilding the DOM at camera rate would be absurd, and re-placing it only
- * on selection change would leave it stranded mid-pan.
+ * `syncPosition` decides *where* it is and runs on every frame of the board.
+ *
+ * Where is read, not told: every frame, from what is on screen — the camera,
+ * the viewport, and the cards as drawn, a drag's live places included. So
+ * nothing that moves a card, the camera or the viewport has to remember to
+ * re-place the toolbar, and none can leave it behind. It costs a projection
+ * a frame; the toolbar is measured once per model and written only when its
+ * place changes (`SelectionToolbar`).
  *
  * Everything the buttons do goes through the same board operations the rest
  * of the canvas uses, so a colour picked here is one history step like any
@@ -210,16 +220,19 @@ export class ToolbarController {
     if (this.suppressed === suppressed) return
     this.suppressed = suppressed
     this.toolbar.setSuppressed(suppressed)
-    if (!suppressed) this.positionToolbar()
+    // Placed as it shows, not a frame later: it would arrive where it was.
+    if (!suppressed) this.syncPosition()
   }
 
   refreshToolbar(): void {
     this.toolbar.setModel(this.buildToolbarModel())
     this.toolbar.setSuppressed(this.suppressed)
-    this.positionToolbar()
+    this.syncPosition()
   }
 
-  positionToolbar(): void {
+  /** Puts the toolbar over what it is about, as that is on screen now.
+   * Called by the board once a frame, and as the toolbar shows. */
+  syncPosition(): void {
     if (this.suppressed) return
     const bounds = this.toolbarBounds()
     if (!bounds) return
@@ -240,7 +253,8 @@ export class ToolbarController {
    * nodes, or — for an edge — a zero-size rect at the point its label hangs
    * from, which is the only place on a curve that reads as "the edge itself".
    * A folded PDF card counts its title with it, so the toolbar stands over
-   * the title, where it stands over an open spread's.
+   * the title, where it stands over an open spread's. A card a gesture is
+   * carrying counts where it is drawn.
    */
   private toolbarBounds(): ToolbarBounds | null {
     const selectedEdgeIds = this.callbacks.getSelectedEdgeIds()
@@ -252,17 +266,20 @@ export class ToolbarController {
     }
     const targetIds = this.targetIds()
     if (targetIds.size === 0) return null
-    return unionRect(
-      this.callbacks
-        .getBoard()
-        .nodes.filter((node) => targetIds.has(node.id))
-        .map((node) => {
-          const rect = { x: node.x, y: node.y, w: node.w, h: node.h }
-          return this.callbacks.isPdfNode(node) && !isSpreadTitle(node)
-            ? withTitleAbove(rect)
-            : rect
-        }),
-    )
+    const live = this.callbacks.getLiveRects()
+    const rects: CardRect[] = []
+    for (const id of targetIds) {
+      const node = this.callbacks.getNode(id)
+      if (!node) continue
+      const rect = live?.get(id) ?? node
+      const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
+      rects.push(
+        this.callbacks.isPdfNode(node) && !isSpreadTitle(node)
+          ? withTitleAbove(bounds)
+          : bounds,
+      )
+    }
+    return rects.length > 0 ? unionRect(rects) : null
   }
 
   private buildToolbarModel(): ToolbarModel | null {

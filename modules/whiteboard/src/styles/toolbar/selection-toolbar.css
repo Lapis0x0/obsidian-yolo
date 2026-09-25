@@ -14,9 +14,10 @@
   pointer-events: none;
 }
 
-/* Positioned with `transform` (written per camera frame by canvas.ts's
- * positionToolbar) rather than left/top: it moves every frame during a zoom,
- * and transform is the property that costs nothing to animate. */
+/* Positioned with `transform` (written by ToolbarController's syncPosition,
+ * on any frame its place changed) rather than left/top: it moves every frame
+ * during a zoom, and transform is the property that costs nothing to
+ * animate. */
 .yolo-whiteboard-toolbar {
   position: absolute;
   left: 0;

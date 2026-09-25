@@ -475,6 +475,10 @@ export class SelectionToolbar {
    * again before then was never painted hidden, so `show` has nothing to
    * reveal. */
   private hiddenUnpainted = false
+  /** `size`'s answer for the current model. */
+  private measured: ToolbarSize | null = null
+  /** Where `place` last put the toolbar. */
+  private placed: ScreenPoint | null = null
 
   constructor(
     private readonly doc: Document,
@@ -515,6 +519,7 @@ export class SelectionToolbar {
   setModel(model: ToolbarModel | null): void {
     this.closePopover()
     this.model = model
+    this.measured = null
     this.el.replaceChildren()
     this.color = null
     if (!model || model.items.length === 0) {
@@ -598,14 +603,23 @@ export class SelectionToolbar {
     if (this.popover) this.markActiveSwatch()
   }
 
-  /** Measured only while shown — a hidden toolbar has no size, and the caller
-   * needs the real one to centre it. */
+  /** Measured once for what the toolbar holds (`setModel`), and only while
+   * shown — a hidden toolbar has no size, and the caller needs the real one
+   * to centre it. Asked every frame the toolbar is placed, where measuring
+   * would lay the page out each time. */
   size(): ToolbarSize {
+    if (this.measured) return this.measured
     const rect = this.el.getBoundingClientRect()
-    return { width: rect.width, height: rect.height }
+    const size = { width: rect.width, height: rect.height }
+    if (size.width > 0) this.measured = size
+    return size
   }
 
+  /** Writes only a place that differs from the last, since it is asked
+   * every frame. */
   place(point: ScreenPoint): void {
+    if (this.placed?.x === point.x && this.placed.y === point.y) return
+    this.placed = point
     this.el.style.transform = `translate(${point.x}px, ${point.y}px)`
   }
 

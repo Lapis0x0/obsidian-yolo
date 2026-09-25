@@ -77,9 +77,6 @@ export type CameraControllerCallbacks = Readonly<{
     deltaX: number,
     deltaY: number,
   ) => boolean
-  /** The screen-space chrome is anchored to world positions, so it has to be
-   * re-projected whenever the camera moves. */
-  positionToolbar: () => void
   setInteracting: (interacting: boolean) => void
   getSelectedNodes: () => readonly BoardNode[]
   /** Every node on the board — what the zoom-out floor is derived from (see
@@ -453,10 +450,6 @@ export class CameraController {
     // Not mid-glide: see `applyZoomScale`. The glide's last frame writes it
     // through `finishGlideFrame`.
     if (!this.cameraGlide && !this.pinching) this.applyZoomScale()
-    // The screen-space chrome is anchored to world positions, so it has to be
-    // re-projected whenever the camera moves. Both are no-ops when nothing is
-    // selected and nothing is being typed, which is the common case.
-    this.callbacks.positionToolbar()
     for (const listener of this.viewChangeListeners) listener()
   }
 
