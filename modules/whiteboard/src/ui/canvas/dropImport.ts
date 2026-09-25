@@ -226,7 +226,7 @@ export class DropImport {
    * (card / note / media / website).
    */
   canvasMenuItems(point: ScreenPoint): YoloModuleHostMenuItemV1[] {
-    const creation: YoloModuleHostMenuItemV1[] = this.core.canCreate()
+    const creation: YoloModuleHostMenuItemV1[] = this.core.canEdit()
       ? [
           {
             title: this.core.t('menu.newText'),
@@ -413,10 +413,8 @@ export class DropImport {
    * panel and, for a drop that lands beside the panel rather than on it,
    * makes a card nobody can see.
    *
-   * Open in the overview tier too, unlike the rest of creation: what a drop
-   * makes is a file card, which needs no editor and is drawn there as it
-   * will be up close — a PDF is its pages either way — and a paste already
-   * lands files there.
+   * Open in the overview tier too, as all creation is: what a drop makes is
+   * a file card, drawn there as it will be up close.
    */
   private get acceptsDrop(): boolean {
     return this.core.canEdit() && this.prompt === null
@@ -609,7 +607,7 @@ export class DropImport {
   }
 
   refreshCardMenu(): void {
-    this.cardMenu?.setAvailable(this.core.canCreate())
+    this.cardMenu?.setAvailable(this.core.canEdit())
     if (this.core.getBoard().nodes.length === 0) {
       this.cardMenu?.setAutoCollapse(false)
     }
@@ -659,7 +657,7 @@ export class DropImport {
   /** Opens a prompt, replacing any already open. Closing is this view's own
    * bookkeeping, so callers describe only what they are asking for. */
   private openPrompt(options: Omit<PromptOverlayOptions, 'onClose'>): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     this.prompt?.close()
     this.deps.closePopover()
     this.prompt = new PromptOverlay(
@@ -721,7 +719,10 @@ export class DropImport {
     const [id] = this.addFileCards([path], world)
     if (id === undefined) return
     this.core.clearSelection()
-    this.editWhenNoteRendered = id
+    // Down in the overview tier it renders only once the camera has gone to
+    // it, which `enterEditMode` does, waiting for the note's text itself.
+    if (this.core.isOverview()) this.deps.enterEditMode(id)
+    else this.editWhenNoteRendered = id
   }
 
   private promptForMediaCard(
@@ -808,7 +809,7 @@ export class DropImport {
    * web address.
    */
   private createLinkCardAt(url: string, world: ScreenPoint): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     const normalized = WEB_URL_PATTERN.test(url) ? url : `https://${url}`
     if (!WEB_URL_PATTERN.test(normalized)) {
       this.core.host.ui.notice(this.core.t('notice.invalidUrl'))
@@ -832,10 +833,8 @@ export class DropImport {
 
   /** Creates an empty text card centered on `world` and opens it for typing. */
   createTextCardAt(world: ScreenPoint): void {
-    // Below the LOD threshold enterEditMode declines, which would leave this
-    // gesture producing an invisible empty card with no editor. That lives in
-    // `canCreate`.
-    if (!this.core.canCreate()) return
+    // In the overview tier `enterEditMode` goes to the card first.
+    if (!this.core.canEdit()) return
     const node: TextNode = {
       id: this.core.nextNodeId(),
       type: 'text',
@@ -867,7 +866,7 @@ export class DropImport {
    * thing typed records it, with the text in it, as one step.
    */
   createTextAt(world: ScreenPoint): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     const node: TextNode = {
       id: this.core.nextNodeId(),
       type: 'text',
@@ -941,7 +940,7 @@ export class DropImport {
    * card with the same breathing room a selection-made group gets. Selected on
    * creation so the double-click-to-name affordance is one gesture away. */
   private createEmptyGroupAt(world: ScreenPoint): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     const w = NEW_CARD_SIZE.w + GROUP_SELECTION_PADDING * 2
     const h = NEW_CARD_SIZE.h + GROUP_SELECTION_PADDING * 2
     const group: GroupNode = {

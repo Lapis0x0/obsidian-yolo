@@ -484,7 +484,6 @@ export class WhiteboardCanvas {
       nextEdgeId: () => this.nextEdgeId(),
       isParseFailed: () => this.parseFailed,
       canEdit: () => this.canEdit,
-      canCreate: () => this.canCreate,
       isOverview: () => this.overview,
       applyBoardChange: (next, historyKey) =>
         this.applyBoardChange(next, historyKey),
@@ -922,7 +921,7 @@ export class WhiteboardCanvas {
       getNode: this.core.getNode,
       getSourcePath: this.core.getSourcePath,
       getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
-      isAvailable: () => this.canCreate,
+      isAvailable: () => this.canEdit && !this.overview,
       isFocused: (id) => this.focusedNodeId === id,
       editingText: (id) => this.editing.editingText(id),
       beginGeneration: (id) => this.editing.beginCardGeneration(id),
@@ -1822,14 +1821,6 @@ export class WhiteboardCanvas {
     this.rebuildEdgesSvg()
   }
 
-  /** Whether a new card can be made at all right now — the shared gate behind
-   * the creation bar, the creation menu items, and double-click-to-create. In
-   * the overview tier a card has no element, so creating one there would leave
-   * a rectangle on the canvas and no editor to type into. */
-  private get canCreate(): boolean {
-    return this.canEdit && !this.overview
-  }
-
   // -----------------------------------------------------------------------
   // Groups, alignment and distribution.
   //
@@ -2569,9 +2560,10 @@ export class WhiteboardCanvas {
    * region and back in to work in it is one action, not two, and the far end
    * of it must not be a screen rebuilding itself.
    *
-   * Editing a card and creating one both need an element (`canCreate`), so the
-   * toolbar's edit button and the whole creation bar appear and disappear with
-   * this state rather than staying on screen offering what would be declined.
+   * Creating and editing are not gated on it: a card made or opened down
+   * here is gone to first (`zoomInToEdit`), so the creation bar and the menus
+   * stay as they are at every zoom. Only a generation, which writes into a
+   * card's element as it streams, waits for the DOM tiers.
    */
   private updateOverviewState(): void {
     const next = nextOverviewState(

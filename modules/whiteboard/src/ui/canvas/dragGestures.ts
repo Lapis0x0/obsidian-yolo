@@ -510,7 +510,7 @@ export class DragGestures {
    * are what the hand is holding.
    */
   private leaveCopyBehind(interaction: NodeInteraction): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     const board = this.core.getBoard()
     const fragment = fragmentFromSelection(board, new Set(interaction.ids))
     if (fragment.nodes.length === 0) return
@@ -746,7 +746,7 @@ export class DragGestures {
     size: CardSize,
     create: (at: ScreenPoint) => void,
   ): void {
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
     this.deps.begin({
       kind: 'create',
       pointerId: e.pointerId,

@@ -304,7 +304,9 @@ export class EditingController {
   // wrote a card.
 
   beginCardGeneration(id: NodeId): HTMLElement | null {
-    if (!this.core.canCreate()) return null
+    // A generation writes into the card's element, which the overview tier
+    // does not give it.
+    if (!this.core.canEdit() || this.core.isOverview()) return null
     const node = this.core.getNode(id)
     if (!node || node.type !== 'text') return null
     const runtime = this.deps.cards.getRuntime(id)
@@ -338,10 +340,14 @@ export class EditingController {
   }
 
   enterEditMode(id: NodeId): void {
-    // Degraded cards render as a title block with the body hidden, so
-    // an editor mounted now would be invisible; zooming back in is the way
-    // to edit.
-    if (!this.core.canCreate()) return
+    if (!this.core.canEdit()) return
+    // Zoomed out past the point cards have elements: go to the card, and
+    // the editor opens once it has one — which is how a card made down here
+    // is typed into, the same as one opened there (`editCard`).
+    if (this.core.isOverview()) {
+      this.deps.zoomInToEdit(id)
+      return
+    }
     const node = this.core.getNode(id)
     if (!node || !this.isEditableNode(node)) return
     const runtime = this.deps.cards.getRuntime(id)

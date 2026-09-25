@@ -46,9 +46,6 @@ export type CanvasCore = Readonly<{
   isParseFailed: () => boolean
   /** Whether the board can be changed at all. */
   canEdit: () => boolean
-  /** Whether a new card can be made (editable, and out of the overview
-   * tier, where a card has no element to type into). */
-  canCreate: () => boolean
   /** Whether the camera is in the overview tier (no card DOM). */
   isOverview: () => boolean
 

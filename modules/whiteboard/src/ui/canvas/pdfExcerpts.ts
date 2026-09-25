@@ -58,7 +58,7 @@ import type { PdfReader } from '../pdf/pdfReader'
 export type PdfExcerptsCallbacks = Readonly<{
   getBoard: () => Board
   /** False on a board that cannot take a new card right now. */
-  canCreate: () => boolean
+  canEdit: () => boolean
   /** The PDF card a reader is showing: the card's own, or the one the
    * reading panel was opened on. */
   pdfNodeForReader: (reader: PdfReader) => NodeId | null
@@ -106,7 +106,7 @@ export class PdfExcerpts {
    */
   addText(reader: PdfReader, excerpt: TextExcerpt, at?: Point): boolean {
     const { callbacks } = this
-    if (!callbacks.canCreate()) return false
+    if (!callbacks.canEdit()) return false
     const link = generatePdfLink(this.host, callbacks.t, {
       pdfPath: reader.path,
       sourcePath: callbacks.getSourcePath(),
@@ -127,7 +127,7 @@ export class PdfExcerpts {
    * quote is. */
   addComment(reader: PdfReader, excerpt: CommentExcerpt, at?: Point): boolean {
     const { callbacks } = this
-    if (!callbacks.canCreate()) return false
+    if (!callbacks.canEdit()) return false
     const link = generatePdfLink(this.host, callbacks.t, {
       pdfPath: reader.path,
       sourcePath: callbacks.getSourcePath(),
@@ -157,7 +157,7 @@ export class PdfExcerpts {
     at?: Point,
   ): Promise<boolean> {
     const { callbacks } = this
-    if (!callbacks.canCreate()) return false
+    if (!callbacks.canEdit()) return false
     const sourcePath = callbacks.getSourcePath()
     try {
       const bytes = await reader.renderRegion(page, rect, areaScale(rect))
@@ -179,7 +179,7 @@ export class PdfExcerpts {
       })
       // The board may have been closed, or broken, while the picture was
       // being drawn and written; the attachment stays, as a pasted one would.
-      if (!imageLink || !pageLink || !callbacks.canCreate()) return false
+      if (!imageLink || !pageLink || !callbacks.canEdit()) return false
       this.place(
         reader,
         areaExcerptMarkdown(imageLink, pageLink),

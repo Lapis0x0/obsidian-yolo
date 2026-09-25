@@ -115,7 +115,7 @@ export class PdfIntegration {
     // never compete for the same layer.
     this.pdfExcerpts = new PdfExcerpts(core.host, {
       getBoard: core.getBoard,
-      canCreate: core.canCreate,
+      canEdit: core.canEdit,
       pdfNodeForReader: (reader) => this.pdfNodeForReader(reader),
       nextNodeId: (board) => core.nextNodeId(board),
       addCard: (node) => this.addExcerptCard(node),

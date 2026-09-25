@@ -208,7 +208,7 @@ export class ClipboardController {
    * differs.
    */
   duplicateSelection(): boolean {
-    if (!this.core.canCreate()) return false
+    if (!this.core.canEdit()) return false
     const selected = this.core.getSelectedIds()
     if (selected.size === 0) return false
     const fragment = fragmentFromSelection(this.core.getBoard(), selected)
