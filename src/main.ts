@@ -268,6 +268,7 @@ import type {
 } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { isUntitledConversationTitle } from './utils/chat/conversationTitle'
+import { captureReactDocumentListeners } from './utils/dom/react-document-listeners'
 import { stableStringify } from './utils/json/stableStringify'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
@@ -315,6 +316,7 @@ export default class YoloPlugin extends Plugin {
   pluginUpdateState: PluginUpdateState = { status: 'idle' }
   private pluginUpdateListeners: (() => void)[] = []
   private pluginUpdateDownloadPromise: Promise<void> | null = null
+  private disposeReactDocumentListeners: (() => void) | null = null
   private updateToastCleanup: (() => void) | null = null
   private actionToastController: ActionToastController | null = null
   private readonly moduleSettingsContributions =
@@ -2193,6 +2195,8 @@ export default class YoloPlugin extends Plugin {
     this.isUnloaded = false
     this.cliRuntimeCapabilityError = null
     bindClaudeSdkHost(this.app)
+    // Must precede the first React root (the action toast below).
+    this.disposeReactDocumentListeners = captureReactDocumentListeners(document)
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
     this.initializeRuntimeComponentSystem()
@@ -2834,6 +2838,9 @@ export default class YoloPlugin extends Plugin {
     this.selectionRewriteController?.destroy()
     this.selectionRewriteController = null
     this.continuationController = null
+    selectionHighlightController.destroy()
+    this.disposeReactDocumentListeners?.()
+    this.disposeReactDocumentListeners = null
 
     // clear all timers
     this.timeoutIds.forEach((id) => {

@@ -51,7 +51,6 @@ const HIDE_NATIVE_SELECTION_CLASS = 'yolo-hide-native-selection'
 
 /** Primary button held after pointerdown in a cm-editor — native CM selection stays visible. */
 let isPointerSelecting = false
-let pointerTrackingInstalled = false
 
 export function setPointerSelectingForTests(value: boolean): void {
   isPointerSelecting = value
@@ -219,6 +218,9 @@ export class SelectionHighlightController {
 
   /** Counter used to generate unique ids for backward-compat wrappers. */
   private transientCounter = 0
+
+  /** Set while the document-level pointer listeners are installed. */
+  private removePointerTracking: (() => void) | null = null
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -595,31 +597,39 @@ export class SelectionHighlightController {
     }
   }
 
-  private _ensurePointerTracking(): void {
-    if (pointerTrackingInstalled) return
-    pointerTrackingInstalled = true
+  /** Removes the document listeners; must run on plugin unload, since they close over the whole plugin bundle. */
+  destroy(): void {
+    this.removePointerTracking?.()
+    this.removePointerTracking = null
+    isPointerSelecting = false
+  }
 
+  private _ensurePointerTracking(): void {
+    if (this.removePointerTracking) return
+
+    const startPointerSelect = (event: PointerEvent): void => {
+      if (event.button !== 0) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (!target.closest('.cm-editor')) return
+      if (this.shouldIgnoreTarget(target)) return
+      isPointerSelecting = true
+      this.refreshNativeSelectionSuppression()
+    }
     const endPointerSelect = (): void => {
       if (!isPointerSelecting) return
       isPointerSelecting = false
       this.refreshNativeSelectionSuppression()
     }
 
-    document.addEventListener(
-      'pointerdown',
-      (event) => {
-        if (event.button !== 0) return
-        const target = event.target
-        if (!(target instanceof Element)) return
-        if (!target.closest('.cm-editor')) return
-        if (this.shouldIgnoreTarget(target)) return
-        isPointerSelecting = true
-        this.refreshNativeSelectionSuppression()
-      },
-      true,
-    )
+    document.addEventListener('pointerdown', startPointerSelect, true)
     document.addEventListener('pointerup', endPointerSelect, true)
     document.addEventListener('pointercancel', endPointerSelect, true)
+    this.removePointerTracking = () => {
+      document.removeEventListener('pointerdown', startPointerSelect, true)
+      document.removeEventListener('pointerup', endPointerSelect, true)
+      document.removeEventListener('pointercancel', endPointerSelect, true)
+    }
   }
 }
 
