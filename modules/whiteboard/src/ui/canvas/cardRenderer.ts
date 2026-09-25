@@ -1460,7 +1460,11 @@ export class CardRenderer {
       existing.retryIfFailed()
       return
     }
-    if (!this.callbacks.canBuildContent()) {
+    // Not a sheet's: what one costs in this frame is a few elements and a
+    // thumbnail copied in, while held back it is a blank page over the
+    // overview's picture of it. The file is opened and drawn later either
+    // way — the reader asks `canStartWork` before each draw.
+    if (sheet === undefined && !this.callbacks.canBuildContent()) {
       this.callbacks.queueContentSync(id)
       return
     }

@@ -415,6 +415,8 @@ export class PdfReader {
 
     this.statusEl = doc.createElement('div')
     this.statusEl.className = STATUS_CLASS
+    // An opaque cover over the pages: shown only with something to say.
+    this.statusEl.hidden = true
 
     this.rootEl.append(this.scrollerEl, this.indicatorEl, this.statusEl)
     options.container.replaceChildren(this.rootEl)
@@ -457,7 +459,17 @@ export class PdfReader {
       : null
     this.resizeObserver?.observe(this.scrollerEl)
 
-    this.showStatus(options.t('pdf.loading'))
+    // A sheet is one page filling its card, so it needs nothing from the
+    // file to be laid out: its slot, and the thumbnail in it, are there from
+    // the frame the card mounts in. Waiting for the file to open left a card
+    // that had just covered the overview's drawing of the page showing blank
+    // paper, or a loading line, until it did.
+    if (this.sheet !== null) {
+      this.rebuildSlots(1)
+      this.paintSheetPlaceholder()
+    } else {
+      this.showStatus(options.t('pdf.loading'))
+    }
     void this.open()
   }
 
@@ -575,6 +587,9 @@ export class PdfReader {
     if (visible === this.visible) return
     this.visible = visible
     if (visible) {
+      // Now, not on the pass scheduled below: that runs a frame after the
+      // one the card comes back in.
+      this.paintSheetPlaceholder()
       this.schedule()
       return
     }
@@ -901,8 +916,8 @@ export class PdfReader {
     this.failed = true
     this.options.reportError?.('pdf open', error)
     // A file that went bad after it had been read keeps showing what it was;
-    // only a reader with nothing to show says it has nothing.
-    if (this.slots.length > 0) return
+    // only a reader that never opened it says it has nothing.
+    if (this.handle) return
     this.showStatus(
       this.options.t('pdf.openFailed'),
       error instanceof Error ? error.message : String(error),
@@ -1263,7 +1278,17 @@ export class PdfReader {
 
   /** A thumbnail this reader may be waiting for has been made. */
   placeholderReady(): void {
+    this.paintSheetPlaceholder()
     this.schedule()
+  }
+
+  /** A sheet's thumbnail, painted at once: its page is laid out by the
+   * card alone (see the constructor), so it need not wait for a pass —
+   * which does nothing before the file is open. */
+  private paintSheetPlaceholder(): void {
+    if (this.sheet === null || !this.visible) return
+    const slot = this.slots[0]
+    if (slot) this.paintPlaceholder(slot)
   }
 
   private drawPage(slot: Slot, layout: ReaderLayout): void {

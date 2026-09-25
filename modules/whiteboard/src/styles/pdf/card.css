@@ -31,6 +31,15 @@
   min-width: 100%;
 }
 
+/* A sheet's one page fills the reader from the moment it is mounted, before
+ * the file is open and the page laid out (pdfReader.ts's constructor): the
+ * card is the page's shape, so the layout arrives at this same size. */
+.yolo-whiteboard-pdf-reader-sheet .yolo-whiteboard-pdf-pages,
+.yolo-whiteboard-pdf-reader-sheet .yolo-whiteboard-pdf-page {
+  width: 100%;
+  height: 100%;
+}
+
 .yolo-whiteboard-pdf-page {
   position: relative;
   background: var(--pdf-page-background, #ffffff);
