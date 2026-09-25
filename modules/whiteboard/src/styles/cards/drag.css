@@ -84,6 +84,18 @@
   color: var(--text-muted);
 }
 
+/* A PDF card is titled as its spread is (spread.css): the type and the name,
+ * on the spread title's line without its box, and as wide as the name
+ * needs. The overview canvas draws it at these sizes
+ * (constants.ts's PDF_CARD_TITLE_WORLD). */
+.yolo-whiteboard-card-title.yolo-whiteboard-card-title-pdf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: none;
+  overflow: visible;
+}
+
 /* An editing card puts a text cursor over itself, but the title is chrome and
  * not editable — under the pointer it must still read as something to grab,
  * not something to type into. Dragging keeps the card's own grabbing cursor:

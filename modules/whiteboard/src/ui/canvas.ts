@@ -182,6 +182,9 @@ const NO_PINS: ReadonlySet<NodeId> = new Set()
 const ROOT_CLASS = 'yolo-whiteboard-root'
 /** On every sheet of the spread whose title is under the pointer. */
 const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
+/** Height over width of the widest page a folded PDF card is expected to
+ * show: a landscape A4's. It decides how many of its pages get thumbnails. */
+const FOLDED_PAGE_MIN_ASPECT = 0.7
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const PAN_CAPTURE_CLASS = 'yolo-whiteboard-pan-capture'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
@@ -2464,21 +2467,29 @@ export class WhiteboardCanvas {
     this.syncGroupLabelScale()
   }
 
-  /** Every page of every open spread, with how far it is from the middle
-   * of the viewport — what thumbnails are made for, nearest first. */
+  /** Every page of every open spread, and the pages a folded PDF card shows
+   * from where it was left, with how far each is from the middle of the
+   * viewport — what thumbnails are made for, nearest first. */
   private *wantedThumbnails(): Iterable<WantedThumbnail> {
     const view = this.worldViewportRect(0)
     const cx = (view.left + view.right) / 2
     const cy = (view.top + view.bottom) / 2
     for (const node of this.cardNodes) {
-      if (node.type !== 'pdf-page') continue
-      yield {
-        path: node.file,
-        page: node.page,
-        distance: Math.hypot(
-          node.x + node.w / 2 - cx,
-          node.y + node.h / 2 - cy,
-        ),
+      const distance = Math.hypot(
+        node.x + node.w / 2 - cx,
+        node.y + node.h / 2 - cy,
+      )
+      if (node.type === 'pdf-page') {
+        yield { path: node.file, page: node.page, distance }
+        continue
+      }
+      if (!isPdfNode(node) || isSpreadTitle(node)) continue
+      // As many as the card holds at the widest page shape a document is
+      // likely to have, and the one cut off at the bottom.
+      const first = Math.floor(node.startPage ?? 1)
+      const shown = Math.ceil(node.h / (node.w * FOLDED_PAGE_MIN_ASPECT)) + 1
+      for (let page = first; page < first + shown; page += 1) {
+        yield { path: node.file, page, distance }
       }
     }
   }
@@ -2791,13 +2802,7 @@ export class WhiteboardCanvas {
     )
     this.syncEmptyHint()
     this.spreadFrame?.sync()
-    this.pdfThumbnails?.retain(
-      new Set(
-        this.cardNodes.flatMap((node) =>
-          node.type === 'pdf-page' ? [node.file] : [],
-        ),
-      ),
-    )
+    this.pdfThumbnails?.retain()
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.

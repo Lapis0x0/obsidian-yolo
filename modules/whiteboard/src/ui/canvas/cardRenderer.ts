@@ -78,6 +78,9 @@ const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
+/** A PDF card's title: the type and the name, as its spread's title says
+ * them (`pdfTitleParts`). */
+const CARD_TITLE_PDF_CLASS = 'yolo-whiteboard-card-title-pdf'
 const CARD_TITLE_BLOCK_CLASS = 'yolo-whiteboard-card-title-block'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
@@ -614,7 +617,12 @@ export class CardRenderer {
     if (chromeTitle !== null) {
       const title = doc.createElement('div')
       title.className = CARD_TITLE_CLASS
-      title.textContent = chromeTitle
+      if (node.type === 'file' && fileNodeKind(node.file) === 'pdf') {
+        title.classList.add(CARD_TITLE_PDF_CLASS)
+        title.append(...pdfTitleParts(doc, node.file))
+      } else {
+        title.textContent = chromeTitle
+      }
       el.appendChild(title)
     }
 
@@ -685,19 +693,12 @@ export class CardRenderer {
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
-    const badge = doc.createElement('span')
-    badge.className = SPREAD_TITLE_BADGE_CLASS
-    badge.textContent = 'PDF'
-    const text = doc.createElement('span')
-    text.className = SPREAD_TITLE_TEXT_CLASS
-    const name = basenameWithoutExtension(file)
-    text.textContent = name
     const count = doc.createElement('span')
     count.className = SPREAD_TITLE_COUNT_CLASS
     count.textContent = this.callbacks.spreadPageCountLabel(id)
     const line = doc.createElement('div')
     line.className = SPREAD_TITLE_LINE_CLASS
-    line.append(badge, text, count)
+    line.append(...pdfTitleParts(doc, file), count)
     el.appendChild(line)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
@@ -1717,4 +1718,16 @@ export class CardRenderer {
     placeholder.append(title, hint)
     runtime.bodyEl.replaceChildren(placeholder)
   }
+}
+
+/** The type and the name a PDF is titled by, open as a spread or folded
+ * into its card alike. */
+function pdfTitleParts(doc: Document, file: string): HTMLElement[] {
+  const badge = doc.createElement('span')
+  badge.className = SPREAD_TITLE_BADGE_CLASS
+  badge.textContent = 'PDF'
+  const text = doc.createElement('span')
+  text.className = SPREAD_TITLE_TEXT_CLASS
+  text.textContent = basenameWithoutExtension(file)
+  return [badge, text]
 }

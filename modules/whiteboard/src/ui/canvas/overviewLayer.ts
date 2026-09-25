@@ -41,6 +41,7 @@ import {
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
+import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import { isSpreadTitle } from '../../domain/spread'
 import {
@@ -61,12 +62,14 @@ import {
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
+  PDF_CARD_TITLE_WORLD,
   SPREAD_TITLE_WORLD,
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
 } from '../constants'
 import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
+import { READER_METRICS } from '../pdf/readerLayout'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
@@ -378,16 +381,16 @@ export class OverviewLayer {
       ctx.globalAlpha = alpha * OVERVIEW_CARD_WASH_ALPHA
       ctx.fillStyle = this.colorOf(node, palette) ?? palette.neutral
       ctx.fillRect(x, y, w, h)
-      // A page's picture, as it will be drawn once it lands (`drawCards`),
-      // and then no title.
-      const picture =
-        node.type === 'pdf-page'
-          ? this.callbacks.pageThumbnail(node.file, node.page, palette.dark)
-          : null
-      if (picture) {
-        ctx.globalAlpha = alpha
-        ctx.drawImage(picture, x, y, w, h)
-      }
+      // Its pages, as they will be drawn once it lands (`drawCards`), and
+      // then no title.
+      ctx.globalAlpha = alpha
+      const pictured = this.drawPicture(
+        ctx,
+        node,
+        { x, y, w, h },
+        palette.dark,
+        view.scale,
+      )
       // The border it will have when it lands (`drawCards`): a selection's
       // ring, the faint accent of a selected spread's sheet, or the plain
       // one — so nothing changes the frame it stops.
@@ -404,7 +407,7 @@ export class OverviewLayer {
       ctx.stroke()
       ctx.globalAlpha = alpha
       ctx.lineWidth = 1
-      if (picture || w < OVERVIEW_TITLE_MIN_CARD_PX) continue
+      if (pictured || w < OVERVIEW_TITLE_MIN_CARD_PX) continue
       const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
       ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
       ctx.fillStyle = palette.text
@@ -550,7 +553,7 @@ export class OverviewLayer {
       h: number
     }[] = []
     const texts: typeof visible = []
-    const spreadTitles: typeof visible = []
+    const titles: PdfTitle[] = []
     for (const node of nodes) {
       // Drawn on their own, at their own opacity (`drawMotions`).
       if (this.motions.has(node.id)) continue
@@ -564,8 +567,19 @@ export class OverviewLayer {
       }
       const item = { node, x, y, w, h }
       if (isPlainText(node)) texts.push(item)
-      else if (isSpreadTitle(node)) spreadTitles.push(item)
+      else if (isSpreadTitle(node)) titles.push({ ...item, folded: false })
       else visible.push(item)
+      if (isFoldedPdf(node)) {
+        const th = PDF_CARD_TITLE_WORLD.height * view.scale
+        titles.push({
+          node,
+          x,
+          y: y - PDF_CARD_TITLE_WORLD.gapAbove * view.scale - th,
+          w,
+          h: th,
+          folded: true,
+        })
+      }
     }
     // Bare text has no card to draw: at this distance it is a block of ink,
     // in its colour, as greyed-out text is drawn — and a selection ring when
@@ -589,7 +603,7 @@ export class OverviewLayer {
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
-    this.drawSpreadTitles(ctx, view, spreadTitles)
+    this.drawPdfTitles(ctx, view, titles)
     if (visible.length === 0) return
 
     // 1. The opaque surface, in one path.
@@ -615,23 +629,16 @@ export class OverviewLayer {
       ctx.fill()
     }
 
-    // 2b. A spread's pages, as pictures of themselves where there is one —
-    //     what the page shows in the DOM tiers, over its wash as the page's
-    //     canvas is over its card. Such a page needs no title: it shows its
-    //     own.
+    // 2b. A PDF's pages, as pictures of themselves where there are some —
+    //     what the card shows in the DOM tiers, over its wash as the page's
+    //     canvas is over its card. Such a card needs no title block: it
+    //     shows its own.
     const pictured = new Set<NodeId>()
     ctx.globalAlpha = 1
     for (const card of visible) {
-      const node = card.node
-      if (node.type !== 'pdf-page') continue
-      const picture = this.callbacks.pageThumbnail(
-        node.file,
-        node.page,
-        palette.dark,
-      )
-      if (!picture) continue
-      ctx.drawImage(picture, card.x, card.y, card.w, card.h)
-      pictured.add(node.id)
+      if (this.drawPicture(ctx, card.node, card, palette.dark, view.scale)) {
+        pictured.add(card.node.id)
+      }
     }
 
     // 3. Borders. An uncoloured card takes the theme's border token at full
@@ -714,19 +721,14 @@ export class OverviewLayer {
     }
   }
 
-  /** A spread's title as the DOM draws it (spread.css): one line with the
-   * type, the name and the page count, the name cut short to fit between the
-   * other two, no box — and a card's ring when it is selected. */
-  private drawSpreadTitles(
+  /** A PDF's title as the DOM draws it: a spread's (spread.css) one line
+   * with the type, the name and the page count, no box — and a card's ring
+   * when it is selected; a folded card's (drag.css) the same line without
+   * the count, over the card, whose own ring is its selection. */
+  private drawPdfTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
-    titles: readonly Readonly<{
-      node: BoardNode
-      x: number
-      y: number
-      w: number
-      h: number
-    }>[],
+    titles: readonly PdfTitle[],
   ): void {
     this.titleRects.clear()
     const palette = this.palette
@@ -742,7 +744,6 @@ export class OverviewLayer {
         (SPREAD_TITLE_WORLD.nameFont * view.scale),
     )
     const u = view.scale * grow
-    const pad = SPREAD_TITLE_WORLD.padding * u
     const gap = SPREAD_TITLE_WORLD.gap * u
     const badgeText = 'PDF'
     const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
@@ -753,7 +754,12 @@ export class OverviewLayer {
     ctx.textAlign = 'left'
     for (const title of titles) {
       const name = nodeTitleText(title.node)
-      const count = this.callbacks.spreadPageCountLabel(title.node.id)
+      const count = title.folded
+        ? ''
+        : this.callbacks.spreadPageCountLabel(title.node.id)
+      const pad = title.folded
+        ? PDF_CARD_TITLE_WORLD.left * u
+        : SPREAD_TITLE_WORLD.padding * u
       ctx.font = badgeFont
       const badgeW =
         ctx.measureText(badgeText).width +
@@ -766,7 +772,9 @@ export class OverviewLayer {
       const box = {
         x: title.x,
         y: title.y + title.h - h,
-        w: Math.max(title.w, pad + badgeW + gap + nameW + gap + countW + pad),
+        w: title.folded
+          ? pad + badgeW + gap + nameW
+          : Math.max(title.w, pad + badgeW + gap + nameW + gap + countW + pad),
         h,
       }
       // Where it was drawn is where it is pointed at: the line reaches past
@@ -778,7 +786,7 @@ export class OverviewLayer {
         w: box.w / view.scale,
         h: box.h / view.scale,
       })
-      if (this.callbacks.isSelected(title.node.id)) {
+      if (!title.folded && this.callbacks.isSelected(title.node.id)) {
         ctx.strokeStyle = palette.accent
         ctx.lineWidth = 2
         ctx.beginPath()
@@ -809,8 +817,8 @@ export class OverviewLayer {
     ctx.lineWidth = 1
   }
 
-  /** The spread title whose drawn line is under `point` (world units), if
-   * any — the line is wider and taller than the title's node at this tier. */
+  /** The PDF whose drawn title line is under `point` (world units), if any —
+   * the line reaches past its node's rectangle at this tier. */
   spreadTitleAt(point: Readonly<{ x: number; y: number }>): NodeId | null {
     if (!this.active) return null
     for (const [id, rect] of this.titleRects) {
@@ -824,6 +832,48 @@ export class OverviewLayer {
       }
     }
     return null
+  }
+
+  /**
+   * What a PDF card shows at this tier where there are pictures: a sheet its
+   * page; a folded card the pages its reader shows from where it was left
+   * (../pdf/readerLayout.ts: edge to edge at the card's width, a seam between
+   * each), as far down as there are pictures. False when there is none.
+   */
+  private drawPicture(
+    ctx: CanvasRenderingContext2D,
+    node: BoardNode,
+    rect: Readonly<{ x: number; y: number; w: number; h: number }>,
+    dark: boolean,
+    scale: number,
+  ): boolean {
+    if (node.type === 'pdf-page') {
+      const picture = this.callbacks.pageThumbnail(node.file, node.page, dark)
+      if (!picture) return false
+      ctx.drawImage(picture, rect.x, rect.y, rect.w, rect.h)
+      return true
+    }
+    if (!isFoldedPdf(node)) return false
+    const start = node.startPage ?? 1
+    let page = Math.floor(start)
+    let picture = this.callbacks.pageThumbnail(node.file, page, dark)
+    if (!picture) return false
+    const bottom = rect.y + rect.h
+    let y = rect.y - (start - page) * pageHeight(picture, rect.w)
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(rect.x, rect.y, rect.w, rect.h)
+    ctx.clip()
+    while (picture && y < bottom) {
+      const h = pageHeight(picture, rect.w)
+      ctx.drawImage(picture, rect.x, y, rect.w, h)
+      y += h + READER_METRICS.gap * scale
+      page += 1
+      picture =
+        y < bottom ? this.callbacks.pageThumbnail(node.file, page, dark) : null
+    }
+    ctx.restore()
+    return true
   }
 
   /** A card's title in the lines its title block would give it. Measured at
@@ -1137,4 +1187,31 @@ export class OverviewLayer {
     ctx.lineTo(baseX + uy * halfWidth, baseY - ux * halfWidth)
     ctx.closePath()
   }
+}
+
+/** A title line the canvas draws for a PDF: an open spread's title node, or
+ * the strip over a folded card (`drawPdfTitles`). Screen pixels. */
+type PdfTitle = Readonly<{
+  node: BoardNode
+  x: number
+  y: number
+  w: number
+  h: number
+  folded: boolean
+}>
+
+/** A PDF card as its reader: not an open spread's title. */
+function isFoldedPdf(
+  node: BoardNode,
+): node is Extract<BoardNode, { type: 'file' }> {
+  return (
+    node.type === 'file' &&
+    fileNodeKind(node.file) === 'pdf' &&
+    !isSpreadTitle(node)
+  )
+}
+
+/** A page's height at `width`, in the shape of its picture. */
+function pageHeight(picture: ImageBitmap, width: number): number {
+  return (width * picture.height) / picture.width
 }

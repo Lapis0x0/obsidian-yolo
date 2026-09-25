@@ -202,13 +202,23 @@ export class PdfThumbnails {
     })
   }
 
-  /** Lets go of the pictures of every file not in `paths` — the spreads
-   * that were folded, closed or deleted. The device keeps them. */
-  retain(paths: ReadonlySet<string>): void {
-    // The spreads, their pages or where they are may have changed.
+  /** Lets go of the pictures the board no longer shows — a spread folded
+   * away, a card read on, a file closed or deleted. The device keeps them.
+   * Called whenever the board changes. */
+  retain(): void {
+    // The pages wanted, or where they are, may have changed.
     this.complete = false
+    const keys = new Set<string>()
+    const paths = new Set<string>()
+    for (const wanted of this.deps.wanted()) {
+      keys.add(key(wanted.path, wanted.page))
+      paths.add(wanted.path)
+    }
     for (const path of [...this.files.keys()]) {
       if (!paths.has(path)) this.dropFile(path)
+    }
+    for (const k of [...this.entries.keys()]) {
+      if (!keys.has(k)) this.forget(k)
     }
   }
 
@@ -299,6 +309,12 @@ export class PdfThumbnails {
     try {
       const handle = await this.document(file)
       if (this.destroyed || handle.isStale()) return
+      // A folded card asks for the pages its reader could show below where
+      // it was left, which near the end runs past the last.
+      if (wanted.page > handle.pageCount) {
+        this.failed.add(key(wanted.path, wanted.page))
+        return
+      }
       const page = await handle.getPage(wanted.page)
       await page.render({
         canvas,
