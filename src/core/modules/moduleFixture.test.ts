@@ -80,27 +80,6 @@ describe('host API conformance artifact boundary', () => {
   })
 
   it('ships a separately hashed Learning module that uses only Host API', () => {
-    const bundled = JSON.parse(
-      readFileSync('modules/bundled.json', 'utf8'),
-    ) as {
-      schemaVersion: number
-      modules: Array<{
-        id: string
-        version: string
-        manifestUrl: string
-        manifest: { byteSize: number; sha256: string }
-      }>
-    }
-    expect(bundled.schemaVersion).toBe(1)
-    expect(bundled.modules.map(({ id }) => id).sort()).toEqual([
-      'learning',
-      'whiteboard',
-    ])
-    const bundledLearning = bundled.modules.find(({ id }) => id === 'learning')
-    expect(bundledLearning).toEqual(
-      expect.objectContaining({ id: 'learning', version: learningVersion }),
-    )
-
     const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
@@ -112,10 +91,6 @@ describe('host API conformance artifact boundary', () => {
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
     expect(manifest.version).toBe(learningVersion)
-    expect(bundledLearning?.manifest).toEqual({
-      byteSize: manifestBytes.byteLength,
-      sha256: createHash('sha256').update(manifestBytes).digest('hex'),
-    })
     expect(entryFile.byteSize).toBe(entry.byteLength)
     expect(entryFile.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),

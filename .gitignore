@@ -26,6 +26,11 @@ styles.css
 # See scripts/build-runtime-components.mjs and scripts/runtime-assets.mjs.
 runtime-components/*/dist/
 
+# The local module catalog `npm run module:build` writes for the development
+# build's install-from-local channel. Production never reads it, and it records
+# the hashes of whatever was last built here, so it changes with every build.
+modules/bundled.json
+
 # Exclude sourcemaps
 *.map
 
