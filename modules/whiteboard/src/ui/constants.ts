@@ -8,8 +8,17 @@
 import { fileNodeKind } from '../domain/naming'
 
 /** Camera scale clamp range. `min` is the floor for a board that fits inside
- * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN. */
-export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
+ * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN.
+ * `max` is set by reading: a PDF card tiled into many columns has small
+ * pages, and 5x is what lets one of them fill the screen. What that costs a
+ * page's bitmap is bounded by the PDF engine's own per-canvas pixel cap. */
+export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 5 })
+
+/** The closest a fit (Shift+1 / Shift+2) will frame its target. Lower than
+ * SCALE_BOUNDS.max because a fit chooses the zoom for the user: framing a
+ * small note at 5x fills the screen with one sentence, whereas zooming that
+ * far by hand is someone asking to. */
+export const FIT_MAX_SCALE = 2.5
 
 /**
  * How far past "the whole board fits" the wheel may zoom out, as a fraction of

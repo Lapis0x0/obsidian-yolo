@@ -40,6 +40,7 @@ import {
   CAMERA_GLIDE_TAU_MS,
   CAMERA_SETTLE_MS,
   FIT_CAMERA_PADDING_PX,
+  FIT_MAX_SCALE,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_TIMEOUT_MS,
@@ -798,7 +799,7 @@ export class CameraController {
       bounds,
       { width: rect.width, height: rect.height },
       FIT_CAMERA_PADDING_PX,
-      SCALE_BOUNDS,
+      { min: SCALE_BOUNDS.min, max: FIT_MAX_SCALE },
     )
   }
 
