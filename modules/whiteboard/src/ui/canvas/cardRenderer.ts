@@ -1406,9 +1406,10 @@ export class CardRenderer {
   }
 
   /**
-   * Tells every PDF card on screen how far the camera is zoomed. Called on
-   * every frame the camera moves, so it touches only the cards holding a
-   * reader; each one redraws for the new zoom once it holds still.
+   * Tells every PDF card how far the camera is zoomed. Called on every frame
+   * the camera moves, so it touches only the cards holding a reader; one on
+   * screen redraws for the new zoom once it holds still, one parked lets go
+   * of what the new zoom no longer needs.
    */
   setViewScale(scale: number): void {
     for (const id of this.pdfCards) {
@@ -1417,7 +1418,10 @@ export class CardRenderer {
         this.pdfCards.delete(id)
         continue
       }
-      if (!this.parkedCards.has(id)) reader.setViewScale(scale)
+      // Parked readers hear it too: one that is hidden gives back the pages
+      // this zoom has made too sharp to be worth keeping (see
+      // PdfReader's releaseOversharp).
+      reader.setViewScale(scale)
     }
   }
 

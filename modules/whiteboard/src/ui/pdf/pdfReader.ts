@@ -563,7 +563,39 @@ export class PdfReader {
   setViewScale(scale: number): void {
     if (!(scale > 0) || scale === this.viewScale) return
     this.viewScale = scale
+    if (!this.visible) {
+      // Nothing is on screen to scale in the meantime, so there is nothing to
+      // wait for either: the zoom a hidden reader is told of is the one it
+      // will be shown at.
+      this.settledViewScale = scale
+      this.releaseOversharp()
+      return
+    }
     this.unsettle()
+  }
+
+  /**
+   * Gives back every picture of a hidden reader that is too sharp for the
+   * zoom it would come back at — past the density at which a visible reader
+   * redraws a page smaller (`needsSharperBitmap`), so each one released is a
+   * picture that would be replaced on return anyway. A card parked after
+   * being read up close and then zoomed away from otherwise holds those
+   * pages at their full size for as long as it stays parked: 277MB measured
+   * for one card after zooming from 2.5x out to the overview (2026-09-26).
+   * Coming back, the page shows its thumbnail until it is drawn again.
+   */
+  private releaseOversharp(): void {
+    const layout = this.layout
+    if (!layout) return
+    const wanted = this.wantedRatio()
+    for (const slot of [...this.active]) {
+      if (slot.drawnRatio === 0) continue
+      const shown =
+        (slot.drawnScale * slot.drawnRatio) / layout.scales[slot.index]
+      if (shown > wanted && needsSharperBitmap(shown, wanted)) {
+        this.releaseSlot(slot)
+      }
+    }
   }
 
   /** Whether this reader is the one being read: only then do its pages carry
@@ -582,7 +614,8 @@ export class PdfReader {
   }
 
   /** Whether the reader is on screen at all. A hidden one does no work; the
-   * pictures it has drawn stay. */
+   * pictures it has drawn stay, unless a zoom makes them too sharp to be
+   * worth keeping (`releaseOversharp`). */
   setVisible(visible: boolean): void {
     if (visible === this.visible) return
     this.visible = visible
