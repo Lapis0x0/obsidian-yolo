@@ -27,11 +27,30 @@ export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
  */
 export const MIN_SCALE_FIT_MARGIN = 0.9
 
-/** Wheel delta that doubles the zoom. 300 is Obsidian Canvas's own figure,
- * measured by driving its canvas with wheel events of four different sizes
- * and solving for the exponent — it came out identical at every size, so its
- * zoom is delta-proportional exactly like ours and only the rate differed. */
-export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 300
+/**
+ * Wheel delta that doubles the zoom: 100·ln 2, the rate at which the board
+ * follows a trackpad pinch exactly.
+ *
+ * Chromium reports a pinch as a stream of ctrl-wheel events whose deltas sum
+ * to -100·ln(finger scale) — measured through CDP's synthesizePinchGesture
+ * (2026-09-26): a 2x spread arrived as 107 events of 0.4-0.9 summing to
+ * -69.31. The figure this replaced, 300 (Obsidian Canvas's, measured with
+ * mouse-sized events), made that same 2x spread zoom the board 1.17x.
+ *
+ * A mouse notch (~100 delta, one event) at this rate would be a 2.7x jump, so
+ * it is held back by WHEEL_ZOOM_MAX_DELTA_PER_EVENT rather than by slowing
+ * the rate for everyone.
+ */
+export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 100 * Math.LN2
+
+/**
+ * The most wheel delta a single event may zoom by: a third of a doubling
+ * (2^(1/3) ≈ 1.26x), which is exactly what one ~100-delta mouse notch did
+ * under the old 300-per-doubling rate, so ctrl/cmd + mouse wheel feels as it
+ * did. A pinch never reaches it — its events are a few delta each — so the
+ * cap only ever touches the one-big-event-per-notch input it is meant for.
+ */
+export const WHEEL_ZOOM_MAX_DELTA_PER_EVENT = WHEEL_DELTA_PER_ZOOM_DOUBLING / 3
 
 /** Screen-space margin kept around the content when the camera fits to all
  * nodes or to the selection (Shift+1 / Shift+2). */
@@ -225,9 +244,10 @@ export const OVERVIEW_SCALE_THRESHOLD = 0.35
  * ("跨越阈值来回抖动时不能反复构造/销毁打爆帧").
  *
  * Expressed in doublings because that is the unit the wheel works in (see
- * WHEEL_DELTA_PER_ZOOM_DOUBLING): a quarter doubling is ~75 delta — inside a
- * single mouse notch, so one deliberate notch still crosses the band in one
- * go, and far outside the few-delta dither a trackpad emits at rest.
+ * WHEEL_DELTA_PER_ZOOM_DOUBLING): a quarter doubling is less than the third
+ * of a doubling one mouse notch zooms, so one deliberate notch still crosses
+ * the band in one go, and a pinch has to travel ~1.2x of finger spread past
+ * the threshold before it flips back.
  */
 const OVERVIEW_RESTORE_DOUBLINGS = 0.25
 

@@ -48,6 +48,7 @@ import {
   SCALE_BOUNDS,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_PAN_GLIDE_TAU_MS,
+  WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from '../constants'
 
 /** `WheelEvent.DOM_DELTA_LINE` / `DOM_DELTA_PAGE`, spelled out: the
@@ -308,9 +309,16 @@ export class CameraController {
    */
   private zoomBy(deltaY: number, cursor: ScreenPoint): void {
     const glide = this.cameraGlide
+    // A pinch arrives as many small events and is followed exactly; a mouse
+    // notch arrives as one large event and is capped to a fixed step. See
+    // WHEEL_ZOOM_MAX_DELTA_PER_EVENT.
+    const step = Math.max(
+      -WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
+      Math.min(WHEEL_ZOOM_MAX_DELTA_PER_EVENT, deltaY),
+    )
     const targetScale = scaleAfterWheel(
       glide?.kind === 'anchored' ? glide.targetScale : this.viewValue.scale,
-      deltaY,
+      step,
       WHEEL_DELTA_PER_ZOOM_DOUBLING,
       this.zoomScaleBounds(),
     )
