@@ -53,6 +53,21 @@
   height: 100%;
 }
 
+/* A page's new picture over the one it replaces (pdfReader.ts's `fadeIn`):
+ * the thumbnail a page is shown with while it is drawn turns sharp rather
+ * than snapping to it. The old picture stays underneath, fully opaque, until
+ * this ends, so the page never shows through. */
+.yolo-whiteboard-pdf-canvas.yolo-whiteboard-pdf-canvas-fade-in {
+  animation: yolo-whiteboard-pdf-canvas-fade-in
+    var(--yolo-anim-duration-enter, 220ms) var(--yolo-anim-ease-out, ease-out);
+}
+
+@keyframes yolo-whiteboard-pdf-canvas-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Dark themes read a PDF inverted. Obsidian gets there by patching pdf.js to
  * draw inverted (its opt-in "adapt to theme"); our engine runs stock pdf.js,
  * so the same result comes from a filter on the picture. On the canvas alone:

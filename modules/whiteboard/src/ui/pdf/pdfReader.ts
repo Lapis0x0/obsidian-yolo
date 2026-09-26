@@ -182,6 +182,8 @@ const SCROLLER_CLASS = 'yolo-whiteboard-pdf-scroller'
 const PAGES_CLASS = 'yolo-whiteboard-pdf-pages'
 const PAGE_CLASS = 'yolo-whiteboard-pdf-page'
 const CANVAS_CLASS = 'yolo-whiteboard-pdf-canvas'
+/** On a page's new picture while it fades in over the one it replaces. */
+const CANVAS_FADE_IN_CLASS = 'yolo-whiteboard-pdf-canvas-fade-in'
 const TEXT_LAYER_HOST_CLASS = 'yolo-whiteboard-pdf-text'
 const INDICATOR_CLASS = 'yolo-whiteboard-pdf-indicator'
 const PAGE_INPUT_CLASS = 'yolo-whiteboard-pdf-page-input'
@@ -227,6 +229,8 @@ type Slot = {
   page: PdfPage | null
   loading: boolean
   canvas: HTMLCanvasElement | null
+  /** The picture `canvas` is fading in over, until the fade ends. */
+  fadingOut: HTMLCanvasElement | null
   draw: PdfTask<unknown> | null
   /** The layout scale and pixel ratio the canvas's picture was drawn at, or
    * 0 when it holds none worth keeping (never drawn, or drawn from a file
@@ -630,7 +634,12 @@ export class PdfReader {
     // Off screen, a draw only holds a turn that pages on screen are waiting
     // for; the page is drawn again if it comes back before it has a picture.
     this.options.drawQueue?.withdraw(this.drawClient)
-    for (const slot of this.active) slot.draw?.cancel()
+    for (const slot of this.active) {
+      slot.draw?.cancel()
+      // A hidden card is skipped by rendering (a parked one is
+      // `content-visibility: hidden`), so a fade there would never end.
+      this.endFade(slot)
+    }
   }
 
   /** The annotation store this reader draws, if it was given one. */
@@ -1006,6 +1015,7 @@ export class PdfReader {
         page: null,
         loading: false,
         canvas: null,
+        fadingOut: null,
         draw: null,
         drawnScale: 0,
         drawnRatio: 0,
@@ -1324,13 +1334,23 @@ export class PdfReader {
     if (slot) this.paintPlaceholder(slot)
   }
 
+  /**
+   * Draws a page's picture. A page that is already showing something — its
+   * thumbnail, or a picture at another density — is drawn on a canvas of its
+   * own that fades in over the old one once it is complete, so a page turns
+   * sharp rather than snapping to it; a blank page is drawn in place, since
+   * there is nothing to fade from.
+   */
   private drawPage(slot: Slot, layout: ReaderLayout): void {
     const page = slot.page
     if (!page) return
-    const canvas = this.ensureCanvas(slot)
+    const showing =
+      slot.canvas !== null && (slot.placeholder || slot.drawnRatio !== 0)
+    const canvas = showing ? this.createCanvas() : this.ensureCanvas(slot)
     const scale = layout.scales[slot.index]
     const ratio = this.wantedRatio(slot.drawnRatio === 0)
     const generation = this.generation
+    let shown = !showing
     this.active.add(slot)
     this.drawsInFlight += 1
     const task = page.render({ canvas, scale, pixelRatio: ratio })
@@ -1344,6 +1364,10 @@ export class PdfReader {
           // ask for the same unreachable density on every pass.
           slot.drawnScale = scale
           slot.drawnRatio = ratio
+          if (!shown) {
+            this.fadeIn(slot, canvas)
+            shown = true
+          }
         },
         (error: unknown) => {
           if (isAbort(error)) return
@@ -1351,11 +1375,55 @@ export class PdfReader {
         },
       )
       .finally(() => {
+        // A picture that never made it onto the page gives its memory back
+        // now rather than whenever the element is collected.
+        if (!shown) releaseCanvas(canvas)
         this.drawsInFlight -= 1
         if (slot.draw === task) slot.draw = null
         this.options.drawQueue?.finish()
         this.schedule()
       })
+  }
+
+  private createCanvas(): HTMLCanvasElement {
+    const canvas = this.rootEl.ownerDocument.createElement('canvas')
+    canvas.className = CANVAS_CLASS
+    return canvas
+  }
+
+  /** Puts a finished picture over the one the page was showing and fades it
+   * in; the old one goes when the fade ends (`endFade`). Placed straight
+   * after the old canvas, so the annotation layer stays above both. */
+  private fadeIn(slot: Slot, canvas: HTMLCanvasElement): void {
+    const old = slot.canvas
+    if (!old) {
+      slot.el.prepend(canvas)
+      slot.canvas = canvas
+      return
+    }
+    // One fade at a time: a picture that lands while the last one is still
+    // fading in replaces it, and the one under both is no longer needed.
+    this.endFade(slot)
+    old.after(canvas)
+    slot.canvas = canvas
+    slot.fadingOut = old
+    canvas.classList.add(CANVAS_FADE_IN_CLASS)
+    const end = () => {
+      if (slot.canvas === canvas) this.endFade(slot)
+    }
+    canvas.addEventListener('animationend', end, { once: true })
+    canvas.addEventListener('animationcancel', end, { once: true })
+  }
+
+  /** Finishes a page's fade at once: the new picture fully shown, the old
+   * one gone. */
+  private endFade(slot: Slot): void {
+    slot.canvas?.classList.remove(CANVAS_FADE_IN_CLASS)
+    const old = slot.fadingOut
+    if (!old) return
+    slot.fadingOut = null
+    releaseCanvas(old)
+    old.remove()
   }
 
   private buildTextLayer(slot: Slot, layout: ReaderLayout): void {
@@ -1411,11 +1479,9 @@ export class PdfReader {
   private releaseSlot(slot: Slot): void {
     slot.draw?.cancel()
     slot.draw = null
+    this.endFade(slot)
     if (slot.canvas) {
-      // Zeroing the backing store frees it now rather than whenever the
-      // element is collected.
-      slot.canvas.width = 0
-      slot.canvas.height = 0
+      releaseCanvas(slot.canvas)
       slot.canvas.remove()
       slot.canvas = null
     }
@@ -1958,4 +2024,11 @@ function abortError(): Error {
   const error = new Error('Superseded')
   error.name = 'AbortError'
   return error
+}
+
+/** Zeroes a canvas's backing store, which frees it now rather than whenever
+ * the element is collected. */
+function releaseCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 0
+  canvas.height = 0
 }
