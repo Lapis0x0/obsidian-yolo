@@ -121,6 +121,38 @@ describe('module update controller', () => {
     jest.useRealTimers()
   })
 
+  it('waits for a loading module snapshot to settle before offering', async () => {
+    const moduleService = service()
+    const ready = moduleService.getSnapshot()
+    let loading = true
+    const listeners = new Set<() => void>()
+    moduleService.getSnapshot.mockImplementation(() =>
+      loading ? { ...ready, status: 'loading' } : ready,
+    )
+    moduleService.subscribe.mockImplementation((listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    })
+    const controller = new ModuleUpdateController({
+      service: moduleService,
+      getAutoDownloadEnabled: () => false,
+      getMutedVersions: () => ({}),
+      muteVersion: jest.fn(async () => undefined),
+    })
+
+    const refreshing = controller.refresh()
+    await Promise.resolve()
+    expect(moduleService.getInstallCandidate).not.toHaveBeenCalled()
+
+    loading = false
+    for (const listener of [...listeners]) listener()
+    await refreshing
+    expect(controller.getSnapshot().map((offer) => offer.key)).toEqual([
+      'learning@1.1.0',
+    ])
+    expect(listeners.size).toBe(0)
+  })
+
   it('does not prompt for a muted module version', async () => {
     const controller = new ModuleUpdateController({
       service: service(),

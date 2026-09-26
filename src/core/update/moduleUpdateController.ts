@@ -64,6 +64,8 @@ export class ModuleUpdateController {
     string,
     ReturnType<typeof setTimeout>
   >()
+  /** Pending `waitForSettledModules` calls, released on disposal. */
+  private readonly settleWaiters = new Set<() => void>()
   private disposed = false
 
   constructor(private readonly options: ModuleUpdateControllerOptions) {}
@@ -77,6 +79,7 @@ export class ModuleUpdateController {
   }
 
   async refresh(): Promise<void> {
+    await this.waitForSettledModules()
     if (this.disposed) return
     const previous = new Map(this.offers.map((offer) => [offer.key, offer]))
     const muted = this.options.getMutedVersions()
@@ -140,6 +143,7 @@ export class ModuleUpdateController {
    * that module to the ordinary toast on the next `refresh`.
    */
   async installAll(): Promise<readonly InstalledModuleUpdate[]> {
+    await this.waitForSettledModules()
     if (this.disposed) return []
     const muted = this.options.getMutedVersions()
     const installed: InstalledModuleUpdate[] = []
@@ -207,11 +211,38 @@ export class ModuleUpdateController {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    for (const settle of [...this.settleWaiters]) settle()
     for (const timer of this.successTimers.values()) clearTimeout(timer)
     this.successTimers.clear()
     this.listeners.clear()
     this.candidates.clear()
     this.offers = Object.freeze([])
+  }
+
+  /**
+   * Resolves once the module snapshot is no longer loading. Startup runs
+   * several module refreshes concurrently, and while one is loading no module
+   * has an install candidate, so reading the snapshot then would silently drop
+   * every update until the next launch. Only the latest refresh publishes a
+   * settled status, so a settled snapshot is a complete one.
+   */
+  private waitForSettledModules(): Promise<void> {
+    const { service } = this.options
+    if (this.disposed || service.getSnapshot().status !== 'loading') {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => {
+      const settle = () => {
+        if (!this.disposed && service.getSnapshot().status === 'loading') {
+          return
+        }
+        unsubscribe()
+        this.settleWaiters.delete(settle)
+        resolve()
+      }
+      const unsubscribe = service.subscribe(settle)
+      this.settleWaiters.add(settle)
+    })
   }
 
   private async prepare(key: string): Promise<void> {
