@@ -833,6 +833,34 @@ export class CameraController {
    * from far away needs — close enough to read, not a fit that blows a small
    * card up to fill the screen.
    */
+  /**
+   * Puts `world` in the middle of a viewport of `size`, at the zoom the
+   * camera already has — the minimap's two moves. A press there glides the
+   * camera over, as every destination the canvas picks does; a drag writes
+   * it directly, as a pan does, and is persisted once it holds still.
+   */
+  centerOn(
+    world: ScreenPoint,
+    size: Readonly<{ width: number; height: number }>,
+    options: Readonly<{ glide: boolean }>,
+  ): void {
+    const target = viewAnchoredAt(
+      { x: size.width / 2, y: size.height / 2 },
+      world,
+      this.viewValue.scale,
+    )
+    if (options.glide) {
+      this.moveCameraTo(target)
+      return
+    }
+    this.cameraGlide = null
+    this.lastGlideTime = null
+    this.viewValue = target
+    this.applyTransform()
+    this.markInteracting()
+    this.scheduleCameraSettle()
+  }
+
   focusNode(node: BoardNode, minScale: number): void {
     const fit = this.fitViewFor([node])
     const scale = clampScale(

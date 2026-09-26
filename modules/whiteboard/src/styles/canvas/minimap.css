@@ -1,0 +1,62 @@
+/* --- minimap (ui/canvas/minimap.ts) ---------------------------------------
+ * The whole board, docked in the bottom-right corner, with a frame around
+ * what is on screen. Flush with the corner: a square box with a hairline in
+ * the theme's border colour all round, and nothing raised off the board.
+ * Screen-space chrome in the selection toolbar's overlay, lifted onto
+ * Obsidian's status bar when that floats over the corner
+ * (`--yolo-whiteboard-minimap-lift`).
+ *
+ * At rest it stands back — faded, so it does not pull the eye off what is
+ * being read — and comes up to full strength when the pointer reaches for
+ * it or a drag holds it.
+ *
+ * `content-box`, so the inside is exactly the 200×140 the drawing and the
+ * pointer map through (minimap.ts's MINIMAP_WIDTH_PX / MINIMAP_HEIGHT_PX),
+ * with the border outside it. */
+
+.yolo-whiteboard-minimap {
+  position: absolute;
+  right: 0;
+  bottom: calc(
+    var(--safe-area-inset-bottom, 0px) +
+      var(--yolo-whiteboard-minimap-lift, 0px)
+  );
+  box-sizing: content-box;
+  width: 200px;
+  height: 140px;
+  overflow: hidden;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  /* A drag on it moves the camera; nothing else may take the touch. */
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-exit, 160ms)
+    var(--yolo-anim-ease-in, ease-in);
+}
+
+.yolo-whiteboard-minimap.yolo-whiteboard-minimap-shown {
+  opacity: 0.6;
+  /* The overlay is pointer-transparent; its children take events back. */
+  pointer-events: auto;
+  transition: opacity var(--yolo-anim-duration-enter, 220ms)
+    var(--yolo-anim-ease-out, ease-out);
+}
+
+.yolo-whiteboard-minimap.yolo-whiteboard-minimap-shown:hover,
+.yolo-whiteboard-minimap.yolo-whiteboard-minimap-dragging {
+  opacity: 1;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms) ease;
+}
+
+.yolo-whiteboard-minimap.yolo-whiteboard-minimap-dragging {
+  cursor: grabbing;
+}
+
+.yolo-whiteboard-minimap-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}

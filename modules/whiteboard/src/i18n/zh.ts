@@ -51,6 +51,8 @@ export const zh = {
     zoomOut: '缩小',
     undo: '撤销',
     redo: '重做',
+    showMinimap: '显示小地图',
+    hideMinimap: '隐藏小地图',
   },
   emptyBoard: {
     title: '双击空白处写字，或从下方工具栏拖出一张卡片',

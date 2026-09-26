@@ -20,6 +20,7 @@ import {
   importAllCanvasFiles,
   importCanvasFileAndOpen,
 } from './host/importCanvasFile'
+import { MinimapPrefs } from './host/minimapPrefs'
 import { OpenBoards } from './host/openBoards'
 import { PdfThumbnailStore } from './host/pdfThumbnailStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
@@ -55,6 +56,10 @@ yolo.registerModule({
     // renames and deletes — for PDFs no board shows, too.
     const annotationStores = new AnnotationStores(host, reportError)
     host.lifecycle.add(() => annotationStores.dispose())
+    const minimapPrefs = new MinimapPrefs(
+      host.privateStorage.deviceLocal,
+      reportError,
+    )
     const annotationPrefs = new AnnotationPrefs(
       host.privateStorage.synchronized,
       reportError,
@@ -76,6 +81,7 @@ yolo.registerModule({
         // storage only answers once the module is active.
         readerPanelPrefs.load()
         annotationPrefs.load()
+        minimapPrefs.load()
         const canvas = new WhiteboardCanvas(
           context,
           host,
@@ -83,6 +89,7 @@ yolo.registerModule({
           annotationStores,
           annotationPrefs,
           pdfThumbnailStore,
+          minimapPrefs,
         )
         const forgetOpenBoard = openBoards.add(canvas)
         return {

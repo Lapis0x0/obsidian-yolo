@@ -55,6 +55,8 @@ export const en = {
     zoomOut: 'Zoom out',
     undo: 'Undo',
     redo: 'Redo',
+    showMinimap: 'Show minimap',
+    hideMinimap: 'Hide minimap',
   },
   emptyBoard: {
     title: 'Double-click anywhere to write, or drag a card off the bar below',

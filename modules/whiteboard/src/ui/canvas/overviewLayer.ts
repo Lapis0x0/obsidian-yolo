@@ -85,6 +85,18 @@ const OVERVIEW_TEXT_ALPHA = 0.18
  * with every card a long session has ever shown. */
 const TITLE_LINES_CACHE_LIMIT = 2000
 
+/** The surface a draw is for: its size in CSS pixels, which decides
+ * whether a card or an edge is on it at all; whether it carries text —
+ * titles and edge labels, which the tier sizes for a screen and the
+ * minimap has no room for; and whether it shows the selection, which is
+ * the board being worked on, not the board being found your way around. */
+type Surface = Readonly<{
+  width: number
+  height: number
+  text: boolean
+  selection: boolean
+}>
+
 /** A page's annotations as the overview draws them: its highlights one path
  * per colour, in page fractions, and its framed areas. */
 type PageMarks = Readonly<{
@@ -141,6 +153,9 @@ export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
   /** Every non-group node, in board order — groups keep their DOM. */
   getCardNodes: () => readonly BoardNode[]
+  /** The groups, which only the minimap draws (`paintBoard`): in the tier
+   * they keep their DOM. */
+  getGroupNodes: () => readonly BoardNode[]
   getEdges: () => readonly Edge[]
   getNode: (id: NodeId) => BoardNode | undefined
   isSelected: (id: NodeId) => boolean
@@ -188,6 +203,8 @@ export class OverviewLayer {
   private readonly ctx: CanvasRenderingContext2D | null
   private active = false
   private dirty = false
+  /** Counts `markDirty` calls — see `revision`. */
+  private revisionCount = 0
   private palette: Palette | null = null
   /** Titles already broken into lines, by text and the card's world size.
    * Kept in world units, so a zoom does not invalidate them; dropped with the
@@ -265,7 +282,7 @@ export class OverviewLayer {
     this.themeObserver = new win.MutationObserver(() => {
       this.palette = null
       this.titleLines.clear()
-      this.dirty = true
+      this.markDirty()
     })
     this.themeObserver.observe(doc.body, {
       attributes: true,
@@ -302,6 +319,70 @@ export class OverviewLayer {
    * Nothing else does — a still board costs nothing. */
   markDirty(): void {
     this.dirty = true
+    this.revisionCount += 1
+  }
+
+  /**
+   * Changes whenever what the board shows does — its contents, the
+   * selection, a thumbnail arriving, the theme — and not when the camera
+   * moves, which reaches `render` by the view's identity instead. What a
+   * surface holding the board at a view of its own (the minimap) watches to
+   * know when to draw again.
+   */
+  get revision(): number {
+    return this.revisionCount
+  }
+
+  /**
+   * Draws the whole board into another surface — the minimap's
+   * (./minimap.ts) — with this tier's drawing, so the two show the board the
+   * same way. Groups too, which the tier leaves to the DOM: on a surface of
+   * its own they are the landmarks the board is read by — and no text, which
+   * the tier sizes for a screen: a PDF's title would run across a minimap.
+   * No selection either: a minimap is for finding your way, and a ring
+   * there only repeats what the board already shows. The caller owns the
+   * context's transform and clears it first.
+   */
+  paintBoard(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    size: Readonly<{ width: number; height: number }>,
+  ): void {
+    this.palette ??= this.readPalette(ctx)
+    const live = this.callbacks.getLiveRects()
+    const surface = { ...size, text: false, selection: false }
+    this.drawGroups(ctx, view, live)
+    this.drawEdges(ctx, view, surface, live)
+    this.drawCards(ctx, view, surface, live)
+    ctx.globalAlpha = 1
+  }
+
+  /** The groups as frames: a faint wash of their colour and its border —
+   * the group stylesheet's look with the label left out, which at a
+   * minimap's size would be a smudge. */
+  private drawGroups(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    live: ReadonlyMap<NodeId, CardRect> | null,
+  ): void {
+    const palette = this.palette
+    if (!palette) return
+    ctx.lineWidth = 1
+    for (const node of this.callbacks.getGroupNodes()) {
+      const rect = live?.get(node.id) ?? node
+      const color = this.colorOf(node, palette) ?? palette.neutral
+      const x = rect.x * view.scale + view.tx
+      const y = rect.y * view.scale + view.ty
+      const w = rect.w * view.scale
+      const h = rect.h * view.scale
+      ctx.fillStyle = color
+      ctx.globalAlpha = OVERVIEW_CARD_WASH_ALPHA / 2
+      ctx.fillRect(x, y, w, h)
+      ctx.strokeStyle = color
+      ctx.globalAlpha = OVERVIEW_THEMED_BORDER_ALPHA
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+    }
+    ctx.globalAlpha = 1
   }
 
   setViewportSize(width: number, height: number): void {
@@ -332,8 +413,14 @@ export class OverviewLayer {
     const live = this.callbacks.getLiveRects()
     // Edges first, so a card covers the line that ends at it rather than the
     // other way round -- the order the DOM tiers paint in.
-    this.drawEdges(ctx, view, live)
-    this.drawCards(ctx, view, live)
+    const surface = {
+      width: this.width,
+      height: this.height,
+      text: true,
+      selection: true,
+    }
+    this.drawEdges(ctx, view, surface, live)
+    this.drawCards(ctx, view, surface, live)
     this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
   }
@@ -575,8 +662,11 @@ export class OverviewLayer {
   private drawCards(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
+    surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
   ): void {
+    const isSelected = (id: NodeId): boolean =>
+      surface.selection && this.callbacks.isSelected(id)
     const palette = this.palette
     if (!palette) return
     const nodes = this.callbacks.getCardNodes()
@@ -598,7 +688,12 @@ export class OverviewLayer {
       const y = rect.y * view.scale + view.ty
       const w = rect.w * view.scale
       const h = rect.h * view.scale
-      if (x >= this.width || y >= this.height || x + w <= 0 || y + h <= 0) {
+      if (
+        x >= surface.width ||
+        y >= surface.height ||
+        x + w <= 0 ||
+        y + h <= 0
+      ) {
         continue
       }
       const item = { node, x, y, w, h }
@@ -637,14 +732,14 @@ export class OverviewLayer {
       ctx.beginPath()
       let anySelected = false
       for (const text of texts) {
-        if (!this.callbacks.isSelected(text.node.id)) continue
+        if (!isSelected(text.node.id)) continue
         this.strokeRectPath(ctx, text)
         anySelected = true
       }
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
-    this.drawPdfTitles(ctx, view, titles)
+    if (surface.text) this.drawPdfTitles(ctx, view, titles)
     if (visible.length === 0) return
 
     // 1. The opaque surface, in one path.
@@ -690,7 +785,7 @@ export class OverviewLayer {
     ctx.beginPath()
     for (const card of visible) {
       if (this.colorOf(card.node, palette) !== null) continue
-      if (this.callbacks.isSelected(card.node.id)) continue
+      if (isSelected(card.node.id)) continue
       this.strokeRectPath(ctx, card)
     }
     ctx.stroke()
@@ -701,7 +796,7 @@ export class OverviewLayer {
       let any = false
       for (const card of cards) {
         if (this.colorOf(card.node, palette) === null) continue
-        if (this.callbacks.isSelected(card.node.id)) continue
+        if (isSelected(card.node.id)) continue
         this.strokeRectPath(ctx, card)
         any = true
       }
@@ -716,7 +811,7 @@ export class OverviewLayer {
     ctx.beginPath()
     let anySelected = false
     for (const card of visible) {
-      if (!this.callbacks.isSelected(card.node.id)) continue
+      if (!isSelected(card.node.id)) continue
       this.strokeRectPath(ctx, card)
       anySelected = true
     }
@@ -731,14 +826,15 @@ export class OverviewLayer {
     for (const card of visible) {
       const node = card.node
       if (node.type !== 'pdf-page') continue
-      if (this.callbacks.isSelected(node.id)) continue
-      if (!this.callbacks.isSelected(node.parent)) continue
+      if (isSelected(node.id)) continue
+      if (!isSelected(node.parent)) continue
       this.strokeRectPath(ctx, card)
       anyLit = true
     }
     if (anyLit) ctx.stroke()
     ctx.globalAlpha = 1
 
+    if (!surface.text) return
     // 5. Titles, where a card is wide enough on screen to hold one. The type
     //    and the box it wraps in are the DOM card's title block — 32 world
     //    units, so it shrinks with the card — which is what makes the switch
@@ -1062,6 +1158,7 @@ export class OverviewLayer {
   private drawEdges(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
+    surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
   ): void {
     const palette = this.palette
@@ -1080,6 +1177,7 @@ export class OverviewLayer {
     // label small enough to be worth drawing, and that is also where there are
     // the most edges to have skipped one for.
     const drawLabels =
+      surface.text &&
       EDGE_LABEL_FONT_PX * Math.sqrt(view.scale) >= OVERVIEW_LABEL_MIN_FONT_PX
 
     type Segment = Readonly<{
@@ -1106,7 +1204,12 @@ export class OverviewLayer {
     // `edgeIsVisible` documents the bound). Rejecting an edge here costs four
     // comparisons; rejecting it after its geometry costs the geometry, and at
     // this zoom four edges in five are off screen.
-    const world = computeWorldViewportRect(this.width, this.height, view, 0)
+    const world = computeWorldViewportRect(
+      surface.width,
+      surface.height,
+      view,
+      0,
+    )
     const margin = EDGE_CONTROL_MAX_PX
 
     for (const edge of this.callbacks.getEdges()) {
@@ -1140,14 +1243,15 @@ export class OverviewLayer {
       const c1 = toScreen(geometry.c1)
       const c2 = toScreen(geometry.c2)
       if (
-        Math.min(start.x, end.x, c1.x, c2.x) > this.width ||
+        Math.min(start.x, end.x, c1.x, c2.x) > surface.width ||
         Math.max(start.x, end.x, c1.x, c2.x) < 0 ||
-        Math.min(start.y, end.y, c1.y, c2.y) > this.height ||
+        Math.min(start.y, end.y, c1.y, c2.y) > surface.height ||
         Math.max(start.y, end.y, c1.y, c2.y) < 0
       ) {
         continue
       }
-      const selected = this.callbacks.isEdgeSelected(edge.id)
+      const selected =
+        surface.selection && this.callbacks.isEdgeSelected(edge.id)
       const color = selected ? palette.accent : this.colorOfEdge(edge, palette)
       const segment: Segment = {
         start,
@@ -1197,7 +1301,7 @@ export class OverviewLayer {
       }
     }
     ctx.lineWidth = 1
-    this.drawEdgeLabels(ctx, view, labels)
+    this.drawEdgeLabels(ctx, view, surface, labels)
   }
 
   /**
@@ -1219,6 +1323,7 @@ export class OverviewLayer {
   private drawEdgeLabels(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
+    surface: Surface,
     labels: readonly Readonly<{ text: string; x: number; y: number }>[],
   ): void {
     const palette = this.palette
@@ -1246,9 +1351,9 @@ export class OverviewLayer {
       // kept for its curve, and the curve's midpoint can be well outside the
       // viewport the curve crosses.
       if (
-        x - padX > this.width ||
+        x - padX > surface.width ||
         x + width + padX < 0 ||
-        y - lineHeight / 2 - padY > this.height ||
+        y - lineHeight / 2 - padY > surface.height ||
         y + lineHeight / 2 + padY < 0
       ) {
         continue

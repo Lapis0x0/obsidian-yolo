@@ -39,6 +39,20 @@ const ICONS: Readonly<Record<CanvasControlIconName, readonly string[]>> = {
     'm15 14 5-5-5-5',
     'M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13',
   ],
+  map: [
+    'M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z',
+    'M15 5.764v15',
+    'M9 3.236v15',
+  ],
+  // `map` struck through, the way Lucide's `-off` icons are drawn: the
+  // switch that is off shows its icon crossed out, as a muted microphone
+  // does.
+  'map-off': [
+    'M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z',
+    'M15 5.764v15',
+    'M9 3.236v15',
+    'm2 2 20 20',
+  ],
 }
 
 export type CanvasControlIconName =
@@ -47,15 +61,24 @@ export type CanvasControlIconName =
   | 'minus'
   | 'undo-2'
   | 'redo-2'
+  | 'map'
+  | 'map-off'
 
 export type CanvasControl = Readonly<
   {
-    label: string
+    /** The tooltip. A function for a switch, whose tooltip names what a
+     * click does next — asked again on every `refresh`. */
+    label: string | (() => string)
     onSelect: () => void
     /** Asked again on every `refresh`; a control without it is always on. */
     isEnabled?: () => boolean
   } & (
-    | { icon: CanvasControlIconName; readout?: never }
+    | {
+        /** A function for a switch, which shows its state by its icon alone
+         * (`map` / `map-off`) — asked again on every `refresh`. */
+        icon: CanvasControlIconName | (() => CanvasControlIconName)
+        readout?: never
+      }
     | {
         icon?: never
         /** A control that shows a value instead of an icon — the zoom
@@ -69,7 +92,12 @@ export class CanvasControls {
   private readonly el: HTMLElement
   private readonly stateful: {
     button: HTMLButtonElement
-    isEnabled: () => boolean
+    isEnabled?: () => boolean
+    label?: () => string
+    icon?: () => CanvasControlIconName
+    /** The icon the button is drawn with now, so `refresh` redraws it only
+     * when it changes. */
+    shownIcon?: CanvasControlIconName
   }[] = []
   private readonly readouts: {
     el: HTMLElement
@@ -99,12 +127,24 @@ export class CanvasControls {
   }
 
   /** Re-asks every control whether it can act now (undo with nothing to
-   * undo is shown, and greyed, like Canvas's). */
+   * undo is shown, and greyed, like Canvas's), and every switch which way
+   * it is set. */
   refresh(): void {
-    for (const { button, isEnabled } of this.stateful) {
-      const enabled = isEnabled()
-      button.classList.toggle(ITEM_DISABLED_CLASS, !enabled)
-      button.setAttribute('aria-disabled', String(!enabled))
+    for (const item of this.stateful) {
+      const { button, isEnabled, label, icon } = item
+      if (isEnabled) {
+        const enabled = isEnabled()
+        button.classList.toggle(ITEM_DISABLED_CLASS, !enabled)
+        button.setAttribute('aria-disabled', String(!enabled))
+      }
+      if (label) button.setAttribute('aria-label', label())
+      if (icon) {
+        const name = icon()
+        if (name !== item.shownIcon) {
+          item.shownIcon = name
+          button.replaceChildren(this.createIcon(name))
+        }
+      }
     }
   }
 
@@ -125,13 +165,20 @@ export class CanvasControls {
     const button = this.doc.createElement('button')
     button.className = ITEM_CLASS
     button.type = 'button'
-    button.setAttribute('aria-label', control.label)
+    // A switch's label and icon are drawn by `refresh`, which the
+    // constructor runs once every item is in.
+    let label: (() => string) | null = null
+    if (typeof control.label === 'function') label = control.label
+    else button.setAttribute('aria-label', control.label)
+    let icon: (() => CanvasControlIconName) | null = null
     if (control.readout) {
       button.classList.add(ITEM_READOUT_CLASS)
       const text = this.doc.createElement('span')
       text.textContent = control.readout()
       button.appendChild(text)
       this.readouts.push({ el: text, read: control.readout })
+    } else if (typeof control.icon === 'function') {
+      icon = control.icon
     } else {
       button.appendChild(this.createIcon(control.icon))
     }
@@ -145,8 +192,13 @@ export class CanvasControls {
       if (control.isEnabled && !control.isEnabled()) return
       control.onSelect()
     })
-    if (control.isEnabled) {
-      this.stateful.push({ button, isEnabled: control.isEnabled })
+    if (control.isEnabled || label || icon) {
+      this.stateful.push({
+        button,
+        isEnabled: control.isEnabled,
+        label: label ?? undefined,
+        icon: icon ?? undefined,
+      })
     }
     parent.appendChild(button)
   }

@@ -52,6 +52,8 @@ export const it = {
     zoomOut: 'Riduci',
     undo: 'Annulla',
     redo: 'Ripeti',
+    showMinimap: 'Mostra minimappa',
+    hideMinimap: 'Nascondi minimappa',
   },
   emptyBoard: {
     title:

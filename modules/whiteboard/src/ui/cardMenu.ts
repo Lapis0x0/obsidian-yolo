@@ -26,6 +26,7 @@ import {
   CARD_MENU_CREATE_LINGER_MS,
   CARD_MENU_HOVER_LINGER_MS,
 } from './constants'
+import { findStatusBar, statusBarLift } from './statusBarClearance'
 
 const MENU_CLASS = 'yolo-whiteboard-card-menu'
 const MENU_HIDDEN_CLASS = 'yolo-whiteboard-card-menu-hidden'
@@ -172,7 +173,7 @@ export class CardMenu {
       ? new win.ResizeObserver(this.syncPlacement)
       : null
     this.resizeObserver?.observe(parent)
-    const statusBar = this.statusBar()
+    const statusBar = findStatusBar(this.doc)
     if (statusBar) {
       this.resizeObserver?.observe(statusBar, { box: 'border-box' })
     }
@@ -285,12 +286,6 @@ export class CardMenu {
     this.collapseTimer = null
   }
 
-  /** Obsidian's status bar, which on desktop floats over the bottom right of
-   * the workspace; absent in a popout and on mobile. */
-  private statusBar(): HTMLElement | null {
-    return this.doc.querySelector<HTMLElement>('.status-bar')
-  }
-
   /**
    * Stands the bar and its handle clear of the status bar, when it floats
    * over the bottom of the board where they sit. The status bar grows
@@ -305,14 +300,10 @@ export class CardMenu {
    */
   private readonly syncPlacement = (): void => {
     const area = this.parent.getBoundingClientRect()
-    const bar = this.statusBar()?.getBoundingClientRect()
-    const liftFor = (halfWidth: number): number => {
-      if (!bar || !(bar.height > 0) || !(area.height > 0)) return 0
-      const centre = area.left + area.width / 2
-      const sharesX =
-        bar.left < centre + halfWidth && bar.right > centre - halfWidth
-      return sharesX ? Math.max(0, area.bottom - bar.top) : 0
-    }
+    const bar = findStatusBar(this.doc)?.getBoundingClientRect()
+    const centre = area.left + area.width / 2
+    const liftFor = (halfWidth: number): number =>
+      statusBarLift(area, bar, centre - halfWidth, centre + halfWidth)
     const width = this.el.offsetWidth
     const height = this.el.offsetHeight
     const menuLift = liftFor(width / 2)

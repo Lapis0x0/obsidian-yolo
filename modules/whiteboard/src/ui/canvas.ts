@@ -90,6 +90,7 @@ import {
 } from '../domain/virtualization'
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
+import type { MinimapPrefs } from '../host/minimapPrefs'
 import type { PdfThumbnailStore } from '../host/pdfThumbnailStore'
 import { takePendingFit } from '../host/pendingFit'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
@@ -109,6 +110,7 @@ import {
   nodeIdFromEventTarget,
 } from './canvas/interactionController'
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
+import { Minimap } from './canvas/minimap'
 import { OverviewLayer } from './canvas/overviewLayer'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
@@ -335,6 +337,11 @@ export class WhiteboardCanvas {
   private emptyHintEl: HTMLElement | null = null
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
+  /** The whole board in the viewport's corner (./canvas/minimap.ts). */
+  private minimap: Minimap | null = null
+  /** Keeps this board's minimap switch in step with a change made from
+   * another board (MinimapPrefs is shared by all of them). */
+  private readonly unsubscribeMinimapPrefs: () => void
   /** Card creation, drops and the right-click menus
    * (./canvas/dropImport.ts). Built in `ensureDom`. */
   private dropImport!: DropImport
@@ -476,7 +483,11 @@ export class WhiteboardCanvas {
     private readonly annotationStores: AnnotationStores,
     private readonly annotationPrefs: AnnotationPrefs,
     private readonly pdfThumbnailStore: PdfThumbnailStore,
+    private readonly minimapPrefs: MinimapPrefs,
   ) {
+    this.unsubscribeMinimapPrefs = minimapPrefs.subscribe(() =>
+      this.canvasControls?.refresh(),
+    )
     this.core = {
       context: this.context,
       host: this.host,
@@ -669,6 +680,9 @@ export class WhiteboardCanvas {
     this.dropImport.destroy()
     this.canvasControls?.destroy()
     this.canvasControls = null
+    this.minimap?.destroy()
+    this.minimap = null
+    this.unsubscribeMinimapPrefs()
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
@@ -819,6 +833,7 @@ export class WhiteboardCanvas {
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
       getCardNodes: this.core.getCardNodes,
+      getGroupNodes: () => this.groupNodes,
       getEdges: () => this.board.edges,
       getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
@@ -1081,6 +1096,21 @@ export class WhiteboardCanvas {
       distributeSelection: (axis) => this.distributeSelection(axis),
       tidySelection: () => this.tidySelection(),
     })
+    // Screen-space chrome in the toolbar's overlay, like the creation bar:
+    // a press on it is chrome, never the board. See ./canvas/minimap.ts.
+    this.minimap?.destroy()
+    this.minimap = new Minimap(doc, this.toolbarController.overlay, {
+      isEnabled: () => this.minimapPrefs.isVisible(),
+      getView: () => this.cameraController.view,
+      getViewportSize: () => this.getViewportSize(),
+      getNodes: () => this.board.nodes,
+      isOverview: () => this.overview,
+      getRevision: () => this.overviewLayer?.revision ?? 0,
+      paintBoard: (ctx, view, size) =>
+        this.overviewLayer?.paintBoard(ctx, view, size),
+      centerOn: (world, options) =>
+        this.cameraController.centerOn(world, this.getViewportSize(), options),
+    })
     this.pdf = new PdfIntegration({
       core: this.core,
       rootEl: root,
@@ -1210,6 +1240,20 @@ export class WhiteboardCanvas {
             icon: 'maximize',
             onSelect: () =>
               this.cameraController.fitCameraToNodes(this.board.nodes),
+          },
+          {
+            // The other way to see where you are; its switch sits with it.
+            // The icon says which way it is set, struck through when off;
+            // the tooltip says what a click will do.
+            label: () =>
+              this.t(
+                this.minimapPrefs.isVisible()
+                  ? 'controls.hideMinimap'
+                  : 'controls.showMinimap',
+              ),
+            icon: () => (this.minimapPrefs.isVisible() ? 'map' : 'map-off'),
+            onSelect: () =>
+              this.minimapPrefs.setVisible(!this.minimapPrefs.isVisible()),
           },
         ],
         [
@@ -2431,6 +2475,7 @@ export class WhiteboardCanvas {
     // It draws the camera the world layer was just given, and the geometry
     // the queues above have just finished changing.
     this.overviewLayer?.render()
+    this.minimap?.render(now)
     // Over the cards as this frame draws them, the overview's titles
     // included — see ToolbarController.
     this.toolbarController.syncPosition()
