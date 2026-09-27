@@ -146,7 +146,7 @@ Consulta el Inicio rápido más arriba.
 - [x] Modo de Aprendizaje — una vista de estudio dedicada
 - [ ] Modo de Anotación — anotaciones y sugerencias de IA en tiempo real sobre las notas
 - [ ] Asistente integrado — un ayudante fijado en una esquina para configuración/agentes, con compactación automática y tareas programadas
-- [ ] Mejor pizarra con IA
+- [x] Mejor pizarra con IA
 - [ ] Entrada de voz y notas de reuniones
 
 ## Documentación

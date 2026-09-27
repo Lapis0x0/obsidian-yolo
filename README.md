@@ -146,7 +146,7 @@ See Quick Start above.
 - [x] Learning Mode — a dedicated study view
 - [ ] Annotation Mode — real-time AI annotations and suggestions on notes
 - [ ] Built-in assistant — a corner-pinned helper for config/agents, with auto-compaction and scheduled tasks
-- [ ] Better AI whiteboard
+- [x] Better AI whiteboard
 - [ ] Voice input & meeting notes
 
 ## Documentation

@@ -146,7 +146,7 @@ Vedi Quick Start sopra.
 - [x] Modalità di apprendimento — una vista di studio dedicata
 - [ ] Modalità di annotazione — annotazioni e suggerimenti AI in tempo reale sulle note
 - [ ] Assistente integrato — helper fissato nell'angolo per config/agent, con compattazione automatica e task programmati
-- [ ] Lavagna AI migliore
+- [x] Lavagna AI migliore
 - [ ] Input vocale e note riunione
 
 ## Documentazione
