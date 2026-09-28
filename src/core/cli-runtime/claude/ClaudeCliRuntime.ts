@@ -1413,10 +1413,14 @@ export class ClaudeCliRuntime implements CliRuntime {
       // (`collectGroupEditSummary`). With several files it has nothing true
       // to say per file, so it is not published and each Edit / Write
       // call's own `editSummary` stands.
+      //
+      // The dry run describes the *rewind*, which undoes the turn: a line the
+      // turn added is one the rewind would delete. So the turn's own added
+      // lines are the rewind's deletions, and vice versa.
       const [path] = files
       if (!result.canRewind || files.length !== 1 || !path) return
-      const insertions = result.insertions ?? 0
-      const deletions = result.deletions ?? 0
+      const insertions = result.deletions ?? 0
+      const deletions = result.insertions ?? 0
       const reviewRoundId = this.findLatestReviewRoundId(path)
       this.emit({
         type: 'turn_edit_summary',

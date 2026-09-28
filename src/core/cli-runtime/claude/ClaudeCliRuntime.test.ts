@@ -871,11 +871,13 @@ describe('ClaudeCliRuntime', () => {
 
   it('publishes the checkpoint summary of a single-file turn', async () => {
     const { sdk, queryInstance } = createSdk()
+    // The dry run counts what rewinding would do: undoing a turn that added
+    // 7 lines and removed 2 deletes 7 and inserts 2.
     queryInstance.rewindFiles.mockResolvedValue({
       canRewind: true,
       filesChanged: ['/vault/src/a.ts'],
-      insertions: 7,
-      deletions: 2,
+      insertions: 2,
+      deletions: 7,
     })
     const events: CliRuntimeEvent[] = []
     const runtime = new ClaudeCliRuntime({
