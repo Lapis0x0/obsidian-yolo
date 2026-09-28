@@ -78,7 +78,7 @@
 <td width="50%" align="center"><b>让 Vault 里的知识真正被你掌握</b></td>
 </tr>
 <tr valign="top">
-<td align="center"><img src="./assets/agenttools.gif" alt="Agent Tools" width="100%"></td>
+<td align="center"><img src="./assets/agent.webp" alt="Agent" width="100%"></td>
 <td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
 </tr>
 <tr valign="top">

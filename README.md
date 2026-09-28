@@ -80,7 +80,7 @@
 <td width="50%" align="center"><b>Turn Vault Knowledge into Lasting Mastery</b></td>
 </tr>
 <tr valign="top">
-<td align="center"><img src="./assets/agenttools.gif" alt="Agent Tools" width="100%"></td>
+<td align="center"><img src="./assets/agent.webp" alt="Agent" width="100%"></td>
 <td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
 </tr>
 <tr valign="top">
