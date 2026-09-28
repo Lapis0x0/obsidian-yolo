@@ -222,6 +222,40 @@ describe('module shelf projections', () => {
     ).toEqual(['uninstall'])
   })
 
+  it('keeps the installed version usable while its next version awaits the core', () => {
+    const awaitingCore = {
+      id: 'notes',
+      version: '1.0.0',
+      compatibilityIssues: [{ kind: 'host-api' as const }],
+      awaitingCoreUpdate: { version: '1.1.0' },
+    }
+    expect(
+      getModuleShelfActions(
+        moduleRecord({
+          id: 'notes',
+          desiredInstalled: true,
+          enabled: false,
+          installed,
+          catalog: awaitingCore,
+          compatibilityIssues: awaitingCore.compatibilityIssues,
+        }),
+      ),
+    ).toEqual(['enable', 'uninstall'])
+    expect(
+      getModuleShelfActions(
+        moduleRecord({
+          id: 'notes',
+          desiredInstalled: true,
+          enabled: true,
+          installed,
+          catalog: awaitingCore,
+          compatibilityIssues: awaitingCore.compatibilityIssues,
+          status: 'failed',
+        }),
+      ),
+    ).toEqual(['reload', 'disable'])
+  })
+
   it('aggregates multiple contributions into one enabled module navigation item', () => {
     const module = moduleRecord({
       id: 'notes',

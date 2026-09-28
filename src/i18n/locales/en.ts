@@ -283,6 +283,9 @@ export const en: TranslationKeys = {
         ready: 'Ready on this device',
         failed: 'Failed',
       },
+      updateCore: 'Update YOLO Core',
+      needsCore: 'Update YOLO Core to install this module',
+      nextVersionNeedsCore: 'Version {version} needs a newer YOLO Core',
       incompatibleReason: 'Incompatible: {reason}',
       compatibility: {
         platform: 'platform',

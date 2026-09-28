@@ -247,6 +247,9 @@ export const zh: TranslationKeys = {
         ready: '本机已就绪',
         failed: '失败',
       },
+      updateCore: '更新 YOLO Core',
+      needsCore: '需要更新 YOLO Core 后才能安装',
+      nextVersionNeedsCore: '新版本 v{version} 需要更新 YOLO Core',
       incompatibleReason: '不兼容：{reason}',
       compatibility: {
         platform: '平台',

@@ -250,6 +250,9 @@ export type TranslationKeys = {
         ready: string
         failed: string
       }
+      updateCore: string
+      needsCore: string
+      nextVersionNeedsCore: string
       incompatibleReason: string
       compatibility: {
         platform: string

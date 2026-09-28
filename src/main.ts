@@ -190,6 +190,7 @@ import {
   ModuleUpdateController,
   type ModuleUpdateOffer,
 } from './core/update/moduleUpdateController'
+import { openCommunityPluginsSettings } from './core/update/openCommunityPluginsSettings'
 import {
   type PluginUpdateState,
   applyRepairFiles,
@@ -3831,6 +3832,42 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.setPluginUpdateState({ status: 'idle' })
     this.updateCheckResult = null
     this.notifyUpdateCheckListeners()
+  }
+
+  /**
+   * One click from a place that is blocked on a newer core (a module held back
+   * by the Host API): download, install, and reload. It reads the feed afresh
+   * instead of `updateCheckResult`, which only exists while the update toast
+   * is allowed to prompt. Without self-update, community plugins does it.
+   */
+  async updateCoreNow(): Promise<void> {
+    const result =
+      canSelfUpdate(this) && this.distributionFeedClient
+        ? await checkForUpdate(
+            this.manifest.version,
+            this.distributionFeedClient,
+          )
+        : null
+    if (!result?.hasUpdate || !result.assets) {
+      openCommunityPluginsSettings(this.app)
+      return
+    }
+    await this.downloadPluginRelease(result.latestVersion, result.assets)
+    const state = this.pluginUpdateState
+    if (
+      state.status !== 'ready' ||
+      state.version !== normalizePluginVersion(result.latestVersion)
+    ) {
+      new Notice(this.t('update.downloadFailed', 'Download failed'))
+      openCommunityPluginsSettings(this.app)
+      return
+    }
+    // Reloads the window on success. A too-old Obsidian opens its own modal.
+    await this.applyPluginUpdate()
+    const applied = this.pluginUpdateState
+    if (applied.status === 'error' && applied.message !== 'min_app_version') {
+      new Notice(this.t('update.installFailed', 'Install failed'))
+    }
   }
 
   private async autoRepairInstallation(): Promise<void> {

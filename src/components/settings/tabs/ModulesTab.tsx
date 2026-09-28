@@ -3,6 +3,7 @@ import { Notice, setIcon } from 'obsidian'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { usePlugin } from '../../../contexts/plugin-context'
 import type {
   ConfirmedModuleCandidate,
   ModuleManagerSnapshot,
@@ -18,11 +19,14 @@ import type {
 } from '../../../core/modules/moduleService'
 import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
 import { compareModuleVersions } from '../../../core/modules/officialModuleCatalog'
+import type { ModuleCompatibilityIssue } from '../../../core/modules/types'
 import type {
   RuntimeComponentRecord,
   RuntimeComponentService,
   RuntimeComponentStatus,
 } from '../../../core/runtime-components'
+import { usePluginUpdate } from '../../../hooks/usePluginUpdate'
+import type { TranslationKeys } from '../../../i18n/types'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
 
@@ -136,7 +140,10 @@ export function getModuleShelfActions(
   >,
   hasSettings = false,
 ): readonly ModuleShelfAction[] {
-  const incompatible = (module.compatibilityIssues?.length ?? 0) > 0
+  // A newer version waiting on the core leaves the installed one runnable.
+  const incompatible =
+    (module.compatibilityIssues?.length ?? 0) > 0 &&
+    !module.catalog?.awaitingCoreUpdate
   const update = hasModuleUpdate(module)
   if (module.desiredInstalled !== true) {
     return incompatible ? [] : ['install']
@@ -708,6 +715,14 @@ function ModuleRow({
   )
   const currentVersion =
     module.installed?.version ?? module.catalog?.version ?? module.version
+  // The Host API is the one issue a core update clears: the latest version for
+  // a module not installed yet, or the next version for one already running.
+  const awaitingCoreVersion = module.catalog?.awaitingCoreUpdate?.version
+  const needsCore =
+    awaitingCoreVersion !== undefined ||
+    (module.desiredInstalled !== true &&
+      module.compatibilityIssues?.length === 1 &&
+      module.compatibilityIssues[0].kind === 'host-api')
 
   return (
     <article className="yolo-module-shelf-row" data-module-id={module.id}>
@@ -734,13 +749,24 @@ function ModuleRow({
             )}
           </span>
         ) : null}
-        {(module.compatibilityIssues?.length ?? 0) > 0 ? (
+        {needsCore ? (
+          <span className="yolo-module-shelf-hint">
+            {awaitingCoreVersion !== undefined
+              ? t('settings.modules.nextVersionNeedsCore').replace(
+                  '{version}',
+                  awaitingCoreVersion,
+                )
+              : t('settings.modules.needsCore')}
+          </span>
+        ) : (module.compatibilityIssues?.length ?? 0) > 0 ? (
           <span className="yolo-module-shelf-error" role="alert">
             {t('settings.modules.incompatibleReason').replace(
               '{reason}',
               module
                 .compatibilityIssues!.map((issue) =>
-                  t(`settings.modules.compatibility.${issue.kind}`),
+                  t(
+                    `settings.modules.compatibility.${COMPATIBILITY_ISSUE_LABEL_KEYS[issue.kind]}`,
+                  ),
                 )
                 .join(', '),
             )}
@@ -753,6 +779,7 @@ function ModuleRow({
         />
       </div>
       <div className="yolo-module-shelf-actions">
+        {needsCore ? <CoreUpdateButton /> : null}
         {visibleActions.map((action) => (
           <button
             key={action}
@@ -903,6 +930,58 @@ function ModuleError({
       </button>
     </div>
   )
+}
+
+/**
+ * Updates the core in one click: download, install, reload. The progress it
+ * shows is the plugin's shared update state, so a download the update toast
+ * already started is picked up rather than repeated.
+ */
+function CoreUpdateButton() {
+  const { t } = useLanguage()
+  const plugin = usePlugin()
+  const { state } = usePluginUpdate()
+  const [checking, setChecking] = useState(false)
+  const label =
+    state.status === 'downloading'
+      ? t('update.downloading').replace(
+          '{{progress}}',
+          String(Math.round(state.progress)),
+        )
+      : state.status === 'applying'
+        ? t('update.applying')
+        : t('settings.modules.updateCore')
+  const busy =
+    checking || state.status === 'downloading' || state.status === 'applying'
+
+  return (
+    <button
+      type="button"
+      className="yolo-module-shelf-action mod-cta"
+      disabled={busy}
+      aria-busy={busy ? true : undefined}
+      onClick={() => {
+        setChecking(true)
+        void plugin.updateCoreNow().finally(() => setChecking(false))
+      }}
+    >
+      {busy ? (
+        <LoaderCircle className="is-spinning" aria-hidden="true" />
+      ) : null}
+      {label}
+    </button>
+  )
+}
+
+const COMPATIBILITY_ISSUE_LABEL_KEYS: Readonly<
+  Record<
+    ModuleCompatibilityIssue['kind'],
+    keyof TranslationKeys['settings']['modules']['compatibility']
+  >
+> = {
+  platform: 'platform',
+  'host-api': 'hostApi',
+  'data-schema': 'dataSchema',
 }
 
 function actionLabel(

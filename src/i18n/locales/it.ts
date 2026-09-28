@@ -302,6 +302,10 @@ export const it: DeepPartial<TranslationKeys> = {
         ready: 'Pronto su questo dispositivo',
         failed: 'Non riuscito',
       },
+      updateCore: 'Aggiorna YOLO Core',
+      needsCore: 'Aggiorna YOLO Core per installare questo modulo',
+      nextVersionNeedsCore:
+        'La versione {version} richiede un YOLO Core più recente',
       incompatibleReason: 'Non compatibile: {reason}',
       compatibility: {
         platform: 'piattaforma',
