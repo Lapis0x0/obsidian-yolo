@@ -2475,8 +2475,8 @@ export const en: TranslationKeys = {
 
   statusBar: {
     agentRunningWithApproval:
-      'There are currently {count} running agents ({approvalCount} awaiting approval)',
-    agentRunning: 'There are currently {count} running agents',
+      'Agents running: {count} ({approvalCount} awaiting approval)',
+    agentRunning: 'Agents running: {count}',
     agentStatusAriaLabel: 'Agent status, click to view running conversations',
     agentStatusTitle:
       'Click to view running conversations and open one in a new chat tab',
@@ -2490,8 +2490,7 @@ export const en: TranslationKeys = {
     cliStatusWaitingUser: 'Awaiting input',
     backgroundStatusPanelTitle: 'Activity and reminders',
     backgroundStatusPanelEmpty: 'There is no activity or reminder',
-    backgroundTasksRunning:
-      'There are currently {count} background tasks running',
+    backgroundTasksRunning: 'Background tasks running: {count}',
     backgroundTasksNeedAttention: 'A background task needs attention',
     ragAutoUpdateRunning: 'Knowledge base updating in background',
     ragAutoUpdateRunningDetail:
