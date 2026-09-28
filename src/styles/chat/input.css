@@ -2622,6 +2622,41 @@ button.yolo-assistant-annotation-marker.is-active {
   color: var(--text-normal);
 }
 
+/* ── countdown of the card reporting automatic updates, around its close
+   button; hovering or focusing the card holds it at full ── */
+.yolo-update-toast-icon-button:has(.yolo-update-toast-countdown) {
+  position: relative;
+}
+
+.yolo-update-toast-countdown {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.yolo-update-toast-countdown-ring {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+.yolo-update-toast-countdown-ring.is-running {
+  /* Exempt from the opacity/transform rule: the ring's length is the
+     countdown itself, and a paint-only stroke on a 24px icon never reflows. */
+  animation: yolo-update-toast-countdown linear forwards;
+}
+
+@keyframes yolo-update-toast-countdown {
+  to {
+    stroke-dashoffset: 1;
+  }
+}
+
 /* ── one tab per update when the card holds several ── */
 .yolo-update-toast-tabs {
   display: flex;
@@ -2832,7 +2867,12 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-toast-history-btn {
   flex-shrink: 0;
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: none !important;
   border-radius: var(--radius-s);
   box-shadow: none !important;

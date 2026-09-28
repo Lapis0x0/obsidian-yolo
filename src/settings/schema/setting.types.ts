@@ -399,6 +399,16 @@ const tabCompletionTriggerSchema = z
  * Settings
  */
 
+/**
+ * 检测到新版本后怎么做：
+ * - auto：后台下载并安装。主插件热重载（不重载整个窗口），模块热装，完成后
+ *   弹出带更新日志的卡片；
+ * - notify：弹出更新卡片，并在后台预先下载，由用户确认安装；
+ * - off：不提示，也不下载。
+ */
+export const pluginUpdateModeSchema = z.enum(['auto', 'notify', 'off'])
+export type PluginUpdateMode = z.infer<typeof pluginUpdateModeSchema>
+
 export const yoloSettingsSchema = z.object({
   // Version
   version: z.literal(SETTINGS_SCHEMA_VERSION).catch(SETTINGS_SCHEMA_VERSION),
@@ -430,14 +440,10 @@ export const yoloSettingsSchema = z.object({
   mutedModuleUpdateVersions: z.record(z.string(), z.string()).catch({}),
 
   /**
-   * 检测到新版本时是否弹出更新卡片。关闭后主插件与模块都不再提示,也不再自动
-   * 下载(没有卡片就没有安装入口)。分发源 Feed 仍然照常请求——它同时是模块
-   * 目录的数据源,`设置 → 模块` 的更新按钮依赖它。
+   * 见 `pluginUpdateModeSchema`。无论哪种方式，分发源 Feed 都照常请求——它同时
+   * 是模块目录的数据源，`设置 → 模块` 的更新按钮依赖它。
    */
-  pluginUpdateNoticeEnabled: z.boolean().catch(true),
-
-  /** 检测到新版本时在后台自动下载 release 文件；安装仍需用户确认。 */
-  pluginUpdateAutoDownloadEnabled: z.boolean().catch(true),
+  pluginUpdateMode: pluginUpdateModeSchema.catch('notify'),
 
   // RAG Options
   ragOptions: ragOptionsSchema.catch({

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { useLanguage } from '../contexts/language-context'
 import { usePlugin } from '../contexts/plugin-context'
 import { openCommunityPluginsSettings } from '../core/update/openCommunityPluginsSettings'
-import type { YoloSettings } from '../settings/schema/setting.types'
 
 import { usePluginUpdate } from './usePluginUpdate'
 import { useUpdateCheck } from './useUpdateCheck'
@@ -35,7 +34,6 @@ export function usePluginUpdatePrimaryCta(
   const { t } = useLanguage()
   const plugin = usePlugin()
   const { app } = plugin
-  const [settings, setSettings] = useState<YoloSettings>(() => plugin.settings)
   const { result } = useUpdateCheck()
   const {
     state: updateState,
@@ -44,18 +42,8 @@ export function usePluginUpdatePrimaryCta(
     applyUpdate,
   } = usePluginUpdate()
 
-  useEffect(() => {
-    return plugin.addSettingsChangeListener((newSettings) => {
-      setSettings(newSettings)
-    })
-  }, [plugin])
-
-  const autoUpdateEnabled = settings.pluginUpdateAutoDownloadEnabled ?? true
   const hasSelfUpdate =
-    autoUpdateEnabled &&
-    canSelfUpdate &&
-    Boolean(result?.assets) &&
-    Boolean(result?.hasUpdate)
+    canSelfUpdate && Boolean(result?.assets) && Boolean(result?.hasUpdate)
 
   const latestVersion = result?.latestVersion ?? null
   const releaseUrl = result?.releaseUrl ?? null

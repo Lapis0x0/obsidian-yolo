@@ -28,8 +28,7 @@ describe('parseYoloSettings', () => {
     expect(result.softDismissedUpdateVersion).toBe('')
     expect(result.mutedUpdateVersion).toBe('')
     expect(result.mutedModuleUpdateVersions).toEqual({})
-    expect(result.pluginUpdateNoticeEnabled).toBe(true)
-    expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
+    expect(result.pluginUpdateMode).toBe('notify')
     expect(result.ragOptions).toMatchObject({
       enabled: true,
       chunkSize: 1000,

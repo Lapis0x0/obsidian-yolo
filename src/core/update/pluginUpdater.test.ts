@@ -386,7 +386,7 @@ describe('applyStagedUpdate', () => {
     }
   })
 
-  it('writes main.js before manifest.json and reloads the app', async () => {
+  it('writes main.js before manifest.json without reloading', async () => {
     const adapter = new MockAdapter()
     const pluginDir = MOCK_PLUGIN_DIR
     const stagingDir = getStagingDir(pluginDir, '1.5.12.2')
@@ -412,7 +412,7 @@ describe('applyStagedUpdate', () => {
 
     const result = await applyStagedUpdate(app, plugin, '1.5.12.2')
     expect(result).toEqual({ ok: true })
-    expect(reloadSpy).toHaveBeenCalled()
+    expect(reloadSpy).not.toHaveBeenCalled()
 
     const writeOrder = adapter.getWriteOrder()
     const mainIndex = writeOrder.indexOf(`${pluginDir}/main.js`)
@@ -535,7 +535,7 @@ describe('applyRepairFiles', () => {
 
     const result = await applyRepairFiles(app, plugin, '1.5.12.2')
     expect(result).toEqual({ ok: true })
-    expect(reloadSpy).toHaveBeenCalled()
+    expect(reloadSpy).not.toHaveBeenCalled()
     expect(adapter.getWriteOrder()).toContain(`${pluginDir}/styles.css`)
   })
 })

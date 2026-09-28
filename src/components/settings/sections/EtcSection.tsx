@@ -25,8 +25,12 @@ import {
   getLocalCacheUsageBytes,
 } from '../../../database/local-cache/localCacheStore'
 import type YoloPlugin from '../../../main'
-import { yoloSettingsSchema } from '../../../settings/schema/setting.types'
+import {
+  pluginUpdateModeSchema,
+  yoloSettingsSchema,
+} from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -215,30 +219,15 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
       })
   }
 
-  const handlePluginUpdateNoticeChange = (value: boolean) => {
-    void (async () => {
-      try {
-        await setSettings({
-          ...settings,
-          pluginUpdateNoticeEnabled: value,
-        })
-      } catch (error: unknown) {
-        console.error('Failed to update plugin update notice setting', error)
-      }
-    })()
-  }
-
-  const handlePluginAutoUpdateChange = (value: boolean) => {
-    void (async () => {
-      try {
-        await setSettings({
-          ...settings,
-          pluginUpdateAutoDownloadEnabled: value,
-        })
-      } catch (error: unknown) {
-        console.error('Failed to update plugin auto-update setting', error)
-      }
-    })()
+  const handlePluginUpdateModeChange = (value: string) => {
+    const mode = pluginUpdateModeSchema.safeParse(value)
+    if (!mode.success) return
+    void setSettings({
+      ...settings,
+      pluginUpdateMode: mode.data,
+    }).catch((error: unknown) => {
+      console.error('Failed to update plugin update mode', error)
+    })
   }
 
   // Debug logs live under the YOLO base dir, which every knowledge base's
@@ -396,41 +385,28 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
 
         <div className="yolo-settings-block-content">
           <ObsidianSetting
-            name={t('settings.etc.pluginUpdateNotice', '更新提醒')}
-            desc={t(
-              'settings.etc.pluginUpdateNoticeDesc',
-              '开启后 YOLO 会自动检测新版本并提醒。',
-            )}
+            name={t('settings.etc.pluginUpdateMode')}
+            desc={
+              settings.pluginUpdateMode === 'auto'
+                ? Platform.isDesktop && canSelfUpdate
+                  ? t('settings.etc.pluginUpdateModeAutoDesc')
+                  : t('settings.etc.pluginUpdateModeAutoDescUnavailable')
+                : settings.pluginUpdateMode === 'off'
+                  ? t('settings.etc.pluginUpdateModeOffDesc')
+                  : t('settings.etc.pluginUpdateModeNotifyDesc')
+            }
             className="yolo-settings-card"
           >
-            <ObsidianToggle
-              value={settings.pluginUpdateNoticeEnabled ?? true}
-              onChange={handlePluginUpdateNoticeChange}
+            <ObsidianDropdown
+              value={settings.pluginUpdateMode}
+              options={{
+                auto: t('settings.etc.pluginUpdateModeAuto'),
+                notify: t('settings.etc.pluginUpdateModeNotify'),
+                off: t('settings.etc.pluginUpdateModeOff'),
+              }}
+              onChange={handlePluginUpdateModeChange}
             />
           </ObsidianSetting>
-
-          {(settings.pluginUpdateNoticeEnabled ?? true) ? (
-            <ObsidianSetting
-              name={t('settings.etc.pluginAutoUpdate', '自动下载更新')}
-              desc={
-                Platform.isDesktop && canSelfUpdate
-                  ? t(
-                      'settings.etc.pluginAutoUpdateDesc',
-                      '开启后检测到新版本会自动在后台加载。',
-                    )
-                  : t(
-                      'settings.etc.pluginAutoUpdateDescUnavailable',
-                      '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
-                    )
-              }
-              className="yolo-settings-card"
-            >
-              <ObsidianToggle
-                value={settings.pluginUpdateAutoDownloadEnabled ?? true}
-                onChange={handlePluginAutoUpdateChange}
-              />
-            </ObsidianSetting>
-          ) : null}
 
           <ObsidianSetting
             name={t('settings.etc.exportConfig', '导出配置')}

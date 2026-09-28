@@ -1675,14 +1675,18 @@ export const en: TranslationKeys = {
     },
     etc: {
       title: 'Other',
-      pluginUpdateNotice: 'Update notifications',
-      pluginUpdateNoticeDesc:
-        'When enabled, YOLO checks for new versions and lets you know.',
-      pluginAutoUpdate: 'Auto-download updates',
-      pluginAutoUpdateDesc:
-        'When enabled, new versions are downloaded automatically in the background when detected.',
-      pluginAutoUpdateDescUnavailable:
-        'Module updates are downloaded automatically; one-click Core installation still requires desktop and a writable plugin folder.',
+      pluginUpdateMode: 'Updates',
+      pluginUpdateModeAuto: 'Update automatically',
+      pluginUpdateModeNotify: 'Notify me',
+      pluginUpdateModeOff: "Don't notify",
+      pluginUpdateModeAutoDesc:
+        'New versions are downloaded and installed automatically, then shown with their release notes. Only YOLO reloads, not Obsidian, and it waits for running AI tasks to finish.',
+      pluginUpdateModeAutoDescUnavailable:
+        'Modules update automatically. The core cannot install itself on this device, so new versions are still announced with a link to community plugins.',
+      pluginUpdateModeNotifyDesc:
+        'New versions are announced and downloaded in the background, ready to install when you confirm.',
+      pluginUpdateModeOffDesc:
+        'Nothing is announced or downloaded. Update by hand in community plugins or Settings → Modules.',
       exportConfig: 'Export settings',
       exportConfigDesc:
         'Export current plugin settings to a JSON file for use in other vaults.',
@@ -2771,7 +2775,7 @@ export const en: TranslationKeys = {
       currentAssistantId: 'Current agent',
       quickAskAssistantId: 'Quick Ask agent',
       jsSandbox: 'JS sandbox permissions',
-      pluginUpdateAutoDownloadEnabled: 'Automatically download plugin updates',
+      pluginUpdateMode: 'Plugin update mode',
       moduleConfigs: 'Module configuration',
     },
   },
@@ -2817,6 +2821,9 @@ export const en: TranslationKeys = {
     updatesAvailable: '{count} updates available',
     updateAll: 'Update all',
     updated: 'Updated',
+    autoUpdateLater: 'Update automatically from now on',
+    autoUpdatedTitle: '{name} updated automatically',
+    autoUpdatedCount: '{count} updates installed automatically',
   },
   moduleFileView: {
     inactivePlaceholder:

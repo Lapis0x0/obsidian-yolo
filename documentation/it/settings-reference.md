@@ -240,8 +240,7 @@ Star, Afdian, Buy Me a Coffee, più i link per segnalare un bug e richiedere una
 
 | Impostazione | Predefinito | Descrizione |
 |------|------|------|
-| Notifiche di aggiornamento | Attive | Disattivandole non vieni più avvisato delle nuove versioni, né del plugin né dei moduli |
-| Scarica aggiornamenti automaticamente | Attivo | Vale solo su desktop e con la cartella del plugin scrivibile |
+| Aggiornamenti | Avvisami | **Aggiorna automaticamente**: scarica e installa in background, ricarica solo YOLO e poi mostra le novità; il Core si installa da solo solo su desktop con la cartella del plugin scrivibile. **Avvisami**: mostra la scheda di aggiornamento con il download già pronto. **Non avvisare**: nessun avviso e nessun download |
 | Export settings / Import settings (esporta e importa le impostazioni) | — | Per migrare da un vault all'altro |
 | **Cartella base YOLO** | `YOLO` | Percorso relativo al vault. Cambiarla è **un'operazione di spostamento**, vedi sotto |
 | Abilita debug richieste LLM | Disattivo | Attivandolo, ogni messaggio guadagna un pulsante Debug per consultare richieste e risposte grezze |

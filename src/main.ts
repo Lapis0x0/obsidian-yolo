@@ -178,6 +178,12 @@ import {
 } from './core/skills/liteSkills'
 import type { ToolContext } from './core/tools/types'
 import {
+  type AutoUpdatedCore,
+  type AutoUpdatedItem,
+  takeAutoUpdatedCore,
+  writeAutoUpdatedCore,
+} from './core/update/autoUpdateReport'
+import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
   checkInstallationIntegrityLayer1And2,
@@ -187,6 +193,7 @@ import {
   writeLastLaunchedCoreVersion,
 } from './core/update/lastLaunchedCoreVersion'
 import {
+  type InstalledModuleUpdate,
   ModuleUpdateController,
   type ModuleUpdateOffer,
 } from './core/update/moduleUpdateController'
@@ -202,6 +209,7 @@ import {
   getStagingDir,
   getStagingStatus,
 } from './core/update/pluginUpdater'
+import { reloadPlugin } from './core/update/reloadPlugin'
 import {
   type ReleaseAssets,
   type UpdateCheckResult,
@@ -296,14 +304,11 @@ type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
 /**
- * A staged module update can only be installed from the update toast, so
- * downloading one while the notice is off would never be applied.
+ * A staged module update is installed from the update toast, which the off
+ * mode never shows, so it would never be applied there.
  */
 function isModuleAutoDownloadEnabled(settings: YoloSettings): boolean {
-  return (
-    settings.pluginUpdateNoticeEnabled &&
-    settings.pluginUpdateAutoDownloadEnabled
-  )
+  return settings.pluginUpdateMode !== 'off'
 }
 
 export default class YoloPlugin extends Plugin {
@@ -312,6 +317,8 @@ export default class YoloPlugin extends Plugin {
   private deviceId: string | null = null
   private currentSettingsMeta: YoloDataMeta | null = null
   updateCheckResult: UpdateCheckResult | null = null
+  private autoUpdatedItems: readonly AutoUpdatedItem[] = Object.freeze([])
+  private readonly autoUpdatedListeners = new Set<() => void>()
   private hasCheckedForUpdates = false
   private updateCheckListeners: (() => void)[] = []
   pluginUpdateState: PluginUpdateState = { status: 'idle' }
@@ -3796,9 +3803,16 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.pluginUpdateDownloadPromise
   }
 
-  async applyPluginUpdate(): Promise<void> {
+  /**
+   * Installs the staged update, then loads it: by reloading the window, or —
+   * for automatic updating, which nobody is waiting on — by reloading only
+   * this plugin. True once it is installed.
+   */
+  async applyPluginUpdate(
+    reload: 'window' | 'plugin' = 'window',
+  ): Promise<boolean> {
     if (this.pluginUpdateState.status !== 'ready') {
-      return
+      return false
     }
 
     const version = this.pluginUpdateState.version
@@ -3826,12 +3840,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         message: applyResult.reason,
         repairFiles,
       })
-      return
+      return false
     }
 
     this.setPluginUpdateState({ status: 'idle' })
     this.updateCheckResult = null
     this.notifyUpdateCheckListeners()
+    if (reload === 'plugin') {
+      reloadPlugin(this.app, this.manifest.id)
+    } else {
+      window.location.reload()
+    }
+    return true
   }
 
   /**
@@ -3967,64 +3987,187 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return
     }
     this.hasCheckedForUpdates = true
-    void Promise.allSettled([
-      (async () => {
-        if (!this.distributionFeedClient) return
-        // The Feed load itself is never gated: it is also the module catalog's
-        // data source, so `设置 → 模块` keeps offering updates even when the
-        // update notice is off. Only the prompt and its download are gated.
-        const fetched = await checkForUpdate(
-          this.manifest.version,
-          this.distributionFeedClient,
-        )
-        if (fetched?.hasUpdate) {
-          if (
-            !this.settings.pluginUpdateNoticeEnabled ||
-            this.isUpdateVersionMuted(fetched.latestVersion)
-          ) {
-            return
-          }
-          this.updateCheckResult = fetched
-          this.notifyUpdateCheckListeners()
-          await this.refreshPluginUpdateStaging(fetched.latestVersion)
-          if (
-            this.settings.pluginUpdateAutoDownloadEnabled &&
-            canSelfUpdate(this) &&
-            fetched.assets
-          ) {
-            void this.startPluginUpdateDownload()
-          }
-        }
-      })(),
-      (async () => {
-        // Catalog refresh always runs — it feeds the module list in settings.
-        // Only the toast-facing offers (and their auto-download) are gated.
-        await this.moduleService?.checkForUpdates()
-        // Not gated by the notice setting: turning prompts off means "don't
-        // interrupt me", not "leave my modules behind the core".
-        await this.followCoreUpdate()
-        if (!this.settings.pluginUpdateNoticeEnabled) return
-        await this.moduleUpdateController?.refresh()
-      })(),
+    void this.runUpdateCheck()
+  }
+
+  private async runUpdateCheck(): Promise<void> {
+    // Written by the instance that installed this core and reloaded into us.
+    const updatedCore = takeAutoUpdatedCore(this.app, this.manifest.version)
+    // The Feed and the module catalog are loaded in every mode: they are also
+    // what `设置 → 模块` shows. Only prompting and installing follow the mode.
+    const [core] = await Promise.all([
+      this.distributionFeedClient
+        ? checkForUpdate(this.manifest.version, this.distributionFeedClient)
+        : null,
+      this.moduleService?.checkForUpdates().catch((error: unknown) => {
+        console.warn('[YOLO] Module update check failed', error)
+      }),
     ])
+    // Not gated by the mode: turning prompts off means "don't interrupt me",
+    // not "leave my modules behind the core".
+    const followed = await this.followCoreUpdate()
+    if (this.isUnloaded) return
+    const mode = this.settings.pluginUpdateMode
+    const coreUpdate = core?.hasUpdate ? core : null
+    if (mode === 'auto') {
+      if (
+        coreUpdate &&
+        (await this.installCoreUpdateAutomatically(coreUpdate))
+      ) {
+        return
+      }
+      const installed =
+        (await this.moduleUpdateController?.installAll({
+          skipMuted: false,
+        })) ?? []
+      await this.reportAutoUpdated(updatedCore, [...followed, ...installed])
+    } else {
+      this.noticeModulesFollowedCore(followed)
+      if (mode === 'off') return
+    }
+    // What is left is prompted: everything in notify mode, and in auto mode
+    // whatever could not be installed here, as the fallback.
+    if (coreUpdate) await this.offerCoreUpdate(coreUpdate)
+    await this.moduleUpdateController?.refresh()
+  }
+
+  private async offerCoreUpdate(result: UpdateCheckResult): Promise<void> {
+    if (this.isUpdateVersionMuted(result.latestVersion)) return
+    this.updateCheckResult = result
+    this.notifyUpdateCheckListeners()
+    await this.refreshPluginUpdateStaging(result.latestVersion)
+    if (canSelfUpdate(this) && result.assets) {
+      void this.startPluginUpdateDownload()
+    }
+  }
+
+  /**
+   * Downloads the core update, waits until reloading would cut off no AI
+   * work, writes it, and hot-reloads the plugin; the instance it reloads into
+   * reports what changed. False when it cannot be done here — no self-update
+   * on this device, or a failed download or install — which leaves the update
+   * to the card.
+   */
+  private async installCoreUpdateAutomatically(
+    result: UpdateCheckResult,
+  ): Promise<boolean> {
+    if (!canSelfUpdate(this) || !result.assets) return false
+    await this.downloadPluginRelease(result.latestVersion, result.assets)
+    const version = normalizePluginVersion(result.latestVersion)
+    const state = this.pluginUpdateState
+    if (
+      state.status !== 'ready' ||
+      state.version !== version ||
+      state.repairFiles
+    ) {
+      return false
+    }
+    await this.waitUntilAiIdle()
+    if (this.isUnloaded) return true
+    writeAutoUpdatedCore(this.app, {
+      version,
+      releaseNotes: result.releaseNotes,
+    })
+    return this.applyPluginUpdate('plugin')
+  }
+
+  /**
+   * Resolves once reloading the plugin would cut off no AI work: no request in
+   * flight, and no agent or CLI run working or waiting for approval.
+   */
+  private async waitUntilAiIdle(): Promise<void> {
+    const busy = () =>
+      this.activeAbortControllers.size > 0 ||
+      [...this.latestBackgroundActivities.values()].some(
+        (activity) =>
+          activity.status === 'running' || activity.status === 'waiting',
+      )
+    while (!this.isUnloaded && busy()) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000))
+    }
+  }
+
+  /**
+   * From the update card: switches to automatic updates and runs this one
+   * now. The card stays up and shows the progress.
+   */
+  async switchToAutoUpdate(): Promise<void> {
+    await this.setSettings({ ...this.settings, pluginUpdateMode: 'auto' })
+    const core = this.updateCheckResult
+    if (core?.hasUpdate && (await this.installCoreUpdateAutomatically(core))) {
+      return
+    }
+    await this.moduleUpdateController?.updateAll()
+  }
+
+  getAutoUpdatedSnapshot = (): readonly AutoUpdatedItem[] =>
+    this.autoUpdatedItems
+
+  subscribeAutoUpdated = (listener: () => void): (() => void) => {
+    this.autoUpdatedListeners.add(listener)
+    return () => this.autoUpdatedListeners.delete(listener)
+  }
+
+  dismissAutoUpdated(): void {
+    this.autoUpdatedItems = Object.freeze([])
+    for (const listener of [...this.autoUpdatedListeners]) listener()
+  }
+
+  private async reportAutoUpdated(
+    core: AutoUpdatedCore | null,
+    modules: readonly InstalledModuleUpdate[],
+  ): Promise<void> {
+    const controller = this.moduleUpdateController
+    const moduleItems = await Promise.all(
+      modules.map(
+        async (module): Promise<AutoUpdatedItem> => ({
+          key: `${module.moduleId}@${module.version}`,
+          name: module.name,
+          version: module.version,
+          releaseNotes: (await controller?.loadInstalledNotes(module)) ?? null,
+        }),
+      ),
+    )
+    const items: AutoUpdatedItem[] = core
+      ? [
+          {
+            key: 'core',
+            name: 'YOLO',
+            version: core.version,
+            releaseNotes: core.releaseNotes,
+          },
+          ...moduleItems,
+        ]
+      : moduleItems
+    if (items.length === 0 || this.isUnloaded) return
+    this.autoUpdatedItems = Object.freeze(items)
+    for (const listener of [...this.autoUpdatedListeners]) listener()
   }
 
   /**
    * Brings modules up to date after the core itself changed version — through
-   * the update toast or by hand in community plugins alike. A coordinated
-   * release is one click on the core update; the modules it ships alongside,
-   * including any that need the new Host API, follow here on the next start.
-   * An unknown previous version (first start with this rule) counts as a
-   * change: only pending updates of enabled modules are installed, so a
-   * fresh install has nothing to do.
+   * the update toast, automatic updating, or by hand in community plugins. A
+   * coordinated release is one click on the core update; the modules it ships
+   * alongside, including any that need the new Host API, follow here on the
+   * next start. An unknown previous version (first start with this rule)
+   * counts as a change: only pending updates of enabled modules are
+   * installed, so a fresh install has nothing to do.
    */
-  private async followCoreUpdate(): Promise<void> {
+  private async followCoreUpdate(): Promise<readonly InstalledModuleUpdate[]> {
     const controller = this.moduleUpdateController
-    if (!controller) return
+    if (!controller) return []
     const currentVersion = this.manifest.version
-    if (readLastLaunchedCoreVersion(this.app) === currentVersion) return
-    const installed = await controller.installAll()
+    if (readLastLaunchedCoreVersion(this.app) === currentVersion) return []
+    const installed = await controller.installAll({
+      skipMuted: this.settings.pluginUpdateMode !== 'auto',
+    })
     writeLastLaunchedCoreVersion(this.app, currentVersion)
+    return installed
+  }
+
+  private noticeModulesFollowedCore(
+    installed: readonly InstalledModuleUpdate[],
+  ): void {
     if (installed.length === 0) return
     new Notice(
       this.t(

@@ -513,12 +513,7 @@ export async function applyStagedUpdate(
 
   await clearStagingRoot(adapter, pluginDir)
 
-  // Reload the whole app so Obsidian loads the newly written plugin files.
-  // Do not disable/enable from inside the plugin being replaced: disablePlugin
-  // unloads this code before the async chain finishes and leaves the update
-  // toast stuck on "Installing…".
-  window.location.reload()
-
+  // Only writes the files: the caller chooses how the new code is loaded.
   return { ok: true }
 }
 
@@ -571,6 +566,5 @@ export async function applyRepairFiles(
   }
 
   await clearStagingRoot(adapter, pluginDir)
-  window.location.reload()
   return { ok: true }
 }

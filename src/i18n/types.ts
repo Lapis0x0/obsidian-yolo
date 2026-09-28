@@ -1343,11 +1343,14 @@ export type TranslationKeys = {
     }
     etc: {
       title: string
-      pluginUpdateNotice?: string
-      pluginUpdateNoticeDesc?: string
-      pluginAutoUpdate?: string
-      pluginAutoUpdateDesc?: string
-      pluginAutoUpdateDescUnavailable?: string
+      pluginUpdateMode: string
+      pluginUpdateModeAuto: string
+      pluginUpdateModeNotify: string
+      pluginUpdateModeOff: string
+      pluginUpdateModeAutoDesc: string
+      pluginUpdateModeAutoDescUnavailable: string
+      pluginUpdateModeNotifyDesc: string
+      pluginUpdateModeOffDesc: string
       exportConfig?: string
       exportConfigDesc?: string
       export?: string
@@ -2393,7 +2396,7 @@ export type TranslationKeys = {
       currentAssistantId: string
       quickAskAssistantId: string
       jsSandbox: string
-      pluginUpdateAutoDownloadEnabled: string
+      pluginUpdateMode: string
       moduleConfigs: string
     }
   }
@@ -2438,6 +2441,9 @@ export type TranslationKeys = {
     updatesAvailable: string
     updateAll: string
     updated: string
+    autoUpdateLater: string
+    autoUpdatedTitle: string
+    autoUpdatedCount: string
   }
 
   // Module-provided file views (e.g. a module registering a custom file

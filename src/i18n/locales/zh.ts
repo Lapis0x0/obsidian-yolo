@@ -1569,12 +1569,18 @@ export const zh: TranslationKeys = {
     },
     etc: {
       title: '其他',
-      pluginUpdateNotice: '更新提醒',
-      pluginUpdateNoticeDesc: '开启后 YOLO 会自动检测新版本并提醒。',
-      pluginAutoUpdate: '自动下载更新',
-      pluginAutoUpdateDesc: '开启后检测到新版本会自动在后台加载。',
-      pluginAutoUpdateDescUnavailable:
-        '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
+      pluginUpdateMode: '更新方式',
+      pluginUpdateModeAuto: '自动更新',
+      pluginUpdateModeNotify: '提醒我',
+      pluginUpdateModeOff: '不提醒',
+      pluginUpdateModeAutoDesc:
+        '检测到新版本后自动下载并安装，完成后展示更新内容。只重载 YOLO 自身，不会重启 Obsidian；有 AI 任务在运行时会等它结束。',
+      pluginUpdateModeAutoDescUnavailable:
+        '模块会自动更新；主插件在此设备上无法自动安装，检测到新版本时仍会提醒你前往社区插件更新。',
+      pluginUpdateModeNotifyDesc:
+        '检测到新版本时提醒你，并在后台提前下载好，确认后即可安装。',
+      pluginUpdateModeOffDesc:
+        '不提醒，也不下载。可以在社区插件或「设置 → 模块」中手动更新。',
       exportConfig: '导出配置',
       exportConfigDesc:
         '将当前插件配置导出为 JSON 文件，方便在其他笔记库中导入使用。',
@@ -2602,7 +2608,7 @@ export const zh: TranslationKeys = {
       currentAssistantId: '当前 Agent',
       quickAskAssistantId: 'Quick Ask Agent',
       jsSandbox: 'JS 沙箱权限',
-      pluginUpdateAutoDownloadEnabled: '插件自动下载更新',
+      pluginUpdateMode: '插件更新方式',
       moduleConfigs: '模块配置',
     },
   },
@@ -2648,6 +2654,9 @@ export const zh: TranslationKeys = {
     updatesAvailable: '{count} 项更新',
     updateAll: '全部更新',
     updated: '更新完成',
+    autoUpdateLater: '以后自动更新',
+    autoUpdatedTitle: '{name} 已自动更新',
+    autoUpdatedCount: '已自动更新 {count} 项',
   },
   moduleFileView: {
     inactivePlaceholder: '该文件类型由一个当前未启用的模块提供。',

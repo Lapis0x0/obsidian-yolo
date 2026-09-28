@@ -174,8 +174,13 @@ describe('module update controller', () => {
       muteVersion: jest.fn(async () => undefined),
     })
 
-    await expect(controller.installAll()).resolves.toEqual([
-      { name: 'Learning', version: '1.1.0' },
+    await expect(controller.installAll({ skipMuted: true })).resolves.toEqual([
+      {
+        moduleId: 'learning',
+        name: 'Learning',
+        version: '1.1.0',
+        releaseNotes: descriptor,
+      },
     ])
     expect(moduleService.install).toHaveBeenCalledTimes(1)
     expect(controller.getSnapshot()).toEqual([])
@@ -189,9 +194,18 @@ describe('module update controller', () => {
         getAutoDownloadEnabled: () => false,
         getMutedVersions: () => ({ learning: '1.1.0' }),
         muteVersion: jest.fn(async () => undefined),
-      }).installAll(),
+      }).installAll({ skipMuted: true }),
     ).resolves.toEqual([])
     expect(muted.install).not.toHaveBeenCalled()
+    await expect(
+      new ModuleUpdateController({
+        service: muted,
+        getAutoDownloadEnabled: () => false,
+        getMutedVersions: () => ({ learning: '1.1.0' }),
+        muteVersion: jest.fn(async () => undefined),
+      }).installAll({ skipMuted: false }),
+    ).resolves.toMatchObject([{ moduleId: 'learning', version: '1.1.0' }])
+    expect(muted.install).toHaveBeenCalledTimes(1)
 
     const failing = service()
     failing.install.mockRejectedValueOnce(new Error('network'))
@@ -204,7 +218,7 @@ describe('module update controller', () => {
         getAutoDownloadEnabled: () => false,
         getMutedVersions: () => ({}),
         muteVersion: jest.fn(async () => undefined),
-      }).installAll(),
+      }).installAll({ skipMuted: true }),
     ).resolves.toEqual([])
     consoleError.mockRestore()
   })
@@ -253,6 +267,8 @@ describe('module update controller', () => {
     await controller.updateAll()
     expect(moduleService.prepare).not.toHaveBeenCalled()
     expect(moduleService.install).not.toHaveBeenCalled()
-    await expect(controller.installAll()).resolves.toEqual([])
+    await expect(controller.installAll({ skipMuted: true })).resolves.toEqual(
+      [],
+    )
   })
 })

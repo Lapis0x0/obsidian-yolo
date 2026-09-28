@@ -38,8 +38,7 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     keyLabels: {
       jsSandbox: 'Autorizzazioni sandbox JS',
-      pluginUpdateAutoDownloadEnabled:
-        'Scarica automaticamente gli aggiornamenti del plugin',
+      pluginUpdateMode: 'Modalità di aggiornamento del plugin',
       moduleConfigs: 'Configurazione moduli',
     },
   },
@@ -1541,14 +1540,18 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     etc: {
       title: 'Altro',
-      pluginUpdateNotice: 'Notifiche di aggiornamento',
-      pluginUpdateNoticeDesc:
-        'Se attivo, YOLO controlla le nuove versioni e te lo segnala.',
-      pluginAutoUpdate: 'Scarica aggiornamenti automaticamente',
-      pluginAutoUpdateDesc:
-        'Se attivo, le nuove versioni rilevate vengono scaricate automaticamente in background.',
-      pluginAutoUpdateDescUnavailable:
-        'Gli aggiornamenti dei moduli vengono scaricati automaticamente; l’installazione del Core con un clic richiede ancora desktop e una cartella plugin scrivibile.',
+      pluginUpdateMode: 'Aggiornamenti',
+      pluginUpdateModeAuto: 'Aggiorna automaticamente',
+      pluginUpdateModeNotify: 'Avvisami',
+      pluginUpdateModeOff: 'Non avvisare',
+      pluginUpdateModeAutoDesc:
+        'Le nuove versioni vengono scaricate e installate automaticamente, poi mostrate con le note di rilascio. Si ricarica solo YOLO, non Obsidian, e attende la fine delle attività AI in corso.',
+      pluginUpdateModeAutoDescUnavailable:
+        'I moduli si aggiornano automaticamente. Il Core non può installarsi da solo su questo dispositivo, quindi le nuove versioni vengono comunque segnalate con un collegamento ai plugin della community.',
+      pluginUpdateModeNotifyDesc:
+        'Le nuove versioni vengono segnalate e scaricate in background, pronte da installare quando confermi.',
+      pluginUpdateModeOffDesc:
+        'Nessun avviso e nessun download. Aggiorna manualmente dai plugin della community o da Impostazioni → Moduli.',
       resetSettings: 'Ripristina impostazioni',
       resetSettingsDesc:
         'Ripristina tutte le impostazioni ai valori predefiniti.',
@@ -2536,6 +2539,9 @@ export const it: DeepPartial<TranslationKeys> = {
     updatesAvailable: '{count} aggiornamenti disponibili',
     updateAll: 'Aggiorna tutto',
     updated: 'Aggiornato',
+    autoUpdateLater: 'Aggiorna automaticamente d’ora in poi',
+    autoUpdatedTitle: '{name} aggiornato automaticamente',
+    autoUpdatedCount: '{count} aggiornamenti installati automaticamente',
   },
   moduleFileView: {
     inactivePlaceholder:

@@ -238,8 +238,7 @@ Star YOLO, Afdian (CN), Buy Me a Coffee, plus Report Bug and Feature Request lin
 
 | Setting | Default | What it does |
 |------|------|------|
-| Update notifications | On | Turn it off and neither the plugin itself nor its modules will tell you about new versions |
-| Auto-download updates | On | Only works on desktop, and only when the plugin folder is writable |
+| Updates | Notify me | **Update automatically**: downloads and installs in the background, reloads only YOLO, then shows what changed; the core installs itself only on desktop with a writable plugin folder. **Notify me**: shows the update card with the download ready. **Don't notify**: nothing is announced or downloaded |
 | Export settings / Import settings | — | For moving to another vault |
 | **YOLO base folder** | `YOLO` | A path relative to the vault. Changing it is a **move operation** — see below |
 | Enable LLM request debugging | Off | Adds a Debug button to every message so you can inspect the raw request and response |
