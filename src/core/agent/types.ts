@@ -19,7 +19,7 @@ import type { NativePathBoundary } from '../tools/native/paths'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { ChatContextPolicy } from './chat-runtime-profiles'
-import type { AutoContextCompactionChatOptions } from './compaction'
+import type { AutoContextCompactionInput } from './compaction'
 import type { RuntimeMode } from './runtime-mode-prompt'
 
 export type AgentRuntimeSnapshot = {
@@ -152,10 +152,8 @@ export type AgentRuntimeRunInput = {
   session?: ProviderSessionAccessor
   /** See `LLMOptions.nativeToolPolicy`. */
   nativeToolPolicy?: NativeToolPolicy
-  autoContextCompaction?: {
-    chatOptions: AutoContextCompactionChatOptions
-    maxContextTokens?: number
-  }
+  /** Forced compaction threshold; absent turns it off for this run. */
+  autoContextCompaction?: AutoContextCompactionInput
   /**
    * Optional hook called at every `llm_request` boundary inside the runtime
    * loop. Returns user messages that should be merged into the response stream

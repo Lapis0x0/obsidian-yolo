@@ -1697,10 +1697,7 @@ describe('local fs tool action helpers', () => {
       } as unknown as App,
       toolCallId: 'compact-1',
       toolName: 'context_compact',
-      args: {
-        reason: 'context window is crowded',
-        instruction: 'preserve pending edits and file paths',
-      },
+      args: {},
     })
 
     expect(result.status).toBe(ToolCallResponseStatus.Success)
@@ -1712,8 +1709,6 @@ describe('local fs tool action helpers', () => {
       tool: 'context_compact',
       toolCallId: 'compact-1',
       operation: 'compact_restart',
-      reason: 'context window is crowded',
-      instruction: 'preserve pending edits and file paths',
     })
   })
 

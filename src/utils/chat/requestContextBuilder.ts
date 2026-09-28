@@ -47,7 +47,10 @@ import type {
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
-import { getLatestChatConversationCompaction } from '../../types/chat'
+import {
+  getCompactionRetainedStartIndex,
+  getLatestChatConversationCompaction,
+} from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
@@ -966,17 +969,13 @@ export class RequestContextBuilder {
     const latestCompaction = getLatestChatConversationCompaction(compaction)
 
     if (latestCompaction) {
-      const anchorIndex = messages.findIndex(
-        (message) => message.id === latestCompaction.anchorMessageId,
+      const retainedStartIndex = getCompactionRetainedStartIndex(
+        messages,
+        latestCompaction,
       )
 
-      if (anchorIndex !== -1) {
+      if (retainedStartIndex !== null) {
         requestMessages.push(buildCompactionSummaryMessage(latestCompaction))
-        const retainedStartIndex = latestCompaction.triggerToolCallId
-          ? anchorIndex > 0 && messages[anchorIndex - 1]?.role === 'assistant'
-            ? anchorIndex - 1
-            : anchorIndex
-          : anchorIndex + 1
         const compactContextMessages = messages.slice(retainedStartIndex)
 
         for (const message of compactContextMessages) {
@@ -1463,13 +1462,8 @@ ${message.annotations
       }
     }
 
-    if (message.notice) {
-      collectedContentParts.push({ type: 'text', text: message.notice })
-    }
-
-    // Append a single user message with all collected attachments and the
-    // notice after the tool block, preserving the required tool → user
-    // message ordering.
+    // Append a single user message with all collected attachments after the
+    // tool block, preserving the required tool → user message ordering.
     if (collectedContentParts.length > 0) {
       toolMessages.push({
         role: 'user',

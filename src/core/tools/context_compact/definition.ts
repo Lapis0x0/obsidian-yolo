@@ -1,25 +1,16 @@
 import type { McpTool } from '../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { defineTool } from '../define'
-import { formatJsonResult, getOptionalTextArg } from '../tool-args'
+import { formatJsonResult } from '../tool-args'
 
-// Schema copied verbatim from the `context_compact` entry in
-// `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:744`).
+// No parameters: the summary is written by the same model over the same
+// context, so anything a focus hint could say is already in front of it.
 const CONTEXT_COMPACT_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
     'Compact earlier conversation history into a summary and continue in a fresh context window while preserving visible chat history.',
   inputSchema: {
     type: 'object',
-    properties: {
-      reason: {
-        type: 'string',
-        description: 'Optional short reason for compacting.',
-      },
-      instruction: {
-        type: 'string',
-        description: 'Optional focus hint for the summary.',
-      },
-    },
+    properties: {},
   },
 }
 
@@ -40,15 +31,13 @@ export const contextCompactDefinition = defineTool({
   // guards and the outer try/catch that normalizes thrown errors to an
   // Error-status result — those are dispatcher responsibilities, not tool
   // semantics.
-  execute: async (args, ctx) => {
+  execute: async (_args, ctx) => {
     return {
       status: ToolCallResponseStatus.Success,
       text: formatJsonResult({
         tool: 'context_compact',
         toolCallId: ctx.toolCallId ?? null,
         operation: 'compact_restart',
-        reason: getOptionalTextArg(args, 'reason')?.trim() || null,
-        instruction: getOptionalTextArg(args, 'instruction')?.trim() || null,
       }),
     }
   },

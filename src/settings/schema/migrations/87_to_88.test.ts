@@ -25,3 +25,53 @@ describe('migrateFrom87To88', () => {
     })
   })
 })
+
+describe('migrateFrom87To88 auto context compaction', () => {
+  it('moves users still on the old defaults to the new ones', () => {
+    expect(
+      migrateFrom87To88({
+        version: 87,
+        chatOptions: {
+          chatMode: 'agent',
+          autoContextCompactionEnabled: false,
+          autoContextCompactionThresholdMode: 'tokens',
+          autoContextCompactionThresholdTokens: 100000,
+          autoContextCompactionThresholdRatio: 0.8,
+        },
+      }).chatOptions,
+    ).toEqual({
+      chatMode: 'agent',
+      autoContextCompactionEnabled: true,
+      autoContextCompactionThresholdRatio: 0.9,
+    })
+  })
+
+  it('keeps a user-chosen toggle or ratio and drops the removed fields', () => {
+    expect(
+      migrateFrom87To88({
+        version: 87,
+        chatOptions: {
+          autoContextCompactionEnabled: true,
+          autoContextCompactionThresholdMode: 'tokens',
+          autoContextCompactionThresholdTokens: 50000,
+          autoContextCompactionThresholdRatio: 0.8,
+        },
+      }).chatOptions,
+    ).toEqual({
+      autoContextCompactionEnabled: true,
+      autoContextCompactionThresholdRatio: 0.8,
+    })
+    expect(
+      migrateFrom87To88({
+        version: 87,
+        chatOptions: {
+          autoContextCompactionEnabled: false,
+          autoContextCompactionThresholdRatio: 0.7,
+        },
+      }).chatOptions,
+    ).toEqual({
+      autoContextCompactionEnabled: false,
+      autoContextCompactionThresholdRatio: 0.7,
+    })
+  })
+})

@@ -421,7 +421,6 @@ describe('ToolMessage rendering', () => {
       response,
       conversationId: 'conversation-1',
       toolMessageId: 'tool-message-1',
-      showCompactionPendingHint: false,
       showRunningFooter: true,
       onResponseUpdate,
     }

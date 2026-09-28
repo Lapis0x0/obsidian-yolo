@@ -686,16 +686,10 @@ export const zh: TranslationKeys = {
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',
       autoContextCompactionDesc:
-        '当上下文达到阈值时，提醒 Agent 执行上下文压缩命令。',
-      autoContextCompactionThresholdMode: '阈值模式',
-      autoContextCompactionModeTokens: '绝对 prompt tokens',
-      autoContextCompactionModeRatio: '上下文窗口比例',
-      autoContextCompactionThresholdTokens: 'Prompt token 阈值',
-      autoContextCompactionThresholdTokensDesc:
-        '当上一轮回复报告的 prompt_tokens 大于等于该值时触发。',
+        '当上下文即将达到阈值时，在下一次请求前自动压缩更早的对话。Agent 仍可随时主动调用压缩工具。',
       autoContextCompactionThresholdRatioPercent: '上下文窗口占用（%）',
       autoContextCompactionThresholdRatioPercentDesc:
-        '当 prompt_tokens 除以当前聊天模型配置的最大上下文窗口达到该比例时触发（需在模型中填写 max context）。',
+        '下一次请求预计占用的上下文达到模型上下文窗口的该比例时压缩。窗口取模型设置中的最大上下文，未填写时按 200k 计算。想更早压缩，可以调小比例，或在模型设置中调小最大上下文。',
       mcpServerBlockTitle: '外部 Agent 接入',
       mcpServerEnabled: '允许外部 Agent 访问',
       mcpServerDesc:

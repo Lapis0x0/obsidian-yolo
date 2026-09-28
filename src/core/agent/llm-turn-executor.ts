@@ -130,6 +130,97 @@ type AgentLlmTurnExecutorOutput = {
   requestReasoning: ReasoningLevel | undefined
 }
 
+export type PrepareTurnRequestInput = Pick<
+  AgentLlmTurnExecutorInput,
+  | 'model'
+  | 'requestContextBuilder'
+  | 'mcpManager'
+  | 'conversationId'
+  | 'messages'
+  | 'compaction'
+  | 'enableTools'
+  | 'includeBuiltinTools'
+  | 'apiType'
+  | 'allowedToolNames'
+  | 'toolPreferences'
+  | 'toolServerPreferences'
+  | 'capabilityOverrides'
+  | 'runtimeMode'
+  | 'modeEnvironmentPrompt'
+  | 'modePersonaPrompt'
+  | 'modePersonaModuleId'
+  | 'moduleChatModeId'
+  | 'contextPolicy'
+  | 'systemPromptOverride'
+> & {
+  /**
+   * `create` for a real turn; `reuse` for an out-of-band request (compaction)
+   * that must match the frozen snapshot without minting a new one.
+   */
+  systemPromptSnapshotMode: 'create' | 'reuse'
+  debugTraceId?: string
+}
+
+/**
+ * Build the provider-ready messages and tools block for a turn over
+ * `messages`. Shared by the turn itself and by forced compaction at the start
+ * of a run, whose summary request has to rebuild the same cache-warm prefix.
+ */
+export async function prepareTurnRequest(
+  input: PrepareTurnRequestInput,
+): Promise<{
+  requestMessages: RequestMessage[]
+  tools: RequestTool[] | undefined
+}> {
+  const toolPlanStart = Date.now()
+  const availableTools = input.enableTools
+    ? await input.mcpManager.listAvailableTools({
+        includeBuiltinTools: input.includeBuiltinTools,
+        chatModelModalities: input.model.modalities,
+        capabilityOverrides: input.capabilityOverrides,
+      })
+    : []
+  const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
+    await selectAllowedTools({
+      availableTools,
+      allowedToolNames: input.allowedToolNames,
+      toolPreferences: input.toolPreferences,
+      toolServerPreferences: input.toolServerPreferences,
+      model: input.model,
+      apiType: input.apiType,
+      jsSandboxSettings: input.mcpManager.getJsSandboxSettings(),
+      settings: input.mcpManager.getSettingsSnapshot(),
+    })
+  updateLLMDebugTrace(input.debugTraceId, {
+    toolPlanDurationMs: Date.now() - toolPlanStart,
+  })
+
+  const contextPreparationStart = Date.now()
+  const requestMessages =
+    await input.requestContextBuilder.generateRequestMessages({
+      messages: input.messages,
+      hasTools,
+      hasOnDemandTools,
+      deferredToolCatalogText: deferredToolCatalog?.text,
+      model: input.model,
+      conversationId: input.conversationId,
+      compaction: input.compaction,
+      runtimeModePrompt: buildRuntimeModePrompt(input.runtimeMode ?? 'agent'),
+      modeEnvironmentPrompt: input.modeEnvironmentPrompt,
+      modePersonaPrompt: input.modePersonaPrompt,
+      modePersonaModuleId: input.modePersonaModuleId,
+      moduleChatModeId: input.moduleChatModeId,
+      contextPolicy: input.contextPolicy,
+      systemPromptOverride: input.systemPromptOverride,
+      systemPromptSnapshotMode: input.systemPromptSnapshotMode,
+    })
+  updateLLMDebugTrace(input.debugTraceId, {
+    contextPreparationDurationMs: Date.now() - contextPreparationStart,
+  })
+
+  return { requestMessages, tools: requestTools }
+}
+
 export class AgentLlmTurnExecutor {
   constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
@@ -215,60 +306,20 @@ export class AgentLlmTurnExecutor {
     let requestMessages: RequestMessage[]
     let tools: RequestTool[] | undefined
     try {
-      const toolPlanStart = Date.now()
-      const availableTools = this.input.enableTools
-        ? await this.input.mcpManager.listAvailableTools({
-            includeBuiltinTools: this.input.includeBuiltinTools,
-            chatModelModalities: this.input.model.modalities,
-            capabilityOverrides: this.input.capabilityOverrides,
-          })
-        : []
-      const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
-        await selectAllowedTools({
-          availableTools,
-          allowedToolNames: this.input.allowedToolNames,
-          toolPreferences: this.input.toolPreferences,
-          toolServerPreferences: this.input.toolServerPreferences,
-          model: this.input.model,
-          apiType: this.input.apiType,
-          jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
-          settings: this.input.mcpManager.getSettingsSnapshot(),
-        })
-      tools = requestTools
-      updateLLMDebugTrace(debugTrace?.id, {
-        toolPlanDurationMs: Date.now() - toolPlanStart,
+      const prepared = await prepareTurnRequest({
+        ...this.input,
+        systemPromptSnapshotMode: 'create',
+        debugTraceId: debugTrace?.id,
       })
-
-      const contextPreparationStart = Date.now()
-      const runtimeModePrompt = buildRuntimeModePrompt(
-        this.input.runtimeMode ?? 'agent',
-      )
-      const baseRequestMessages =
-        await this.input.requestContextBuilder.generateRequestMessages({
-          messages: this.input.messages,
-          hasTools,
-          hasOnDemandTools,
-          deferredToolCatalogText: deferredToolCatalog?.text,
-          model: this.input.model,
-          conversationId: this.input.conversationId,
-          compaction: this.input.compaction,
-          runtimeModePrompt,
-          modeEnvironmentPrompt: this.input.modeEnvironmentPrompt,
-          modePersonaPrompt: this.input.modePersonaPrompt,
-          modePersonaModuleId: this.input.modePersonaModuleId,
-          moduleChatModeId: this.input.moduleChatModeId,
-          contextPolicy: this.input.contextPolicy,
-          systemPromptOverride: this.input.systemPromptOverride,
-          systemPromptSnapshotMode: 'create',
-        })
+      tools = prepared.tools
       requestMessages =
         this.input.transientRequestMessages &&
         this.input.transientRequestMessages.length > 0
-          ? [...baseRequestMessages, ...this.input.transientRequestMessages]
-          : baseRequestMessages
-      updateLLMDebugTrace(debugTrace?.id, {
-        contextPreparationDurationMs: Date.now() - contextPreparationStart,
-      })
+          ? [
+              ...prepared.requestMessages,
+              ...this.input.transientRequestMessages,
+            ]
+          : prepared.requestMessages
 
       requestReasoning = resolveRequestReasoningLevel(
         this.input.model,

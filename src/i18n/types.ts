@@ -538,11 +538,6 @@ export type TranslationKeys = {
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
       autoContextCompactionDesc?: string
-      autoContextCompactionThresholdMode?: string
-      autoContextCompactionModeTokens?: string
-      autoContextCompactionModeRatio?: string
-      autoContextCompactionThresholdTokens?: string
-      autoContextCompactionThresholdTokensDesc?: string
       autoContextCompactionThresholdRatioPercent?: string
       autoContextCompactionThresholdRatioPercentDesc?: string
       mcpServerBlockTitle?: string

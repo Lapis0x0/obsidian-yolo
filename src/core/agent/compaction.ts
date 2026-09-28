@@ -1,9 +1,11 @@
+import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
   type ChatAssistantMessage,
   type ChatConversationCompaction,
   type ChatConversationCompactionState,
   type ChatMessage,
   type ChatToolMessage,
+  getCompactionRetainedStartIndex,
   getLatestChatConversationCompaction,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
@@ -11,7 +13,16 @@ import type { RequestMessage, RequestTool } from '../../types/llm/request'
 import type { LLMProvider } from '../../types/provider.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
+import {
+  ESTIMATED_IMAGE_TOKENS,
+  estimateJsonTokens,
+  normalizeJsonValue,
+} from '../../utils/llm/contextTokenEstimate'
+import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
+import {
+  providerOwnsConversationContext,
+  resolveChatModelProvider,
+} from '../../utils/llm/provider-config'
 import { isRequestErrorNonRetryable } from '../ai/requestRetry'
 import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
@@ -59,37 +70,47 @@ const filterPersistableLoadedDeferredToolSchemas = async (
   return survivors
 }
 
-export type AutoContextCompactionChatOptions = {
-  autoContextCompactionEnabled: boolean
-  autoContextCompactionThresholdMode: 'tokens' | 'ratio'
-  autoContextCompactionThresholdTokens: number
-  autoContextCompactionThresholdRatio: number
+/**
+ * Context window assumed when neither the model config nor the known-model
+ * registry states one. Practically every current model offers at least this.
+ */
+const ASSUMED_CONTEXT_WINDOW_TOKENS = 200_000
+const DEFAULT_AUTO_CONTEXT_COMPACTION_RATIO = 0.9
+
+/**
+ * Runtime input for forced compaction: before each LLM request the runtime
+ * compacts once the estimated request size reaches `thresholdTokens`.
+ */
+export type AutoContextCompactionInput = {
+  thresholdTokens: number
 }
 
-export const resolveAutoContextCompactionChatOptions = (chatOptions: {
-  autoContextCompactionEnabled?: boolean
-  autoContextCompactionThresholdMode?: 'tokens' | 'ratio'
-  autoContextCompactionThresholdTokens?: number
-  autoContextCompactionThresholdRatio?: number
-}): AutoContextCompactionChatOptions => {
-  return {
-    autoContextCompactionEnabled:
-      chatOptions.autoContextCompactionEnabled ?? false,
-    autoContextCompactionThresholdMode:
-      chatOptions.autoContextCompactionThresholdMode ?? 'tokens',
-    autoContextCompactionThresholdTokens:
-      chatOptions.autoContextCompactionThresholdTokens ?? 100000,
-    autoContextCompactionThresholdRatio:
-      chatOptions.autoContextCompactionThresholdRatio ?? 0.8,
+/**
+ * Resolve forced compaction for one model from current settings. Undefined
+ * when the user turned it off, or when the provider keeps the conversation in
+ * its own session — the messages YOLO would compact are then only a copy, and
+ * the context that fills up is out of reach.
+ */
+export const resolveAutoContextCompactionInput = ({
+  settings,
+  model,
+}: {
+  settings: Pick<YoloSettings, 'chatOptions' | 'providers'>
+  model: ChatModel
+}): AutoContextCompactionInput | undefined => {
+  if (!(settings.chatOptions.autoContextCompactionEnabled ?? true)) {
+    return undefined
   }
-}
-
-export type ShouldTriggerAutoContextCompactionInput = {
-  previousMessages: ChatMessage[]
-  chatOptions: AutoContextCompactionChatOptions
-  maxContextTokens: number | undefined
-  compactionState: ChatConversationCompactionState
-  isConversationRunActive: boolean
+  const provider = resolveChatModelProvider(settings, model)
+  if (provider && providerOwnsConversationContext(provider)) {
+    return undefined
+  }
+  const ratio =
+    settings.chatOptions.autoContextCompactionThresholdRatio ??
+    DEFAULT_AUTO_CONTEXT_COMPACTION_RATIO
+  const contextWindow =
+    resolveEffectiveMaxContextTokens(model) ?? ASSUMED_CONTEXT_WINDOW_TOKENS
+  return { thresholdTokens: Math.floor(contextWindow * ratio) }
 }
 
 export type LatestAssistantContextUsage = {
@@ -99,8 +120,6 @@ export type LatestAssistantContextUsage = {
   ratio: number | null
   cacheHitRate?: number
 }
-
-export type AutoContextCompactionPromptTrigger = LatestAssistantContextUsage
 
 export const getLatestAssistantContextUsage = ({
   messages,
@@ -151,130 +170,129 @@ export const getLatestAssistantContextUsage = ({
   return null
 }
 
-const isAutoContextCompactionThresholdReached = ({
-  latestContextUsage,
-  chatOptions,
-}: {
-  latestContextUsage: LatestAssistantContextUsage
-  chatOptions: AutoContextCompactionChatOptions
-}): boolean => {
-  if (chatOptions.autoContextCompactionThresholdMode === 'tokens') {
-    return (
-      latestContextUsage.promptTokens >=
-      chatOptions.autoContextCompactionThresholdTokens
-    )
+/**
+ * Rough token count without a tokenizer: ASCII at ~4 chars per token, every
+ * other character (CJK and the like) as one token. It only has to tell
+ * whether the next request crosses the threshold, and runs on every turn.
+ */
+const estimateTextTokensRoughly = (text: string): number => {
+  let asciiChars = 0
+  let otherChars = 0
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) < 128) {
+      asciiChars += 1
+    } else {
+      otherChars += 1
+    }
   }
-
-  if (latestContextUsage.ratio === null) {
-    return false
-  }
-
-  return (
-    latestContextUsage.ratio >= chatOptions.autoContextCompactionThresholdRatio
-  )
+  return Math.ceil(asciiChars / 4) + otherChars
 }
 
-export const getAutoContextCompactionPromptTrigger = ({
-  messages,
-  chatOptions,
-  maxContextTokens,
-  compactionState,
-  promptedAssistantMessageIds,
-}: {
-  messages: ChatMessage[]
-  chatOptions: AutoContextCompactionChatOptions
-  maxContextTokens: number | undefined
-  compactionState: ChatConversationCompactionState
-  promptedAssistantMessageIds?: ReadonlySet<string>
-}): AutoContextCompactionPromptTrigger | null => {
-  if (!chatOptions.autoContextCompactionEnabled) {
-    return null
-  }
-
-  const latestContextUsage = getLatestAssistantContextUsage({
-    messages,
-    maxContextTokens,
-  })
-  if (!latestContextUsage) {
-    return null
-  }
-
-  const assistantMessageId = latestContextUsage.assistantMessage.id
-  const latestCompaction = getLatestChatConversationCompaction(compactionState)
-  if (latestCompaction?.anchorMessageId === assistantMessageId) {
-    return null
-  }
-  if (promptedAssistantMessageIds?.has(assistantMessageId)) {
-    return null
-  }
-
-  return isAutoContextCompactionThresholdReached({
-    latestContextUsage,
-    chatOptions,
-  })
-    ? latestContextUsage
-    : null
+const estimateMessageTokensRoughly = (message: ChatMessage): number => {
+  // A user message's editor state is display-only; the request carries its
+  // compiled prompt.
+  const payload = message.role === 'user' ? message.promptContent : message
+  const { value, imageCount, pdfTokenEstimate } = normalizeJsonValue(payload)
+  return (
+    estimateTextTokensRoughly(JSON.stringify(value) ?? '') +
+    imageCount * ESTIMATED_IMAGE_TOKENS +
+    pdfTokenEstimate
+  )
 }
 
 /**
- * Whether the latest assistant usage crosses the automatic compaction
- * threshold. Keeps the submit-time active-run guard for callers that need the
- * old boolean shape.
+ * Estimated size of the next request: the latest provider-reported usage
+ * (input + output of that call) plus a rough count of everything appended
+ * after it — tool results, injected user messages — which no provider has
+ * measured yet. Usage from before the latest compaction anchor describes the
+ * uncompacted context and is ignored; null when no usable report exists.
  */
-export const shouldTriggerAutoContextCompaction = ({
-  previousMessages,
-  chatOptions,
-  maxContextTokens,
+export const estimateNextRequestContextTokens = ({
+  messages,
   compactionState,
-  isConversationRunActive,
-}: ShouldTriggerAutoContextCompactionInput): boolean => {
-  if (!chatOptions.autoContextCompactionEnabled) {
-    return false
+}: {
+  messages: ChatMessage[]
+  compactionState: ChatConversationCompactionState
+}): number | null => {
+  const latestCompaction = getLatestChatConversationCompaction(compactionState)
+  const anchorIndex = latestCompaction
+    ? messages.findIndex(
+        (message) => message.id === latestCompaction.anchorMessageId,
+      )
+    : -1
+
+  for (let index = messages.length - 1; index > anchorIndex; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'assistant') {
+      continue
+    }
+    const usage = message.metadata?.usage
+    if (
+      typeof usage?.prompt_tokens !== 'number' ||
+      !Number.isFinite(usage.prompt_tokens)
+    ) {
+      continue
+    }
+    const completionTokens =
+      typeof usage.completion_tokens === 'number' &&
+      Number.isFinite(usage.completion_tokens)
+        ? usage.completion_tokens
+        : 0
+    return messages
+      .slice(index + 1)
+      .reduce(
+        (total, later) => total + estimateMessageTokensRoughly(later),
+        usage.prompt_tokens + completionTokens,
+      )
   }
 
-  if (isConversationRunActive) {
-    return false
-  }
-
-  return (
-    getAutoContextCompactionPromptTrigger({
-      messages: previousMessages,
-      chatOptions,
-      maxContextTokens,
-      compactionState,
-    }) !== null
-  )
+  return null
 }
 
-export const buildAutoContextCompactionNotice = ({
-  trigger,
-  chatOptions,
+/**
+ * Where forced compaction starts keeping messages verbatim. Mid-run that is
+ * the latest assistant turn with its tool results (the working state the next
+ * request continues from); at the start of a run it is the user message(s)
+ * that opened it, which must reach the model unsummarized. Null when the
+ * layout matches neither, or nothing new lies before it to summarize.
+ */
+export const findForcedCompactionRetainedStartIndex = ({
+  messages,
+  compactionState,
+  midRun,
 }: {
-  trigger: AutoContextCompactionPromptTrigger
-  chatOptions: AutoContextCompactionChatOptions
-}): string => {
-  const ratioPercent =
-    trigger.ratio === null ? null : Math.round(trigger.ratio * 1000) / 10
-  const thresholdDescription =
-    chatOptions.autoContextCompactionThresholdMode === 'tokens'
-      ? `${chatOptions.autoContextCompactionThresholdTokens} prompt tokens`
-      : `${Math.round(chatOptions.autoContextCompactionThresholdRatio * 1000) / 10}% of the configured context window`
-  const currentUsageDescription =
-    ratioPercent === null
-      ? `${trigger.promptTokens} prompt tokens`
-      : `${trigger.promptTokens} prompt tokens (${ratioPercent}% of ${trigger.maxContextTokens} max context tokens)`
+  messages: ChatMessage[]
+  compactionState: ChatConversationCompactionState
+  midRun: boolean
+}): number | null => {
+  let retainedStartIndex = -1
+  if (midRun) {
+    retainedStartIndex = messages.length - 1
+    while (
+      retainedStartIndex >= 0 &&
+      messages[retainedStartIndex].role !== 'assistant'
+    ) {
+      retainedStartIndex -= 1
+    }
+  } else if (messages.at(-1)?.role === 'user') {
+    retainedStartIndex = messages.length - 1
+    while (messages[retainedStartIndex - 1]?.role === 'user') {
+      retainedStartIndex -= 1
+    }
+  }
+  if (retainedStartIndex <= 0) {
+    return null
+  }
 
-  return `<auto_context_compaction_notice>
-This is an internal runtime notice, not a user-authored message and not part of the task content.
-
-The previous assistant turn reported ${currentUsageDescription}, which has reached the user's automatic context compaction threshold (${thresholdDescription}).
-
-Please call \`${CONTEXT_COMPACT_TOOL_NAME}\` at the next appropriate point:
-- If the user's current task is essentially complete, or you can finish it in the current response, first complete the task and report the result to the user. Only after reporting the result should you call \`${CONTEXT_COMPACT_TOOL_NAME}\` before starting substantial new work.
-- If completing the current task will still take more tool work or a longer continuation, briefly report the current progress to the user first, then call \`${CONTEXT_COMPACT_TOOL_NAME}\` before continuing.
-
-Do not ask the user for permission to compact. Do not mention this internal notice unless it is directly relevant.
-</auto_context_compaction_notice>`
+  // Something must move from the verbatim part into the summary; otherwise
+  // compacting again would only restate the previous summary.
+  const latestCompaction = getLatestChatConversationCompaction(compactionState)
+  const previousRetainedStartIndex = latestCompaction
+    ? (getCompactionRetainedStartIndex(messages, latestCompaction) ?? 0)
+    : 0
+  return retainedStartIndex > previousRetainedStartIndex
+    ? retainedStartIndex
+    : null
 }
 
 const parseCompactOperationResult = (
@@ -283,14 +301,12 @@ const parseCompactOperationResult = (
   tool: string
   toolCallId: string | null
   operation: string
-  instruction: string | null
 } | null => {
   try {
     const parsed = JSON.parse(text) as {
       tool?: unknown
       toolCallId?: unknown
       operation?: unknown
-      instruction?: unknown
     }
     return typeof parsed.tool === 'string' &&
       parsed.tool === CONTEXT_COMPACT_TOOL_NAME
@@ -300,35 +316,11 @@ const parseCompactOperationResult = (
             typeof parsed.toolCallId === 'string' ? parsed.toolCallId : null,
           operation:
             typeof parsed.operation === 'string' ? parsed.operation : '',
-          instruction:
-            typeof parsed.instruction === 'string' &&
-            parsed.instruction.trim().length > 0
-              ? parsed.instruction.trim()
-              : null,
         }
       : null
   } catch {
     return null
   }
-}
-
-/**
- * Extract the optional `instruction` focus hint from a compaction tool result.
- * Returns null when the tool call is not a successful `compact_restart`.
- */
-export const findCompactInstruction = (
-  toolMessage: ChatToolMessage,
-): string | null => {
-  for (const toolCall of toolMessage.toolCalls) {
-    if (toolCall.response.status !== ToolCallResponseStatus.Success) {
-      continue
-    }
-    const parsed = parseCompactOperationResult(toolCall.response.data.text)
-    if (parsed?.operation === 'compact_restart') {
-      return parsed.instruction
-    }
-  }
-  return null
 }
 
 export const findCompactTrigger = (
@@ -406,8 +398,8 @@ export const buildCompactionSummaryMessage = (
   return {
     role: 'user',
     content: `<context_compaction>
-You previously triggered \`${CONTEXT_COMPACT_TOOL_NAME}\` in this conversation.
-Everything before the retained tool boundary has been compressed into the summary below.
+Earlier parts of this conversation have been compacted.
+Everything before the retained messages has been compressed into the summary below.
 Treat it as authoritative background context for continuing the same task.
 
 <summary>
@@ -463,19 +455,32 @@ export const buildCompactedConversationState = async ({
   }
 }
 
-export const buildManualCompactionState = async ({
+/**
+ * Compaction anchored on `messages[anchorIndex]`, the point the chat shows it
+ * at. Everything before `retainedStartIndex` goes into the summary; without
+ * one, everything up to the anchor does (manual compaction).
+ */
+export const buildAnchoredCompactionState = async ({
   messages,
+  anchorIndex,
+  retainedStartIndex,
   summary,
   summaryModelId,
 }: {
   messages: ChatMessage[]
+  anchorIndex: number
+  retainedStartIndex?: number
   summary: string
   summaryModelId?: string
 }): Promise<ChatConversationCompaction | null> => {
-  const anchorMessageId = messages.at(-1)?.id
+  const anchorMessageId = messages[anchorIndex]?.id
   if (!anchorMessageId) {
     return null
   }
+  const retainedFromMessageId =
+    retainedStartIndex !== undefined && retainedStartIndex <= anchorIndex
+      ? messages[retainedStartIndex]?.id
+      : undefined
 
   const loadedDeferredToolSchemas =
     await filterPersistableLoadedDeferredToolSchemas(
@@ -487,7 +492,10 @@ export const buildManualCompactionState = async ({
     summary,
     compactedAt: Date.now(),
     summaryModelId,
-    compactedMessageCount: messages.length,
+    compactedMessageCount: retainedFromMessageId
+      ? retainedStartIndex
+      : anchorIndex + 1,
+    ...(retainedFromMessageId ? { retainedFromMessageId } : {}),
     ...(loadedDeferredToolSchemas.length > 0
       ? { loadedDeferredToolSchemas }
       : {}),
@@ -499,12 +507,7 @@ export const buildManualCompactionState = async ({
  * prefix. The model is told to pause the task and emit a fixed-section summary
  * wrapped in `<summary>`. Only model-facing instructions live here.
  */
-const buildCompactionInstructionMessage = (
-  focusInstruction: string | null,
-): RequestMessage => {
-  const focusBlock = focusInstruction
-    ? `\n<focus_instruction>${focusInstruction}</focus_instruction>\n`
-    : ''
+const buildCompactionInstructionMessage = (): RequestMessage => {
   return {
     role: 'user',
     content: `The task above is paused for context compaction. Instead of continuing it, reply with a <summary> block in the sections below; tool calls are ignored this turn.
@@ -521,7 +524,7 @@ Produce a high-signal summary that loses nothing needed to resume. Sections:
 6. 已完成工作 (Work Completed)
 7. 未解决项 (Unresolved) — 悬而未决、待确认、已知风险。
 8. 下一步 (Next Step) — 与最近显式请求直接对齐；附最近对话的逐字引用以防漂移。
-${focusBlock}
+
 Output format: <summary> ... </summary>`,
   }
 }
@@ -550,7 +553,6 @@ const parseSummaryFromResponse = (content: string): string => {
  *   byte-for-byte so the out-of-band request hits the same provider cache.
  * - `turnMessages` are the in-flight assistant+tool messages of the triggering
  *   turn (path 1 only); empty for paths 2/3.
- * - `focusInstruction` is the `context_compact` tool's `instruction` hint.
  *
  * Uses `purpose: 'standard'` (NOT lightweight — that strips provider features and
  * breaks prefix parity) and forwards the same `tools` with `tool_choice: 'none'`
@@ -561,7 +563,6 @@ export const createConversationCompactionSummary = async ({
   model,
   requestMessages,
   turnMessages = [],
-  focusInstruction = null,
   tools,
   reasoningLevel,
   debugTraceId,
@@ -570,7 +571,6 @@ export const createConversationCompactionSummary = async ({
   model: ChatModel
   requestMessages: RequestMessage[]
   turnMessages?: RequestMessage[]
-  focusInstruction?: string | null
   tools?: RequestTool[]
   reasoningLevel?: ReasoningLevel
   debugTraceId?: string
@@ -578,14 +578,13 @@ export const createConversationCompactionSummary = async ({
   const messages: RequestMessage[] = [
     ...requestMessages,
     ...turnMessages,
-    buildCompactionInstructionMessage(focusInstruction),
+    buildCompactionInstructionMessage(),
   ]
 
   console.debug('[YOLO][Compact] starting summary generation', {
     modelId: model.id,
     prefixMessageCount: requestMessages.length,
     turnMessageCount: turnMessages.length,
-    hasFocusInstruction: focusInstruction !== null,
   })
 
   const runCompaction = async (): Promise<string> => {

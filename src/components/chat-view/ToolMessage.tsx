@@ -935,7 +935,6 @@ export const getToolMessageContent = (
 const ToolMessage = memo(function ToolMessage({
   message,
   conversationId,
-  isCompactionPending = false,
   showRunningFooter = true,
   terminalCommandResultsByToolCallId,
   subagentResultsByToolCallId,
@@ -946,7 +945,6 @@ const ToolMessage = memo(function ToolMessage({
 }: {
   message: ChatToolMessage
   conversationId: string
-  isCompactionPending?: boolean
   showRunningFooter?: boolean
   terminalCommandResultsByToolCallId?: ReadonlyMap<
     string,
@@ -1017,9 +1015,6 @@ const ToolMessage = memo(function ToolMessage({
               response={toolCall.response}
               conversationId={conversationId}
               toolMessageId={message.id}
-              showCompactionPendingHint={
-                isCompactionPending && index === message.toolCalls.length - 1
-              }
               showRunningFooter={showRunningFooter}
               terminalCommandResult={terminalCommandResultsByToolCallId?.get(
                 toolCall.request.id,
@@ -1043,7 +1038,6 @@ type ToolCallItemProps = {
   response: ToolCallResponse
   conversationId: string
   toolMessageId: string
-  showCompactionPendingHint?: boolean
   showRunningFooter?: boolean
   terminalCommandResult?: ChatTerminalCommandResultMessage
   subagentResult?: ChatSubagentResultMessage
@@ -1080,7 +1074,6 @@ function ToolCallItem({
   response,
   conversationId,
   toolMessageId,
-  showCompactionPendingHint = false,
   showRunningFooter = true,
   terminalCommandResult,
   subagentResult,
@@ -1136,7 +1129,6 @@ function ToolCallItem({
       />
     )
   }
-  const COMPACTION_PENDING_EXIT_MS = 180
   const reduceMotion = useReducedMotion()
   const motionDuration = reduceMotion ? 0 : MOTION_DURATION_EXIT_S
   const {
@@ -1205,13 +1197,6 @@ function ToolCallItem({
     ? toolLabels.stayInPlan
     : toolLabels.reject
   const [showRunningActions, setShowRunningActions] = useState(false)
-  const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
-    useState(
-      showCompactionPendingHint &&
-        effectiveStatus === ToolCallResponseStatus.Success,
-    )
-  const [isCompactionPendingHintExiting, setIsCompactionPendingHintExiting] =
-    useState(false)
   useEffect(() => {
     if (
       !showRunningFooter ||
@@ -1255,31 +1240,6 @@ function ToolCallItem({
   const shouldShowParameters =
     !isCompactLiveTaskRequest ||
     effectiveStatus === ToolCallResponseStatus.PendingApproval
-  useEffect(() => {
-    const shouldShowCompactionPendingHint =
-      showCompactionPendingHint &&
-      effectiveStatus === ToolCallResponseStatus.Success
-
-    if (shouldShowCompactionPendingHint) {
-      setRenderCompactionPendingHint(true)
-      setIsCompactionPendingHintExiting(false)
-      return
-    }
-
-    if (!renderCompactionPendingHint) {
-      return
-    }
-
-    setIsCompactionPendingHintExiting(true)
-    const timer = window.setTimeout(() => {
-      setRenderCompactionPendingHint(false)
-      setIsCompactionPendingHintExiting(false)
-    }, COMPACTION_PENDING_EXIT_MS)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [effectiveStatus, renderCompactionPendingHint, showCompactionPendingHint])
 
   // `kind: 'replace'` renderers (currently: only `delegate_subagent`'s
   // `SubagentCard`) take over the entire tool-call block — see
@@ -1507,27 +1467,6 @@ function ToolCallItem({
             </div>
           )
         })()}
-      {renderCompactionPendingHint && (
-        <div
-          className={cx(
-            'yolo-toolcall-compaction-pending',
-            isCompactionPendingHintExiting &&
-              'yolo-toolcall-compaction-pending--exiting',
-          )}
-          aria-live="polite"
-        >
-          <Loader2
-            size={12}
-            className="yolo-toolcall-compaction-pending-icon"
-          />
-          <span>
-            {t(
-              'chat.compaction.pendingStatus',
-              '正在整理上下文，稍后将从新的上下文继续。',
-            )}
-          </span>
-        </div>
-      )}
       {footerMode && (
         <div key={footerMode} className="yolo-toolcall-footer">
           {footerMode === 'pending' && request.metadata?.outsideVaultPath && (
@@ -1655,7 +1594,6 @@ export const areToolCallItemPropsEqual = (
   prev.response === next.response &&
   prev.conversationId === next.conversationId &&
   prev.toolMessageId === next.toolMessageId &&
-  prev.showCompactionPendingHint === next.showCompactionPendingHint &&
   prev.showRunningFooter === next.showRunningFooter &&
   prev.terminalCommandResult === next.terminalCommandResult &&
   prev.subagentResult === next.subagentResult &&

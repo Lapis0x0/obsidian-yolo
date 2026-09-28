@@ -505,6 +505,27 @@ export function YoloChatSurface({
   )
   const compactionDividerAnchorMessageId =
     latestCompactionState?.anchorMessageId ?? null
+  // The latest divider sits inside a turn that goes on past it — the model
+  // compacted through its tool, or the runtime compacted mid-run — so the
+  // slice above it is not where that turn ends and gets no footer.
+  const compactionAnchorSplitsTurn = useMemo(() => {
+    if (compactionDividerAnchorMessageId === null) {
+      return false
+    }
+    if (latestCompactionState?.triggerToolCallId) {
+      return true
+    }
+    const { messageIds, messagesById } = chatTimelineReadModel
+    const nextMessageId =
+      messageIds[messageIds.indexOf(compactionDividerAnchorMessageId) + 1]
+    const nextMessage =
+      nextMessageId === undefined ? undefined : messagesById.get(nextMessageId)
+    return nextMessage !== undefined && nextMessage.role !== 'user'
+  }, [
+    chatTimelineReadModel,
+    compactionDividerAnchorMessageId,
+    latestCompactionState?.triggerToolCallId,
+  ])
   const previousPendingCompactionAnchorMessageIdRef = useRef<string | null>(
     null,
   )
@@ -961,8 +982,7 @@ export function YoloChatSurface({
           (message) => message.id === compactionDividerAnchorMessageId,
         )
       const shouldSuppressCompactionAnchorFooter =
-        containsCompactionAnchor &&
-        Boolean(latestCompactionState?.triggerToolCallId)
+        containsCompactionAnchor && compactionAnchorSplitsTurn
 
       return {
         conversationId: currentConversationId,
@@ -1026,7 +1046,6 @@ export function YoloChatSurface({
         onUndoEditSummary: (...args) =>
           timelineHandlersRef.current.handleUndoEditSummary(...args),
         undoingEditSummaryTarget,
-        pendingCompactionAnchorMessageId,
         hidePendingAssistantPlaceholders:
           shouldHidePendingAssistantPlaceholders,
       }
@@ -1042,8 +1061,7 @@ export function YoloChatSurface({
       currentConversationRunSummary,
       editingAssistantMessageId,
       foregroundAgentVisualTurnPlan,
-      latestCompactionState?.triggerToolCallId,
-      pendingCompactionAnchorMessageId,
+      compactionAnchorSplitsTurn,
       runSummaryAssistantGroupId,
       shouldHidePendingAssistantPlaceholders,
       subagentResultsByToolCallId,
@@ -1409,8 +1427,7 @@ export function YoloChatSurface({
           compactionDividerAnchorMessageId !== null &&
           timelineItem.messageIds.includes(compactionDividerAnchorMessageId)
         const shouldSuppressCompactionAnchorFooter =
-          containsCompactionAnchor &&
-          Boolean(latestCompactionState?.triggerToolCallId)
+          containsCompactionAnchor && compactionAnchorSplitsTurn
         const isRunSummaryGroup =
           timelineItem.groupId === runSummaryAssistantGroupId
         const isEditingGroup =
@@ -1447,7 +1464,6 @@ export function YoloChatSurface({
           getRenderVersionObjectId(terminalCommandResultsByToolCallId),
           getRenderVersionObjectId(subagentResultsByToolCallId),
           isEditingGroup ? editingAssistantMessageId : '',
-          pendingCompactionAnchorMessageId ?? '',
           shouldHidePendingAssistantPlaceholders,
           undoingEditSummaryTarget ?? '',
           isRunSummaryGroup,
@@ -1522,10 +1538,9 @@ export function YoloChatSurface({
       foregroundAgentVisualTurnPlan,
       isCurrentConversationRunActive,
       runSummaryAssistantGroupId,
-      latestCompactionState?.triggerToolCallId,
+      compactionAnchorSplitsTurn,
       messageModelMap,
       messageReasoningMap,
-      pendingCompactionAnchorMessageId,
       queryProgress,
       reasoningLevel,
       selectedAssistantTimeContextEnabled,

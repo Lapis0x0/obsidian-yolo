@@ -614,13 +614,9 @@ export const yoloSettingsSchema = z.object({
       reasoningLevelByModelId: z
         .record(z.string(), z.enum(REASONING_LEVELS))
         .optional(),
-      // Auto context compaction prompt injected at runtime LLM boundaries
-      // (based on last assistant usage).
+      // Forced context compaction before a request whose estimated size
+      // reaches this share of the model's context window.
       autoContextCompactionEnabled: z.boolean().optional(),
-      autoContextCompactionThresholdMode: z
-        .enum(['tokens', 'ratio'])
-        .optional(),
-      autoContextCompactionThresholdTokens: z.number().int().min(1).optional(),
       autoContextCompactionThresholdRatio: z.number().min(0).max(1).optional(),
       // Font scale factor for chat messages (1 = default)
       chatFontScale: z.number().min(0.7).max(1.5).optional(),
@@ -676,10 +672,8 @@ export const yoloSettingsSchema = z.object({
       chatMode: 'agent',
       fullAccessWarningConfirmed: false,
       reasoningLevelByModelId: {},
-      autoContextCompactionEnabled: false,
-      autoContextCompactionThresholdMode: 'tokens',
-      autoContextCompactionThresholdTokens: 100000,
-      autoContextCompactionThresholdRatio: 0.8,
+      autoContextCompactionEnabled: true,
+      autoContextCompactionThresholdRatio: 0.9,
       chatFontScale: undefined,
       imageReadingEnabled: true,
       imageCompressionEnabled: true,

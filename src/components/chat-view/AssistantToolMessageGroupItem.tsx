@@ -731,7 +731,6 @@ export type AssistantToolMessageGroupItemProps = {
   onOpenEditSummaryFile: (file: GroupEditSummary['files'][number]) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
-  pendingCompactionAnchorMessageId?: string | null
   hidePendingAssistantPlaceholders?: boolean
   showRunningToolFooter?: boolean
 }
@@ -777,7 +776,6 @@ function AssistantToolMessageGroupItem({
   onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
-  pendingCompactionAnchorMessageId,
   hidePendingAssistantPlaceholders = false,
   showRunningToolFooter = true,
 }: AssistantToolMessageGroupItemProps) {
@@ -1537,9 +1535,6 @@ function AssistantToolMessageGroupItem({
                   <ToolMessage
                     message={message}
                     conversationId={effectiveConversationId}
-                    isCompactionPending={
-                      message.id === pendingCompactionAnchorMessageId
-                    }
                     showRunningFooter={showRunningToolFooter}
                     terminalCommandResultsByToolCallId={
                       terminalCommandResultsByToolCallId

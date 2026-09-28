@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../types/chat'
+import { getCompactionRetainedStartIndex } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { RequestMessage, RequestTool } from '../../types/llm/request'
 import type { LLMProvider } from '../../types/provider.types'
@@ -11,12 +12,12 @@ import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
 
 import {
-  buildAutoContextCompactionNotice,
-  buildManualCompactionState,
+  buildAnchoredCompactionState,
   createConversationCompactionSummary,
-  getAutoContextCompactionPromptTrigger,
+  estimateNextRequestContextTokens,
+  findForcedCompactionRetainedStartIndex,
   getLatestAssistantContextUsage,
-  shouldTriggerAutoContextCompaction,
+  resolveAutoContextCompactionInput,
 } from './compaction'
 
 jest.mock('../ai/single-turn', () => ({
@@ -124,43 +125,6 @@ describe('createConversationCompactionSummary', () => {
       }),
     ).rejects.toBe(error)
     expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
-  })
-
-  it('injects focusInstruction into the instruction message', async () => {
-    mockedExecuteSingleTurn.mockResolvedValueOnce(
-      stubSingleTurnResult('<summary>S</summary>'),
-    )
-
-    await createConversationCompactionSummary({
-      providerClient: fakeProviderClient,
-      model: fakeModel,
-      requestMessages: prefix,
-      focusInstruction: 'keep the API contract details',
-    })
-
-    const tail =
-      mockedExecuteSingleTurn.mock.calls[0][0].request.messages.at(-1)
-    const content = typeof tail?.content === 'string' ? tail.content : ''
-    expect(content).toContain(
-      '<focus_instruction>keep the API contract details</focus_instruction>',
-    )
-  })
-
-  it('omits the focus_instruction block when none is provided', async () => {
-    mockedExecuteSingleTurn.mockResolvedValueOnce(
-      stubSingleTurnResult('<summary>S</summary>'),
-    )
-
-    await createConversationCompactionSummary({
-      providerClient: fakeProviderClient,
-      model: fakeModel,
-      requestMessages: prefix,
-    })
-
-    const tail =
-      mockedExecuteSingleTurn.mock.calls[0][0].request.messages.at(-1)
-    const content = typeof tail?.content === 'string' ? tail.content : ''
-    expect(content).not.toContain('<focus_instruction>')
   })
 
   it('parses a bare summary without tags as a fallback', async () => {
@@ -280,13 +244,6 @@ describe('createConversationCompactionSummary', () => {
   })
 })
 
-const baseAutoOptions = {
-  autoContextCompactionEnabled: true,
-  autoContextCompactionThresholdMode: 'tokens' as const,
-  autoContextCompactionThresholdTokens: 100,
-  autoContextCompactionThresholdRatio: 0.8,
-}
-
 const userMsg = (id: string): ChatMessage => ({
   role: 'user',
   id,
@@ -297,7 +254,11 @@ const userMsg = (id: string): ChatMessage => ({
 
 const assistantMsg = (
   id: string,
-  usage?: { prompt_tokens: number; cache_read_input_tokens?: number },
+  usage?: {
+    prompt_tokens: number
+    completion_tokens?: number
+    cache_read_input_tokens?: number
+  },
   model?: Pick<ChatModel, 'maxContextTokens'>,
 ): ChatMessage => ({
   role: 'assistant',
@@ -307,8 +268,8 @@ const assistantMsg = (
     ? {
         usage: {
           prompt_tokens: usage.prompt_tokens,
-          completion_tokens: 0,
-          total_tokens: usage.prompt_tokens,
+          completion_tokens: usage.completion_tokens ?? 0,
+          total_tokens: usage.prompt_tokens + (usage.completion_tokens ?? 0),
           ...(usage.cache_read_input_tokens !== undefined
             ? { cache_read_input_tokens: usage.cache_read_input_tokens }
             : {}),
@@ -325,272 +286,192 @@ const assistantMsg = (
     : undefined,
 })
 
-describe('shouldTriggerAutoContextCompaction', () => {
-  it('returns false when disabled', () => {
+const toolMsg = (id: string, text: string): ChatMessage => ({
+  role: 'tool',
+  id,
+  toolCalls: [
+    {
+      request: {
+        id: `${id}-call`,
+        name: 'yolo_local__fs_read',
+        arguments: createCompleteToolCallArguments({ value: {} }),
+      },
+      response: {
+        status: ToolCallResponseStatus.Success,
+        data: { type: 'text', text },
+      },
+    },
+  ],
+})
+
+describe('resolveAutoContextCompactionInput', () => {
+  const settingsWith = (chatOptions: {
+    autoContextCompactionEnabled?: boolean
+    autoContextCompactionThresholdRatio?: number
+  }) => ({
+    chatOptions: chatOptions as never,
+    providers: [
+      { id: 'provider', presetType: 'openai' } as unknown as LLMProvider,
+    ],
+  })
+
+  it('takes the ratio of the configured context window', () => {
     expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 200 }),
-        ],
-        chatOptions: {
-          ...baseAutoOptions,
-          autoContextCompactionEnabled: false,
+      resolveAutoContextCompactionInput({
+        settings: settingsWith({ autoContextCompactionThresholdRatio: 0.5 }),
+        model: { ...fakeModel, maxContextTokens: 100_000 },
+      }),
+    ).toEqual({ thresholdTokens: 50_000 })
+  })
+
+  it('assumes a 200k window when the model states none', () => {
+    expect(
+      resolveAutoContextCompactionInput({
+        settings: settingsWith({}),
+        model: { ...fakeModel, model: 'unknown-model-xyz' },
+      }),
+    ).toEqual({ thresholdTokens: 180_000 })
+  })
+
+  it('is off when disabled or when the provider owns the conversation', () => {
+    expect(
+      resolveAutoContextCompactionInput({
+        settings: settingsWith({ autoContextCompactionEnabled: false }),
+        model: fakeModel,
+      }),
+    ).toBeUndefined()
+    expect(
+      resolveAutoContextCompactionInput({
+        settings: {
+          chatOptions: {} as never,
+          providers: [
+            {
+              id: 'provider',
+              presetType: 'claude-oauth',
+            } as unknown as LLMProvider,
+          ],
         },
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
+        model: fakeModel,
       }),
-    ).toBe(false)
-  })
-
-  it('tokens mode: below threshold', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 50 }),
-        ],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('tokens mode: at threshold', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 100 }),
-        ],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(true)
-  })
-
-  it('ratio mode: below ratio', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 70 }, { maxContextTokens: 100 }),
-        ],
-        chatOptions: {
-          ...baseAutoOptions,
-          autoContextCompactionThresholdMode: 'ratio',
-          autoContextCompactionThresholdRatio: 0.8,
-        },
-        maxContextTokens: 100,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('ratio mode: at ratio', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 80 }, { maxContextTokens: 100 }),
-        ],
-        chatOptions: {
-          ...baseAutoOptions,
-          autoContextCompactionThresholdMode: 'ratio',
-          autoContextCompactionThresholdRatio: 0.8,
-        },
-        maxContextTokens: 100,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(true)
-  })
-
-  it('ratio mode: missing maxContextTokens', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 99 }),
-        ],
-        chatOptions: {
-          ...baseAutoOptions,
-          autoContextCompactionThresholdMode: 'ratio',
-        },
-        maxContextTokens: undefined,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('ratio mode: uses the same maxContextTokens source as the header ring', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg(
-            'a1',
-            { prompt_tokens: 800 },
-            { maxContextTokens: 1000 },
-          ),
-        ],
-        chatOptions: {
-          ...baseAutoOptions,
-          autoContextCompactionThresholdMode: 'ratio',
-          autoContextCompactionThresholdRatio: 0.8,
-        },
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(true)
-  })
-
-  it('still triggers when the latest visible usage comes from an earlier assistant message', () => {
-    const emptyArgs = createCompleteToolCallArguments({ value: {} })
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 200 }),
-          {
-            role: 'tool',
-            id: 't1',
-            toolCalls: [
-              {
-                request: {
-                  id: 'x',
-                  name: 'y',
-                  arguments: emptyArgs,
-                },
-                response: {
-                  status: ToolCallResponseStatus.Success,
-                  data: { type: 'text', text: '{}' },
-                },
-              },
-            ],
-          },
-        ],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(true)
-  })
-
-  it('assistant missing prompt_tokens', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [userMsg('u1'), assistantMsg('a1')],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('run active', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 200 }),
-        ],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [],
-        isConversationRunActive: true,
-      }),
-    ).toBe(false)
-  })
-
-  it('does not repeat compaction for same assistant anchor', () => {
-    expect(
-      shouldTriggerAutoContextCompaction({
-        previousMessages: [
-          userMsg('u1'),
-          assistantMsg('a1', { prompt_tokens: 200 }),
-        ],
-        chatOptions: baseAutoOptions,
-        maxContextTokens: 1000,
-        compactionState: [
-          {
-            anchorMessageId: 'a1',
-            summary: 's',
-            compactedAt: 1,
-          },
-        ],
-        isConversationRunActive: false,
-      }),
-    ).toBe(false)
+    ).toBeUndefined()
   })
 })
 
-describe('auto context compaction runtime notice', () => {
-  it('returns a prompt trigger and builds a hidden user notice when threshold is reached', () => {
-    const trigger = getAutoContextCompactionPromptTrigger({
-      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
-      chatOptions: baseAutoOptions,
-      maxContextTokens: 1000,
-      compactionState: [],
-    })
-
-    expect(trigger?.assistantMessage.id).toBe('a1')
-    if (!trigger) {
-      throw new Error('Expected auto compaction prompt trigger')
-    }
-
-    const notice = buildAutoContextCompactionNotice({
-      trigger,
-      chatOptions: baseAutoOptions,
-    })
-
-    expect(notice).toContain('<auto_context_compaction_notice>')
-    expect(notice).toContain('120 prompt tokens')
-    expect(notice).toContain('context_compact')
-    expect(notice).toContain('not a user-authored message')
-  })
-
-  it('does not prompt the same assistant usage twice in one runtime run', () => {
-    const trigger = getAutoContextCompactionPromptTrigger({
-      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
-      chatOptions: baseAutoOptions,
-      maxContextTokens: 1000,
-      compactionState: [],
-      promptedAssistantMessageIds: new Set(['a1']),
-    })
-
-    expect(trigger).toBeNull()
-  })
-
-  it('does not prompt after that assistant message already anchored a compaction', () => {
-    const trigger = getAutoContextCompactionPromptTrigger({
-      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
-      chatOptions: baseAutoOptions,
-      maxContextTokens: 1000,
-      compactionState: [
-        {
-          anchorMessageId: 'a1',
-          summary: 's',
-          compactedAt: 1,
-        },
+describe('estimateNextRequestContextTokens', () => {
+  it('adds a rough count of what came after the latest reported usage', () => {
+    const estimate = estimateNextRequestContextTokens({
+      messages: [
+        userMsg('u1'),
+        assistantMsg('a1', { prompt_tokens: 1000, completion_tokens: 50 }),
+        toolMsg('t1', 'x'.repeat(40_000)),
       ],
+      compactionState: [],
     })
+    expect(estimate).toBeGreaterThanOrEqual(1050 + 10_000)
+    expect(estimate).toBeLessThan(1050 + 11_000)
+  })
 
-    expect(trigger).toBeNull()
+  it('counts non-ASCII text a token per character', () => {
+    const estimate = estimateNextRequestContextTokens({
+      messages: [
+        assistantMsg('a1', { prompt_tokens: 0 }),
+        toolMsg('t1', '中'.repeat(5_000)),
+      ],
+      compactionState: [],
+    })
+    expect(estimate).toBeGreaterThanOrEqual(5_000)
+  })
+
+  it('ignores usage reported before the latest compaction anchor', () => {
+    expect(
+      estimateNextRequestContextTokens({
+        messages: [
+          userMsg('u1'),
+          assistantMsg('a1', { prompt_tokens: 9000 }),
+          userMsg('u2'),
+        ],
+        compactionState: [
+          { anchorMessageId: 'a1', summary: 's', compactedAt: 1 },
+        ],
+      }),
+    ).toBeNull()
   })
 })
 
-describe('buildManualCompactionState loadedDeferredToolSchemas persistence', () => {
+describe('findForcedCompactionRetainedStartIndex', () => {
+  const messages = [
+    userMsg('u1'),
+    assistantMsg('a1'),
+    userMsg('u2'),
+    assistantMsg('a2'),
+    toolMsg('t2', 'result'),
+  ]
+
+  it('keeps the latest assistant turn and its tool results mid-run', () => {
+    expect(
+      findForcedCompactionRetainedStartIndex({
+        messages,
+        compactionState: [],
+        midRun: true,
+      }),
+    ).toBe(3)
+  })
+
+  it('keeps the user messages that opened the run at its start', () => {
+    expect(
+      findForcedCompactionRetainedStartIndex({
+        messages: [...messages, userMsg('u3'), userMsg('u4')],
+        compactionState: [],
+        midRun: false,
+      }),
+    ).toBe(5)
+  })
+
+  it('returns null when nothing new lies before the retained part', () => {
+    expect(
+      findForcedCompactionRetainedStartIndex({
+        messages,
+        compactionState: [
+          { anchorMessageId: 'u2', summary: 's', compactedAt: 1 },
+        ],
+        midRun: true,
+      }),
+    ).toBeNull()
+    expect(
+      findForcedCompactionRetainedStartIndex({
+        messages: [userMsg('u1')],
+        compactionState: [],
+        midRun: false,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('buildAnchoredCompactionState retained start', () => {
+  it('anchors on the given message and keeps from the retained start', async () => {
+    const messages = [
+      userMsg('u1'),
+      assistantMsg('a1'),
+      toolMsg('t1', 'one'),
+      assistantMsg('a2'),
+      toolMsg('t2', 'two'),
+    ]
+    const state = await buildAnchoredCompactionState({
+      messages,
+      anchorIndex: 4,
+      retainedStartIndex: 3,
+      summary: 's',
+    })
+    expect(state).toMatchObject({
+      anchorMessageId: 't2',
+      retainedFromMessageId: 'a2',
+      compactedMessageCount: 3,
+    })
+    expect(getCompactionRetainedStartIndex(messages, state!)).toBe(3)
+  })
+})
+
+describe('buildAnchoredCompactionState loadedDeferredToolSchemas persistence', () => {
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
   it('persists disclosed on-demand tool schemas after manual compaction', async () => {
@@ -632,8 +513,9 @@ describe('buildManualCompactionState loadedDeferredToolSchemas persistence', () 
       },
     ]
 
-    const state = await buildManualCompactionState({
+    const state = await buildAnchoredCompactionState({
       messages,
+      anchorIndex: messages.length - 1,
       summary: 'short summary',
     })
     expect(state?.loadedDeferredToolSchemas).toEqual([
@@ -695,8 +577,9 @@ describe('buildManualCompactionState loadedDeferredToolSchemas persistence', () 
       },
     ]
 
-    const state = await buildManualCompactionState({
+    const state = await buildAnchoredCompactionState({
       messages,
+      anchorIndex: messages.length - 1,
       summary: 's',
     })
     // Dropped outright, name included: the model is told to re-disclose the

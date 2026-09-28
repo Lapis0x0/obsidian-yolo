@@ -38,7 +38,7 @@ export function setTokenizerProviderForTests(
 
 // Rough per-image token estimate used when replacing base64 data URLs.
 // Real cost varies by provider and resolution, but ~1000 is a reasonable middle ground.
-const ESTIMATED_IMAGE_TOKENS = 1000
+export const ESTIMATED_IMAGE_TOKENS = 1000
 // Per-page PDF token estimate. Gemini bills ~258 tokens/page for native PDF;
 // other providers vary, but ~300 is a defensible middle ground for the local
 // counter. We never want to tokenize the raw base64 — a multi-MB PDF would

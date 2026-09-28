@@ -758,17 +758,11 @@ export const it: DeepPartial<TranslationKeys> = {
       autoContextCompactionBlockTitle: 'Compattazione contesto',
       autoContextCompaction: 'Compattazione automatica del contesto',
       autoContextCompactionDesc:
-        'Quando il contesto raggiunge la soglia, ricorda all’Agent di eseguire il comando di compattazione contesto.',
-      autoContextCompactionThresholdMode: 'Modalita soglia',
-      autoContextCompactionModeTokens: 'Token di prompt assoluti',
-      autoContextCompactionModeRatio: 'Quota della finestra di contesto',
-      autoContextCompactionThresholdTokens: 'Soglia token di prompt',
-      autoContextCompactionThresholdTokensDesc:
-        'Attiva quando i prompt_tokens segnalati dall’ultima risposta raggiungono almeno questo valore.',
+        'Prima di una richiesta che raggiungerebbe la soglia, compatta automaticamente la conversazione precedente. L’Agent può comunque chiamare lo strumento di compattazione in qualsiasi momento.',
       autoContextCompactionThresholdRatioPercent:
         'Uso finestra di contesto (%)',
       autoContextCompactionThresholdRatioPercentDesc:
-        'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
+        'Compatta quando la richiesta successiva occuperebbe questa quota della finestra di contesto del modello. La finestra è il max context del modello, oppure 200k se non impostato. Per compattare prima, riduci la percentuale o il max context del modello.',
       mcpServerBlockTitle: 'Accesso per agenti esterni',
       mcpServerEnabled: 'Consenti accesso agli agenti esterni',
       mcpServerDesc:

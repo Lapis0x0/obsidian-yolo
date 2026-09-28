@@ -197,30 +197,6 @@
   gap: var(--size-2-3);
 }
 
-.yolo-toolcall-compaction-pending {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 var(--size-2-3) 0 var(--yolo-toolcall-rail-x);
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.4;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in),
-    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
-}
-
-.yolo-toolcall-compaction-pending--exiting {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-.yolo-toolcall-compaction-pending-icon {
-  animation: yolo-toolcall-spin 1s linear infinite;
-}
-
 @keyframes yolo-toolcall-spin {
   from {
     transform: rotate(0deg);

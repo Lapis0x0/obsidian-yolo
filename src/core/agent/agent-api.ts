@@ -45,6 +45,7 @@ import { resolveAgentCapabilityProfile } from './capability-profile'
 import type { YoloAgentCapability } from './capability-profile'
 import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import { resolveChatModeRuntime } from './chat-runtime-profiles'
+import { resolveAutoContextCompactionInput } from './compaction'
 import { DEFAULT_ASSISTANT_ID } from './default-assistant'
 import type {
   AgentConversationState,
@@ -604,6 +605,10 @@ export async function resolveAgentApiRunInput({
         resolveWorkspaceScopeForRuntimeInput(assistant),
       bashReadOnly: request.bashReadOnly ?? capabilityProfile?.bashReadOnly,
       allowedSkillPaths,
+      autoContextCompaction: resolveAutoContextCompactionInput({
+        settings,
+        model: resolvedClient.model,
+      }),
       requestParams: {
         deliveryMode: 'incremental',
         primaryRequestTimeoutMs:

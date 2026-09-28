@@ -14,6 +14,7 @@ import { runWithBackgroundExecution } from '../../background/backgroundExecution
 import type { BaseLLMProvider } from '../../llm/base'
 import { type YoloAgentEvent, conversationStateToEvents } from '../agent-api'
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
+import { resolveAutoContextCompactionInput } from '../compaction'
 import { liveTaskStreamBus } from '../live-stream/taskStreamBus'
 import { NativeAgentRuntime } from '../native-runtime'
 import type { AgentConversationState } from '../service'
@@ -295,6 +296,10 @@ async function runChildAgent(
     // Not `modeEnvironmentPrompt` as well: it is already folded into the
     // override above, and the section pipeline is skipped for this run.
     runtimeMode: parent.runtimeMode,
+    autoContextCompaction: resolveAutoContextCompactionInput({
+      settings: parent.mcpManager.getSettingsSnapshot(),
+      model: childModel.model,
+    }),
   }
 
   const unsubscribe = runtime.subscribe((snapshot) => {

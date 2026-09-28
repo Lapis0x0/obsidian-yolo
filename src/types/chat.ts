@@ -27,6 +27,14 @@ export type ChatConversationCompaction = {
   summary: string
   compactedAt: number
   triggerToolCallId?: string
+  /**
+   * First message kept verbatim after this compaction, when that is not the
+   * one right after the anchor. Forced compaction anchors on the latest
+   * message (where the chat shows it happening) yet keeps the working state
+   * leading up to it — the latest assistant turn, or the user message that
+   * opened the run.
+   */
+  retainedFromMessageId?: string
   summaryModelId?: string
   estimatedNextContextTokens?: number
   compactedMessageCount?: number
@@ -68,6 +76,36 @@ export const normalizeChatConversationCompactionState = (
   }
 
   return Array.isArray(compaction) ? [...compaction] : [compaction]
+}
+
+/**
+ * Index of the first message a compaction keeps verbatim, or null when its
+ * anchor is not in `messages`.
+ */
+export const getCompactionRetainedStartIndex = (
+  messages: readonly { id: string; role: string }[],
+  compaction: ChatConversationCompaction,
+): number | null => {
+  const anchorIndex = messages.findIndex(
+    (message) => message.id === compaction.anchorMessageId,
+  )
+  if (anchorIndex === -1) {
+    return null
+  }
+  if (compaction.retainedFromMessageId) {
+    const retainedIndex = messages.findIndex(
+      (message) => message.id === compaction.retainedFromMessageId,
+    )
+    if (retainedIndex !== -1 && retainedIndex <= anchorIndex) {
+      return retainedIndex
+    }
+  }
+  if (compaction.triggerToolCallId) {
+    return anchorIndex > 0 && messages[anchorIndex - 1]?.role === 'assistant'
+      ? anchorIndex - 1
+      : anchorIndex
+  }
+  return anchorIndex + 1
 }
 
 export const getLatestChatConversationCompaction = (
@@ -152,11 +190,6 @@ export type ChatToolMessage = {
     request: ToolCallRequest
     response: ToolCallResponse
   }[]
-  /**
-   * A runtime notice the model received right after these results, kept so
-   * every later request sends it in the same place.
-   */
-  notice?: string
   metadata?: {
     sourceUserMessageId?: string
     branchId?: string
@@ -308,7 +341,6 @@ export type SerializedChatToolMessage = {
     response: ToolCallResponse
   }[]
   id: string
-  notice?: string
   metadata?: {
     sourceUserMessageId?: string
     branchId?: string

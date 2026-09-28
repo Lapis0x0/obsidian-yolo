@@ -747,16 +747,10 @@ export const en: TranslationKeys = {
       autoContextCompactionBlockTitle: 'Context compaction',
       autoContextCompaction: 'Automatic context compaction',
       autoContextCompactionDesc:
-        'When the context reaches the threshold, remind the Agent to run the context compaction command.',
-      autoContextCompactionThresholdMode: 'Compaction threshold mode',
-      autoContextCompactionModeTokens: 'Absolute prompt tokens',
-      autoContextCompactionModeRatio: 'Fraction of context window',
-      autoContextCompactionThresholdTokens: 'Prompt token threshold',
-      autoContextCompactionThresholdTokensDesc:
-        "Trigger when the last reply's reported prompt_tokens is at least this value.",
+        'Before a request that would reach the threshold, automatically compact earlier conversation. The Agent can still call the compaction tool on its own at any time.',
       autoContextCompactionThresholdRatioPercent: 'Context window usage (%)',
       autoContextCompactionThresholdRatioPercentDesc:
-        "Trigger when prompt_tokens divided by the chat model's max context window reaches this percentage. Requires max context tokens on the model.",
+        "Compact when the next request is estimated to fill this share of the model's context window. The window comes from the model's max context setting, or 200k when unset. To compact earlier, lower the percentage or the model's max context.",
       mcpServerBlockTitle: 'External agent access',
       mcpServerEnabled: 'Allow external agent access',
       mcpServerDesc:
