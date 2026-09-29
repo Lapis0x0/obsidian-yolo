@@ -987,6 +987,8 @@ export default class YoloPlugin extends Plugin {
         getRagEngine: (kbId) => this.getRagCoordinator().getRagEngine(kbId),
         activityRegistry: this.getBackgroundActivityRegistry(),
         isRagEnabled: () => !!this.settings?.ragOptions?.enabled,
+        getKnowledgeBaseIds: () =>
+          this.settings.knowledgeBases.map((kb) => kb.id),
         t: (key, fallback) => this.t(key, fallback),
       })
     }

@@ -40,6 +40,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -57,6 +58,39 @@ describe('RagIndexService', () => {
       completedChunks: 600,
       totalChunks: 4000,
     })
+  })
+
+  it('drops snapshots of knowledge bases no longer in settings', async () => {
+    // A reinstall resets data.json while vault localStorage survives, so the
+    // old base's failed snapshot would otherwise count as "needs attention"
+    // forever.
+    const saved: Record<string, string> = {
+      yolo_rag_index_runs: JSON.stringify({
+        'kb-a': { status: 'completed' },
+        'kb-gone': { status: 'failed', failureKind: 'unknown' },
+      }),
+    }
+
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn((key: string) => saved[key] ?? null),
+        saveLocalStorage: jest.fn((key: string, value: string) => {
+          saved[key] = value
+        }),
+      } as never,
+      getRagEngine: jest.fn(),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a'],
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+
+    expect(Object.keys(service.getSnapshot().runs)).toEqual(['kb-a'])
+    expect(Object.keys(JSON.parse(saved.yolo_rag_index_runs))).toEqual([
+      'kb-a',
+    ])
   })
 
   it('restores an interrupted sync as sync (idempotent)', async () => {
@@ -82,6 +116,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -117,6 +152,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -169,6 +205,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -219,6 +256,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -277,6 +315,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -343,6 +382,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -384,6 +424,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -423,6 +464,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -460,6 +502,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -505,6 +548,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -543,6 +587,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -573,6 +618,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -615,6 +661,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -654,6 +701,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -704,6 +752,7 @@ describe('RagIndexService', () => {
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -767,6 +816,7 @@ describe('RagIndexService', () => {
       }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
+      getKnowledgeBaseIds: () => ['kb-a', 'kb-b'],
       t: (_key, fallback) => fallback ?? '',
     })
 

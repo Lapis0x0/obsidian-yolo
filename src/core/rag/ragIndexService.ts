@@ -88,6 +88,9 @@ type RagIndexServiceDeps = {
   getRagEngine: (kbId: string) => Promise<RAGEngine>
   activityRegistry: BackgroundActivityRegistry
   isRagEnabled: () => boolean
+  /** Ids of the knowledge bases currently in settings — the owners run
+   * snapshots may belong to. */
+  getKnowledgeBaseIds: () => string[]
   t: (key: string, fallback?: string) => string
 }
 
@@ -197,6 +200,7 @@ export class RagIndexService {
   private readonly getRagEngine: (kbId: string) => Promise<RAGEngine>
   private readonly activityRegistry: BackgroundActivityRegistry
   private readonly isRagEnabled: () => boolean
+  private readonly getKnowledgeBaseIds: () => string[]
   private readonly t: (key: string, fallback?: string) => string
 
   private snapshots = new Map<string, RagIndexRunSnapshot>()
@@ -239,6 +243,7 @@ export class RagIndexService {
     this.getRagEngine = deps.getRagEngine
     this.activityRegistry = deps.activityRegistry
     this.isRagEnabled = deps.isRagEnabled
+    this.getKnowledgeBaseIds = deps.getKnowledgeBaseIds
     this.t = deps.t
   }
 
@@ -254,7 +259,15 @@ export class RagIndexService {
             string,
             Partial<RagIndexRunSnapshot>
           >
+          // Run state lives in vault localStorage, apart from the settings
+          // that own the knowledge bases, so a base can vanish without
+          // passing through `forgetKnowledgeBase` (a reinstall resets
+          // data.json, a sync overwrites it). Drop its orphaned snapshot here
+          // or it stays failed / retry_scheduled forever with nothing to
+          // rerun or clear it.
+          const knowledgeBaseIds = new Set(this.getKnowledgeBaseIds())
           for (const [kbId, partial] of Object.entries(parsed)) {
+            if (!knowledgeBaseIds.has(kbId)) continue
             let snapshot: RagIndexRunSnapshot = {
               ...defaultSnapshot(),
               ...partial,
