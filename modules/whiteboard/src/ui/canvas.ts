@@ -839,6 +839,7 @@ export class WhiteboardCanvas {
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
+      isMounted: (id) => this.engine.mounted.has(id),
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
       pageThumbnail: (path, page, dark) =>
@@ -2738,6 +2739,9 @@ export class WhiteboardCanvas {
       if (now - addedAt <= NODE_ENTER_WINDOW_MS) this.cardRenderer.playEnter(id)
     }
     for (const id of toUnmount) this.cardRenderer.unmountNode(id)
+    if (toMount.length > 0 || toUnmount.length > 0) {
+      this.overviewLayer?.markMountsChanged()
+    }
     this.drainContentSync()
   }
 

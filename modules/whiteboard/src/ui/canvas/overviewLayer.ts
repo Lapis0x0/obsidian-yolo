@@ -170,6 +170,9 @@ export type OverviewLayerCallbacks = Readonly<{
    * because a canvas holds no caret, so this is the one this layer must not
    * draw as well. */
   getRenamingEdgeId: () => EdgeId | null
+  /** Whether the card has its DOM in the world layer now — outside the tier,
+   * the cards that do not are the ones this layer draws (`render`). */
+  isMounted: (id: NodeId) => boolean
   /**
    * Live rectangles for the nodes a drag or a resize is moving, or null when
    * nothing is. In the DOM tiers this feedback is a `transform` on the card's
@@ -207,6 +210,9 @@ export class OverviewLayer {
   private readonly canvasEl: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D | null
   private active = false
+  /** Outside the tier, whether the canvas is showing cards the DOM has not
+   * mounted yet — see `renderUnmounted`. */
+  private underlay = false
   private dirty = false
   /** Counts `markDirty` calls — see `revision`. */
   private revisionCount = 0
@@ -308,6 +314,7 @@ export class OverviewLayer {
   setActive(active: boolean): void {
     if (active === this.active) return
     this.active = active
+    this.underlay = false
     this.canvasEl.classList.toggle(OVERVIEW_HIDDEN_CLASS, !active)
     this.lastView = null
     if (active) {
@@ -325,6 +332,12 @@ export class OverviewLayer {
   markDirty(): void {
     this.dirty = true
     this.revisionCount += 1
+  }
+
+  /** Cards were mounted or unmounted: outside the tier that changes what the
+   * canvas has to draw, though not what the board shows (`revision`). */
+  markMountsChanged(): void {
+    if (!this.active) this.dirty = true
   }
 
   /**
@@ -400,7 +413,6 @@ export class OverviewLayer {
   /** Called once per frame from the canvas's rAF loop, after the camera has
    * advanced — so what is drawn is the camera the world layer was just given. */
   render(): void {
-    if (!this.active) return
     const view = this.callbacks.getView()
     // The camera controller replaces its view object rather than mutating it,
     // so identity is an exact "has the camera moved" test that costs one
@@ -412,6 +424,10 @@ export class OverviewLayer {
     if (!ctx || this.width === 0 || this.height === 0) return
     this.dirty = false
     this.lastView = view
+    if (!this.active) {
+      this.renderUnmounted(ctx, view)
+      return
+    }
     this.palette ??= this.readPalette(ctx)
     this.resizeBackingStore(ctx)
     ctx.clearRect(0, 0, this.width, this.height)
@@ -428,6 +444,48 @@ export class OverviewLayer {
     this.drawCards(ctx, view, surface, live)
     this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
+  }
+
+  /**
+   * Outside the tier: the cards on screen whose DOM has not been mounted
+   * yet, drawn as the tier draws them, under the world layer.
+   *
+   * The DOM tiers mount what the camera shows a few cards a frame
+   * (MOUNT_QUOTA_PER_FRAME) and look again at what it shows every
+   * RECOMPUTE_INTERVAL_MS, so a camera that widens faster than that — a
+   * sharp zoom out from reading a page — showed blank board where the cards
+   * it had not mounted yet were, and then had them appear. The tier's exit
+   * already covers that moment by drawing on until the mount queue drains
+   * (canvas.ts's `settleOverviewLinger`); this is the same handoff for every
+   * other moment: a card that mounts covers its own drawing from the frame it
+   * mounts in, so there is never a frame where it is shown by neither.
+   *
+   * Only the cards with no DOM, not the whole board as in the tier: a bare
+   * text card's DOM is transparent, and what the tier draws for one would
+   * show through it. Nor edges: theirs is still in the document. When it
+   * draws nothing the canvas goes out of the document again, so a board whose
+   * cards are all there costs a pass over them per camera move and nothing
+   * at rest.
+   */
+  private renderUnmounted(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+  ): void {
+    this.palette ??= this.readPalette(ctx)
+    this.resizeBackingStore(ctx)
+    if (this.underlay) ctx.clearRect(0, 0, this.width, this.height)
+    const drew = this.drawCards(
+      ctx,
+      view,
+      { width: this.width, height: this.height, text: true, selection: true },
+      this.callbacks.getLiveRects(),
+      (id) => this.callbacks.isMounted(id),
+    )
+    ctx.globalAlpha = 1
+    if (drew === this.underlay) return
+    this.underlay = drew
+    this.canvasEl.classList.toggle(OVERVIEW_HIDDEN_CLASS, !drew)
+    if (!drew) this.clear()
   }
 
   /**
@@ -669,11 +727,12 @@ export class OverviewLayer {
     view: CanvasView,
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
-  ): void {
+    skip?: (id: NodeId) => boolean,
+  ): boolean {
     const isSelected = (id: NodeId): boolean =>
       surface.selection && this.callbacks.isSelected(id)
     const palette = this.palette
-    if (!palette) return
+    if (!palette) return false
     const nodes = this.callbacks.getCardNodes()
     // Screen rects of everything on screen, kept once so the passes below
     // agree and the projection is done once per card rather than four times.
@@ -687,6 +746,7 @@ export class OverviewLayer {
     const texts: typeof visible = []
     const titles: PdfTitle[] = []
     for (const node of nodes) {
+      if (skip?.(node.id)) continue
       const moving = this.motions.has(node.id)
       const rect = live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
@@ -745,7 +805,8 @@ export class OverviewLayer {
       ctx.lineWidth = 1
     }
     if (surface.text) this.drawPdfTitles(ctx, view, titles)
-    if (visible.length === 0) return
+    const drew = texts.length > 0 || (surface.text && titles.length > 0)
+    if (visible.length === 0) return drew
 
     // 1. The opaque surface, in one path.
     ctx.globalAlpha = 1
@@ -839,7 +900,7 @@ export class OverviewLayer {
     if (anyLit) ctx.stroke()
     ctx.globalAlpha = 1
 
-    if (!surface.text) return
+    if (!surface.text) return true
     // 5. Titles, where a card is wide enough on screen to hold one. The type
     //    and the box it wraps in are the DOM card's title block — 32 world
     //    units, so it shrinks with the card — which is what makes the switch
@@ -861,6 +922,7 @@ export class OverviewLayer {
         ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
       }
     }
+    return true
   }
 
   /** A PDF's title as the DOM draws it (spread.css): one line with the
