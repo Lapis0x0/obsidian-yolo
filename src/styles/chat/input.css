@@ -1755,6 +1755,15 @@ button.yolo-chat-quick-access-picker-row > svg {
   container: yolo-chat-conversation / inline-size;
 }
 
+/* 主聊天滚动容器的高度只由会话面板的 flex 分配决定，从不取决于内容，所以可以
+ * 声明尺寸约束，让它成为独立的重排边界。不加的话，流式输出时尾段每长高一次，
+ * 重排都会沿着 flex 祖先链一路传到整个 Obsidian 工作区：每次只有几十个脏节点，
+ * 布局却要遍历上千个。实测加上后布局耗时降到原来的四分之一，无障碍树更新随之
+ * 大减。Quick Ask 也用 .yolo-chat-messages，但它的高度跟随内容，不能加。 */
+.yolo-chat-conversation-surface > .yolo-chat-messages {
+  contain: size;
+}
+
 .yolo-chat-messages {
   flex: 1 1 auto;
   min-height: 0;

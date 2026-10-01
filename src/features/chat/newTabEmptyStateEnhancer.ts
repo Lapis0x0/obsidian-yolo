@@ -26,6 +26,13 @@ export class NewTabEmptyStateEnhancer {
       }),
     )
 
+    this.plugin.registerEvent(
+      this.plugin.app.workspace.on('layout-change', () => {
+        this.observeEmptyLeaves()
+        this.refresh()
+      }),
+    )
+
     this.plugin.register(() => {
       this.observer?.disconnect()
       this.observer = null
@@ -47,11 +54,24 @@ export class NewTabEmptyStateEnhancer {
     this.observer = new MutationObserver(() => {
       this.refresh()
     })
+    this.observeEmptyLeaves()
+  }
 
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    })
+  // 只盯空标签页自己的容器：盯整个 body 时，聊天流式输出的每一次出字都会触发
+  // 一次 refresh 和强制样式计算。空标签页的增删由 layout-change 重新挂载观察。
+  private observeEmptyLeaves(): void {
+    if (!this.observer) {
+      return
+    }
+    this.observer.disconnect()
+    for (const leaf of this.plugin.app.workspace.getLeavesOfType(
+      EMPTY_VIEW_TYPE,
+    )) {
+      this.observer.observe(leaf.view.containerEl, {
+        childList: true,
+        subtree: true,
+      })
+    }
   }
 
   private refresh(): void {
