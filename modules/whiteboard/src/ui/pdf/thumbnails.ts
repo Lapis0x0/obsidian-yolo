@@ -57,6 +57,12 @@ const BUDGET_BYTES = 48 * 1024 * 1024
 const SHRINKS_AT_ONCE = 24
 /** Pages read back from the device at once. */
 const READS_AT_ONCE = 6
+/** How often the wanted pages are looked over while the board moves: as
+ * often as the board itself looks again at what is on screen (constants.ts's
+ * RECOMPUTE_INTERVAL_MS). Nothing is drawn until it is still, and a look over
+ * every page of every open spread, each frame, was the costliest thing a pan
+ * across a large spread did. */
+const SCAN_INTERVAL_MOVING_MS = 70
 /** Draws an ordinary page's slot always go ahead of: a thumbnail is only
  * ever next when no reader is waiting. */
 const BEHIND_READERS = 1e12
@@ -141,6 +147,7 @@ export class PdfThumbnails {
    * the board's spreads change (`retain`) or the zoom does. */
   private complete = false
   private completeAt = 0
+  private lastScanAt = Number.NEGATIVE_INFINITY
   /** The page the queue last saw this client for, so its priority is
    * where the next thumbnail would go. */
   private next: WantedThumbnail | null = null
@@ -179,8 +186,18 @@ export class PdfThumbnails {
     if (this.destroyed) return
     const resolution = this.deps.resolution()
     if (this.complete && resolution === this.completeAt) return
+    const now = this.deps.doc.defaultView?.performance.now() ?? 0
+    if (!this.deps.idle() && now - this.lastScanAt < SCAN_INTERVAL_MOVING_MS) {
+      return
+    }
+    this.lastScanAt = now
     this.complete = false
-    const toRead: Want[] = []
+    // A page with nothing before one that is merely too small, each nearest
+    // first. Kept apart as they are found rather than sorted on whether a page
+    // is held: asking the entries inside the comparator made that sort the
+    // costliest part of a look over hundreds of pages.
+    const toReadMissing: Want[] = []
+    const toReadLarger: Want[] = []
     let toDraw: Want | null = null
     const toShrink: Want[] = []
     let farthestHeld: WantedThumbnail | null = null
@@ -208,7 +225,7 @@ export class PdfThumbnails {
       if (!file.stored) {
         waiting = true
       } else if (file.stored.has(wanted.page)) {
-        toRead.push(want)
+        ;(entry ? toReadLarger : toReadMissing).push(want)
       } else if (!entry && (!toDraw || wanted.distance < toDraw.distance)) {
         toDraw = want
       }
@@ -224,10 +241,11 @@ export class PdfThumbnails {
       }
     }
 
-    // A page with nothing before one that is merely too small.
-    const held = (want: Want) =>
-      this.entries.has(key(want.path, want.page)) ? 1 : 0
-    toRead.sort((a, b) => held(a) - held(b) || a.distance - b.distance)
+    const byDistance = (a: Want, b: Want) => a.distance - b.distance
+    const toRead = [
+      ...toReadMissing.sort(byDistance),
+      ...toReadLarger.sort(byDistance),
+    ]
     const nearest =
       toDraw && (!toRead[0] || toDraw.distance < toRead[0].distance)
         ? toDraw

@@ -81,6 +81,11 @@ const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
 /** How dark bare text's block of ink is drawn, zoomed out past reading it. */
 const OVERVIEW_TEXT_ALPHA = 0.18
+/** Below this many CSS pixels wide a page is drawn as its card alone, not
+ * its picture: there is nothing of the page left to see, and a minimap holds
+ * hundreds of pages each narrower than a pixel — scaling every one of their
+ * thumbnails down was most of what redrawing it cost. */
+const PICTURE_MIN_SCREEN_PX = 4
 /** Past this many wrapped titles the cache starts over rather than growing
  * with every card a long session has ever shown. */
 const TITLE_LINES_CACHE_LIMIT = 2000
@@ -978,6 +983,7 @@ export class OverviewLayer {
     dark: boolean,
     scale: number,
   ): boolean {
+    if (rect.w < PICTURE_MIN_SCREEN_PX) return false
     if (node.type === 'pdf-page') {
       const picture = this.callbacks.pageThumbnail(node.file, node.page, dark)
       if (!picture) return false
