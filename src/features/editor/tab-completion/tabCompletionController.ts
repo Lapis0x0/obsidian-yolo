@@ -21,7 +21,6 @@ import type { ConversationOverrideSettings } from '../../../types/conversation-s
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type {
-  InlineSuggestionGhostPayload,
   TabCompletionCandidateStatus,
   TabCompletionDisplayPayload,
 } from '../inline-suggestion/inlineSuggestion'
@@ -39,7 +38,6 @@ type TabCompletionSuggestion = {
   }>
   selectedIndex: number
   hasUserNavigated: boolean
-  multipleCandidates: boolean
 }
 
 type ActiveInlineSuggestion = {
@@ -66,12 +64,6 @@ type TabCompletionDeps = {
     view: EditorView,
     payload: TabCompletionDisplayPayload,
   ) => void
-  setInlineSuggestionGhost: (
-    view: EditorView,
-    payload: InlineSuggestionGhostPayload,
-  ) => void
-  showTabLoadingDots: (view: EditorView, from: number) => void
-  hideTabLoadingDots: (view: EditorView) => void
   getSwitchSuggestionHint: () => string
   clearInlineSuggestion: () => void
   setActiveInlineSuggestion: (suggestion: ActiveInlineSuggestion) => void
@@ -198,7 +190,6 @@ export class TabCompletionController {
     cursorOffset: number
     replaceFromOffset: number | null
   } | null = null
-  private tabLoadingView: EditorView | null = null
   private lastAutoTriggerAt = 0
 
   constructor(private readonly deps: TabCompletionDeps) {}
@@ -315,17 +306,6 @@ export class TabCompletionController {
     return null
   }
 
-  private showLoadingDots(view: EditorView, from: number) {
-    this.tabLoadingView = view
-    this.deps.showTabLoadingDots(view, from)
-  }
-
-  private hideLoadingDots() {
-    if (!this.tabLoadingView) return
-    this.deps.hideTabLoadingDots(this.tabLoadingView)
-    this.tabLoadingView = null
-  }
-
   clearTimer() {
     if (this.tabCompletionTimer) {
       clearTimeout(this.tabCompletionTimer)
@@ -335,7 +315,6 @@ export class TabCompletionController {
   }
 
   cancelRequest() {
-    this.hideLoadingDots()
     if (!this.tabCompletionAbortController) return
     try {
       this.tabCompletionAbortController.abort()
@@ -347,15 +326,10 @@ export class TabCompletionController {
   }
 
   clearSuggestion() {
-    this.hideLoadingDots()
     if (this.tabCompletionSuggestion) {
-      const { multipleCandidates, view } = this.tabCompletionSuggestion
+      const { view } = this.tabCompletionSuggestion
       if (view) {
-        if (multipleCandidates) {
-          this.deps.setTabCompletionDisplay(view, null)
-        } else {
-          this.deps.setInlineSuggestionGhost(view, null)
-        }
+        this.deps.setTabCompletionDisplay(view, null)
       }
       this.tabCompletionSuggestion = null
     }
@@ -443,29 +417,17 @@ export class TabCompletionController {
       (candidate) => candidate.text.length > 0,
     ).length
 
-    if (suggestion.multipleCandidates) {
-      this.deps.setTabCompletionDisplay(suggestion.view, {
-        from: suggestion.cursorOffset,
-        text: selected?.text ?? '',
-        candidateStatuses: suggestion.candidates.map(
-          (candidate) => candidate.status,
-        ),
-        selectedIndex: suggestion.selectedIndex,
-        showSelectionIndicator: suggestion.hasUserNavigated,
-        availableCount,
-        switchHint: this.deps.getSwitchSuggestionHint(),
-      })
-    } else if (selected?.text) {
-      this.hideLoadingDots()
-      this.deps.setInlineSuggestionGhost(suggestion.view, {
-        from: suggestion.cursorOffset,
-        text: selected.text,
-      })
-    } else if (selected?.status === 'generating') {
-      this.showLoadingDots(suggestion.view, suggestion.cursorOffset)
-    } else {
-      this.hideLoadingDots()
-    }
+    this.deps.setTabCompletionDisplay(suggestion.view, {
+      from: suggestion.cursorOffset,
+      text: selected?.text ?? '',
+      candidateStatuses: suggestion.candidates.map(
+        (candidate) => candidate.status,
+      ),
+      selectedIndex: suggestion.selectedIndex,
+      showSelectionIndicator: suggestion.hasUserNavigated,
+      availableCount,
+      switchHint: this.deps.getSwitchSuggestionHint(),
+    })
 
     if (!selected?.text) {
       this.deps.setActiveInlineSuggestion(null)
@@ -531,7 +493,6 @@ export class TabCompletionController {
   tryNavigateFromView(view: EditorView, direction: -1 | 1): boolean {
     const suggestion = this.tabCompletionSuggestion
     if (!suggestion || suggestion.view !== view) return false
-    if (!suggestion.multipleCandidates) return false
 
     const availableIndices = suggestion.candidates.flatMap(
       (candidate, index) => (candidate.text ? [index] : []),
@@ -648,10 +609,7 @@ export class TabCompletionController {
         baseSystemPrompt,
         combinedConstraints,
       )
-      const multipleCandidatesEnabled = true
-      const systemPrompt = multipleCandidatesEnabled
-        ? `${basePrompt}\n\n${TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT}`
-        : basePrompt
+      const systemPrompt = `${basePrompt}\n\n${TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT}`
 
       const requestMessages: RequestMessage[] = [
         {
@@ -679,11 +637,7 @@ export class TabCompletionController {
         cursorOffset: scheduledCursorOffset,
         replaceFromOffset: effectiveReplaceFromOffset,
         candidates: Array.from(
-          {
-            length: multipleCandidatesEnabled
-              ? TAB_COMPLETION_CANDIDATE_COUNT
-              : 1,
-          },
+          { length: TAB_COMPLETION_CANDIDATE_COUNT },
           (_, index) => ({
             text: '',
             status: index === 0 ? 'generating' : 'pending',
@@ -691,7 +645,6 @@ export class TabCompletionController {
         ),
         selectedIndex: 0,
         hasUserNavigated: false,
-        multipleCandidates: multipleCandidatesEnabled,
       }
       this.tabCompletionSuggestion = suggestion
       this.renderSuggestion(suggestion)
