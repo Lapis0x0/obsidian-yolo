@@ -79,7 +79,6 @@ describe('TabCompletionController replacement triggers', () => {
       candidates: [{ text: '$E = mc^2$', status: 'complete' }],
       selectedIndex: 0,
       hasUserNavigated: false,
-      multipleCandidates: false,
     }
 
     expect(controller.tryAcceptFromView(view)).toBe(true)

@@ -132,63 +132,6 @@ export const thinkingIndicatorField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 })
 
-export type TabLoadingDotsPayload = { from: number } | null
-
-export const tabLoadingDotsEffect = StateEffect.define<TabLoadingDotsPayload>()
-
-class TabLoadingDotsWidget extends WidgetType {
-  eq(_other: TabLoadingDotsWidget) {
-    return true
-  }
-
-  ignoreEvent(): boolean {
-    return true
-  }
-
-  toDOM(): HTMLElement {
-    const container = document.createElement('span')
-    container.className = 'yolo-tab-loading-dots'
-    container.setAttribute('aria-hidden', 'true')
-    for (let index = 0; index < 3; index++) {
-      const dot = document.createElement('span')
-      dot.className = 'yolo-tab-loading-dots__dot'
-      container.appendChild(dot)
-    }
-    return container
-  }
-}
-
-export const tabLoadingDotsField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(value, tr) {
-    let decorations = value.map(tr.changes)
-
-    for (const effect of tr.effects) {
-      if (effect.is(tabLoadingDotsEffect)) {
-        const payload = effect.value
-        if (!payload) {
-          decorations = Decoration.none
-          continue
-        }
-        const widget = Decoration.widget({
-          widget: new TabLoadingDotsWidget(),
-          side: 1,
-        }).range(payload.from)
-        decorations = Decoration.set([widget])
-      }
-    }
-
-    if (tr.docChanged) {
-      decorations = Decoration.none
-    }
-
-    return decorations
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
-
 export type TabCompletionCandidateStatus =
   | 'pending'
   | 'generating'
