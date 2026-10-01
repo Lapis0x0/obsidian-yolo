@@ -336,6 +336,7 @@ export class CameraController {
       return
     }
     this.cameraGlide = { kind: 'anchored', ...anchor, targetScale }
+    this.markInteracting()
   }
 
   /**
@@ -395,10 +396,15 @@ export class CameraController {
   /** What both glide laws do with the frame they just computed. */
   private finishGlideFrame(settled: boolean): void {
     this.applyTransform()
-    this.markInteracting()
+    // The camera moving is interacting for as long as it moves, but the tail
+    // after it is counted from the last input, not restarted by every frame
+    // of the glide that input set going — that put a whole tail after the
+    // glide's own, and the pages a zoom left blurred waited for both.
+    this.callbacks.setInteracting(true)
     if (!settled) return
     this.cameraGlide = null
     this.lastGlideTime = null
+    if (this.interactingTimer === null) this.callbacks.setInteracting(false)
     // The counter-scale is written here rather than per frame — see
     // `applyZoomScale`.
     this.applyZoomScale()
@@ -580,7 +586,9 @@ export class CameraController {
     const win = this.context.getWindow()
     if (this.interactingTimer !== null) win.clearTimeout(this.interactingTimer)
     this.interactingTimer = win.setTimeout(() => {
-      this.callbacks.setInteracting(false)
+      this.interactingTimer = null
+      // A glide still under way ends it when it lands (`finishGlideFrame`).
+      if (this.cameraGlide === null) this.callbacks.setInteracting(false)
     }, INTERACTING_TIMEOUT_MS)
   }
 
@@ -945,6 +953,8 @@ export class CameraController {
     this.viewValue = viewFromCamera(camera)
     this.cameraGlide = null
     this.lastGlideTime = null
+    // A glide it cut short would otherwise have ended the interacting it held.
+    if (this.interactingTimer === null) this.callbacks.setInteracting(false)
     this.applyTransform()
   }
 
