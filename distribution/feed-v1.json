@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 42,
+  "revision": 43,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9.7",
+    "version": "1.6.10",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.7",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.10",
     "releaseNotes": {
-      "en": "## 1.6.9.7 Smoother Updates 🔄\n\n- Improved the Core and module update mechanism to reduce redundant, repeated prompts.\n- Improved the chat navigation ticks on mobile.\n- Fixed message navigation ticks covering the text when the chat panel is narrow in the main editor area or a pop-out window. (#610)",
-      "zh": "## 1.6.9.7 更新体验优化 🔄\n\n- 优化 core 和模块的升级机制，减少无效重复打扰。\n- 优化手机端聊天导航刻度的使用体验。\n- 修复主编辑区或弹出窗口中聊天面板较窄时，消息导航刻度遮挡正文的问题。（#610）"
+      "en": "## 1.6.10 Auto Updates 🔄\n\n- Fixed errors when a module depends on updating YOLO Core.\n- Improved the Core and module update logic, and introduced an auto-update option. (#611)\n- Improved the context compaction implementation, adding a stronger system-level compaction mechanism while keeping the model's ability to compact on its own.\n- Fixed knowledge bases that no longer exist still counting toward \"needs attention\", and the bottom bar permanently showing \"waiting to retry\". (#612)\n- Reduced CPU usage during streaming output to improve performance.\n- Simplified the settings and UI of the Agent tools/skills pages, and added search to them. (#599)",
+      "zh": "## 1.6.10 自动更新 🔄\n\n- 修复模块依赖更新 YOLO Core 时的报错问题\n- 优化 core 和模块的更新逻辑，引入自动更新选项。（#611）\n- 优化上下文压缩实现，引入更强制的系统级的上下文压缩机制，同时保留模型自主压缩的能力\n- 修复已不存在的知识库仍被计入「需要关注」、底栏一直显示等待重试的问题。（#612）\n- 优化流式输出的 CPU 占用，改善性能表现\n- 精简 Agent 工具/技能页设置项与 UI；为 Agent 的工具/技能页增加搜索机制。（#599）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9.7/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.7/main.js",
-        "byteSize": 5769386,
-        "sha256": "e7acb19151e0daa8f8105c7a4b5dc1d0e140371368bd1442fb5ec57e7a124785"
+        "mirrorPath": "core/1.6.10/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.10/main.js",
+        "byteSize": 5772039,
+        "sha256": "eede4453edaa82ec14416102670f0a4cff3c3a4c2622a9092254fcdc2387c18a"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9.7/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.7/manifest.json",
-        "byteSize": 413,
-        "sha256": "51359083a792406c33cf1104c4420e7f7b5a3576e614e1848d01f481cb378f20"
+        "mirrorPath": "core/1.6.10/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.10/manifest.json",
+        "byteSize": 412,
+        "sha256": "4ca9c01dcc0b63a456f5f59fc6720d5f0d316bfc0edd7f555e49854ff7748106"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9.7/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.7/styles.css",
-        "byteSize": 496805,
-        "sha256": "998d6591ba0cc3a4e797794b18f32373e896f14d9e6f3348a656e3965e409137"
+        "mirrorPath": "core/1.6.10/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.10/styles.css",
+        "byteSize": 496619,
+        "sha256": "cbe9a89b718063893d544030f9b40d46937d8219c7b951d90f37cc5e6e401f39"
       }
     }
   },
