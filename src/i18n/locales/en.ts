@@ -691,7 +691,6 @@ export const en: TranslationKeys = {
       editorToolsCount: '{count} tools',
       editorEstimatedContextTokens: '~{count} tokens',
       editorSkillsCount: '{count} skills',
-      editorSkillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillLoadAlways: 'Full inject',
       skillLoadLazy: 'On demand',
       skillDisabledGlobally: 'Disabled globally',

@@ -273,7 +273,6 @@ function createNewAgent(): Assistant {
     toolPreferences: {},
     builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
     toolServerPreferences: {},
-    enabledSkills: [],
     skillPreferences: {},
     includeCurrentFileContent: true,
     timeContextEnabled: true,
@@ -292,7 +291,6 @@ function toDraftAgent(assistant: Assistant): Assistant {
     toolPreferences: getAssistantToolPreferences(assistant),
     builtinCapabilityPreferences: assistant.builtinCapabilityPreferences ?? {},
     toolServerPreferences: assistant.toolServerPreferences ?? {},
-    enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
     includeCurrentFileContent: assistant.includeCurrentFileContent ?? true,
     timeContextEnabled: assistant.timeContextEnabled ?? true,
@@ -774,26 +772,15 @@ export function AgentsSectionContent({
     if (!draftAgent) {
       return
     }
-    const current = new Set(draftAgent.enabledSkills ?? [])
-    const nextPreferences = {
-      ...(draftAgent.skillPreferences ?? {}),
-    }
-
-    if (enabled) {
-      current.add(skillName)
-    } else {
-      current.delete(skillName)
-    }
-
-    nextPreferences[skillName] = {
-      ...(nextPreferences[skillName] ?? {}),
-      enabled,
-    }
-
     setDraftAgent({
       ...draftAgent,
-      enabledSkills: [...current],
-      skillPreferences: nextPreferences,
+      skillPreferences: {
+        ...(draftAgent.skillPreferences ?? {}),
+        [skillName]: {
+          ...(draftAgent.skillPreferences?.[skillName] ?? {}),
+          enabled,
+        },
+      },
     })
   }
 
@@ -809,10 +796,6 @@ export function AgentsSectionContent({
       ...(draftAgent.skillPreferences ?? {}),
       [skillName]: {
         ...(draftAgent.skillPreferences?.[skillName] ?? {}),
-        enabled:
-          draftAgent.skillPreferences?.[skillName]?.enabled ??
-          draftAgent.enabledSkills?.includes(skillName) ??
-          true,
         loadMode,
       },
     }
@@ -1170,16 +1153,12 @@ export function AgentsSectionContent({
       perSkill: new Map(),
     })
 
-  const alwaysSkillRows = useMemo(
-    () =>
-      skillRows.filter((skill) => skill.enabled && skill.loadMode === 'always'),
-    [skillRows],
-  )
-  const lazySkillRows = useMemo(
-    () =>
-      skillRows.filter((skill) => skill.enabled && skill.loadMode === 'lazy'),
-    [skillRows],
-  )
+  const enabledSkillCount = skillRows.filter((skill) => skill.enabled).length
+  // Full injection is the one load mode that costs every request, so it is
+  // the only one worth surfacing in the header.
+  const alwaysSkillCount = skillRows.filter(
+    (skill) => skill.enabled && skill.loadMode === 'always',
+  ).length
 
   useEffect(() => {
     let cancelled = false
@@ -2031,29 +2010,16 @@ export function AgentsSectionContent({
                     )}
                   </div>
                   <div className="yolo-agent-tools-panel-count">
-                    {t(
-                      'settings.agent.editorSkillsCountWithEnabled',
-                      '{count} skills (enabled {enabled})',
-                    )
-                      .replace('{count}', String(skillRows.length))
-                      .replace(
-                        '{enabled}',
-                        String(
-                          skillRows.filter((skill) => skill.enabled).length,
-                        ),
-                      )}
+                    {`${enabledSkillCount} / ${skillRows.length} ${t(
+                      'settings.agent.toolsActive',
+                      'active',
+                    )}`}
+                    {alwaysSkillCount > 0 &&
+                      ` · ${t(
+                        'settings.agent.skillLoadAlways',
+                        'Full inject',
+                      )} ${alwaysSkillCount}`}
                   </div>
-                </div>
-
-                <div className="yolo-agent-skill-summary-row">
-                  <span className="yolo-agent-chip">
-                    {t('settings.agent.skillLoadAlways', 'Full inject')}:{' '}
-                    {alwaysSkillRows.length}
-                  </span>
-                  <span className="yolo-agent-chip">
-                    {t('settings.agent.skillLoadLazy', 'On demand')}:{' '}
-                    {lazySkillRows.length}
-                  </span>
                 </div>
 
                 {skillRows.length > 0 ? (

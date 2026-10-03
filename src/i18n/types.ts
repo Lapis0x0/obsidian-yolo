@@ -497,7 +497,6 @@ export type TranslationKeys = {
       editorToolsCount?: string
       editorEstimatedContextTokens?: string
       editorSkillsCount?: string
-      editorSkillsCountWithEnabled?: string
       skillLoadAlways?: string
       skillLoadLazy?: string
       skillDisabledGlobally?: string

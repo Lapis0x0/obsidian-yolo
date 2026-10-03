@@ -27,7 +27,6 @@ export const createDefaultAssistant = (): Assistant => ({
   toolPreferences: {},
   builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
   toolServerPreferences: {},
-  enabledSkills: [],
   skillPreferences: {},
   includeCurrentFileContent: true,
   timeContextEnabled: true,
@@ -54,8 +53,6 @@ const hasDefaultAssistantChanged = (
       JSON.stringify(normalized.builtinCapabilityPreferences ?? {}) ||
     JSON.stringify(current.toolServerPreferences ?? {}) !==
       JSON.stringify(normalized.toolServerPreferences ?? {}) ||
-    JSON.stringify(current.enabledSkills ?? []) !==
-      JSON.stringify(normalized.enabledSkills ?? []) ||
     JSON.stringify(current.skillPreferences ?? {}) !==
       JSON.stringify(normalized.skillPreferences ?? {}) ||
     (current.includeCurrentFileContent ?? true) !==
@@ -87,7 +84,6 @@ const normalizeDefaultAssistant = (assistant: Assistant): Assistant => {
           ),
     builtinCapabilityPreferences: assistant.builtinCapabilityPreferences ?? {},
     toolServerPreferences: assistant.toolServerPreferences ?? {},
-    enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
     includeCurrentFileContent: assistant.includeCurrentFileContent ?? true,
     timeContextEnabled: assistant.timeContextEnabled ?? true,

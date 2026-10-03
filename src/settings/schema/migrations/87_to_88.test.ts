@@ -83,12 +83,13 @@ describe('migrateFrom87To88 agent tool master switches', () => {
         .assistants as Record<string, unknown>[]
     )[0]
 
-  it('drops both switches from an agent that had them on', () => {
+  it('drops both switches and the legacy skill list from an agent', () => {
     expect(
       migrateAgent({
         id: 'a',
         enableTools: true,
         includeBuiltinTools: true,
+        enabledSkills: ['weekly-organizer'],
         builtinCapabilityPreferences: { file_reading: { enabled: true } },
       }),
     ).toEqual({

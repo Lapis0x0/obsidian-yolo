@@ -702,7 +702,6 @@ export const it: DeepPartial<TranslationKeys> = {
       followDefaultModel: 'Segui modello predefinito',
       editorToolsCount: '{count} strumenti',
       editorSkillsCount: '{count} competenze',
-      editorSkillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillLoadAlways: 'Iniezione completa',
       skillLoadLazy: 'Su richiesta',
       skillDisabledGlobally: 'Disabilitata globalmente',

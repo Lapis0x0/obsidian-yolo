@@ -259,12 +259,6 @@ button.yolo-agent-mcp-config-copy {
   gap: 6px;
 }
 
-.yolo-agent-skill-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-}
-
 .yolo-agent-skills-toolbar {
   margin: var(--size-4-2) 0;
   display: flex;

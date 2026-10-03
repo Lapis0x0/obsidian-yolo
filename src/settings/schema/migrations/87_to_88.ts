@@ -18,6 +18,8 @@ import type { SettingMigration } from '../setting.types'
  *   that had a master switch off keeps the same tool set by having the
  *   switches it covered written off: every built-in capability for either
  *   flag, plus every remote MCP tool for `enableTools`.
+ * - The legacy per-agent `enabledSkills` list goes away. Nothing read it any
+ *   more: whether a skill is enabled lives in `skillPreferences` alone.
  */
 export const migrateFrom87To88: SettingMigration['migrate'] = (data) => {
   const {
@@ -79,7 +81,12 @@ const disableAll = (
 const migrateAssistantToolMasterSwitches = (
   assistant: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const { enableTools, includeBuiltinTools, ...rest } = assistant
+  const {
+    enableTools,
+    includeBuiltinTools,
+    enabledSkills: _enabledSkills,
+    ...rest
+  } = assistant
   const toolsOff = enableTools === false
   if (!toolsOff && includeBuiltinTools !== false) {
     return rest

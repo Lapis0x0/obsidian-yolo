@@ -2060,8 +2060,7 @@ ${entries}
           }
         : null,
       // Only assistant fields that reach the system prompt — not modelId / icon /
-      // updatedAt, which would over-evict on unrelated edits. `enabledSkills` is
-      // legacy and not consulted by skill filtering, so it is intentionally out.
+      // updatedAt, which would over-evict on unrelated edits.
       assistant: assistant
         ? {
             name: assistant.name,
