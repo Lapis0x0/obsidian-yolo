@@ -516,14 +516,12 @@ export function AgentSection({ app }: AgentSectionProps) {
                 </span>
                 <span className="yolo-agent-meta-item">
                   <Wrench size={12} />
-                  {assistant.enableTools
-                    ? `${
-                        getEnabledAssistantToolNames(
-                          assistant,
-                          moduleToolSetEnablement,
-                        ).length
-                      } tools`
-                    : '0 tools'}
+                  {`${
+                    getEnabledAssistantToolNames(
+                      assistant,
+                      moduleToolSetEnablement,
+                    ).length
+                  } tools`}
                 </span>
                 <span className="yolo-agent-meta-item">
                   <BookOpen size={12} />

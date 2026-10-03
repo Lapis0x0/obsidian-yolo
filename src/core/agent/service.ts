@@ -806,15 +806,6 @@ const isAssistantOrToolMessage = (
   return message.role === 'assistant' || message.role === 'tool'
 }
 
-// Mirrors NativeAgentRuntime.shouldUseSingleTurnFastPath. A fast-path run does
-// not call drainPendingUserMessages (no llm_request boundary), so queued
-// messages can never be consumed inside that run. Treat fast-path runs as
-// "not enqueueable" and skip after-run continuation that would otherwise loop
-// forever re-launching fast-path runs that ignore the queue.
-const isFastPathLoopConfig = (config: AgentRuntimeLoopConfig): boolean => {
-  return !config.enableTools && config.maxAutoIterations <= 1
-}
-
 const matchesBranchMessage = (
   message: ChatMessage,
   sourceUserMessageId: string,
@@ -1154,14 +1145,6 @@ export class AgentSessionService {
     const runKey = getRunKey(conversationId, effectiveBranchId)
     const runEntry = this.runEntriesByKey.get(runKey)
     if (!runEntry || runEntry.state.status !== 'running') {
-      return 'idle'
-    }
-    if (
-      runEntry.lastLoopConfig &&
-      isFastPathLoopConfig(runEntry.lastLoopConfig)
-    ) {
-      // Fast-path runs have no llm_request boundary to drain at. Fall through
-      // to the normal submit path so the caller starts a fresh run instead.
       return 'idle'
     }
     if (hasPendingUserInteraction(runEntry.state.messages)) {
@@ -2389,13 +2372,6 @@ export class AgentSessionService {
     }
     if (lastRunInput.abortSignal?.aborted) {
       // Abort path is responsible for clearing the queue; do not continue.
-      return
-    }
-    if (isFastPathLoopConfig(lastLoopConfig)) {
-      // Defensive: enqueueUserMessage already rejects fast-path runs, but a
-      // queued message could in principle reach here through other paths.
-      // Skip continuation to avoid an infinite loop of fast-path runs that
-      // never drain the queue.
       return
     }
     this.continuationScheduledByKey.add(runKey)

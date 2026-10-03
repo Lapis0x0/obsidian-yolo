@@ -679,11 +679,6 @@ export const en: TranslationKeys = {
       editorEnableProjectInstructions: 'Load project instruction files',
       editorEnableProjectInstructionsDesc:
         'Auto-load AGENTS.md and CLAUDE.md from the vault root for this agent. Compatible with Codex / Claude Code / Cursor and similar tools.',
-      editorEnableTools: 'Enable tools',
-      editorEnableToolsDesc: 'Allow this agent to call tools',
-      editorIncludeBuiltinTools: 'Include built-in tools',
-      editorIncludeBuiltinToolsDesc:
-        'Allow local vault file tools for this agent',
       toolApproval: 'Approval',
       toolApprovalFullAccess: 'Full access',
       toolApprovalRequire: 'Require approval',

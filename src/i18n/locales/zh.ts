@@ -621,10 +621,6 @@ export const zh: TranslationKeys = {
       editorEnableProjectInstructions: '读取项目指令文件',
       editorEnableProjectInstructionsDesc:
         '为该 Agent 自动加载 vault 根目录的 AGENTS.md 与 CLAUDE.md 作为项目指令，与 Codex / Claude Code / Cursor 等工具兼容。',
-      editorEnableTools: '启用工具',
-      editorEnableToolsDesc: '允许该 Agent 调用工具',
-      editorIncludeBuiltinTools: '包含内置工具',
-      editorIncludeBuiltinToolsDesc: '允许该 Agent 使用本地库文件工具',
       toolApproval: '审批',
       toolApprovalFullAccess: '完全放行',
       toolApprovalRequire: '需要审批',

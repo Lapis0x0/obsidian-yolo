@@ -57,8 +57,6 @@ type AgentLlmTurnExecutorInput = {
   branchLabel?: string
   resumeAssistantMessage?: ChatAssistantMessage
   compaction?: ChatConversationCompactionLike | null
-  enableTools: boolean
-  includeBuiltinTools: boolean
   apiType?: LLMProviderApiType | null
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
@@ -138,8 +136,6 @@ export type PrepareTurnRequestInput = Pick<
   | 'conversationId'
   | 'messages'
   | 'compaction'
-  | 'enableTools'
-  | 'includeBuiltinTools'
   | 'apiType'
   | 'allowedToolNames'
   | 'toolPreferences'
@@ -173,13 +169,10 @@ export async function prepareTurnRequest(
   tools: RequestTool[] | undefined
 }> {
   const toolPlanStart = Date.now()
-  const availableTools = input.enableTools
-    ? await input.mcpManager.listAvailableTools({
-        includeBuiltinTools: input.includeBuiltinTools,
-        chatModelModalities: input.model.modalities,
-        capabilityOverrides: input.capabilityOverrides,
-      })
-    : []
+  const availableTools = await input.mcpManager.listAvailableTools({
+    chatModelModalities: input.model.modalities,
+    capabilityOverrides: input.capabilityOverrides,
+  })
   const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
     await selectAllowedTools({
       availableTools,

@@ -100,20 +100,6 @@ describe('McpManager in-process tool server registry', () => {
     )
   })
 
-  it('surfaces registered tools even when includeBuiltinTools is false', async () => {
-    const manager = createManager()
-    const { server } = createEchoServer()
-    manager.registerInProcessServer('demo_module', server)
-
-    const tools = await manager.listAvailableTools({
-      includeBuiltinTools: false,
-    })
-
-    expect(tools).toEqual([
-      expect.objectContaining({ name: 'demo_module__echo' }),
-    ])
-  })
-
   it('routes callTool to the registered handler', async () => {
     const manager = createManager()
     const { server, calls } = createEchoServer()

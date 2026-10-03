@@ -49,15 +49,6 @@ export const BUILTIN_DEFAULT_ENABLED_TOOL_FQNS: readonly string[] =
       `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${shortName}`,
   )
 
-const isLocalFileToolFqn = (toolName: string): boolean => {
-  try {
-    const { serverName } = parseToolName(toolName)
-    return serverName === getLocalFileToolServerName()
-  } catch {
-    return false
-  }
-}
-
 /**
  * The default `enabled` value that the **settings migration** writes for a
  * tool when no explicit preference exists. User-facing built-in
@@ -303,48 +294,29 @@ export type ModuleToolSetEnablementV1 = Readonly<{
  * {@link resolveBuiltinCapabilityPreference} (explicit per-assistant entry,
  * or the capability's own default when absent). `toolPreferences` no longer
  * carries built-in entries at all as of that migration.
- *
- * Honors `includeBuiltinTools`: when false, built-in tools are excluded from
- * the result entirely (the capability expansion loop below is skipped),
- * matching what the runtime actually exposes.
- *
- * Does NOT consult `enableTools`; callers gate on that at a higher level so
- * the helper remains useful inside the editor (where the master switch may be
- * temporarily off while the user is staging changes).
  */
 export const getEnabledAssistantToolNames = (
   assistant?: Pick<
     Assistant,
-    | 'toolPreferences'
-    | 'enabledToolNames'
-    | 'includeBuiltinTools'
-    | 'builtinCapabilityPreferences'
+    'toolPreferences' | 'enabledToolNames' | 'builtinCapabilityPreferences'
   > | null,
   moduleToolSets: readonly ModuleToolSetEnablementV1[] = [],
 ): string[] => {
   const toolPreferences = getAssistantToolPreferences(assistant)
-  const includeBuiltinTools = assistant?.includeBuiltinTools !== false
   const result = new Set<string>()
 
   for (const [toolName, preference] of Object.entries(toolPreferences)) {
     if (!preference.enabled) continue
-    if (!includeBuiltinTools && isLocalFileToolFqn(toolName)) continue
     result.add(toolName)
   }
 
-  if (includeBuiltinTools) {
-    const localServer = getLocalFileToolServerName()
-    for (const capability of listCapabilities()) {
-      if (
-        !resolveBuiltinCapabilityPreference(assistant, capability.id).enabled
-      ) {
-        continue
-      }
-      for (const tool of capability.tools) {
-        result.add(
-          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${tool.name}`,
-        )
-      }
+  const localServer = getLocalFileToolServerName()
+  for (const capability of listCapabilities()) {
+    if (!resolveBuiltinCapabilityPreference(assistant, capability.id).enabled) {
+      continue
+    }
+    for (const tool of capability.tools) {
+      result.add(`${localServer}${McpManager.TOOL_NAME_DELIMITER}${tool.name}`)
     }
   }
 

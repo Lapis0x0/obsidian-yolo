@@ -517,10 +517,6 @@ button.yolo-agent-mcp-config-copy {
   gap: var(--size-4-3);
 }
 
-.yolo-agent-tools-panel.is-disabled {
-  opacity: 0.64;
-}
-
 .yolo-agent-tools-panel-head {
   display: flex;
   align-items: center;

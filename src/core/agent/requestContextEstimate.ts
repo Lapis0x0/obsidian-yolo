@@ -24,8 +24,6 @@ export const estimateContinuationRequestContextTokens = async ({
   messages,
   conversationId,
   compaction,
-  enableTools,
-  includeBuiltinTools,
   apiType,
   allowedToolNames,
   toolPreferences,
@@ -44,8 +42,6 @@ export const estimateContinuationRequestContextTokens = async ({
   messages: ChatMessage[]
   conversationId: string
   compaction?: ChatConversationCompactionLike | null
-  enableTools: boolean
-  includeBuiltinTools: boolean
   apiType?: LLMProviderApiType | null
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
@@ -59,15 +55,12 @@ export const estimateContinuationRequestContextTokens = async ({
   moduleChatModeId?: string
   contextPolicy?: ChatContextPolicy
 }): Promise<number> => {
-  const availableTools = enableTools
-    ? await mcpManager.listAvailableTools({
-        includeBuiltinTools,
-        capabilityOverrides,
-        // Tailor built-in tool schemas to the active model so the token
-        // estimate reflects what the model will actually see at request time.
-        chatModelModalities: model.modalities,
-      })
-    : []
+  const availableTools = await mcpManager.listAvailableTools({
+    capabilityOverrides,
+    // Tailor built-in tool schemas to the active model so the token
+    // estimate reflects what the model will actually see at request time.
+    chatModelModalities: model.modalities,
+  })
   const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
     await selectAllowedTools({
       availableTools,

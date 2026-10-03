@@ -244,8 +244,6 @@ async function runChildAgent(
   )
 
   const loopConfig: AgentRuntimeLoopConfig = {
-    enableTools: parent.loopConfig.enableTools,
-    includeBuiltinTools: parent.loopConfig.includeBuiltinTools,
     maxAutoIterations: SUBAGENT_MAX_AUTO_ITERATIONS,
   }
 

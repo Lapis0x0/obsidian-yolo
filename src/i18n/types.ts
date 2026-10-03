@@ -485,10 +485,6 @@ export type TranslationKeys = {
       editorSystemPromptCollapse?: string
       editorEnableProjectInstructions?: string
       editorEnableProjectInstructionsDesc?: string
-      editorEnableTools?: string
-      editorEnableToolsDesc?: string
-      editorIncludeBuiltinTools?: string
-      editorIncludeBuiltinToolsDesc?: string
       toolApproval?: string
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string

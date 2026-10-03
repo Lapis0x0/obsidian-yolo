@@ -269,8 +269,6 @@ function createNewAgent(): Assistant {
     systemPrompt: '',
     persona: DEFAULT_PERSONA,
     // Omit modelId so new agents follow the global chat model.
-    enableTools: true,
-    includeBuiltinTools: true,
     enabledToolNames: [],
     toolPreferences: {},
     builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
@@ -296,8 +294,6 @@ function toDraftAgent(assistant: Assistant): Assistant {
     toolServerPreferences: assistant.toolServerPreferences ?? {},
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
-    enableTools: assistant.enableTools ?? true,
-    includeBuiltinTools: assistant.includeBuiltinTools ?? true,
     includeCurrentFileContent: assistant.includeCurrentFileContent ?? true,
     timeContextEnabled: assistant.timeContextEnabled ?? true,
   }
@@ -498,9 +494,7 @@ export function AgentsSectionContent({
     let mounted = true
     void plugin
       .getMcpManager()
-      .then((manager) =>
-        manager.listAvailableTools({ includeBuiltinTools: true }),
-      )
+      .then((manager) => manager.listAvailableTools())
       .then((tools) => {
         if (mounted) {
           // Filtered here, at the one place the catalog enters this editor, so
@@ -844,13 +838,10 @@ export function AgentsSectionContent({
         isBuiltin: boolean
       }
     >()
-    const includeBuiltinTools = draftAgent?.includeBuiltinTools !== false
     // Which built-in tool *short* names are actually present in this
     // request's tool catalog (`availableTools` — respects runtime
     // availability, unlike the global settings pages' `getLocalFileTools()`;
     // see `builtinCapabilityRows.ts`'s doc comment on that asymmetry).
-    // Populated only when built-in tools are included at all, matching the
-    // former early-return.
     const builtinToolNamesPresent = new Set<string>()
 
     availableTools.forEach((tool) => {
@@ -868,9 +859,7 @@ export function AgentsSectionContent({
 
       const isBuiltin = serverName === localFsServerName
       if (isBuiltin) {
-        if (includeBuiltinTools) {
-          builtinToolNamesPresent.add(toolName)
-        }
+        builtinToolNamesPresent.add(toolName)
         return
       }
 
@@ -898,39 +887,37 @@ export function AgentsSectionContent({
       groups.set(key, group)
     })
 
-    if (includeBuiltinTools) {
-      const rows = buildBuiltinCapabilityRows({
-        toolOptions: settings.mcp.builtinCapabilityOptions,
-        t,
-      })
-      for (const row of rows) {
-        const presentMembers = row.memberToolNames.filter((name) =>
-          builtinToolNamesPresent.has(name),
-        )
-        if (presentMembers.length === 0) {
-          continue
-        }
-
-        const key = `__builtin:${row.category}`
-        const title = t(
-          BUILTIN_TOOL_CATEGORY_I18N[row.category].key,
-          BUILTIN_TOOL_CATEGORY_I18N[row.category].fallback,
-        )
-        const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
-        group.tools.push({
-          // Only used as a React list key — any present member's own FQN is
-          // fine, there is no group-vs-single-tool distinction to preserve
-          // (no virtual tool names anywhere).
-          fullName: getToolName(localFsServerName, presentMembers[0]),
-          toggleTargets: presentMembers.map((name) =>
-            getToolName(localFsServerName, name),
-          ),
-          displayName: row.label,
-          description: row.description,
-          capabilityId: row.id,
-        })
-        groups.set(key, group)
+    const rows = buildBuiltinCapabilityRows({
+      toolOptions: settings.mcp.builtinCapabilityOptions,
+      t,
+    })
+    for (const row of rows) {
+      const presentMembers = row.memberToolNames.filter((name) =>
+        builtinToolNamesPresent.has(name),
+      )
+      if (presentMembers.length === 0) {
+        continue
       }
+
+      const key = `__builtin:${row.category}`
+      const title = t(
+        BUILTIN_TOOL_CATEGORY_I18N[row.category].key,
+        BUILTIN_TOOL_CATEGORY_I18N[row.category].fallback,
+      )
+      const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
+      group.tools.push({
+        // Only used as a React list key — any present member's own FQN is
+        // fine, there is no group-vs-single-tool distinction to preserve
+        // (no virtual tool names anywhere).
+        fullName: getToolName(localFsServerName, presentMembers[0]),
+        toggleTargets: presentMembers.map((name) =>
+          getToolName(localFsServerName, name),
+        ),
+        displayName: row.label,
+        description: row.description,
+        capabilityId: row.id,
+      })
+      groups.set(key, group)
     }
 
     // Module tool sets: one capability row inside their own category's
@@ -991,7 +978,6 @@ export function AgentsSectionContent({
       .map(([key, value]) => ({ key, ...value }))
   }, [
     availableTools,
-    draftAgent?.includeBuiltinTools,
     language,
     localFsServerName,
     moduleToolSetServerNames,
@@ -1047,7 +1033,7 @@ export function AgentsSectionContent({
     let cancelled = false
     const currentAgentId = draftAgent?.id ?? null
 
-    if (!draftAgent?.enableTools) {
+    if (!draftAgent) {
       setEstimatedToolContextTokens({
         agentId: currentAgentId,
         value: 0,
@@ -1056,25 +1042,9 @@ export function AgentsSectionContent({
       return
     }
 
-    const eligibleTools = availableTools.filter((tool) => {
-      let serverName = localFsServerName
-      try {
-        serverName = parseToolName(tool.name).serverName
-      } catch {
-        serverName = localFsServerName
-      }
-      if (
-        serverName === localFsServerName &&
-        draftAgent.includeBuiltinTools === false
-      ) {
-        return false
-      }
-      return isAssistantToolEnabled(
-        draftAgent,
-        tool.name,
-        moduleToolSetEnablement,
-      )
-    })
+    const eligibleTools = availableTools.filter((tool) =>
+      isAssistantToolEnabled(draftAgent, tool.name, moduleToolSetEnablement),
+    )
 
     if (eligibleTools.length === 0) {
       setEstimatedToolContextTokens({
@@ -1132,14 +1102,7 @@ export function AgentsSectionContent({
     return () => {
       cancelled = true
     }
-  }, [
-    availableTools,
-    draftAgent,
-    draftAgent?.enableTools,
-    draftAgent?.includeBuiltinTools,
-    localFsServerName,
-    moduleToolSetEnablement,
-  ])
+  }, [availableTools, draftAgent, moduleToolSetEnablement])
 
   const groupEnabledTokens = useMemo(() => {
     const enabledNames = new Set(
@@ -1652,47 +1615,7 @@ export function AgentsSectionContent({
 
           {activeTab === 'tools' && (
             <div className="yolo-agent-editor-body">
-              <ObsidianSetting
-                name={t('settings.agent.editorEnableTools', 'Enable tools')}
-                desc={t(
-                  'settings.agent.editorEnableToolsDesc',
-                  'Allow this agent to call tools',
-                )}
-              >
-                <ObsidianToggle
-                  value={Boolean(draftAgent.enableTools)}
-                  onChange={(value) => {
-                    setDraftAgent({
-                      ...draftAgent,
-                      enableTools: value,
-                    })
-                  }}
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t(
-                  'settings.agent.editorIncludeBuiltinTools',
-                  'Include built-in tools',
-                )}
-                desc={t(
-                  'settings.agent.editorIncludeBuiltinToolsDesc',
-                  'Allow local vault file tools for this agent',
-                )}
-              >
-                <ObsidianToggle
-                  value={Boolean(draftAgent.includeBuiltinTools)}
-                  onChange={(value) => {
-                    setDraftAgent((prev) =>
-                      prev ? { ...prev, includeBuiltinTools: value } : prev,
-                    )
-                  }}
-                />
-              </ObsidianSetting>
-              <div
-                className={`yolo-agent-tools-panel${
-                  draftAgent.enableTools ? '' : ' is-disabled'
-                }`}
-              >
+              <div className="yolo-agent-tools-panel">
                 <div className="yolo-agent-tools-panel-head">
                   <div className="yolo-agent-tools-panel-title-row">
                     <div className="yolo-agent-tools-panel-title">

@@ -691,11 +691,6 @@ export const it: DeepPartial<TranslationKeys> = {
       editorEnableProjectInstructions: 'Carica file di istruzioni del progetto',
       editorEnableProjectInstructionsDesc:
         'Carica automaticamente AGENTS.md e CLAUDE.md dalla radice del vault per questo agent. Compatibile con Codex / Claude Code / Cursor e strumenti analoghi.',
-      editorEnableTools: 'Abilita strumenti',
-      editorEnableToolsDesc: 'Consenti a questo agent di chiamare strumenti',
-      editorIncludeBuiltinTools: 'Includi strumenti integrati',
-      editorIncludeBuiltinToolsDesc:
-        'Consenti strumenti file locali del vault per questo agent',
       toolApproval: 'Approvazione',
       toolApprovalFullAccess: 'Accesso completo',
       toolApprovalRequire: 'Richiedi approvazione',

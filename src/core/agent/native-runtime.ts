@@ -136,24 +136,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       localAbortController.signal,
     )
 
-    if (this.shouldUseSingleTurnFastPath()) {
-      try {
-        await this.runSingleTurnFastPath(
-          input,
-          abortSignal,
-          requestMessages,
-          resumeAssistantMessage,
-        )
-      } finally {
-        if (this.runAbortController === localAbortController) {
-          this.runAbortController = null
-        }
-      }
-      return
-    }
-
     const toolGateway = new AgentToolGateway(input.mcpManager, {
-      toolsEnabled: this.loopConfig.enableTools,
       allowedToolNames: input.allowedToolNames,
       toolPreferences: input.toolPreferences,
       builtinCapabilityPreferences: input.builtinCapabilityPreferences,
@@ -270,8 +253,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                   sourceUserMessageId: currentSourceUserMessageId,
                   branchLabel: input.branchLabel,
                   compaction: this.compactionState,
-                  enableTools: this.loopConfig.enableTools,
-                  includeBuiltinTools: this.loopConfig.includeBuiltinTools,
                   apiType: input.apiType,
                   allowedToolNames: input.allowedToolNames,
                   toolPreferences: input.toolPreferences,
@@ -525,12 +506,6 @@ export class NativeAgentRuntime implements AgentRuntime {
     }
   }
 
-  private shouldUseSingleTurnFastPath(): boolean {
-    return (
-      !this.loopConfig.enableTools && this.loopConfig.maxAutoIterations <= 1
-    )
-  }
-
   /**
    * Forced compaction: before a request whose estimated size reaches the
    * threshold, summarize everything ahead of what the request must see
@@ -608,8 +583,6 @@ export class NativeAgentRuntime implements AgentRuntime {
       // message), so the summary request can still hit the provider cache.
       const prepared = await prepareTurnRequest({
         ...input,
-        enableTools: this.loopConfig.enableTools,
-        includeBuiltinTools: this.loopConfig.includeBuiltinTools,
         messages: conversationMessages.slice(0, retainedStartIndex),
         compaction: this.compactionState,
         systemPromptSnapshotMode: 'reuse',
@@ -681,8 +654,6 @@ export class NativeAgentRuntime implements AgentRuntime {
           messages: conversationMessages,
           conversationId: input.conversationId,
           compaction: nextCompaction,
-          enableTools: this.loopConfig.enableTools,
-          includeBuiltinTools: this.loopConfig.includeBuiltinTools,
           apiType: input.apiType,
           allowedToolNames: input.allowedToolNames,
           toolPreferences: input.toolPreferences,
@@ -728,69 +699,6 @@ export class NativeAgentRuntime implements AgentRuntime {
       this.pendingCompactionAnchorMessageId = null
       this.notifySubscribers()
     }
-  }
-
-  private async runSingleTurnFastPath(
-    input: AgentRuntimeRunInput,
-    abortSignal: AbortSignal,
-    requestMessages: ChatMessage[],
-    resumeAssistantMessage?: ChatAssistantMessage,
-  ): Promise<void> {
-    if (!resumeAssistantMessage) {
-      await this.compactIfOverThreshold({
-        input,
-        conversationMessages: requestMessages,
-      })
-    }
-    const llmTurnExecutor = new AgentLlmTurnExecutor({
-      providerClient: input.providerClient,
-      model: input.model,
-      requestContextBuilder: input.requestContextBuilder,
-      mcpManager: input.mcpManager,
-      conversationId: input.conversationId,
-      messages: [...requestMessages, ...this.messages],
-      compaction: this.compactionState,
-      enableTools: false,
-      includeBuiltinTools: false,
-      apiType: input.apiType,
-      allowedToolNames: input.allowedToolNames,
-      toolPreferences: input.toolPreferences,
-      toolServerPreferences: input.toolServerPreferences,
-      allowedSkillPaths: input.allowedSkillPaths,
-      abortSignal,
-      reasoningLevel: input.reasoningLevel,
-      requestParams: input.requestParams,
-      runtimeMode: input.runtimeMode,
-      modeEnvironmentPrompt: input.modeEnvironmentPrompt,
-      modePersonaPrompt: input.modePersonaPrompt,
-      modePersonaModuleId: input.modePersonaModuleId,
-      moduleChatModeId: input.moduleChatModeId,
-      contextPolicy: input.contextPolicy,
-      geminiTools: input.geminiTools,
-      systemPromptOverride: input.systemPromptOverride,
-      transientRequestMessages: resumeAssistantMessage
-        ? [
-            {
-              role: 'user',
-              content: ASSISTANT_CONTINUATION_PROMPT,
-            },
-          ]
-        : undefined,
-      resumeAssistantMessage,
-      onAssistantMessage: (assistantMessage) => {
-        this.upsertAssistantMessage(assistantMessage)
-        this.notifySubscribers()
-      },
-      onProviderToolRun: (calls) => {
-        this.upsertProviderToolRun({
-          calls,
-          input,
-          sourceUserMessageId: input.sourceUserMessageId,
-        })
-      },
-    })
-
-    await llmTurnExecutor.run()
   }
 
   private notifySubscribers(): void {

@@ -42,8 +42,6 @@ function moduleChatMode(
 
 describe('resolveChatModeRuntime module chat mode branch', () => {
   const assistant = {
-    enableTools: false,
-    includeBuiltinTools: false,
     toolPreferences: {
       yolo_local__fs_write: {
         enabled: true,
@@ -60,13 +58,11 @@ describe('resolveChatModeRuntime module chat mode branch', () => {
     const runtime = resolveChatModeRuntime({
       mode: 'module:learning:chat',
       assistant,
-      assistantEnabledToolNames: [], // assistant has enableTools: false — irrelevant here
+      assistantEnabledToolNames: [], // the assistant's tool set is irrelevant here
       moduleChatMode: registered,
     })
 
     expect(runtime.loopConfig).toEqual({
-      enableTools: true,
-      includeBuiltinTools: true,
       maxAutoIterations: 100,
     })
     expect(runtime.allowedToolNames).toEqual(
@@ -190,8 +186,6 @@ describe('resolveChatModeRuntime', () => {
   ]
 
   const assistant = {
-    enableTools: true,
-    includeBuiltinTools: true,
     toolPreferences: {
       yolo_local__fs_write: {
         enabled: true,
@@ -393,8 +387,6 @@ describe('resolveChatModeRuntime', () => {
       })
 
       expect(runtime.loopConfig).toEqual({
-        enableTools: true,
-        includeBuiltinTools: true,
         maxAutoIterations: 100,
       })
       expect(runtime.toolPreferences).toEqual(assistant.toolPreferences)
@@ -452,15 +444,6 @@ describe('resolveChatModeRuntime', () => {
         'yolo_local__edit_file',
         'yolo_local__terminal_command',
       ])
-    })
-
-    it('does not force built-in tools in when the assistant excludes all of them', () => {
-      const runtime = resolveChatModeRuntime({
-        mode: 'max',
-        assistant: { ...assistant, includeBuiltinTools: false },
-        assistantEnabledToolNames: ['playwright__browser_click'],
-      })
-      expect(runtime.allowedToolNames).toEqual(['playwright__browser_click'])
     })
 
     it('adds each forced tool once even when the assistant already enabled it', () => {
@@ -611,8 +594,6 @@ describe('ASSISTANT_INERT_BUILTIN_TOOL_NAMES', () => {
             mode,
             yoloEnabled: false,
             assistant: {
-              enableTools: true,
-              includeBuiltinTools: true,
               toolPreferences: {},
               builtinCapabilityPreferences: {
                 [capability.id]: { enabled: false },

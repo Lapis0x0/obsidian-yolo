@@ -65,27 +65,20 @@ describe('McpManager mobile built-in tool behavior', () => {
     })
   }
 
-  it('lists built-in tools on mobile when requested', async () => {
+  it('lists built-in tools on mobile', async () => {
     const manager = createManager()
 
-    await expect(
-      manager.listAvailableTools({ includeBuiltinTools: true }),
-    ).resolves.toEqual(
+    await expect(manager.listAvailableTools()).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'yolo_local__fs_write' }),
       ]),
     )
-    await expect(
-      manager.listAvailableTools({ includeBuiltinTools: false }),
-    ).resolves.toEqual([])
   })
 
   it('lists web_scrape without a configured web search provider', async () => {
     const manager = createManager()
 
-    const tools = await manager.listAvailableTools({
-      includeBuiltinTools: true,
-    })
+    const tools = await manager.listAvailableTools({})
 
     expect(tools).toEqual(
       expect.arrayContaining([
@@ -106,9 +99,9 @@ describe('McpManager mobile built-in tool behavior', () => {
       file_editing: { disabled: true },
     })
 
-    const toolNames = (
-      await manager.listAvailableTools({ includeBuiltinTools: true })
-    ).map((tool) => tool.name)
+    const toolNames = (await manager.listAvailableTools()).map(
+      (tool) => tool.name,
+    )
 
     expect(toolNames).not.toContain('yolo_local__fs_edit')
     expect(toolNames).not.toContain('yolo_local__fs_write')
@@ -136,19 +129,16 @@ describe('McpManager mobile built-in tool behavior', () => {
     }
 
     const textOnly = await manager.listAvailableTools({
-      includeBuiltinTools: true,
       chatModelModalities: [],
     })
     expect(getFsReadModalityEnum(textOnly)).toBeUndefined()
 
     const visionModel = await manager.listAvailableTools({
-      includeBuiltinTools: true,
       chatModelModalities: ['vision'],
     })
     expect(getFsReadModalityEnum(visionModel)).toEqual(['text', 'image'])
 
     const pdfModel = await manager.listAvailableTools({
-      includeBuiltinTools: true,
       chatModelModalities: ['pdf'],
     })
     expect(getFsReadModalityEnum(pdfModel)).toEqual(['text', 'pdf'])
@@ -255,6 +245,7 @@ describe('McpManager connected tool catalog', () => {
       } as unknown as App,
       settings: {
         mcp: { servers: [], builtinCapabilityOptions: {} },
+        webSearch: { providers: [] },
       } as never,
       openApplyReview: jest.fn(),
       registerSettingsListener: () => () => {},
@@ -277,12 +268,18 @@ describe('McpManager connected tool catalog', () => {
       },
     ]
 
-    await expect(manager.listAvailableTools()).resolves.toEqual([
-      expect.objectContaining({ name: 'remote__search' }),
-    ])
+    await expect(manager.listAvailableTools()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'remote__search' }),
+      ]),
+    )
     await expect(
       manager.listAvailableTools({ chatModelModalities: ['vision'] }),
-    ).resolves.toEqual([expect.objectContaining({ name: 'remote__search' })])
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'remote__search' }),
+      ]),
+    )
     expect(listTools).not.toHaveBeenCalled()
   })
 })
@@ -335,7 +332,6 @@ describe('McpManager per-run capability grant', () => {
   ) =>
     (
       await manager.listAvailableTools({
-        includeBuiltinTools: true,
         capabilityOverrides,
       })
     ).map((tool) => tool.name)

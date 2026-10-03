@@ -23,8 +23,6 @@ export const createDefaultAssistant = (): Assistant => ({
   systemPrompt: DEFAULT_ASSISTANT_SYSTEM_PROMPT,
   // Omit modelId so new Default agents follow the global chat model.
   persona: 'balanced',
-  enableTools: true,
-  includeBuiltinTools: true,
   enabledToolNames: [],
   toolPreferences: {},
   builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
@@ -48,8 +46,6 @@ const hasDefaultAssistantChanged = (
     current.systemPrompt !== normalized.systemPrompt ||
     current.modelId !== normalized.modelId ||
     current.persona !== normalized.persona ||
-    current.enableTools !== normalized.enableTools ||
-    current.includeBuiltinTools !== normalized.includeBuiltinTools ||
     JSON.stringify(current.enabledToolNames ?? []) !==
       JSON.stringify(normalized.enabledToolNames ?? []) ||
     JSON.stringify(current.toolPreferences ?? {}) !==
@@ -82,8 +78,6 @@ const normalizeDefaultAssistant = (assistant: Assistant): Assistant => {
         : DEFAULT_ASSISTANT_SYSTEM_PROMPT,
     // Keep empty/undefined modelId as "follow global default"; never rewrite it.
     modelId: assistant.modelId || undefined,
-    enableTools: assistant.enableTools ?? true,
-    includeBuiltinTools: assistant.includeBuiltinTools ?? true,
     enabledToolNames: assistant.enabledToolNames ?? [],
     toolPreferences:
       Object.keys(toolPreferences).length > 0

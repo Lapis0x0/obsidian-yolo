@@ -85,7 +85,7 @@ export function AssistantSelector({
         const refreshAvailableTools = () => {
           const currentRequestId = ++requestId
           void manager
-            .listAvailableTools({ includeBuiltinTools: true })
+            .listAvailableTools()
             .then((tools) => {
               if (mounted && currentRequestId === requestId) {
                 setAvailableTools(tools)
@@ -192,13 +192,11 @@ export function AssistantSelector({
       rawModelId === followDefaultLabel || !rawModelId.includes('/')
         ? rawModelId
         : rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
-    const toolCount = assistant.enableTools
-      ? countEnabledVisibleAssistantTools(
-          assistant,
-          availableTools,
-          moduleToolSetEnablement,
-        )
-      : 0
+    const toolCount = countEnabledVisibleAssistantTools(
+      assistant,
+      availableTools,
+      moduleToolSetEnablement,
+    )
     return (
       <div className="yolo-assistant-selector-item-meta">
         {modelLabel && (

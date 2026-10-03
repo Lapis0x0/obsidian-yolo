@@ -266,7 +266,6 @@ const formatToolArgumentDiagnostics = ({
 }
 
 export class AgentToolGateway {
-  private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
   /**
@@ -316,7 +315,6 @@ export class AgentToolGateway {
   constructor(
     private readonly mcpManager: McpManager,
     options?: {
-      toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
       builtinCapabilityPreferences?: Record<string, AssistantToolPreference>
@@ -335,7 +333,6 @@ export class AgentToolGateway {
       vaultPathBoundary?: NativePathBoundary
     },
   ) {
-    this.toolsEnabled = options?.toolsEnabled ?? true
     // `allowedToolNames` is always already a fully-expanded list of
     // real tool FQNs (see `tool-selection.ts`'s `selectAllowedTools` for the
     // same reasoning) — no virtual group name expansion needed here.
@@ -396,7 +393,6 @@ export class AgentToolGateway {
     // modality narrowing only affects display strings, not argument schemas,
     // so omitting it is safe for harness validation.
     const tools = await this.mcpManager.listAvailableTools({
-      includeBuiltinTools: true,
       capabilityOverrides: this.capabilityOverrides,
     })
     return tools.find((tool) => tool.name === toolName) ?? null
@@ -1459,7 +1455,6 @@ export class AgentToolGateway {
     }
 
     const available = await this.mcpManager.listAvailableTools({
-      includeBuiltinTools: true,
       capabilityOverrides: this.capabilityOverrides,
     })
     const isDisclosable = async (tool: McpTool): Promise<boolean> =>
@@ -1803,9 +1798,6 @@ export class AgentToolGateway {
   }
 
   private isToolAllowed(toolName: string): boolean {
-    if (!this.toolsEnabled) {
-      return false
-    }
     if (this.isSubagentChildRun && isSubagentBlockedToolName(toolName)) {
       return false
     }

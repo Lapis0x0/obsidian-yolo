@@ -1083,32 +1083,6 @@ describe('AgentToolGateway', () => {
     )
   })
 
-  it('rejects tool calls when tools are disabled', () => {
-    const mcpManager = {
-      isToolExecutionAllowed: jest.fn(),
-      getJsSandboxSettings: jest.fn().mockReturnValue({}),
-    } as unknown as McpManager
-
-    const gateway = new AgentToolGateway(mcpManager, {
-      toolsEnabled: false,
-      allowedToolNames: ['server__tool_a'],
-    })
-
-    const message = gateway.createToolMessage({
-      toolCallRequests: [
-        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
-      ],
-      conversationId: 'conv-1',
-    })
-
-    expect(message.toolCalls[0]?.response.status).toBe(
-      ToolCallResponseStatus.Rejected,
-    )
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
-    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
-    expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
-  })
-
   it('merges sibling fs_edit calls targeting the same path into one batched invocation', async () => {
     const callTool = jest.fn().mockResolvedValue({
       status: ToolCallResponseStatus.Success,

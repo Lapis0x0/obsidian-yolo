@@ -39,8 +39,6 @@ describe('shouldProceedToToolPhase', () => {
 
 describe('NativeAgentRuntime tool-call helpers', () => {
   const makeLoopConfig = (): AgentRuntimeLoopConfig => ({
-    enableTools: true,
-    includeBuiltinTools: true,
     maxAutoIterations: 10,
   })
 
@@ -183,8 +181,6 @@ describe('NativeAgentRuntime assistant continuation', () => {
     })
 
     const runtime = new NativeAgentRuntime({
-      enableTools: false,
-      includeBuiltinTools: false,
       maxAutoIterations: 1,
     })
     const snapshots: ChatMessage[][] = []
@@ -206,6 +202,7 @@ describe('NativeAgentRuntime assistant continuation', () => {
       continueAssistantMessageId: interruptedAssistant.id,
       requestContextBuilder: { generateRequestMessages },
       mcpManager: {
+        listAvailableTools: async () => [],
         getJsSandboxSettings: () => ({}),
         getSettingsSnapshot: () => ({
           mcp: { servers: [], discoveredCatalogs: {} },

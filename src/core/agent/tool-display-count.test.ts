@@ -11,17 +11,12 @@ const tool = (name: string): McpTool => ({
 
 const assistantWithTools = (
   enabledToolNames: string[],
-  includeBuiltinTools = true,
 ): Pick<
   Assistant,
-  | 'toolPreferences'
-  | 'enabledToolNames'
-  | 'includeBuiltinTools'
-  | 'builtinCapabilityPreferences'
+  'toolPreferences' | 'enabledToolNames' | 'builtinCapabilityPreferences'
 > => ({
   enabledToolNames,
   toolPreferences: {},
-  includeBuiltinTools,
 })
 
 describe('countEnabledVisibleAssistantTools', () => {
@@ -142,14 +137,5 @@ describe('countEnabledVisibleAssistantTools', () => {
         tool('server__disabled_tool'),
       ]),
     ).toBe(1)
-  })
-
-  it('excludes built-in tools when the assistant disables them', () => {
-    expect(
-      countEnabledVisibleAssistantTools(
-        assistantWithTools(['yolo_local__fs_read'], false),
-        [tool('yolo_local__fs_read')],
-      ),
-    ).toBe(0)
   })
 })

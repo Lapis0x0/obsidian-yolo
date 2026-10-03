@@ -1004,7 +1004,6 @@ export class McpManager {
   }
 
   private getAvailableToolsCacheKey(
-    includeBuiltinTools: boolean,
     chatModelModalities: ChatModelModality[] | undefined,
     capabilityOverrides: ChatModeCapabilityOverrides | undefined,
   ): string {
@@ -1024,7 +1023,7 @@ export class McpManager {
           .sort()
           .join(',')
       : ''
-    return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}|${forcedFingerprint}`
+    return `${modalityFingerprint}|${forcedFingerprint}`
   }
 
   private shouldPrewarmToolTokenCosts(serverName: string): boolean {
@@ -1105,17 +1104,14 @@ export class McpManager {
   }
 
   public async listAvailableTools({
-    includeBuiltinTools = false,
     chatModelModalities,
     capabilityOverrides,
   }: {
-    includeBuiltinTools?: boolean
     chatModelModalities?: ChatModelModality[]
     /** The running chat mode's capability grant; see `AgentToolGateway`. */
     capabilityOverrides?: ChatModeCapabilityOverrides
   } = {}): Promise<McpTool[]> {
     const cacheKey = this.getAvailableToolsCacheKey(
-      includeBuiltinTools,
       chatModelModalities,
       capabilityOverrides,
     )
@@ -1143,33 +1139,31 @@ export class McpManager {
             }))
         })
 
-    const builtinTools = includeBuiltinTools
-      ? [
-          ...availableTools,
-          ...getLocalFileTools({
-            vaultBasePath: getVaultBasePath(this.app),
-            chatModelModalities,
-          })
-            .filter((tool) =>
-              this.isLocalToolEnabled(
-                tool.name,
-                getCapabilityOverrideForTool(capabilityOverrides, tool.name)
-                  ?.forceEnabled,
-              ),
-            )
-            .map((tool) => ({
-              ...tool,
-              name: getToolName(getLocalFileToolServerName(), tool.name),
-            })),
-        ]
-      : availableTools
+    const builtinTools = getLocalFileTools({
+      vaultBasePath: getVaultBasePath(this.app),
+      chatModelModalities,
+    })
+      .filter((tool) =>
+        this.isLocalToolEnabled(
+          tool.name,
+          getCapabilityOverrideForTool(capabilityOverrides, tool.name)
+            ?.forceEnabled,
+        ),
+      )
+      .map((tool) => ({
+        ...tool,
+        name: getToolName(getLocalFileToolServerName(), tool.name),
+      }))
 
     // Registered in-process servers (see registerInProcessServer) are always
-    // surfaced, independent of includeBuiltinTools — that flag only gates the
-    // fixed local-file-tool set. A server only ends up in the registry
-    // because a caller explicitly opted in for this run, so listing its
-    // tools needs no separate opt-in flag.
-    const nextTools = [...builtinTools, ...this.listInProcessServerTools()]
+    // surfaced: a server only ends up in the registry because a caller
+    // explicitly opted in for this run, so listing its tools needs no
+    // separate opt-in flag.
+    const nextTools = [
+      ...availableTools,
+      ...builtinTools,
+      ...this.listInProcessServerTools(),
+    ]
 
     this.availableToolsCache.set(cacheKey, [...nextTools])
     return nextTools

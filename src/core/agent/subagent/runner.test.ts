@@ -186,7 +186,7 @@ describe('subagent inherits the parent chat mode', () => {
         runtimeMode: 'max',
         modeEnvironmentPrompt: '<max_environment>…</max_environment>',
       } as unknown as AgentRuntimeRunInput,
-      { enableTools: true, includeBuiltinTools: true, maxAutoIterations: 100 },
+      { maxAutoIterations: 100 },
     )
 
     expect(parent).toMatchObject({

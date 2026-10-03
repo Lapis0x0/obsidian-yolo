@@ -154,9 +154,7 @@ describe('AgentSessionService abort handling', () => {
     const runPromise = service.run({
       conversationId: 'conversation-1',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-1',
@@ -206,9 +204,7 @@ describe('AgentSessionService abort handling', () => {
     const runPromise = service.run({
       conversationId: 'conversation-2',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-2',
@@ -289,9 +285,7 @@ describe('AgentSessionService abort handling', () => {
     const runPromise = service.run({
       conversationId: 'conversation-3',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-3',
@@ -355,9 +349,7 @@ describe('AgentSessionService abort handling', () => {
     const runPromise = service.run({
       conversationId: 'conversation-parallel',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-parallel',
@@ -462,9 +454,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-streaming-publish',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-streaming-publish', [userMessage]),
     })
@@ -539,9 +529,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-first-appearance',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-first-appearance', [userMessage]),
     })
@@ -586,9 +574,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-whitespace-first',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-whitespace-first', [userMessage]),
     })
@@ -637,9 +623,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-whitespace-reasoning',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-whitespace-reasoning', [userMessage]),
     })
@@ -691,9 +675,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-terminal-final',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-terminal-final', [userMessage]),
     })
@@ -757,9 +739,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-summary-routing',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-summary-routing', [userMessage]),
     })
@@ -815,9 +795,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-tool-request-publish',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-tool-request-publish', [userMessage]),
     })
@@ -865,9 +843,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-complete-publish',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-complete-publish', [userMessage]),
     })
@@ -903,9 +879,7 @@ describe('AgentSessionService assistant render stream separation', () => {
     const runPromise = service.run({
       conversationId: 'conv-abort-publish',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-abort-publish', [userMessage]),
     })
@@ -1155,9 +1129,7 @@ describe('AgentSessionService dropConversation', () => {
     await service.run({
       conversationId: 'conv-no-revive',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-no-revive', [
         makeUserMessage('u3', 'run'),
@@ -1187,9 +1159,7 @@ describe('AgentSessionService dropConversation', () => {
     const runPromise = service.run({
       conversationId: 'conv-running-drop',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-running-drop',
@@ -1345,9 +1315,7 @@ describe('AgentSessionService conversation persistence cadence', () => {
     const runPromise = service.run({
       conversationId,
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput(conversationId, [userMessage]),
     })
@@ -1490,9 +1458,7 @@ describe('AgentSessionService main activity summary', () => {
     const runPromise = service.run({
       conversationId: 'conv-live',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-live', [makeUserMessage('u1', 'hello')]),
     })
@@ -1732,9 +1698,7 @@ describe('AgentSessionService continuation input', () => {
     const runPromise = service.run({
       conversationId: 'conv-approve-cont',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-approve-cont',
@@ -1796,9 +1760,7 @@ describe('AgentSessionService continuation input', () => {
     const runPromise = service.run({
       conversationId: 'conv-approve-bashro',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-approve-bashro',
@@ -1846,9 +1808,7 @@ describe('AgentSessionService continuation input', () => {
     const runPromise = service.run({
       conversationId: 'conv-approve-locked',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-approve-locked',
@@ -1892,9 +1852,7 @@ describe('AgentSessionService continuation input', () => {
     const runPromise = service.run({
       conversationId: 'conv-answer-cont',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-answer-cont',
@@ -1962,9 +1920,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-1',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-1', [makeUserMessage('u1', 'hello')]),
     })
@@ -1984,9 +1940,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-approval',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-approval', [makeUserMessage('u1', 'hi')]),
     })
@@ -2021,9 +1975,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-drain',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-drain', [makeUserMessage('u1', 'hi')]),
     })
@@ -2061,9 +2013,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-drain-history',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-drain-history', [
         priorUser,
@@ -2109,9 +2059,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-remove',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-remove', [makeUserMessage('u1', 'hi')]),
     })
@@ -2137,9 +2085,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-remove-drained',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-remove-drained', [
         makeUserMessage('u1', 'hi'),
@@ -2166,9 +2112,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-branch',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conv-branch',
@@ -2195,9 +2139,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-abort',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-abort', [makeUserMessage('u1', 'hi')]),
     })
@@ -2224,9 +2166,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     const runPromise = service.run({
       conversationId: 'conv-cont',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: buildBaseRunInput('conv-cont', [makeUserMessage('u1', 'hi')]),
     })
@@ -2262,61 +2202,6 @@ describe('AgentSessionService mid-run user message queue', () => {
     )
 
     secondRuntime.resolveRun()
-  })
-
-  it('refuses enqueue when the active run is on the single-turn fast path', async () => {
-    const service = new AgentSessionService()
-    const runPromise = service.run({
-      conversationId: 'conv-fast',
-      loopConfig: {
-        enableTools: false,
-        maxAutoIterations: 1,
-        includeBuiltinTools: false,
-      },
-      input: buildBaseRunInput('conv-fast', [makeUserMessage('u1', 'hi')]),
-    })
-    const runtime = runtimeInstances[0]
-
-    const result = service.enqueueUserMessage(
-      'conv-fast',
-      makeUserMessage('u2', 'follow-up'),
-    )
-    expect(result).toBe('idle')
-    expect(service.peekPendingUserMessages('conv-fast')).toEqual([])
-
-    runtime.resolveRun()
-    await runPromise
-  })
-
-  it('does not schedule continuation for fast-path runs even if the queue is non-empty', async () => {
-    const service = new AgentSessionService()
-    const runPromise = service.run({
-      conversationId: 'conv-fast-cont',
-      loopConfig: {
-        enableTools: false,
-        maxAutoIterations: 1,
-        includeBuiltinTools: false,
-      },
-      input: buildBaseRunInput('conv-fast-cont', [makeUserMessage('u1', 'hi')]),
-    })
-    const firstRuntime = runtimeInstances[0]
-
-    // Bypass the enqueue API guard to simulate any path that could leave a
-    // message queued under a fast-path run. The continuation guard must keep
-    // us from looping forever even in that scenario.
-    const runKey = 'conv-fast-cont::__default__'
-
-    ;(service as any).pendingUserMessagesByKey.set(runKey, [
-      makeUserMessage('u2', 'orphan'),
-    ])
-
-    firstRuntime.resolveRun()
-    await runPromise
-
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-
-    // No continuation run should have spawned.
-    expect(runtimeInstances.length).toBe(1)
   })
 })
 
@@ -2759,9 +2644,7 @@ describe('AgentSessionService streaming merge cost', () => {
     const runPromise = service.run({
       conversationId: 'conversation-merge-cost',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-merge-cost',
@@ -2812,9 +2695,7 @@ describe('AgentSessionService streaming merge cost', () => {
     const firstRun = service.run({
       conversationId: 'conversation-merge-anchor',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-merge-anchor',
@@ -2841,9 +2722,7 @@ describe('AgentSessionService streaming merge cost', () => {
     const secondRun = service.run({
       conversationId: 'conversation-merge-anchor',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-merge-anchor',
@@ -2880,9 +2759,7 @@ describe('AgentSessionService streaming merge cost', () => {
     const runPromise = service.run({
       conversationId: 'conversation-merge-compaction',
       loopConfig: {
-        enableTools: true,
         maxAutoIterations: 100,
-        includeBuiltinTools: true,
       },
       input: {
         conversationId: 'conversation-merge-compaction',

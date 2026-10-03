@@ -30,11 +30,7 @@ import type { AgentRuntimeLoopConfig } from './types'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
-  | 'enableTools'
-  | 'includeBuiltinTools'
-  | 'toolPreferences'
-  | 'builtinCapabilityPreferences'
-  | 'toolServerPreferences'
+  'toolPreferences' | 'builtinCapabilityPreferences' | 'toolServerPreferences'
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
@@ -250,11 +246,6 @@ export function resolveChatModeRuntime({
   const modeEnvironmentPrompt =
     mode === 'max' && app ? resolveMaxEnvironmentPrompt(app) : undefined
 
-  const enableTools = assistant?.enableTools ?? true
-  const includeBuiltinTools = enableTools
-    ? (assistant?.includeBuiltinTools ?? true)
-    : false
-
   // Which built-in mode's capability grant applies. A module chat mode that
   // reached here without its registration (the defensive fallback below) is
   // not a tool mode, so it lands on 'ask'.
@@ -270,33 +261,25 @@ export function resolveChatModeRuntime({
   const exposedBuiltinToolNames = new Set(getToolNamesForChatMode(builtinMode))
   // A capability the mode grants unconditionally joins the run's tool set
   // even when the assistant has it off — the same fact `McpManager` and
-  // `AgentToolGateway` apply to their own gates. `includeBuiltinTools: false`
-  // still wins: that is the assistant saying "no host tools at all", which
-  // is a different statement from "not this capability".
-  const forcedBuiltinToolNames =
-    includeBuiltinTools && capabilityOverrides
-      ? [...capabilityOverrides]
-          .filter(([, override]) => override.forceEnabled)
-          .flatMap(([capabilityId]) => getToolNamesForCapability(capabilityId))
-          .filter((name) => exposedBuiltinToolNames.has(name))
-      : []
-  const allowedToolNames = enableTools
-    ? [
-        ...new Set([
-          ...assistantEnabledToolNames.filter(
-            (name) =>
-              !BUILTIN_TOOL_NAMES.has(name) ||
-              exposedBuiltinToolNames.has(name),
-          ),
-          ...forcedBuiltinToolNames,
-        ]),
-      ]
-    : undefined
+  // `AgentToolGateway` apply to their own gates.
+  const forcedBuiltinToolNames = capabilityOverrides
+    ? [...capabilityOverrides]
+        .filter(([, override]) => override.forceEnabled)
+        .flatMap(([capabilityId]) => getToolNamesForCapability(capabilityId))
+        .filter((name) => exposedBuiltinToolNames.has(name))
+    : []
+  const allowedToolNames = [
+    ...new Set([
+      ...assistantEnabledToolNames.filter(
+        (name) =>
+          !BUILTIN_TOOL_NAMES.has(name) || exposedBuiltinToolNames.has(name),
+      ),
+      ...forcedBuiltinToolNames,
+    ]),
+  ]
 
   return {
     loopConfig: {
-      enableTools,
-      includeBuiltinTools,
       maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
     },
     allowedToolNames,
@@ -365,8 +348,6 @@ function resolveModuleChatModeRuntime(
   )
   return {
     loopConfig: {
-      enableTools: true,
-      includeBuiltinTools: true,
       maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
     },
     allowedToolNames: [

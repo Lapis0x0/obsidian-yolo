@@ -44,10 +44,7 @@ function displayUnitOf(
 export function countEnabledVisibleAssistantTools(
   assistant: Pick<
     Assistant,
-    | 'toolPreferences'
-    | 'enabledToolNames'
-    | 'includeBuiltinTools'
-    | 'builtinCapabilityPreferences'
+    'toolPreferences' | 'enabledToolNames' | 'builtinCapabilityPreferences'
   > | null,
   availableTools: readonly McpTool[],
   moduleToolSets: readonly ModuleToolSetEnablementV1[] = [],
@@ -86,9 +83,6 @@ export function countEnabledVisibleAssistantTools(
     }
 
     const isBuiltin = serverName === localServerName
-    if (isBuiltin && assistant?.includeBuiltinTools === false) {
-      continue
-    }
 
     const unit = displayUnitOf(
       serverName,

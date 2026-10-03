@@ -23,8 +23,6 @@ jest.mock('./chat-runtime-inputs', () => ({
 jest.mock('./chat-runtime-profiles', () => ({
   resolveChatModeRuntime: jest.fn(() => ({
     loopConfig: {
-      enableTools: true,
-      includeBuiltinTools: true,
       maxAutoIterations: 100,
     },
     allowedToolNames: ['server__search'],
@@ -150,7 +148,6 @@ describe('agent api helpers', () => {
           modelId: 'mock-model',
           toolPreferences: {},
           enabledToolNames: [],
-          includeBuiltinTools: true,
           skillPreferences: {},
         },
       ],
@@ -308,8 +305,6 @@ describe('agent api helpers', () => {
   it('expands a capability tier into the host tool grant and bashReadOnly', async () => {
     jest.mocked(resolveChatModeRuntime).mockReturnValueOnce({
       loopConfig: {
-        enableTools: true,
-        includeBuiltinTools: true,
         maxAutoIterations: 100,
       },
       allowedToolNames: [
@@ -585,7 +580,6 @@ describe('AgentRunApi in-process tool server lifecycle', () => {
           modelId: 'mock-model',
           toolPreferences: {},
           enabledToolNames: [],
-          includeBuiltinTools: true,
           skillPreferences: {},
         },
       ],
@@ -787,7 +781,6 @@ function buildResolveAgentApiRunInputArgs(request: YoloAgentRunRequest) {
         modelId: 'mock-model',
         toolPreferences: {},
         enabledToolNames: [],
-        includeBuiltinTools: true,
         skillPreferences: {},
       },
     ],

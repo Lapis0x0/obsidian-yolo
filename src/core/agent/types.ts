@@ -160,8 +160,6 @@ export type AgentRuntimeRunInput = {
    * before the next LLM turn together with the visual-turn anchor they create.
    * Used to inject mid-run user messages enqueued by the service layer.
    * Returning null is a no-op.
-   *
-   * Not invoked by the single-turn fast path (single LLM call, no boundary).
    */
   drainPendingUserMessages?: () => AgentPendingUserMessageDrain | null
   /** Isolated subagent runs: replace the normal system prompt assembly. */
@@ -195,9 +193,7 @@ export type AgentRuntimeRunInput = {
 }
 
 export type AgentRuntimeLoopConfig = {
-  enableTools: boolean
   maxAutoIterations: number
-  includeBuiltinTools: boolean
 }
 
 export type AgentWorkerInbound =

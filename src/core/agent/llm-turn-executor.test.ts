@@ -146,8 +146,6 @@ describe('AgentLlmTurnExecutor', () => {
         mcpManager: createMockMcpManager(),
         conversationId: 'conv-1',
         messages: [],
-        enableTools: false,
-        includeBuiltinTools: false,
         onAssistantMessage: (message) => {
           log.push(
             `assistant:${message.id}:${message.content}:${message.metadata?.generationState}`,
@@ -248,8 +246,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       requestParams: {
         deliveryMode: 'incremental',
         primaryRequestTimeoutMs: 20000,
@@ -261,8 +257,7 @@ describe('AgentLlmTurnExecutor', () => {
     await executor.run()
 
     // No `runtimeMode` given, so the run defaults to Agent and carries Agent's
-    // routing text. It no longer varies with the tool list — `enableTools:
-    // false` above used to turn this into a three-item gap report.
+    // routing text, which does not vary with the tool list.
     expect(generateRequestMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeModePrompt: expect.stringContaining('You are in Agent mode'),
@@ -301,8 +296,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager: createMockMcpManager(),
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       onAssistantMessage: (message) => {
         observed.push({
           ...message,
@@ -330,8 +323,6 @@ describe('AgentLlmTurnExecutor', () => {
         mcpManager: createMockMcpManager(),
         conversationId: 'conv-1',
         messages: [],
-        enableTools: false,
-        includeBuiltinTools: false,
         onAssistantMessage: (message) => {
           observed.push({
             ...message,
@@ -436,8 +427,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: true,
-      includeBuiltinTools: true,
       requestParams: {
         deliveryMode: 'incremental',
       },
@@ -504,8 +493,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       requestParams: {
         deliveryMode: 'incremental',
       },
@@ -590,8 +577,6 @@ describe('AgentLlmTurnExecutor', () => {
       conversationId: 'conv-1',
       messages: [],
       sourceUserMessageId: 'user-1',
-      enableTools: false,
-      includeBuiltinTools: false,
       resumeAssistantMessage: interruptedMessage,
       onAssistantMessage: (message) => {
         observed.push({
@@ -657,8 +642,6 @@ describe('AgentLlmTurnExecutor', () => {
       conversationId: 'conv-1',
       messages: [],
       sourceUserMessageId: 'user-1',
-      enableTools: false,
-      includeBuiltinTools: false,
       resumeAssistantMessage: {
         role: 'assistant',
         id: 'assistant-interrupted',
@@ -716,8 +699,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       requestParams: {
         deliveryMode: 'incremental',
       },
@@ -767,8 +748,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       abortSignal: abortController.signal,
       requestParams: {
         deliveryMode: 'incremental',
@@ -838,8 +817,6 @@ describe('AgentLlmTurnExecutor', () => {
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
-      enableTools: false,
-      includeBuiltinTools: false,
       requestParams: {
         deliveryMode: 'incremental',
       },

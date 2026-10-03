@@ -13,6 +13,11 @@ import type { SettingMigration } from '../setting.types'
  *   of the context window, so the threshold mode and absolute token threshold
  *   go away. Users still on the old defaults (off, 80%) never chose them and
  *   move to the new ones (on, 90%); anyone who changed either keeps theirs.
+ * - The agent-level `enableTools` / `includeBuiltinTools` master switches go
+ *   away; the per-capability and per-tool switches are the only gate. An agent
+ *   that had a master switch off keeps the same tool set by having the
+ *   switches it covered written off: every built-in capability for either
+ *   flag, plus every remote MCP tool for `enableTools`.
  */
 export const migrateFrom87To88: SettingMigration['migrate'] = (data) => {
   const {
@@ -26,6 +31,70 @@ export const migrateFrom87To88: SettingMigration['migrate'] = (data) => {
     pluginUpdateMode: pluginUpdateNoticeEnabled === false ? 'off' : 'notify',
     ...(isRecord(rest.chatOptions)
       ? { chatOptions: migrateAutoContextCompaction(rest.chatOptions) }
+      : {}),
+    ...(Array.isArray(rest.assistants)
+      ? {
+          assistants: rest.assistants.map((assistant) =>
+            isRecord(assistant)
+              ? migrateAssistantToolMasterSwitches(assistant)
+              : assistant,
+          ),
+        }
+      : {}),
+  }
+}
+
+// Built-in capability ids as of v88. Frozen here rather than read from the
+// registry: a capability added later must keep its own default, not inherit
+// a switch that no longer exists.
+const BUILTIN_CAPABILITY_IDS_V88 = [
+  'context_pruning',
+  'context_compaction',
+  'file_reading',
+  'file_editing',
+  'js_sandbox',
+  'subagent_delegation',
+  'todo_list',
+  'native_files',
+  'vault_search',
+  'terminal',
+  'user_questions',
+  'web_access',
+  'vault_shell',
+] as const
+
+const disableAll = (
+  preferences: unknown,
+  ids: readonly string[],
+): Record<string, unknown> => {
+  const current = isRecord(preferences) ? preferences : {}
+  return Object.fromEntries(
+    [...new Set([...ids, ...Object.keys(current)])].map((id) => [
+      id,
+      { ...(isRecord(current[id]) ? current[id] : {}), enabled: false },
+    ]),
+  )
+}
+
+const migrateAssistantToolMasterSwitches = (
+  assistant: Record<string, unknown>,
+): Record<string, unknown> => {
+  const { enableTools, includeBuiltinTools, ...rest } = assistant
+  const toolsOff = enableTools === false
+  if (!toolsOff && includeBuiltinTools !== false) {
+    return rest
+  }
+  return {
+    ...rest,
+    builtinCapabilityPreferences: disableAll(
+      rest.builtinCapabilityPreferences,
+      BUILTIN_CAPABILITY_IDS_V88,
+    ),
+    ...(toolsOff
+      ? {
+          toolPreferences: disableAll(rest.toolPreferences, []),
+          enabledToolNames: [],
+        }
       : {}),
   }
 }

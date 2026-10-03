@@ -135,8 +135,6 @@ export const estimateContextBreakdown = async ({
   messages,
   conversationId,
   compaction,
-  enableTools,
-  includeBuiltinTools,
   apiType,
   allowedToolNames,
   toolPreferences,
@@ -155,8 +153,6 @@ export const estimateContextBreakdown = async ({
   messages: ChatMessage[]
   conversationId: string
   compaction?: ChatConversationCompactionLike | null
-  enableTools: boolean
-  includeBuiltinTools: boolean
   apiType?: LLMProviderApiType | null
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
@@ -170,13 +166,10 @@ export const estimateContextBreakdown = async ({
   moduleChatModeId?: string
   contextPolicy?: ChatContextPolicy
 }): Promise<ContextBreakdown> => {
-  const availableTools = enableTools
-    ? await mcpManager.listAvailableTools({
-        includeBuiltinTools,
-        capabilityOverrides,
-        chatModelModalities: model.modalities,
-      })
-    : []
+  const availableTools = await mcpManager.listAvailableTools({
+    capabilityOverrides,
+    chatModelModalities: model.modalities,
+  })
   const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
     await selectAllowedTools({
       availableTools,

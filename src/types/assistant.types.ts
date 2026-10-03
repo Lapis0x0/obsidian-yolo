@@ -87,8 +87,6 @@ export const assistantSchema = z.object({
   icon: assistantIconSchema.optional(),
   persona: agentPersonaSchema.optional(),
   modelId: z.string().optional(),
-  enableTools: z.boolean().optional(),
-  includeBuiltinTools: z.boolean().optional(),
   enabledToolNames: z.array(z.string()).optional(),
   toolPreferences: z
     .record(z.string(), assistantToolPreferenceSchema)

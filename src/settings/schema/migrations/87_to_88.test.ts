@@ -75,3 +75,75 @@ describe('migrateFrom87To88 auto context compaction', () => {
     })
   })
 })
+
+describe('migrateFrom87To88 agent tool master switches', () => {
+  const migrateAgent = (assistant: Record<string, unknown>) =>
+    (
+      migrateFrom87To88({ version: 87, assistants: [assistant] })
+        .assistants as Record<string, unknown>[]
+    )[0]
+
+  it('drops both switches from an agent that had them on', () => {
+    expect(
+      migrateAgent({
+        id: 'a',
+        enableTools: true,
+        includeBuiltinTools: true,
+        builtinCapabilityPreferences: { file_reading: { enabled: true } },
+      }),
+    ).toEqual({
+      id: 'a',
+      builtinCapabilityPreferences: { file_reading: { enabled: true } },
+    })
+  })
+
+  it('turns every built-in capability off when built-in tools were excluded', () => {
+    const migrated = migrateAgent({
+      id: 'a',
+      includeBuiltinTools: false,
+      builtinCapabilityPreferences: {
+        file_reading: { enabled: true, approvalMode: 'full_access' },
+      },
+      toolPreferences: { srv__search: { enabled: true } },
+    })
+    const capabilities = migrated.builtinCapabilityPreferences as Record<
+      string,
+      { enabled: boolean }
+    >
+    expect(capabilities.file_reading).toEqual({
+      enabled: false,
+      approvalMode: 'full_access',
+    })
+    expect(capabilities.vault_shell).toEqual({ enabled: false })
+    expect(Object.values(capabilities).every((p) => !p.enabled)).toBe(true)
+    expect(migrated.toolPreferences).toEqual({
+      srv__search: { enabled: true },
+    })
+    expect(migrated).not.toHaveProperty('includeBuiltinTools')
+  })
+
+  it('turns every built-in capability and remote tool off when tools were disabled', () => {
+    const migrated = migrateAgent({
+      id: 'a',
+      enableTools: false,
+      includeBuiltinTools: true,
+      enabledToolNames: ['srv__search'],
+      toolPreferences: {
+        srv__search: { enabled: true, approvalMode: 'full_access' },
+      },
+    })
+    expect(migrated.toolPreferences).toEqual({
+      srv__search: { enabled: false, approvalMode: 'full_access' },
+    })
+    expect(migrated.enabledToolNames).toEqual([])
+    expect(
+      Object.values(
+        migrated.builtinCapabilityPreferences as Record<
+          string,
+          { enabled: boolean }
+        >,
+      ).every((p) => !p.enabled),
+    ).toBe(true)
+    expect(migrated).not.toHaveProperty('enableTools')
+  })
+})

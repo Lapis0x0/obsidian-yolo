@@ -414,18 +414,6 @@ describe('tool-preferences defaults', () => {
       })
       expect(result).toContain('Gemini__get_all_tabs')
     })
-
-    it('excludes built-in tools when includeBuiltinTools is false', () => {
-      const result = getEnabledAssistantToolNames({
-        toolPreferences: {
-          Gemini__get_all_tabs: { enabled: true },
-        },
-        enabledToolNames: [],
-        includeBuiltinTools: false,
-      })
-      expect(result).not.toContain('yolo_local__fs_write')
-      expect(result).toContain('Gemini__get_all_tabs')
-    })
   })
 
   describe('getAssistantToolApprovalMode (js_eval)', () => {

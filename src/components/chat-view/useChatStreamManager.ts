@@ -378,9 +378,6 @@ export function useChatStreamManager({
         ),
         moduleChatMode: resolveModuleChatMode(),
       })
-      const effectiveEnableTools = chatModeRuntime.loopConfig.enableTools
-      const effectiveIncludeBuiltinTools =
-        chatModeRuntime.loopConfig.includeBuiltinTools
       const effectiveAllowedToolNames = chatModeRuntime.allowedToolNames
       const manualProvider = settings.providers.find(
         (provider) => provider.id === effectiveModel.providerId,
@@ -406,13 +403,10 @@ export function useChatStreamManager({
       // line just sent, so the out-of-band summarize request can hit the
       // provider's prefix cache (same model, same serialized prefix, same tools).
       const mcpManager = await getMcpManager()
-      const availableTools = effectiveEnableTools
-        ? await mcpManager.listAvailableTools({
-            includeBuiltinTools: effectiveIncludeBuiltinTools,
-            chatModelModalities: effectiveModel.modalities,
-            capabilityOverrides: chatModeRuntime.capabilityOverrides,
-          })
-        : []
+      const availableTools = await mcpManager.listAvailableTools({
+        chatModelModalities: effectiveModel.modalities,
+        capabilityOverrides: chatModeRuntime.capabilityOverrides,
+      })
       const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
         await selectAllowedTools({
           availableTools,
@@ -474,8 +468,6 @@ export function useChatStreamManager({
             messages,
             conversationId: currentConversationId,
             compaction: nextCompaction,
-            enableTools: effectiveEnableTools,
-            includeBuiltinTools: effectiveIncludeBuiltinTools,
             apiType: manualApiType,
             allowedToolNames: effectiveAllowedToolNames,
             toolPreferences: chatModeRuntime.toolPreferences,
@@ -1009,8 +1001,6 @@ export function useChatStreamManager({
         messages,
         conversationId: currentConversationId ?? '',
         compaction,
-        enableTools: chatModeRuntime.loopConfig.enableTools,
-        includeBuiltinTools: chatModeRuntime.loopConfig.includeBuiltinTools,
         apiType: provider?.apiType ?? null,
         allowedToolNames: chatModeRuntime.allowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
