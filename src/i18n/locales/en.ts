@@ -592,6 +592,10 @@ export const en: TranslationKeys = {
       viewAllSkills: 'View all skills',
       enableAllTools: 'Enable all',
       disableAllTools: 'Disable all',
+      searchTools: 'Search tools…',
+      searchSkills: 'Search skills…',
+      noMatchingTools: 'No matching tools',
+      noMatchingSkills: 'No matching skills',
       descriptionColumn: 'Description',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:

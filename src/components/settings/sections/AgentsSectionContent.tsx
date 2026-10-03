@@ -261,6 +261,19 @@ async function estimateSkillDefaultContextTokens({
   return count
 }
 
+const toSearchTerms = (query: string): string[] =>
+  query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+
+/** Every term must appear in some field; no terms matches everything. */
+const matchesSearch = (
+  terms: readonly string[],
+  fields: readonly (string | undefined)[],
+): boolean => {
+  if (terms.length === 0) return true
+  const haystack = fields.join('\n').toLowerCase()
+  return terms.every((term) => haystack.includes(term))
+}
+
 function createNewAgent(): Assistant {
   return {
     id: crypto.randomUUID(),
@@ -405,6 +418,11 @@ export function AgentsSectionContent({
   const [expandedToolGroups, setExpandedToolGroups] = useState<
     ReadonlySet<string>
   >(() => new Set())
+  // Search narrows what the tools and skills tabs show; it never changes the
+  // agent, so the header counts and token estimates keep describing the whole
+  // configuration. View state only, like the expanded groups above.
+  const [toolQuery, setToolQuery] = useState('')
+  const [skillQuery, setSkillQuery] = useState('')
   const toggleToolGroupExpanded = (groupKey: string) => {
     setExpandedToolGroups((prev) => {
       const next = new Set(prev)
@@ -982,6 +1000,24 @@ export function AgentsSectionContent({
     )
   }, [availableTools, draftAgent, moduleToolSetEnablement])
 
+  const toolQueryTerms = toSearchTerms(toolQuery)
+  const isSearchingTools = toolQueryTerms.length > 0
+  // A group whose own title matches keeps all its tools, so searching a
+  // server's name shows that server whole.
+  const shownToolGroups = visibleToolGroups.flatMap((group) => {
+    if (!isSearchingTools || matchesSearch(toolQueryTerms, [group.title])) {
+      return [{ group, shownTools: group.tools }]
+    }
+    const shownTools = group.tools.filter((tool) =>
+      matchesSearch(toolQueryTerms, [
+        tool.displayName,
+        tool.description,
+        ...tool.toggleTargets,
+      ]),
+    )
+    return shownTools.length > 0 ? [{ group, shownTools }] : []
+  })
+
   const groupEnabledCounts = useMemo(() => {
     const enabled = new Set(
       getEnabledAssistantToolNames(draftAgent, moduleToolSetEnablement),
@@ -1152,6 +1188,15 @@ export function AgentsSectionContent({
       value: null,
       perSkill: new Map(),
     })
+
+  const skillQueryTerms = toSearchTerms(skillQuery)
+  const shownSkillRows = skillRows.filter((skill) =>
+    matchesSearch(skillQueryTerms, [
+      humanizeSkillName(skill.name),
+      skill.name,
+      skill.description,
+    ]),
+  )
 
   const enabledSkillCount = skillRows.filter((skill) => skill.enabled).length
   // Full injection is the one load mode that costs every request, so it is
@@ -1611,16 +1656,28 @@ export function AgentsSectionContent({
                         )}
                       </div>
                     )}
+                    <div className="yolo-agent-tools-panel-estimate">
+                      {`${enabledVisibleToolsCount} / ${visibleToolsCount} ${t(
+                        'settings.agent.toolsActive',
+                        'active',
+                      )}`}
+                    </div>
                   </div>
-                  <div className="yolo-agent-tools-panel-count">
-                    {`${enabledVisibleToolsCount} / ${visibleToolsCount} ${t(
-                      'settings.agent.toolsActive',
-                      'active',
-                    )}`}
-                  </div>
+                  {visibleToolsCount > 0 && (
+                    <div className="yolo-agent-panel-search">
+                      <ObsidianTextInput
+                        value={toolQuery}
+                        placeholder={t(
+                          'settings.agent.searchTools',
+                          'Search tools…',
+                        )}
+                        onChange={setToolQuery}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {visibleToolGroups.map((group) => {
+                {shownToolGroups.map(({ group, shownTools }) => {
                   const groupEnabledCount =
                     groupEnabledCounts.get(group.key) ?? 0
                   const allGroupToolsEnabled =
@@ -1659,8 +1716,12 @@ export function AgentsSectionContent({
                     groupEnabledCount === 0
                   // Built-in capability rows are the panel's primary content
                   // and stay put; only MCP servers fold.
+                  // A search shows every group it matched opened, without
+                  // touching what the user had folded.
                   const isGroupExpanded =
-                    group.isBuiltin || expandedToolGroups.has(group.key)
+                    group.isBuiltin ||
+                    isSearchingTools ||
+                    expandedToolGroups.has(group.key)
                   const groupClassName = [
                     'yolo-agent-tool-group',
                     !group.isBuiltin ? 'yolo-agent-tool-group--mcp' : null,
@@ -1858,7 +1919,7 @@ export function AgentsSectionContent({
                               'active',
                             )}`}
                           </span>
-                          {group.tools.length > 0 && (
+                          {group.tools.length > 0 && !isSearchingTools && (
                             <button
                               type="button"
                               className="yolo-agent-tool-group-bulk-toggle"
@@ -1881,7 +1942,7 @@ export function AgentsSectionContent({
                       </div>
                       {isGroupExpanded && (
                         <div className="yolo-agent-tool-list">
-                          {group.tools.map((tool) => {
+                          {shownTools.map((tool) => {
                             const selected = tool.toggleTargets.every(
                               (target) =>
                                 isAssistantToolEnabled(
@@ -1980,10 +2041,16 @@ export function AgentsSectionContent({
                   )
                 })}
 
-                {visibleToolsCount === 0 && (
+                {visibleToolsCount === 0 ? (
                   <div className="yolo-agent-tools-empty">
                     {t('settings.agent.noTools', 'No tools available')}
                   </div>
+                ) : (
+                  shownToolGroups.length === 0 && (
+                    <div className="yolo-agent-tools-empty">
+                      {t('settings.agent.noMatchingTools', 'No matching tools')}
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -2008,23 +2075,35 @@ export function AgentsSectionContent({
                         )}
                       </div>
                     )}
+                    <div className="yolo-agent-tools-panel-estimate">
+                      {`${enabledSkillCount} / ${skillRows.length} ${t(
+                        'settings.agent.toolsActive',
+                        'active',
+                      )}`}
+                      {alwaysSkillCount > 0 &&
+                        ` · ${t(
+                          'settings.agent.skillLoadAlways',
+                          'Full inject',
+                        )} ${alwaysSkillCount}`}
+                    </div>
                   </div>
-                  <div className="yolo-agent-tools-panel-count">
-                    {`${enabledSkillCount} / ${skillRows.length} ${t(
-                      'settings.agent.toolsActive',
-                      'active',
-                    )}`}
-                    {alwaysSkillCount > 0 &&
-                      ` · ${t(
-                        'settings.agent.skillLoadAlways',
-                        'Full inject',
-                      )} ${alwaysSkillCount}`}
-                  </div>
+                  {skillRows.length > 0 && (
+                    <div className="yolo-agent-panel-search">
+                      <ObsidianTextInput
+                        value={skillQuery}
+                        placeholder={t(
+                          'settings.agent.searchSkills',
+                          'Search skills…',
+                        )}
+                        onChange={setSkillQuery}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {skillRows.length > 0 ? (
+                {shownSkillRows.length > 0 ? (
                   <div className="yolo-agent-tool-list">
-                    {skillRows.map((skill) => {
+                    {shownSkillRows.map((skill) => {
                       return (
                         <div key={skill.name} className="yolo-agent-tool-row">
                           <div className="yolo-agent-tool-main">
@@ -2092,6 +2171,10 @@ export function AgentsSectionContent({
                         </div>
                       )
                     })}
+                  </div>
+                ) : skillRows.length > 0 ? (
+                  <div className="yolo-agent-tools-empty">
+                    {t('settings.agent.noMatchingSkills', 'No matching skills')}
                   </div>
                 ) : (
                   <div className="yolo-agent-tools-empty">

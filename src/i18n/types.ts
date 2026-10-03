@@ -416,6 +416,10 @@ export type TranslationKeys = {
       viewAllSkills?: string
       enableAllTools?: string
       disableAllTools?: string
+      searchTools?: string
+      searchSkills?: string
+      noMatchingTools?: string
+      noMatchingSkills?: string
       descriptionColumn?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string

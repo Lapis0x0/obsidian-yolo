@@ -511,6 +511,15 @@ button.yolo-agent-mcp-config-copy {
   gap: var(--size-4-3);
 }
 
+.yolo-agent-panel-search {
+  flex: 0 1 220px;
+  min-width: 120px;
+}
+
+.yolo-agent-panel-search input {
+  width: 100%;
+}
+
 .yolo-agent-tools-panel-head {
   display: flex;
   align-items: center;
@@ -535,6 +544,11 @@ button.yolo-agent-mcp-config-copy {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   white-space: nowrap;
+}
+
+.yolo-agent-tools-panel-estimate + .yolo-agent-tools-panel-estimate::before {
+  content: '·';
+  margin-right: var(--size-2-2);
 }
 
 .yolo-agent-tools-panel-count {
@@ -722,6 +736,11 @@ button.yolo-agent-tool-group-bulk-toggle:hover {
   .yolo-agent-tools-panel-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .yolo-agent-panel-search {
+    flex: none;
+    width: 100%;
   }
 
   .yolo-agent-tools-panel .yolo-agent-tool-row {
