@@ -9,6 +9,8 @@
 // Geometry.ts's `PageBox`), item `i` is text-layer span `data-idx=i`, as in
 // a selection tuple.
 
+import { snapToWordEdge } from '../../domain/textAnchor'
+
 import type { PageBox } from './annotationGeometry'
 
 /** One text item of a page, with where it is on the page — null for an item
@@ -165,4 +167,122 @@ export function paragraphText(
     if (items[index].endsLine && index < paragraph.last) text += '\n'
   }
   return text.trim()
+}
+
+/** A place between two characters of a page's text: item `item`, before
+ * its character `offset` — one end of a selection tuple. */
+export type TextPosition = Readonly<{ item: number; offset: number }>
+
+/**
+ * The place in a page's text nearest a point (page fractions), snapped to a
+ * word's edge: the line under the point (or the nearest), the item on it
+ * nearest across, and the character by where across that item the point is —
+ * an item's characters are taken to share its width evenly, which is what a
+ * line of one font at one size does closely enough to aim at.
+ */
+export function positionNear(
+  items: readonly PlacedTextItem[],
+  x: number,
+  y: number,
+): TextPosition | null {
+  let best: { index: number; box: PageBox } | null = null
+  let bestDistance = Infinity
+  items.forEach((item, index) => {
+    const box = item.box
+    if (!box || item.text.length === 0) return
+    const dy = Math.max(box.top - y, 0, y - box.bottom)
+    const dx = Math.max(box.left - x, 0, x - box.right)
+    // A line away costs more than the width of the page across.
+    const distance = dy * 10 + dx
+    if (distance < bestDistance) {
+      best = { index, box }
+      bestDistance = distance
+    }
+  })
+  if (!best) return null
+  const { index, box } = best as { index: number; box: PageBox }
+  const text = items[index].text
+  const width = box.right - box.left
+  const fraction = width > 0 ? (x - box.left) / width : 0
+  const raw = Math.round(Math.min(1, Math.max(0, fraction)) * text.length)
+  return { item: index, offset: snapToWordEdge(text, raw) }
+}
+
+/** A tuple's two ends in reading order. */
+export function orderedTuple(
+  a: TextPosition,
+  b: TextPosition,
+): readonly [number, number, number, number] {
+  const aFirst = a.item < b.item || (a.item === b.item && a.offset <= b.offset)
+  const [first, last] = aFirst ? [a, b] : [b, a]
+  return [first.item, first.offset, last.item, last.offset]
+}
+
+/** The text a tuple covers, as a selection of it reads. */
+export function tupleText(
+  items: readonly Readonly<{ text: string; endsLine: boolean }>[],
+  [startItem, startOffset, endItem, endOffset]: readonly [
+    number,
+    number,
+    number,
+    number,
+  ],
+): string {
+  let text = ''
+  for (let index = startItem; index <= endItem; index += 1) {
+    const item = items[index]
+    if (!item) break
+    const from = index === startItem ? startOffset : 0
+    const to = index === endItem ? endOffset : item.text.length
+    text += item.text.slice(from, to)
+    if (item.endsLine && index < endItem) text += '\n'
+  }
+  return text
+}
+
+/** The boxes of the lines a tuple covers — partial items cut where their
+ * characters are taken to be (`positionNear`'s even split). */
+export function tupleBoxes(
+  items: readonly PlacedTextItem[],
+  [startItem, startOffset, endItem, endOffset]: readonly [
+    number,
+    number,
+    number,
+    number,
+  ],
+): PageBox[] {
+  const lines: PageBox[] = []
+  for (let index = startItem; index <= endItem; index += 1) {
+    const item = items[index]
+    const box = item?.box
+    if (!box || item.text.length === 0) continue
+    const from = index === startItem ? startOffset : 0
+    const to = index === endItem ? endOffset : item.text.length
+    if (to <= from) continue
+    const width = box.right - box.left
+    const piece: PageBox = {
+      left: box.left + (width * from) / item.text.length,
+      right: box.left + (width * to) / item.text.length,
+      top: box.top,
+      bottom: box.bottom,
+    }
+    const line = lines[lines.length - 1]
+    const shared = line
+      ? Math.min(line.bottom, piece.bottom) - Math.max(line.top, piece.top)
+      : 0
+    if (
+      line &&
+      shared >= Math.min(line.bottom - line.top, piece.bottom - piece.top) / 2
+    ) {
+      lines[lines.length - 1] = {
+        left: Math.min(line.left, piece.left),
+        top: Math.min(line.top, piece.top),
+        right: Math.max(line.right, piece.right),
+        bottom: Math.max(line.bottom, piece.bottom),
+      }
+    } else {
+      lines.push(piece)
+    }
+  }
+  return lines
 }

@@ -493,6 +493,14 @@ export class EdgeLayer {
     }
   }
 
+  /** Takes an edge as it now is on the board — its ends' passages changed,
+   * nothing about its elements — and redraws it. */
+  replaceEdge(edge: Edge): void {
+    if (!this.edgesById.has(edge.id)) return
+    this.edgesById.set(edge.id, edge)
+    this.redrawEdge(edge.id)
+  }
+
   /** Redraws the edges that reach a passage in `nodeId`: what its card shows
    * moved under them (a reader scrolled, a page loaded). */
   redrawPassageEdges(nodeId: NodeId): void {

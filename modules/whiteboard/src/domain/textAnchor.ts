@@ -139,6 +139,22 @@ export function looseText(text: string): {
   return { text: out, map }
 }
 
+/** `offset` moved to the nearer edge of the word it falls inside, if any —
+ * where a dragged end of a passage settles. A CJK character is a word of its
+ * own, so an offset between two never moves. */
+export function snapToWordEdge(text: string, offset: number): number {
+  const isWord = (k: number) => {
+    const char = text[k] ?? ''
+    return /[\p{L}\p{N}]/u.test(char) && !/\p{Script=Han}/u.test(char)
+  }
+  if (!isWord(offset - 1) || !isWord(offset)) return offset
+  let start = offset
+  while (isWord(start - 1)) start -= 1
+  let end = offset
+  while (isWord(end)) end += 1
+  return offset - start <= end - offset ? start : end
+}
+
 function contextScore(
   source: string,
   start: number,

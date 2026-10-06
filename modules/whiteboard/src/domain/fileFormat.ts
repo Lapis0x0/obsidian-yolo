@@ -929,7 +929,7 @@ function parseEdgeAnchor(value: unknown): EdgeAnchor | undefined {
     return {
       kind: 'pdf',
       page: page as number,
-      quadPoints: quadPoints as number[],
+      quadPoints: quadPoints,
       quote,
       ...(hint === undefined ? {} : { selection: hint }),
     }

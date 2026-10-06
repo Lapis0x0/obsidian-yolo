@@ -1,4 +1,12 @@
-import { type PlacedTextItem, inferParagraphs, paragraphAt } from './paragraphs'
+import {
+  type PlacedTextItem,
+  inferParagraphs,
+  orderedTuple,
+  paragraphAt,
+  positionNear,
+  tupleBoxes,
+  tupleText,
+} from './paragraphs'
 
 /** A line of body text `row` lines down (line height 0.02, leading 0.006). */
 function line(
@@ -108,5 +116,44 @@ describe('paragraphAt', () => {
 
   it('finds none in the space between them', () => {
     expect(paragraphAt(paragraphs, 0.5, 0.23)).toBeNull()
+  })
+})
+
+describe('positionNear / tupleText / tupleBoxes', () => {
+  const items: PlacedTextItem[] = [
+    {
+      text: 'hello world',
+      endsLine: true,
+      box: { left: 0.1, right: 0.65, top: 0.1, bottom: 0.12 },
+    },
+    {
+      text: '中文段落',
+      endsLine: true,
+      box: { left: 0.1, right: 0.5, top: 0.13, bottom: 0.15 },
+    },
+  ]
+
+  it('snaps a point inside a word to its nearer edge', () => {
+    // 'hello world' over 0.55: 0.05 a character; both are inside "hello".
+    expect(positionNear(items, 0.15, 0.11)).toEqual({ item: 0, offset: 0 })
+    expect(positionNear(items, 0.32, 0.11)).toEqual({ item: 0, offset: 5 })
+  })
+
+  it('takes each CJK character as a word', () => {
+    expect(positionNear(items, 0.3, 0.14)).toEqual({ item: 1, offset: 2 })
+  })
+
+  it('reads and boxes a tuple across lines', () => {
+    expect(tupleText(items, [0, 6, 1, 2])).toBe('world\n中文')
+    const boxes = tupleBoxes(items, [0, 6, 1, 2])
+    expect(boxes).toHaveLength(2)
+    expect(boxes[0].left).toBeCloseTo(0.4)
+    expect(boxes[1].right).toBeCloseTo(0.3)
+  })
+
+  it('orders a tuple whatever end was dragged past the other', () => {
+    expect(
+      orderedTuple({ item: 1, offset: 2 }, { item: 0, offset: 3 }),
+    ).toEqual([0, 3, 1, 2])
   })
 })

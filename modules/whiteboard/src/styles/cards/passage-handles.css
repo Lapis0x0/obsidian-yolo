@@ -1,0 +1,59 @@
+/* --- a selected edge's passage handles --------------------------------------
+ * At the first and last character of each passage a selected edge reaches
+ * (ui/canvas/passageHandles.ts): a bar as tall as the line, in the accent,
+ * with a knob — above the bar at the start, below it at the end, the way a
+ * text selection's handles stand. Dragged, the passage's end follows. World
+ * units weighted by the zoom multiplier, like all chrome in the world layer. */
+
+.yolo-whiteboard-passage-handles {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  /* With the handle layer, over a dragged card (drag.css). */
+  z-index: 3;
+}
+
+.yolo-whiteboard-passage-handle {
+  --yolo-whiteboard-passage-handle-bar: calc(
+    2px * var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  --yolo-whiteboard-passage-handle-knob: calc(
+    10px * var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  position: absolute;
+  width: var(--yolo-whiteboard-passage-handle-bar);
+  margin-left: calc(var(--yolo-whiteboard-passage-handle-bar) * -0.5);
+  background-color: var(--interactive-accent);
+  cursor: text;
+  touch-action: none;
+}
+
+/* The knob, and the area that takes the press: wider than the bar, which
+ * alone is too thin to aim at. */
+.yolo-whiteboard-passage-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: var(--yolo-whiteboard-passage-handle-knob);
+  height: var(--yolo-whiteboard-passage-handle-knob);
+  margin-left: calc(var(--yolo-whiteboard-passage-handle-knob) * -0.5);
+  border-radius: 50%;
+  background-color: var(--interactive-accent);
+  border: 2px solid var(--background-primary);
+  box-sizing: border-box;
+}
+
+.yolo-whiteboard-passage-handle[data-moving='start']::before {
+  bottom: 100%;
+}
+
+.yolo-whiteboard-passage-handle[data-moving='end']::before {
+  top: 100%;
+}
+
+.yolo-whiteboard-passage-handle.yolo-whiteboard-passage-handle-dragging,
+.yolo-whiteboard-passage-handle.yolo-whiteboard-passage-handle-dragging::before {
+  cursor: text;
+}

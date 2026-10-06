@@ -19,10 +19,13 @@ import type { EdgeAnchor } from '../../domain/fileFormat'
 import {
   TEXT_QUOTE_CONTEXT,
   type TextAnchor,
+  type TextSpan,
   findLoose,
   resolveTextAnchor,
+  snapToWordEdge,
   textAnchorAt,
 } from '../../domain/textAnchor'
+import type { PassageEnds } from '../pdf/pdfReader'
 
 import type { CardPassagePlacement } from './edgeLayer'
 
@@ -101,22 +104,122 @@ function displayedRange(
   return range
 }
 
+/** Where a passage of the source is in a body's displayed text, or null. */
+function displayedSpan(
+  shown: DisplayedText,
+  source: string,
+  anchor: TextAnchor,
+): TextSpan | null {
+  const span = resolveTextAnchor(source, anchor)
+  if (!span) return null
+  return findLoose(shown.text, source.slice(span[0], span[1]), {
+    before: source.slice(Math.max(0, span[0] - TEXT_QUOTE_CONTEXT), span[0]),
+    after: source.slice(span[1], span[1] + TEXT_QUOTE_CONTEXT),
+  })
+}
+
 /** Where a passage of the source is in the body as drawn, or null. */
 export function passageRange(
   body: HTMLElement,
   source: string,
   anchor: TextAnchor,
 ): Range | null {
-  const span = resolveTextAnchor(source, anchor)
-  if (!span) return null
   const shown = displayedText(body)
-  const found = findLoose(shown.text, source.slice(span[0], span[1]), {
-    before: source.slice(Math.max(0, span[0] - TEXT_QUOTE_CONTEXT), span[0]),
-    after: source.slice(span[1], span[1] + TEXT_QUOTE_CONTEXT),
-  })
+  const found = displayedSpan(shown, source, anchor)
   return found
     ? displayedRange(shown, found[0], found[1], body.ownerDocument)
     : null
+}
+
+/** Where a passage's first and last characters are on screen, for the
+ * handles that move them. */
+export function textPassageEnds(
+  body: HTMLElement,
+  source: string,
+  anchor: TextAnchor,
+): PassageEnds | null {
+  const range = passageRange(body, source, anchor)
+  const rects = range
+    ? Array.from(range.getClientRects()).filter((rect) => rect.height > 0)
+    : []
+  if (rects.length === 0) return null
+  const first = rects[0]
+  const last = rects[rects.length - 1]
+  return {
+    start: { x: first.left, top: first.top, bottom: first.bottom },
+    end: { x: last.right, top: last.top, bottom: last.bottom },
+  }
+}
+
+/**
+ * The passage with one end moved to the character nearest a client point,
+ * snapped to a word's edge, the other end held — read on the screen and
+ * matched back to the source. Null where the point is on no text the card
+ * draws, or the passage cannot be found on it.
+ */
+export function adjustTextPassage(
+  body: HTMLElement,
+  source: string,
+  anchor: TextAnchor,
+  moving: 'start' | 'end',
+  clientX: number,
+  clientY: number,
+): TextAnchor | null {
+  const shown = displayedText(body)
+  const current = displayedSpan(shown, source, anchor)
+  const point = offsetNear(shown, clientX, clientY, body.ownerDocument)
+  if (!current || point === null) return null
+  const snapped = snapToWordEdge(shown.text, point)
+  const held = moving === 'start' ? current[1] : current[0]
+  const [start, end] = snapped <= held ? [snapped, held] : [held, snapped]
+  if (shown.text.slice(start, end).trim() === '') return null
+  const found = findLoose(source, shown.text.slice(start, end), {
+    before: shown.text.slice(Math.max(0, start - TEXT_QUOTE_CONTEXT), start),
+    after: shown.text.slice(end, end + TEXT_QUOTE_CONTEXT),
+  })
+  return found ? textAnchorAt(source, found) : null
+}
+
+/**
+ * The offset in a body's displayed text nearest a client point: among the
+ * characters on the line under it, the one whose edge is nearest across.
+ */
+function offsetNear(
+  shown: DisplayedText,
+  clientX: number,
+  clientY: number,
+  doc: Document,
+): number | null {
+  const range = doc.createRange()
+  let best: number | null = null
+  let bestDistance = Infinity
+  for (const { node, start } of shown.nodes) {
+    range.selectNodeContents(node)
+    const onLine = Array.from(range.getClientRects()).some(
+      (rect) => clientY >= rect.top && clientY <= rect.bottom,
+    )
+    if (!onLine) continue
+    const length = node.nodeValue?.length ?? 0
+    for (let k = 0; k < length; k += 1) {
+      range.setStart(node, k)
+      range.setEnd(node, k + 1)
+      const rect = range.getBoundingClientRect()
+      if (clientY < rect.top || clientY > rect.bottom || rect.width === 0) {
+        continue
+      }
+      for (const [edge, offset] of [
+        [rect.left, start + k],
+        [rect.right, start + k + 1],
+      ] as const) {
+        const distance = Math.abs(clientX - edge)
+        if (distance < bestDistance) {
+          best = offset
+          bestDistance = distance
+        }
+      }
+    }
+  }
+  return best
 }
 
 /**

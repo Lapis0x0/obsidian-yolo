@@ -69,8 +69,12 @@ import {
   type PageParagraph,
   type PlacedTextItem,
   inferParagraphs,
+  orderedTuple,
   paragraphAt,
   paragraphText,
+  positionNear,
+  tupleBoxes,
+  tupleText,
 } from './paragraphs'
 import { PdfSearch } from './pdfSearch'
 import {
@@ -144,6 +148,13 @@ export type ReaderPassageMark = Readonly<{
   page: number
   quadPoints: readonly number[]
   strong: boolean
+}>
+
+/** Where a passage's first and last characters are on screen, as the
+ * handles that move them stand: a point across, and the line's height. */
+export type PassageEnds = Readonly<{
+  start: Readonly<{ x: number; top: number; bottom: number }>
+  end: Readonly<{ x: number; top: number; bottom: number }>
 }>
 
 /** Where a passage is in a reader (`PdfReader.placePassage`). */
@@ -971,25 +982,86 @@ export class PdfReader {
       read.items[paragraph.last].text.length,
     ]
     const context = quoteContext(read.items, tuple)
-    const quadPoints: number[] = []
-    for (const line of paragraph.lines) {
-      const corner = (fx: number, fy: number) =>
-        page.toPdfPoint([fx * page.width, fy * page.height], 1)
-      for (const [fx, fy] of [
-        [line.left, line.top],
-        [line.right, line.top],
-        [line.left, line.bottom],
-        [line.right, line.bottom],
-      ] as const) {
-        quadPoints.push(...corner(fx, fy))
-      }
-    }
+    const quadPoints = quadsOf(page, paragraph.lines)
     return {
       kind: 'pdf',
       page: slot.number,
       quadPoints,
       quote: {
         exact: paragraphText(read.items, paragraph),
+        ...(context.prefix ? { prefix: context.prefix } : {}),
+        ...(context.suffix ? { suffix: context.suffix } : {}),
+      },
+      selection: tuple,
+    }
+  }
+
+  /**
+   * Where a passage's first and last characters are on screen — the start
+   * of its first line and the end of its last — for the handles that move
+   * them; null while its page is not drawn.
+   */
+  passageEnds(anchor: EdgeAnchor): PassageEnds | null {
+    if (anchor.kind !== 'pdf') return null
+    const slot = this.slotFor(anchor.page)
+    if (!slot?.frame) return null
+    const boxes = quadBoxes(anchor.quadPoints, slot.frame)
+    if (boxes.length === 0) return null
+    const rect = slot.el.getBoundingClientRect()
+    const first = boxes[0]
+    const last = boxes[boxes.length - 1]
+    const at = (fx: number, top: number, bottom: number) => ({
+      x: rect.left + fx * rect.width,
+      top: rect.top + top * rect.height,
+      bottom: rect.top + bottom * rect.height,
+    })
+    return {
+      start: at(first.left, first.top, first.bottom),
+      end: at(last.right, last.top, last.bottom),
+    }
+  }
+
+  /**
+   * The passage with one end moved to the character nearest a client point
+   * (snapped to a word's edge), the other end held — what dragging one of
+   * its handles makes it. Null where the point is on no text of the
+   * passage's page, or the passage carries no text-layer tuple to hold the
+   * other end by.
+   */
+  async adjustPassage(
+    anchor: EdgeAnchor,
+    moving: 'start' | 'end',
+    clientX: number,
+    clientY: number,
+  ): Promise<EdgeAnchor | null> {
+    if (anchor.kind !== 'pdf' || !anchor.selection) return null
+    const slot = this.slotFor(anchor.page)
+    if (!slot) return null
+    const rect = slot.el.getBoundingClientRect()
+    if (!(rect.width > 0) || !(rect.height > 0)) return null
+    const read = await this.paragraphsOf(slot)
+    const page = slot.page
+    if (!read || !page) return null
+    const point = positionNear(
+      read.items,
+      (clientX - rect.left) / rect.width,
+      (clientY - rect.top) / rect.height,
+    )
+    if (!point) return null
+    const [a, b, c, d] = anchor.selection
+    const held =
+      moving === 'start' ? { item: c, offset: d } : { item: a, offset: b }
+    const tuple = orderedTuple(point, held)
+    const exact = tupleText(read.items, tuple).trim()
+    const boxes = tupleBoxes(read.items, tuple)
+    if (exact === '' || boxes.length === 0) return null
+    const context = quoteContext(read.items, tuple)
+    return {
+      kind: 'pdf',
+      page: anchor.page,
+      quadPoints: quadsOf(page, boxes),
+      quote: {
+        exact,
         ...(context.prefix ? { prefix: context.prefix } : {}),
         ...(context.suffix ? { suffix: context.suffix } : {}),
       },
@@ -2357,4 +2429,22 @@ function abortError(): Error {
 function releaseCanvas(canvas: HTMLCanvasElement): void {
   canvas.width = 0
   canvas.height = 0
+}
+
+/** Page boxes (fractions) as PDF quad points: four corners each, top-left,
+ * top-right, bottom-left, bottom-right, in PDF user space — a highlight's
+ * order. */
+function quadsOf(page: PdfPage, boxes: readonly PageBox[]): number[] {
+  const quads: number[] = []
+  for (const box of boxes) {
+    for (const [fx, fy] of [
+      [box.left, box.top],
+      [box.right, box.top],
+      [box.left, box.bottom],
+      [box.right, box.bottom],
+    ] as const) {
+      quads.push(...page.toPdfPoint([fx * page.width, fy * page.height], 1))
+    }
+  }
+  return quads
 }

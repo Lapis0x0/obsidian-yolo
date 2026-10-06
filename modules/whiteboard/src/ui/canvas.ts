@@ -109,18 +109,21 @@ import {
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { Minimap } from './canvas/minimap'
 import { OverviewLayer } from './canvas/overviewLayer'
+import { PassageHandles } from './canvas/passageHandles'
 import { PassagePoints } from './canvas/passagePoints'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import { SpreadFrame } from './canvas/spreadFrame'
 import {
   PASSAGE_HIGHLIGHT,
+  adjustTextPassage,
   blockAnchorAt,
   paintPassages,
   passageRange,
   placeTextPassage,
   rangeContains,
   selectionAnchor,
+  textPassageEnds,
 } from './canvas/textPassages'
 import { ToolbarController } from './canvas/toolbarController'
 import { CanvasControls } from './canvasControls'
@@ -153,6 +156,7 @@ import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
 import type {
+  PassageEnds,
   PdfReader,
   ReaderPassageMark,
   ReaderTextSelection,
@@ -385,6 +389,8 @@ export class WhiteboardCanvas {
   private spreadFrame: SpreadFrame | null = null
   /** The edge the pointer is on, whose passages are marked strongly. */
   private hoveredEdgeId: EdgeId | null = null
+  /** The handles of the selected edge's passages. */
+  private passageHandles: PassageHandles | null = null
   /** The connection points of text selected in a PDF card. */
   private passagePoints: PassagePoints | null = null
   /** Bumped by every selection reported, so a passage made for an older one
@@ -724,6 +730,8 @@ export class WhiteboardCanvas {
     this.spreadFrame = null
     this.passagePoints?.destroy()
     this.passagePoints = null
+    this.passageHandles?.destroy()
+    this.passageHandles = null
     this.pdfThumbnails?.destroy()
     this.pdfThumbnails = null
     this.pictureAnnotations?.destroy()
@@ -824,6 +832,21 @@ export class WhiteboardCanvas {
     // Mounted last so it sits above every card.
     const interactionLayer = buildInteractionLayer(doc)
     world.appendChild(interactionLayer)
+    this.passageHandles?.destroy()
+    this.passageHandles = new PassageHandles(doc, world, {
+      getSelectedEdge: () => {
+        if (this.selectedEdgeIds.size !== 1) return null
+        const [id] = this.selectedEdgeIds
+        return this.boardEdgesById.get(id) ?? null
+      },
+      canEdit: () => this.canEdit,
+      passageEnds: (id, anchor) => this.passageEnds(id, anchor),
+      adjust: (id, anchor, moving, x, y) =>
+        this.adjustPassage(id, anchor, moving, x, y),
+      setAnchor: (edgeId, end, anchor, key) =>
+        this.setEdgeAnchor(edgeId, end, anchor, key),
+      worldPoint: (point) => this.worldPointFromEvent(point),
+    })
     this.passagePoints?.destroy()
     this.passagePoints = new PassagePoints(doc, world, {
       getNodeRect: (id) => this.nodesById.get(id) ?? null,
@@ -1037,14 +1060,12 @@ export class WhiteboardCanvas {
         this.editing.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => {
         this.cardGeneration.syncChips(id)
-        this.passagesMoved(id)
-        this.refreshPassageMarks()
+        this.passagesRedrawn(id)
       },
       onTextMeasured: (id, size) => this.commitTextSize(id, size),
       onNoteCardRendered: (id) => {
         this.dropImport.onNoteCardRendered(id)
-        this.passagesMoved(id)
-        this.refreshPassageMarks()
+        this.passagesRedrawn(id)
       },
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
@@ -1849,6 +1870,7 @@ export class WhiteboardCanvas {
     }
     this.selectedEdgeIds = next
     this.refreshPassageMarks()
+    this.passageHandles?.sync()
     this.overviewLayer?.markDirty()
     this.keymap.syncSelectionScope()
     // A label being typed belongs to the edge that was selected when it
@@ -3065,6 +3087,75 @@ export class WhiteboardCanvas {
   private passagesMoved(id: NodeId): void {
     this.edgeLayer.redrawPassageEdges(id)
     if (this.passagePoints?.isOn(id)) this.passagePoints.sync()
+    this.passageHandles?.sync()
+  }
+
+  /** A card drew its text again: the passages in it are placed and marked
+   * anew — a frame later, once what it drew has been laid out. */
+  private passagesRedrawn(id: NodeId): void {
+    this.context.getWindow().requestAnimationFrame(() => {
+      this.passagesMoved(id)
+      this.refreshPassageMarks()
+    })
+  }
+
+  /** Where a passage's ends are on screen in `id`'s card, while the card
+   * shows it. */
+  private passageEnds(id: NodeId, anchor: EdgeAnchor): PassageEnds | null {
+    if (this.placePassage(id, anchor)?.state !== 'visible') return null
+    const runtime = this.cardRenderer.getRuntime(id)
+    if (anchor.kind === 'pdf') {
+      return runtime?.pdfReader?.passageEnds(anchor) ?? null
+    }
+    const source = this.passageSource(id)
+    if (!runtime?.bodyEl || source === null) return null
+    return textPassageEnds(runtime.bodyEl, source, anchor)
+  }
+
+  /** A passage of `id`'s card with one end moved to a client point. */
+  private adjustPassage(
+    id: NodeId,
+    anchor: EdgeAnchor,
+    moving: 'start' | 'end',
+    clientX: number,
+    clientY: number,
+  ): Promise<EdgeAnchor | null> {
+    const runtime = this.cardRenderer.getRuntime(id)
+    if (anchor.kind === 'pdf') {
+      return (
+        runtime?.pdfReader?.adjustPassage(anchor, moving, clientX, clientY) ??
+        Promise.resolve(null)
+      )
+    }
+    const source = this.passageSource(id)
+    if (!runtime?.bodyEl || source === null) return Promise.resolve(null)
+    return Promise.resolve(
+      adjustTextPassage(
+        runtime.bodyEl,
+        source,
+        anchor,
+        moving,
+        clientX,
+        clientY,
+      ),
+    )
+  }
+
+  /** An edge end reaches `anchor`, as part of the step `historyKey` names —
+   * a handle's whole drag one undo step. */
+  private setEdgeAnchor(
+    edgeId: EdgeId,
+    end: 'from' | 'to',
+    anchor: EdgeAnchor,
+    historyKey: string,
+  ): void {
+    if (!this.canEdit) return
+    const board = updateEdge(this.board, edgeId, { [`${end}Anchor`]: anchor })
+    if (board === this.board) return
+    this.applyBoardChange(board, historyKey)
+    const edge = this.boardEdgesById.get(edgeId)
+    if (edge) this.edgeLayer.replaceEdge(edge)
+    this.refreshPassageMarks()
   }
 
   /** Text selected in a text or note card, or the selection gone from one:
@@ -3185,6 +3276,7 @@ export class WhiteboardCanvas {
     this.syncEmptyHint()
     this.spreadFrame?.sync()
     this.passagePoints?.sync()
+    this.passageHandles?.sync()
     this.cardRenderer.syncSpreadTitleWidths()
     this.pdfThumbnails?.retain()
     this.pictureAnnotations?.retain(
