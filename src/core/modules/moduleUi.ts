@@ -10,6 +10,10 @@ import {
 } from 'obsidian'
 
 import { getDraggedVaultItems } from '../../utils/obsidian-drag'
+import type {
+  SaveFileRequest,
+  SaveFileSink,
+} from '../../utils/platform/desktopSaveFile'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId } from './moduleStore'
@@ -27,6 +31,7 @@ import {
 import type {
   YoloModuleActionToastV1,
   YoloModuleConfirmOptionsV1,
+  YoloModuleFileSinkV1,
   YoloModuleHoverLinkOptionsV1,
   YoloModuleMarkdownContentViewOptionsV1,
   YoloModuleMarkdownContentViewV1,
@@ -35,6 +40,7 @@ import type {
   YoloModuleMarkdownRendererV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
+  YoloModuleSaveFileOptionsV1,
   YoloModuleUiV1,
   YoloModuleVaultEntryV1,
 } from './types'
@@ -72,6 +78,8 @@ export const UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER: ModuleUiCapabilityProvid
         openLink: async () => unavailable(),
         openFileAt: async () => unavailable(),
         hoverLink: unavailable,
+        canSaveFile: unavailable,
+        saveFile: async () => unavailable(),
       }),
       activate: () => undefined,
     }),
@@ -121,6 +129,8 @@ export type ObsidianModuleUiCapabilityProviderOptions = {
     dismiss(id: string): void
   }>
   reportCleanupError?: (moduleId: string, error: unknown) => void
+  /** The system save dialog, where the device has one (the desktop app). */
+  saveFile?: (request: SaveFileRequest) => Promise<SaveFileSink | null>
 }
 
 export class ObsidianModuleUiCapabilityProvider
@@ -134,9 +144,11 @@ export class ObsidianModuleUiCapabilityProvider
     moduleId: string,
     error: unknown,
   ) => void
+  private readonly saveFile: ObsidianModuleUiCapabilityProviderOptions['saveFile']
 
   constructor(options: ObsidianModuleUiCapabilityProviderOptions) {
     this.app = options.app
+    this.saveFile = options.saveFile
     this.createConfirmModal = options.createConfirmModal
     this.attachQuickAsk = options.attachQuickAsk
     this.actionToasts = options.actionToasts
@@ -156,6 +168,7 @@ export class ObsidianModuleUiCapabilityProvider
     const editors = new Set<ObsidianMarkdownEditorHandle>()
     const openMenus = new Set<Menu>()
     const actionToastTokens = new Map<string, object>()
+    const openSinks = new Set<SaveFileSink>()
 
     const inactiveError = (): Error =>
       new Error(`Module "${moduleId}" is no longer active`)
@@ -223,6 +236,14 @@ export class ObsidianModuleUiCapabilityProvider
         }
       }
       actionToastTokens.clear()
+      // A file still being written when its module goes is never finished:
+      // what is there is removed rather than left half-written.
+      for (const sink of [...openSinks]) {
+        sink.abort().catch((error: unknown) => {
+          this.reportCleanupError(moduleId, error)
+        })
+      }
+      openSinks.clear()
       if (errors.length > 0) {
         throw new ModuleUiCleanupError(errors)
       }
@@ -512,6 +533,7 @@ export class ObsidianModuleUiCapabilityProvider
           menu.addItem((menuItem) => {
             menuItem.setTitle(item.title)
             if (item.icon !== undefined) menuItem.setIcon(item.icon)
+            if (item.disabled) menuItem.setDisabled(true)
             menuItem.onClick(() => {
               // A menu can outlive the module that opened it only by a frame
               // or two, but selecting an item after deactivation would run
@@ -573,6 +595,43 @@ export class ObsidianModuleUiCapabilityProvider
           hoverParent: { hoverPopover: null },
         })
       },
+      canSaveFile: () => {
+        assertActive()
+        return this.saveFile !== undefined
+      },
+      saveFile: async (
+        options: YoloModuleSaveFileOptionsV1,
+      ): Promise<YoloModuleFileSinkV1 | null> => {
+        assertActive()
+        const request = snapshotSaveFileOptions(options)
+        if (!this.saveFile) {
+          throw new Error('Saving a file is unavailable on this device')
+        }
+        const sink = await this.saveFile(request)
+        if (!sink) return null
+        if (!active) {
+          await sink.abort()
+          throw inactiveError()
+        }
+        openSinks.add(sink)
+        const settle = (task: () => Promise<void>) => () => {
+          openSinks.delete(sink)
+          return task()
+        }
+        return Object.freeze({
+          name: sink.name,
+          write: (chunk: Uint8Array) => {
+            if (!(chunk instanceof Uint8Array)) {
+              return Promise.reject(
+                new TypeError('A file chunk must be a Uint8Array'),
+              )
+            }
+            return sink.write(chunk)
+          },
+          close: settle(() => sink.close()),
+          abort: settle(() => sink.abort()),
+        })
+      },
     })
 
     return Object.freeze({
@@ -591,6 +650,40 @@ export class ObsidianModuleUiCapabilityProvider
       // Error reporters cannot escape a module UI lifecycle boundary.
     }
   }
+}
+
+function snapshotSaveFileOptions(
+  options: YoloModuleSaveFileOptionsV1,
+): SaveFileRequest {
+  if (!options || typeof options !== 'object') {
+    throw new TypeError('Save file options must be an object')
+  }
+  requireNonEmptyString(options.suggestedName, 'Suggested file name')
+  const filters = options.filters
+  if (filters !== undefined && !Array.isArray(filters)) {
+    throw new TypeError('Save file filters must be an array')
+  }
+  return Object.freeze({
+    suggestedName: options.suggestedName,
+    filters: filters?.map((filter) => {
+      requireNonEmptyString(filter?.name, 'Save file filter name')
+      if (
+        !Array.isArray(filter.extensions) ||
+        filter.extensions.some(
+          (extension: unknown) =>
+            typeof extension !== 'string' || !/^[A-Za-z0-9]+$/.test(extension),
+        )
+      ) {
+        throw new TypeError(
+          'Save file filter extensions must be letters and digits, without the dot',
+        )
+      }
+      return Object.freeze({
+        name: filter.name,
+        extensions: Object.freeze([...filter.extensions]),
+      })
+    }),
+  })
 }
 
 function snapshotActionToast(
@@ -732,6 +825,7 @@ function snapshotMenuItems(
         kind: 'item' as const,
         title: item.title,
         icon: item.icon,
+        disabled: item.disabled === true,
         onSelect,
       })
     }),

@@ -21,7 +21,12 @@ const createElement = (): HTMLElement =>
     },
   }) as unknown as HTMLElement
 
-type MenuItemSpec = { title?: string; icon?: string; click?: () => void }
+type MenuItemSpec = {
+  title?: string
+  icon?: string
+  disabled?: boolean
+  click?: () => void
+}
 
 const menus: MockMenu[] = []
 
@@ -49,6 +54,10 @@ class MockMenu {
       },
       setIcon: (icon: string) => {
         spec.icon = icon
+        return item
+      },
+      setDisabled: (disabled: boolean) => {
+        spec.disabled = disabled
         return item
       },
       onClick: (click: () => void) => {
@@ -468,6 +477,82 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     expect(original).toHaveBeenCalledTimes(1)
     expect(swapped).not.toHaveBeenCalled()
     lifecycle.dispose()
+  })
+
+  it('shows a disabled menu item as not selectable', () => {
+    const { lifecycle, ui } = create()
+    ui.showMenu({ type: 'contextmenu' } as MouseEvent, [
+      { title: 'Too large to copy', disabled: true, onSelect: jest.fn() },
+      { title: 'Export', onSelect: jest.fn() },
+    ])
+    const [menu] = menus
+    expect(menu.items.map((item) => item.disabled)).toEqual([true, undefined])
+    lifecycle.dispose()
+  })
+
+  describe('saveFile', () => {
+    const fakeSink = () => ({
+      name: 'board.png',
+      write: jest.fn(async () => undefined),
+      close: jest.fn(async () => undefined),
+      abort: jest.fn(async () => undefined),
+    })
+
+    it('is not offered where the device has no save dialog', async () => {
+      const { lifecycle, ui } = create()
+      expect(ui.canSaveFile()).toBe(false)
+      await expect(ui.saveFile({ suggestedName: 'board.png' })).rejects.toThrow(
+        'unavailable',
+      )
+      lifecycle.dispose()
+    })
+
+    it('hands the request to the dialog and resolves null when cancelled', async () => {
+      const saveFile = jest.fn(async () => null)
+      const { lifecycle, ui } = create({ saveFile })
+      expect(ui.canSaveFile()).toBe(true)
+      await expect(
+        ui.saveFile({
+          suggestedName: 'board.png',
+          filters: [{ name: 'PNG', extensions: ['png'] }],
+        }),
+      ).resolves.toBeNull()
+      expect(saveFile).toHaveBeenCalledWith({
+        suggestedName: 'board.png',
+        filters: [{ name: 'PNG', extensions: ['png'] }],
+      })
+      await expect(
+        ui.saveFile({
+          suggestedName: 'board.png',
+          filters: [{ name: 'PNG', extensions: ['.png'] }],
+        }),
+      ).rejects.toThrow('without the dot')
+      lifecycle.dispose()
+    })
+
+    it('writes through the sink and aborts one left open at deactivation', async () => {
+      const finished = fakeSink()
+      const left = fakeSink()
+      const saveFile = jest
+        .fn()
+        .mockResolvedValueOnce(finished)
+        .mockResolvedValueOnce(left)
+      const { lifecycle, ui } = create({ saveFile })
+
+      const first = await ui.saveFile({ suggestedName: 'a.png' })
+      await first?.write(new Uint8Array([1, 2]))
+      await first?.close()
+      expect(finished.write).toHaveBeenCalledWith(new Uint8Array([1, 2]))
+      expect(finished.close).toHaveBeenCalledTimes(1)
+
+      const second = await ui.saveFile({ suggestedName: 'b.png' })
+      await expect(
+        second?.write('text' as unknown as Uint8Array),
+      ).rejects.toThrow('Uint8Array')
+      lifecycle.dispose()
+      expect(left.abort).toHaveBeenCalledTimes(1)
+      expect(finished.abort).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects malformed menu items before showing anything', () => {

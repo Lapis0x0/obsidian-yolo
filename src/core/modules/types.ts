@@ -616,9 +616,40 @@ export type YoloModuleMenuItemV1 =
       /** Already localized: the module resolves its own locale at call time. */
       title: string
       icon?: string
+      /** Shown but not selectable — for an action that exists here and
+       * cannot run right now, with the title saying why. */
+      disabled?: boolean
       onSelect(): void | Promise<void>
     }>
   | Readonly<{ kind: 'separator' }>
+
+/** What a save dialog offers: a file name to start from and the kinds of
+ * file it may be saved as, the first being the default. */
+export type YoloModuleSaveFileOptionsV1 = Readonly<{
+  /** Extension included. */
+  suggestedName: string
+  filters?: readonly Readonly<{
+    /** Already localized. */
+    name: string
+    /** Without the dot. */
+    extensions: readonly string[]
+  }>[]
+}>
+
+/**
+ * A file outside the vault being written, chosen by the user in a save
+ * dialog. Written in pieces, so a file far larger than memory can be produced
+ * a part at a time. Nothing is guaranteed on disk until `close` resolves;
+ * `abort` stops and removes what was written. A sink still open when the
+ * module deactivates is aborted.
+ */
+export type YoloModuleFileSinkV1 = Readonly<{
+  /** The chosen file's name, without its directory. */
+  name: string
+  write(chunk: Uint8Array): Promise<void>
+  close(): Promise<void>
+  abort(): Promise<void>
+}>
 
 export type YoloModuleUiV1 = {
   notice(message: string): void
@@ -694,6 +725,17 @@ export type YoloModuleUiV1 = {
   ): Promise<void>
   openFileAt(location: YoloModuleOpenFileLocationV1): Promise<boolean>
   hoverLink(options: YoloModuleHoverLinkOptionsV1): void
+  /** Whether `saveFile` can be offered on this device: a desktop has a
+   * system save dialog, a phone or tablet does not. */
+  canSaveFile(): boolean
+  /**
+   * Asks the user where to save a file, with the system's own save dialog,
+   * and opens it for writing. Resolves null when the dialog is cancelled.
+   * Rejects when `canSaveFile` is false, or the file cannot be created.
+   */
+  saveFile(
+    options: YoloModuleSaveFileOptionsV1,
+  ): Promise<YoloModuleFileSinkV1 | null>
 }
 
 export type YoloModuleVaultFileV1 = Readonly<{
