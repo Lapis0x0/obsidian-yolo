@@ -51,6 +51,7 @@ import {
 } from '../constants'
 
 import type { CanvasCore } from './core'
+import { isSoleSelection } from './dragGestures'
 import type { EdgeLayer } from './edgeLayer'
 
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
@@ -83,6 +84,9 @@ export type ConnectInteraction = {
   readonly edgeId: EdgeId | null
   readonly startClient: ScreenPoint
   readonly candidates: readonly VirtualCardRect[]
+  /** As a card press's: a connection point that is clicked rather than
+   * dragged is clicking the card it belongs to. Always false for an edge. */
+  readonly wasSoleSelection: boolean
   dragging: boolean
   target: SideAnchor | null
 }
@@ -105,6 +109,8 @@ export type ConnectGestureDeps = Readonly<{
   begin: (interaction: ConnectInteraction) => void
   rebuildEdgesSvg: () => void
   enterEditMode: (id: NodeId) => void
+  /** What a click on the card means (`DragGestures.clickCard`). */
+  clickCard: (id: NodeId, wasSoleSelection: boolean, e: PointerEvent) => void
 }>
 
 export class ConnectGesture {
@@ -128,7 +134,13 @@ export class ConnectGesture {
     // a connection visibly starting from nothing reads as a glitch.
     if (this.deps.interactionLayerEl)
       this.deps.interactionLayerEl.dataset.connecting = side
-    this.beginConnect({ nodeId, side }, 'to', null, e)
+    this.beginConnect(
+      { nodeId, side },
+      'to',
+      null,
+      isSoleSelection(this.core.getSelectedIds(), nodeId),
+      e,
+    )
     return true
   }
 
@@ -151,7 +163,7 @@ export class ConnectGesture {
       movingEnd === 'from'
         ? { nodeId: edge.toNode, side: sides.toSide }
         : { nodeId: edge.fromNode, side: sides.fromSide }
-    this.beginConnect(anchor, movingEnd, edgeId, e)
+    this.beginConnect(anchor, movingEnd, edgeId, false, e)
     return true
   }
 
@@ -159,6 +171,7 @@ export class ConnectGesture {
     anchor: SideAnchor,
     movingEnd: 'from' | 'to',
     edgeId: EdgeId | null,
+    wasSoleSelection: boolean,
     e: PointerEvent,
   ): void {
     this.deps.begin({
@@ -171,6 +184,7 @@ export class ConnectGesture {
       candidates: this.core
         .getBoard()
         .nodes.filter((node) => node.id !== anchor.nodeId),
+      wasSoleSelection,
       dragging: false,
       target: null,
     })
@@ -261,9 +275,18 @@ export class ConnectGesture {
 
     if (!interaction.dragging) {
       // A press that never moved: on an edge that means selecting it, and on
-      // a connection point it means nothing at all.
+      // a connection point what the same click on its card means, as on a
+      // resize handle. Zoomed out, the dots are as big as a line of text and
+      // sit right against it, so a click aimed at the text often lands on
+      // one; meaning nothing there left the text hard to select or open.
       if (interaction.edgeId !== null) {
         this.core.setEdgeSelection([interaction.edgeId])
+      } else {
+        this.deps.clickCard(
+          interaction.anchor.nodeId,
+          interaction.wasSoleSelection,
+          e,
+        )
       }
       return
     }

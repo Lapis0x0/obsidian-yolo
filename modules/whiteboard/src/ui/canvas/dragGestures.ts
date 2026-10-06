@@ -393,14 +393,7 @@ export class DragGestures {
       // A click, not a drag: the handle overlaps the card, so this means
       // what the same click on the card means — a text's citation runs along
       // its bottom edge, under the handle there.
-      if (this.deps.followPdfLinkAt(interaction.nodeId, e)) return
-      if (
-        interaction.wasSoleSelection &&
-        this.deps.openOnSecondClick(interaction.nodeId)
-      ) {
-        return
-      }
-      this.core.setSelection([interaction.nodeId])
+      this.clickCard(interaction.nodeId, interaction.wasSoleSelection, e)
       return
     }
 
@@ -677,21 +670,22 @@ export class DragGestures {
     if (dragged) this.deps.placeLayer(dragged)
   }
 
+  /** A press on a card that never moved, alone — on the card itself or on
+   * the handle layer over it. A link is followed however the card was
+   * selected: aimed at, it is what the click meant, ahead of a second click's
+   * opening the card. */
+  clickCard(nodeId: NodeId, wasSoleSelection: boolean, e: PointerEvent): void {
+    if (this.deps.followPdfLinkAt(nodeId, e)) return
+    if (wasSoleSelection && this.deps.openOnSecondClick(nodeId)) return
+    this.core.setSelection([nodeId])
+  }
+
   finishNode(interaction: NodeInteraction, e: PointerEvent): void {
     if (!interaction.dragging) {
       if (interaction.additive) {
         this.toggleSelection(interaction.nodeId)
-      } else if (this.deps.followPdfLinkAt(interaction.nodeId, e)) {
-        // A link is followed however the card was selected: aimed at, it is
-        // what the click meant, ahead of a second click's opening the card.
-        return
-      } else if (
-        interaction.wasSoleSelection &&
-        this.deps.openOnSecondClick(interaction.nodeId)
-      ) {
-        return
       } else {
-        this.core.setSelection([interaction.nodeId])
+        this.clickCard(interaction.nodeId, interaction.wasSoleSelection, e)
       }
       return
     }

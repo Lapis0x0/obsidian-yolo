@@ -382,6 +382,8 @@ export class InteractionController {
       begin,
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       enterEditMode: (id) => deps.editing.enterEditMode(id),
+      clickCard: (id, wasSoleSelection, e) =>
+        this.drag.clickCard(id, wasSoleSelection, e),
     })
   }
 
