@@ -1,6 +1,7 @@
 import {
   ARROW_DIRECTIONS,
   EDGE_CONTROL_MAX_PX,
+  EDGE_CONTROL_MIN_PX,
   PASSAGE_EDGE_INSET,
   anchorEdgeEnd,
   anchorPoint,
@@ -120,6 +121,16 @@ describe('resolveEdgeSides', () => {
 })
 
 describe('computeEdgeGeometry', () => {
+  it('turns an end into a passage at once when the other end is mostly above', () => {
+    const page = { id: 'a', x: 0, y: 500, w: 100, h: 400 }
+    const above = { id: 'b', x: 150, y: 0, w: 100, h: 100 }
+    const geometry = computeEdgeGeometry(page, above, 'right', 'bottom', {
+      start: { x: 100, y: 700 },
+      startInner: { x: 80, y: 700 },
+    })
+    expect(geometry.c1).toEqual({ x: 100 + EDGE_CONTROL_MIN_PX, y: 700 })
+  })
+
   it('pushes ends facing each other across a narrow gap only as far as the gap', () => {
     const left = { id: 'a', x: 0, y: 0, w: 100, h: 1000 }
     const right = { id: 'b', x: 160, y: 0, w: 100, h: 1000 }
@@ -451,13 +462,21 @@ describe('resolveEdgeEnds', () => {
     expect(ends.end).toBeUndefined()
   })
 
-  it('draws a passage from the bottom when the other end is below', () => {
+  it('leaves by the bottom for a passage near it when the other end is below', () => {
     const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, under, {
-      from: { state: 'visible', top: 40, bottom: 60, left: 10, right: 70 },
+      from: { state: 'visible', top: 170, bottom: 190, left: 10, right: 70 },
     })
     expect(ends.fromSide).toBe('bottom')
     expect(ends.start).toEqual({ x: 40, y: 200 })
-    expect(ends.startInner).toEqual({ x: 40, y: 60 })
+    expect(ends.startInner).toEqual({ x: 40, y: 190 })
+  })
+
+  it('leaves by the side when a vertical run would cross the card', () => {
+    const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, under, {
+      from: { state: 'visible', top: 40, bottom: 60, left: 10, right: 70 },
+    })
+    expect(ends.fromSide).toBe('right')
+    expect(ends.startInner).toEqual({ x: 70, y: 50 })
   })
 
   it('places an end on a page as it would a passage', () => {

@@ -143,9 +143,9 @@ export function resolveEdgeSides(
 // --- ends that reach a passage --------------------------------------------
 //
 // An end with an anchor (fileFormat.ts's `EdgeAnchor`) reaches a passage
-// inside its card, and is drawn to it: the curve meets the side of the card
-// that faces the other end (`autoEdgeSides`) — level with the passage on a
-// left or right side, above or below its middle on the top or bottom — and,
+// inside its card, and is drawn to it: the curve meets a side of the card
+// facing the other end (`passageSide`) — level with the passage on a left or
+// right side, above or below its middle on the top or bottom — and,
 // while the passage is in sight, runs straight on over the card to the
 // passage's own edge on that side. An end on one page of a PDF's card
 // (`fromPage` / `toPage`) is drawn the same way, the page its passage.
@@ -207,9 +207,10 @@ export function resolveEdgeEnds(
     edge.toAnchor || edge.toPage !== undefined ? placements.to : null
   if (from.id === to.id) return withinCardEnds(from, fromPlaced, toPlaced)
   if (!fromPlaced && !toPlaced) return sides
-  const facing = autoEdgeSides(from, to)
-  const fromSide = fromPlaced ? facing.fromSide : sides.fromSide
-  const toSide = toPlaced ? facing.toSide : sides.toSide
+  const fromSide = fromPlaced
+    ? passageSide(from, to, fromPlaced)
+    : sides.fromSide
+  const toSide = toPlaced ? passageSide(to, from, toPlaced) : sides.toSide
   const start = fromPlaced && passagePoint(from, fromSide, fromPlaced)
   const end = toPlaced && passagePoint(to, toSide, toPlaced)
   return {
@@ -220,6 +221,36 @@ export function resolveEdgeEnds(
     ...(end ? { end: end.edge } : {}),
     ...(end && end.inner ? { endInner: end.inner } : {}),
   }
+}
+
+/**
+ * The side an end reaching a passage leaves `card` by, towards `other`: the
+ * left or right one facing it — the run over the card to the passage then
+ * crosses only the margin beside it. The top or bottom one only where the
+ * other end is mostly above or below and the run from that side is the
+ * shorter: a passage by the card's top or bottom edge, not one a vertical
+ * run would reach through every line between.
+ */
+function passageSide(
+  card: VirtualCardRect,
+  other: VirtualCardRect,
+  placement: PassagePlacement,
+): NodeSide {
+  const dx = other.x + other.w / 2 - (card.x + card.w / 2)
+  const dy = other.y + other.h / 2 - (card.y + card.h / 2)
+  const across: NodeSide = dx >= 0 ? 'right' : 'left'
+  if (Math.abs(dx) >= Math.abs(dy)) return across
+  const along: NodeSide = dy >= 0 ? 'bottom' : 'top'
+  if (placement.state !== 'visible') return along
+  const acrossRun =
+    across === 'right'
+      ? card.x + card.w - placement.right
+      : placement.left - card.x
+  const alongRun =
+    along === 'bottom'
+      ? card.y + card.h - placement.bottom
+      : placement.top - card.y
+  return alongRun < acrossRun ? along : across
 }
 
 /**
@@ -320,6 +351,23 @@ function controlPush(
   )
 }
 
+/**
+ * Whether an end leaves its side across the way to the other end rather
+ * than along it — out of a left or right side towards something mostly
+ * above or below. An end that reaches a passage does that by design
+ * (`passageSide`), into what is often a narrow gap: two pages side by side.
+ * Pushed out as far as the distance asks, it would cross the gap and the
+ * card beyond before turning; it turns at once instead.
+ */
+function leavesSideways(at: Point, other: Point, side: NodeSide): boolean {
+  const normal = SIDE_NORMALS[side]
+  const dx = other.x - at.x
+  const dy = other.y - at.y
+  const along = dx * normal.x + dy * normal.y
+  const across = Math.abs(dx * normal.y - dy * normal.x)
+  return Math.abs(along) < across
+}
+
 function extrapolate(anchor: Point, side: NodeSide, push: number): Point {
   const normal = SIDE_NORMALS[side]
   return { x: anchor.x + normal.x * push, y: anchor.y + normal.y * push }
@@ -364,8 +412,20 @@ export function computeEdgeGeometry(
   const start = points?.start ?? anchorPoint(from, fromSide)
   const end = points?.end ?? anchorPoint(to, toSide)
   const push = controlPush(start, end, fromSide, toSide)
-  const c1 = extrapolate(start, fromSide, push)
-  const c2 = extrapolate(end, toSide, push)
+  const c1 = extrapolate(
+    start,
+    fromSide,
+    points?.startInner && leavesSideways(start, end, fromSide)
+      ? EDGE_CONTROL_MIN_PX
+      : push,
+  )
+  const c2 = extrapolate(
+    end,
+    toSide,
+    points?.endInner && leavesSideways(end, start, toSide)
+      ? EDGE_CONTROL_MIN_PX
+      : push,
+  )
   return {
     start,
     end,
