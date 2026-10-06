@@ -181,10 +181,8 @@ svg.yolo-whiteboard-pdf-highlight {
  * while the pointer is over it rather than fading. */
 .yolo-whiteboard-pdf-passage-hint {
   position: absolute;
-  border-radius: 2px;
+  /* A wash only: a frame per line made a paragraph a stack of boxes. */
   background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
-  box-shadow: 0 0 0 1.5px
-    color-mix(in srgb, var(--interactive-accent) 55%, transparent);
   pointer-events: none;
 }
 
