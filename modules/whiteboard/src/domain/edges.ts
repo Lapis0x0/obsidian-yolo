@@ -119,6 +119,92 @@ export function resolveEdgeSides(
   return { fromSide: fromSide ?? auto.fromSide, toSide: toSide ?? auto.toSide }
 }
 
+// --- ends that reach a passage --------------------------------------------
+//
+// An end with an anchor (fileFormat.ts's `EdgeAnchor`) reaches a passage
+// inside its card, and is drawn from it: from the card's left or right edge,
+// level with the passage, on whichever side faces the other end — never the
+// top or bottom, where an edge would say nothing about which lines it means.
+// Where the passage is comes from whoever draws the card (a reader knows its
+// scroll), as a `PassagePlacement`; this module only turns it into a point.
+
+/** Where the passage an end reaches is, as its card shows it now: on screen
+ * between two heights (world units), or scrolled past the card's top or
+ * bottom edge. */
+export type PassagePlacement =
+  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{ state: 'above' | 'below' }>
+
+/** How far in from the card's top or bottom corner an end is held when its
+ * passage is scrolled past that edge, in world units — near the edge it went
+ * out of, clear of the corner. */
+export const PASSAGE_EDGE_INSET = 12
+
+/** An edge's two ends: the sides they leave from, and the point on a side
+ * when it is not the middle. */
+export type EdgeEnds = Readonly<{
+  fromSide: NodeSide
+  toSide: NodeSide
+  start?: Point
+  end?: Point
+}>
+
+/**
+ * Where an edge's ends are drawn. An end without an anchor, or whose passage
+ * cannot be placed right now (`null`: the card is not drawn, or is drawn
+ * without its text), meets its side's middle as before (`resolveEdgeSides`).
+ */
+export function resolveEdgeEnds(
+  edge: Pick<Edge, 'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor'>,
+  from: VirtualCardRect,
+  to: VirtualCardRect,
+  placements: Readonly<{
+    from?: PassagePlacement | null
+    to?: PassagePlacement | null
+  }>,
+): EdgeEnds {
+  const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
+  const fromPlaced = edge.fromAnchor ? placements.from : null
+  const toPlaced = edge.toAnchor ? placements.to : null
+  if (!fromPlaced && !toPlaced) return sides
+  const facing = facingSides(from, to)
+  const fromSide = fromPlaced ? facing.fromSide : sides.fromSide
+  const toSide = toPlaced ? facing.toSide : sides.toSide
+  return {
+    fromSide,
+    toSide,
+    ...(fromPlaced ? { start: passagePoint(from, fromSide, fromPlaced) } : {}),
+    ...(toPlaced ? { end: passagePoint(to, toSide, toPlaced) } : {}),
+  }
+}
+
+/** The left or right side of each card that faces the other. */
+function facingSides(
+  from: VirtualCardRect,
+  to: VirtualCardRect,
+): Readonly<{ fromSide: NodeSide; toSide: NodeSide }> {
+  const dx = to.x + to.w / 2 - (from.x + from.w / 2)
+  return dx >= 0
+    ? { fromSide: 'right', toSide: 'left' }
+    : { fromSide: 'left', toSide: 'right' }
+}
+
+function passagePoint(
+  card: VirtualCardRect,
+  side: NodeSide,
+  placement: PassagePlacement,
+): Point {
+  const x = side === 'right' ? card.x + card.w : card.x
+  const inset = Math.min(PASSAGE_EDGE_INSET, card.h / 2)
+  const top = card.y + inset
+  const bottom = card.y + card.h - inset
+  if (placement.state !== 'visible') {
+    return { x, y: placement.state === 'above' ? top : bottom }
+  }
+  const middle = (placement.top + placement.bottom) / 2
+  return { x, y: Math.min(bottom, Math.max(top, middle)) }
+}
+
 function extrapolate(anchor: Point, side: NodeSide, distance: number): Point {
   const normal = SIDE_NORMALS[side]
   const push = Math.min(distance * EDGE_CONTROL_FACTOR, EDGE_CONTROL_MAX_PX)
@@ -145,15 +231,18 @@ function cubicBezierPointAt(
 
 /** Full geometry for one edge: anchor points, bezier control points, and the
  * curve's midpoint (label anchor). `fromSide`/`toSide` should already be
- * resolved (via `resolveEdgeSides`) — this function doesn't auto-pick. */
+ * resolved (via `resolveEdgeSides`, or `resolveEdgeEnds` for an edge that may
+ * reach a passage) — this function doesn't auto-pick. `points` puts an end
+ * somewhere on its side other than the middle (`resolveEdgeEnds`). */
 export function computeEdgeGeometry(
   from: VirtualCardRect,
   to: VirtualCardRect,
   fromSide: NodeSide,
   toSide: NodeSide,
+  points?: Readonly<{ start?: Point; end?: Point }>,
 ): EdgeGeometry {
-  const start = anchorPoint(from, fromSide)
-  const end = anchorPoint(to, toSide)
+  const start = points?.start ?? anchorPoint(from, fromSide)
+  const end = points?.end ?? anchorPoint(to, toSide)
   const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const c1 = extrapolate(start, fromSide, distance)
   const c2 = extrapolate(end, toSide, distance)

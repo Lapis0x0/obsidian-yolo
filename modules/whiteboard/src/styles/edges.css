@@ -73,6 +73,20 @@
   stroke: var(--yolo-whiteboard-color);
 }
 
+/* The end of an edge that reaches a passage inside its card rather than the
+ * whole card (ui/canvas/edgeLayer.ts's createPassageMark): a ring in the
+ * edge's colour, open in the middle, on the card's edge where the edge
+ * leaves it — level with the passage when the card shows it, near the edge
+ * it is scrolled past when not, and at the side's middle when the card
+ * cannot say. Weighted like the line it ends. */
+.yolo-whiteboard-edge-passage-end {
+  r: calc(3.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  fill: var(--background-primary);
+  stroke: var(--yolo-whiteboard-color);
+  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  pointer-events: none;
+}
+
 /* The connection being dragged, and the real edge it stands in for while it
  * is being re-attached. */
 

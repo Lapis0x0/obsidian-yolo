@@ -28,17 +28,13 @@ import {
 import { cameraFromView, screenToWorld } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
-import {
-  type ArrowDirection,
-  arrowEnds,
-  computeEdgeGeometry,
-  resolveEdgeSides,
-} from '../domain/edges'
+import { type ArrowDirection, arrowEnds } from '../domain/edges'
 import {
   type Board,
   type BoardNode,
   type BoardParseIssue,
   type Edge,
+  type EdgeAnchor,
   type EdgeId,
   type GroupNode,
   type NodeColor,
@@ -103,7 +99,7 @@ import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { ClipboardController } from './canvas/clipboardController'
 import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
-import { EdgeLayer } from './canvas/edgeLayer'
+import { type CardPassagePlacement, EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
 import {
   InteractionController,
@@ -951,6 +947,7 @@ export class WhiteboardCanvas {
         onLabelKeyDown: (id, event) =>
           this.editing.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.editing.endRename(true, { kind: 'edge', id }),
+        placePassage: (id, anchor) => this.placePassage(id, anchor),
         t: this.core.t,
       },
     )
@@ -972,6 +969,7 @@ export class WhiteboardCanvas {
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: this.core.getNode,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
+      onPassagesMove: (id) => this.edgeLayer.redrawPassageEdges(id),
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
       isEditing: (id) => this.editing.isEditing(id),
@@ -1826,19 +1824,8 @@ export class WhiteboardCanvas {
   /** World point an edge's chrome hangs from: the midpoint of its curve, the
    * same anchor its label already uses (domain/edges.ts's `EdgeGeometry`). */
   private edgeAnchorPoint(edgeId: EdgeId | undefined): ScreenPoint | null {
-    const edge =
-      edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
-    if (!edge) return null
-    const from = this.edgeLayer.effectiveNodeRect(edge.fromNode)
-    const to = this.edgeLayer.effectiveNodeRect(edge.toNode)
-    if (!from || !to) return null
-    const { fromSide, toSide } = resolveEdgeSides(
-      from,
-      to,
-      edge.fromSide,
-      edge.toSide,
-    )
-    return computeEdgeGeometry(from, to, fromSide, toSide).label
+    if (edgeId === undefined) return null
+    return this.edgeLayer.edgeGeometry(edgeId)?.label ?? null
   }
 
   /** Only one of the two selections is ever non-empty (see `selectedEdgeIds`). */
@@ -2849,6 +2836,38 @@ export class WhiteboardCanvas {
     this.contentSyncQueue.clear()
     this.engine.reset()
     this.edgeLayer.clearEdgesSvg()
+  }
+
+  /**
+   * Where a passage an edge end reaches is in its card, measured down from
+   * the card's top edge: asked of the card's reader for a PDF passage. Null
+   * when the card cannot say — it is not drawn, or not as a reader, or the
+   * passage is of a kind its card does not hold.
+   */
+  private placePassage(
+    id: NodeId,
+    anchor: EdgeAnchor,
+  ): CardPassagePlacement | null {
+    if (anchor.kind !== 'pdf') return null
+    const runtime = this.cardRenderer.getRuntime(id)
+    const reader = runtime?.pdfReader
+    if (!runtime?.el || !reader) return null
+    const placement = reader.placePassage(anchor.page, anchor.quadPoints)
+    if (!placement || placement.state !== 'visible') return placement
+    // The reader measures from its own top edge; the card's is above it by
+    // whatever the card puts first (its border).
+    let offset = 0
+    let el: HTMLElement | null = reader.root
+    while (el && el !== runtime.el) {
+      offset += el.offsetTop
+      el = el.offsetParent as HTMLElement | null
+    }
+    if (el !== runtime.el) return null
+    return {
+      state: 'visible',
+      top: placement.top + offset,
+      bottom: placement.bottom + offset,
+    }
   }
 
   /** How wide an open spread's title may run (domain/spread.ts's

@@ -166,7 +166,14 @@ describe('openSpread / closeSpread', () => {
     } as const
     const before = board(
       [pdf('p'), pdf('q')],
-      [edge('e', { fromNode: 'p', fromPage: 2, fromAnchor: anchor, toNode: 'q' })],
+      [
+        edge('e', {
+          fromNode: 'p',
+          fromPage: 2,
+          fromAnchor: anchor,
+          toNode: 'q',
+        }),
+      ],
     )
     const open = openSpread(before, 'p', threePages)
     expect(open.edges[0]).toMatchObject({

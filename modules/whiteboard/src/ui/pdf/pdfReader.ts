@@ -116,11 +116,20 @@ export type PdfReaderOptions = Readonly<{
    * a search hit, or a relayout that moved the column under it. Not called
    * for a `setPosition`. */
   onPositionChange?: (position: number) => void
+  /** Called when where a passage is in the reader may have changed: it
+   * scrolled, or a page loaded and can now place what is on it
+   * (`placePassage`). Reported for a `setPosition` too. */
+  onPassagesMove?: () => void
   /** The PDF's annotations, held for the reader: it lets go when destroyed. */
   annotations?: AnnotationLease
   annotationEvents?: ReaderAnnotationEvents
   reportError?: (stage: string, error: unknown) => void
 }>
+
+/** Where a passage is in a reader (`PdfReader.placePassage`). */
+export type ReaderPassagePlacement =
+  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{ state: 'above' | 'below' }>
 
 /** Text selected on a reader's pages, one piece per page it touches. */
 export type ReaderTextSelection = Readonly<{
@@ -275,6 +284,11 @@ type AreaDraft = {
 
 export class PdfReader {
   readonly path: string
+  /** The element the reader is drawn in, which `placePassage` measures
+   * from. */
+  get root(): HTMLElement {
+    return this.rootEl
+  }
   /** The one page shown, when this reader is a sheet (`sheet`); null for a
    * reader over the whole document. */
   readonly sheet: number | null
@@ -528,6 +542,8 @@ export class PdfReader {
     if (!this.layout) return
     this.reportedPosition = positionAt(this.layout, this.scrollerEl.scrollTop)
     this.position = this.reportedPosition
+    // Not news to the reader that asked for it, but the column did move.
+    this.options.onPassagesMove?.()
   }
 
   /** Opens the search bar, with the caret in it. */
@@ -842,6 +858,39 @@ export class PdfReader {
     this.goToPage(target)
     this.pendingReveal = selection ? { page: target, selection } : null
     this.finishReveal()
+  }
+
+  /**
+   * Where a passage on one of this reader's pages is (`quadPoints` in PDF
+   * user space, as a highlight's), measured down from the reader's top edge
+   * in its layout pixels — on screen, or scrolled past its top or bottom.
+   * What an edge reaching that passage is drawn to (domain/edges.ts's
+   * `PassagePlacement`). Null when it cannot say yet: no layout, or a page on
+   * screen that has not loaded.
+   */
+  placePassage(
+    page: number,
+    quadPoints: readonly number[],
+  ): ReaderPassagePlacement | null {
+    const layout = this.layout
+    const slot = this.slotFor(page)
+    if (!layout || !slot) return null
+    const scrollTop = this.sheet === null ? this.scrollerEl.scrollTop : 0
+    const height = this.scrollerSize?.height ?? 0
+    const pageTop = layout.tops[slot.index] - scrollTop
+    const pageHeight = layout.heights[slot.index]
+    if (pageTop + pageHeight <= 0) return { state: 'above' }
+    if (height > 0 && pageTop >= height) return { state: 'below' }
+    if (!slot.frame) return null
+    const boxes = quadBoxes(quadPoints, slot.frame)
+    if (boxes.length === 0) return null
+    const top = pageTop + Math.min(...boxes.map((box) => box.top)) * pageHeight
+    const bottom =
+      pageTop + Math.max(...boxes.map((box) => box.bottom)) * pageHeight
+    if (bottom <= 0) return { state: 'above' }
+    if (height > 0 && top >= height) return { state: 'below' }
+    const offset = this.scrollerEl.offsetTop
+    return { state: 'visible', top: top + offset, bottom: bottom + offset }
   }
 
   isAreaMode(): boolean {
@@ -1583,6 +1632,7 @@ export class PdfReader {
       toViewport: (point) => page.toViewportPoint(point, 1),
     }
     this.renderMarks(slot)
+    this.options.onPassagesMove?.()
   }
 
   private renderMarks(slot: Slot): void {
@@ -1948,6 +1998,7 @@ export class PdfReader {
     this.position = position
     if (pageChanged) this.syncIndicator()
     this.options.onPositionChange?.(position)
+    this.options.onPassagesMove?.()
   }
 
   private syncIndicator(): void {

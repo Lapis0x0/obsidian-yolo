@@ -59,6 +59,7 @@ import {
   EDGE_LABEL_FONT_PX,
   EDGE_LABEL_MAX_WIDTH_EM,
   EDGE_LABEL_PADDING_PX,
+  EDGE_PASSAGE_MARK_WORLD_PX,
   EDGE_STROKE_WORLD_PX,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
@@ -789,8 +790,7 @@ export class OverviewLayer {
           ...item,
           maxW: this.callbacks.spreadTitleMaxWidth(node.id) * view.scale,
         })
-      }
-      else visible.push(item)
+      } else visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is a block of ink,
     // in its colour, as greyed-out text is drawn — and a selection ring when
@@ -1275,6 +1275,8 @@ export class OverviewLayer {
       EDGE_STROKE_WORLD_PX * Math.sqrt(view.scale),
     )
     const arrow = EDGE_ARROW_WORLD_PX * Math.sqrt(view.scale)
+    // The stylesheet's ring radius, under the same law.
+    const ring = EDGE_PASSAGE_MARK_WORLD_PX * Math.sqrt(view.scale)
     const drawArrows = arrow >= OVERVIEW_ARROW_MIN_SCREEN_PX
     // Asked once, before the sweep: at the bottom of the tier there is no
     // label small enough to be worth drawing, and that is also where there are
@@ -1290,6 +1292,11 @@ export class OverviewLayer {
       end: ScreenPoint
       fromArrow: boolean
       toArrow: boolean
+      /** The end reaches a passage inside its card (edges.css's
+       * `.yolo-whiteboard-edge-passage-end`): at this tier no card can say
+       * where, so the end meets its side's middle and carries the ring. */
+      fromMark: boolean
+      toMark: boolean
       selected: boolean
     }>
     const byColor = new Map<string, Segment[]>()
@@ -1363,6 +1370,8 @@ export class OverviewLayer {
         end,
         fromArrow: edge.fromEnd === 'arrow',
         toArrow: edge.toEnd === 'arrow',
+        fromMark: edge.fromAnchor !== undefined,
+        toMark: edge.toAnchor !== undefined,
         selected,
       }
       const bucket = byColor.get(color)
@@ -1401,10 +1410,45 @@ export class OverviewLayer {
           if (s.fromArrow) this.arrowHeadPath(ctx, s.c1, s.start, arrow)
         }
         ctx.fill()
+        this.passageMarks(ctx, pass, palette.background, ring, stroke)
       }
     }
     ctx.lineWidth = 1
     this.drawEdgeLabels(ctx, view, surface, labels)
+  }
+
+  /** Rings on the ends that reach a passage, in the colour the pass is
+   * stroking in, open in the board's background. */
+  private passageMarks(
+    ctx: CanvasRenderingContext2D,
+    segments: readonly Readonly<{
+      start: ScreenPoint
+      end: ScreenPoint
+      fromMark: boolean
+      toMark: boolean
+    }>[],
+    background: string,
+    radius: number,
+    stroke: number,
+  ): void {
+    const points: ScreenPoint[] = []
+    for (const s of segments) {
+      if (s.fromMark) points.push(s.start)
+      if (s.toMark) points.push(s.end)
+    }
+    if (points.length === 0) return
+    const color = ctx.strokeStyle
+    ctx.beginPath()
+    for (const at of points) {
+      ctx.moveTo(at.x + radius, at.y)
+      ctx.arc(at.x, at.y, radius, 0, Math.PI * 2)
+    }
+    ctx.fillStyle = background
+    ctx.fill()
+    ctx.lineWidth = stroke
+    ctx.strokeStyle = color
+    ctx.stroke()
+    ctx.fillStyle = color
   }
 
   /**

@@ -196,6 +196,9 @@ export type CardRendererCallbacks = Readonly<{
   /** How wide an open spread's title may run before its name wraps
    * (domain/spread.ts's `spreadTitleMaxWidth`). */
   spreadTitleMaxWidth: (id: NodeId) => number
+  /** A PDF card's reader scrolled, or loaded a page: an edge reaching a
+   * passage in it may now be drawn somewhere else. */
+  onPassagesMove: (id: NodeId) => void
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
@@ -1506,6 +1509,7 @@ export class CardRenderer {
       placeholder: (page) => this.callbacks.pdfThumbnail(path, page),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
+      onPassagesMove: () => this.callbacks.onPassagesMove(id),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
     })
     runtime.pdfReader = reader

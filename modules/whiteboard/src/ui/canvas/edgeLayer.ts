@@ -15,13 +15,17 @@
 
 import {
   EDGE_CONTROL_MAX_PX,
+  type EdgeGeometry,
+  type PassagePlacement,
+  type Point,
   buildEdgePathD,
   computeEdgeGeometry,
-  resolveEdgeSides,
+  resolveEdgeEnds,
 } from '../../domain/edges'
 import type {
   BoardNode,
   Edge,
+  EdgeAnchor,
   EdgeId,
   NodeColor,
   NodeId,
@@ -39,6 +43,9 @@ import { applyColorToElement } from '../selectionToolbar'
 
 const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
 const EDGE_SELECTED_CLASS = 'yolo-whiteboard-edge-selected'
+/** The mark on an end that reaches a passage inside its card rather than
+ * the whole card — drawn wherever that end is, placed or not. */
+const EDGE_PASSAGE_END_CLASS = 'yolo-whiteboard-edge-passage-end'
 
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
@@ -49,7 +56,17 @@ type EdgeDomEntry = Readonly<{
    * `<text>`: it is what holds the caret while the label is typed (see
    * canvas.ts's `beginRename`), and SVG text cannot. */
   label: HTMLElement | null
+  /** The marks on the ends that reach a passage (`EDGE_PASSAGE_END_CLASS`). */
+  fromMark: SVGCircleElement | null
+  toMark: SVGCircleElement | null
 }>
+
+/** Where a passage is inside its card, measured down from the card's top
+ * edge in world units — or past its top or bottom — as whoever draws the
+ * card can tell. */
+export type CardPassagePlacement =
+  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{ state: 'above' | 'below' }>
 
 /**
  * The narrow surface `WhiteboardCanvas` injects so edge drawing can read
@@ -68,6 +85,12 @@ export type EdgeLayerCallbacks = Readonly<{
   getRenamingEdgeId: () => EdgeId | null
   onLabelKeyDown: (edgeId: EdgeId, event: KeyboardEvent) => void
   onLabelBlur: (edgeId: EdgeId) => void
+  /** Where a passage an end reaches is in its card right now, or null when
+   * the card cannot say (not drawn, or drawn without its text). */
+  placePassage: (
+    nodeId: NodeId,
+    anchor: EdgeAnchor,
+  ) => CardPassagePlacement | null
   t: (key: string, fallback?: string) => string
 }>
 
@@ -185,6 +208,8 @@ export class EdgeLayer {
       dom.path.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.hit.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.label?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.fromMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.toMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
       if (culled) {
         this.culledIds.add(edgeId)
         continue
@@ -213,6 +238,8 @@ export class EdgeLayer {
     dom.path.classList.remove(EDGE_CULLED_CLASS)
     dom.hit.classList.remove(EDGE_CULLED_CLASS)
     dom.label?.classList.remove(EDGE_CULLED_CLASS)
+    dom.fromMark?.classList.remove(EDGE_CULLED_CLASS)
+    dom.toMark?.classList.remove(EDGE_CULLED_CLASS)
     this.culledIds.delete(edgeId)
     if (this.staleIds.has(edgeId)) this.redrawEdge(edgeId)
   }
@@ -292,7 +319,17 @@ export class EdgeLayer {
       path,
       hit,
       label: hasLabel ? this.createEdgeLabelEl(edge) : null,
+      fromMark: edge.fromAnchor ? this.createPassageMark(edge) : null,
+      toMark: edge.toAnchor ? this.createPassageMark(edge) : null,
     })
+  }
+
+  private createPassageMark(edge: Edge): SVGCircleElement {
+    const mark = this.context.getDocument().createElementNS(SVG_NS, 'circle')
+    mark.setAttribute('class', EDGE_PASSAGE_END_CLASS)
+    applyColorToElement(mark, edge.color)
+    this.edgesGroupEl.appendChild(mark)
+    return mark
   }
 
   /**
@@ -359,6 +396,8 @@ export class EdgeLayer {
     if (!dom) return
     dom.path.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
     dom.label?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.fromMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.toMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
   }
 
   /** Toggles an edge's selected styling — the DOM half of canvas.ts's own
@@ -397,22 +436,71 @@ export class EdgeLayer {
     const edge = this.edgesById.get(edgeId)
     const dom = this.edgeElsById.get(edgeId)
     if (!edge || !dom) return
-    const from = this.effectiveNodeRect(edge.fromNode, overrides)
-    const to = this.effectiveNodeRect(edge.toNode, overrides)
-    if (!from || !to) return // dangling edges are rejected at parse time; stay defensive
-    const { fromSide, toSide } = resolveEdgeSides(
-      from,
-      to,
-      edge.fromSide,
-      edge.toSide,
-    )
-    const geometry = computeEdgeGeometry(from, to, fromSide, toSide)
+    const geometry = this.geometryOf(edge, overrides)
+    if (!geometry) return // dangling edges are rejected at parse time; stay defensive
     const d = buildEdgePathD(geometry)
     dom.path.setAttribute('d', d)
     dom.hit.setAttribute('d', d)
     if (dom.label) {
       dom.label.style.left = `${geometry.label.x}px`
       dom.label.style.top = `${geometry.label.y}px`
+    }
+    placeMark(dom.fromMark, geometry.start)
+    placeMark(dom.toMark, geometry.end)
+  }
+
+  /** Where an edge is drawn now — its ends placed at the passages they
+   * reach where the cards can say. What its chrome hangs from too. */
+  edgeGeometry(edgeId: EdgeId): EdgeGeometry | null {
+    const edge = this.edgesById.get(edgeId)
+    return edge ? this.geometryOf(edge) : null
+  }
+
+  private geometryOf(
+    edge: Edge,
+    overrides?: ReadonlyMap<NodeId, CardRect>,
+  ): EdgeGeometry | null {
+    const from = this.effectiveNodeRect(edge.fromNode, overrides)
+    const to = this.effectiveNodeRect(edge.toNode, overrides)
+    if (!from || !to) return null
+    const ends = resolveEdgeEnds(edge, from, to, {
+      from: this.placementIn(from, edge.fromAnchor),
+      to: this.placementIn(to, edge.toAnchor),
+    })
+    return computeEdgeGeometry(from, to, ends.fromSide, ends.toSide, ends)
+  }
+
+  /** A passage's place in its card, in world units: the card's report is
+   * measured from its top edge, and `card` is where the card is now —
+   * mid-drag included. */
+  private placementIn(
+    card: VirtualCardRect,
+    anchor: EdgeAnchor | undefined,
+  ): PassagePlacement | null {
+    if (!anchor) return null
+    const placement = this.callbacks.placePassage(card.id, anchor)
+    if (!placement || placement.state !== 'visible') return placement
+    return {
+      state: 'visible',
+      top: card.y + placement.top,
+      bottom: card.y + placement.bottom,
+    }
+  }
+
+  /** Redraws the edges that reach a passage in `nodeId`: what its card shows
+   * moved under them (a reader scrolled, a page loaded). */
+  redrawPassageEdges(nodeId: NodeId): void {
+    const incident = this.edgeIndexByNodeId.get(nodeId)
+    if (!incident) return
+    for (const edgeId of incident) {
+      const edge = this.edgesById.get(edgeId)
+      if (!edge) continue
+      if (
+        (edge.fromNode === nodeId && edge.fromAnchor) ||
+        (edge.toNode === nodeId && edge.toAnchor)
+      ) {
+        this.redrawEdge(edgeId)
+      }
     }
   }
 
@@ -438,6 +526,8 @@ export class EdgeLayer {
     if (!dom) return
     applyColorToElement(dom.path, color)
     if (dom.label) applyColorToElement(dom.label, color)
+    if (dom.fromMark) applyColorToElement(dom.fromMark, color)
+    if (dom.toMark) applyColorToElement(dom.toMark, color)
   }
 
   /** Toggles an edge's start/end arrowhead markers to match its
@@ -461,4 +551,10 @@ export class EdgeLayer {
     }
     path.removeAttribute(attribute)
   }
+}
+
+function placeMark(mark: SVGCircleElement | null, at: Point): void {
+  if (!mark) return
+  mark.setAttribute('cx', String(at.x))
+  mark.setAttribute('cy', String(at.y))
 }

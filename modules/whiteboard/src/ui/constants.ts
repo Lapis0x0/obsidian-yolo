@@ -311,6 +311,11 @@ export const OVERVIEW_THEMED_BORDER_ALPHA = 0.7
  * `.yolo-whiteboard-edge-path`, before its counter-scale. */
 export const EDGE_STROKE_WORLD_PX = 1.5
 
+/** Radius of the ring on an edge end that reaches a passage, in world units
+ * at 1:1 — edges.css's `.yolo-whiteboard-edge-passage-end`, before its
+ * counter-scale. */
+export const EDGE_PASSAGE_MARK_WORLD_PX = 3.5
+
 /** Arrowhead length in world units at 1:1 — the `markerWidth` canvas.ts gives
  * the shared SVG marker, before its counter-scale. */
 export const EDGE_ARROW_WORLD_PX = 10

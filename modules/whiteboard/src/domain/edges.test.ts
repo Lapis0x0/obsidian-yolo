@@ -1,6 +1,7 @@
 import {
   ARROW_DIRECTIONS,
   EDGE_CONTROL_MAX_PX,
+  PASSAGE_EDGE_INSET,
   anchorPoint,
   arrowDirection,
   arrowEnds,
@@ -13,6 +14,7 @@ import {
   findConnectTarget,
   oppositeSide,
   rectAnchoredAt,
+  resolveEdgeEnds,
   resolveEdgeSides,
 } from './edges'
 import type { Edge } from './fileFormat'
@@ -409,5 +411,53 @@ describe('arrow direction', () => {
 
   it('strips both arrowheads for a plain line', () => {
     expect(arrowEnds('none')).toEqual({ fromEnd: 'none', toEnd: 'none' })
+  })
+})
+
+describe('resolveEdgeEnds', () => {
+  const from = { id: 'a', x: 0, y: 0, w: 100, h: 200 }
+  const to = { id: 'b', x: 300, y: 500, w: 100, h: 100 }
+  const anchor = { kind: 'text', quote: { exact: 'x' }, offset: 0 } as const
+
+  it('leaves an end without an anchor at its side middle', () => {
+    expect(
+      resolveEdgeEnds({}, from, to, {
+        from: { state: 'visible', top: 50, bottom: 60 },
+      }),
+    ).toEqual(resolveEdgeSides(from, to))
+  })
+
+  it('draws a placed passage from the facing side, level with it', () => {
+    const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, to, {
+      from: { state: 'visible', top: 40, bottom: 60 },
+    })
+    expect(ends.fromSide).toBe('right')
+    expect(ends.start).toEqual({ x: 100, y: 50 })
+    expect(ends.end).toBeUndefined()
+  })
+
+  it('holds a passage scrolled out of sight near the edge it left by', () => {
+    const above = resolveEdgeEnds({ toAnchor: anchor }, to, from, {
+      to: { state: 'above' },
+    })
+    expect(above.toSide).toBe('right')
+    expect(above.end).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
+    const below = resolveEdgeEnds({ fromAnchor: anchor }, from, to, {
+      from: { state: 'below' },
+    })
+    expect(below.start).toEqual({ x: 100, y: 200 - PASSAGE_EDGE_INSET })
+  })
+
+  it('keeps a passage partly out of sight on the card', () => {
+    const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, to, {
+      from: { state: 'visible', top: -40, bottom: 0 },
+    })
+    expect(ends.start).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
+  })
+
+  it('falls back to the side middle when the card cannot place it', () => {
+    expect(
+      resolveEdgeEnds({ fromAnchor: anchor }, from, to, { from: null }),
+    ).toEqual(resolveEdgeSides(from, to))
   })
 })
