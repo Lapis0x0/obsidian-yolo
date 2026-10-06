@@ -63,6 +63,7 @@ import type { DropImport } from './dropImport'
 import type { EdgeLayer } from './edgeLayer'
 import type { EditingController } from './editingController'
 import { isTypingIntoField } from './keymapController'
+import type { PassagePoints } from './passagePoints'
 import type { PdfIntegration } from './pdfIntegration'
 import type { SnapGuideLayer } from './snapGuideLayer'
 import type { ToolbarController } from './toolbarController'
@@ -239,7 +240,12 @@ export type InteractionControllerDeps = Readonly<{
     | 'finishPinch'
     | 'viewportPointFromEvent'
   >
-  edges: Pick<EdgeLayer, 'redrawEdgesForNodes' | 'setEdgeHidden'>
+  edges: Pick<
+    EdgeLayer,
+    'redrawEdgesForNodes' | 'setEdgeHidden' | 'passagePlacement'
+  >
+  /** The connection points of a selected passage (./passagePoints.ts). */
+  passagePoints: Pick<PassagePoints, 'sourceAt'>
   snapGuides: SnapGuideLayer
   toolbar: Pick<
     ToolbarController,
@@ -379,6 +385,7 @@ export class InteractionController {
       interactionLayerEl: deps.interactionLayerEl,
       getLayerNodeId,
       edges: deps.edges,
+      placePassage: (card, anchor) => deps.edges.passagePlacement(card, anchor),
       begin,
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       enterEditMode: (id) => deps.editing.enterEditMode(id),
@@ -515,7 +522,14 @@ export class InteractionController {
     // The interaction layer sits above the cards, so it has to come first —
     // the press that starts a resize or a connection lands on it, never on
     // the card. Connection points are nested inside the side handles, so
-    // they have to be asked about first in turn.
+    // they have to be asked about first in turn. A selected passage's points
+    // are over the card's edge too, and stand for something more particular
+    // than the card's side.
+    const passage = this.deps.passagePoints.sourceAt(e.target)
+    if (passage !== null && this.connect.startFromPassage(passage, e)) {
+      this.watchAutoPan(e)
+      return
+    }
     const side = this.connectionSideFromEventTarget(e.target)
     if (side !== null && this.connect.start(side, e)) {
       this.watchAutoPan(e)

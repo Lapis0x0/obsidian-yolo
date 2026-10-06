@@ -464,8 +464,8 @@ export class EdgeLayer {
     const to = this.effectiveNodeRect(edge.toNode, overrides)
     if (!from || !to) return null
     const ends = resolveEdgeEnds(edge, from, to, {
-      from: this.placementIn(from, edge.fromAnchor),
-      to: this.placementIn(to, edge.toAnchor),
+      from: this.passagePlacement(from, edge.fromAnchor),
+      to: this.passagePlacement(to, edge.toAnchor),
     })
     return computeEdgeGeometry(from, to, ends.fromSide, ends.toSide, ends)
   }
@@ -473,7 +473,7 @@ export class EdgeLayer {
   /** A passage's place in its card, in world units: the card's report is
    * measured from its top edge, and `card` is where the card is now —
    * mid-drag included. */
-  private placementIn(
+  passagePlacement(
     card: VirtualCardRect,
     anchor: EdgeAnchor | undefined,
   ): PassagePlacement | null {

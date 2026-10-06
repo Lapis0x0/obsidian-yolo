@@ -25,17 +25,20 @@
 import { distanceBetween } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
 import {
+  type PassagePlacement,
   type SideAnchor,
-  anchorPoint,
+  anchorEdgeEnd,
   buildEdge,
   buildEdgePathD,
   computeEdgeGeometry,
   findConnectTarget,
   oppositeSide,
   rectAnchoredAt,
-  resolveEdgeSides,
+  resolveEdgeEnds,
 } from '../../domain/edges'
 import type {
+  Edge,
+  EdgeAnchor,
   EdgeId,
   NodeId,
   NodeSide,
@@ -53,6 +56,7 @@ import {
 import type { CanvasCore } from './core'
 import { isSoleSelection } from './dragGestures'
 import type { EdgeLayer } from './edgeLayer'
+import type { PassageSource } from './passagePoints'
 
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 
@@ -77,6 +81,10 @@ export type ConnectInteraction = {
   readonly pointerId: number
   /** The end that stays put, and the side it is anchored to. */
   readonly anchor: SideAnchor
+  /** The passage inside its card the end that stays put reaches, when it
+   * reaches one: a connection pulled out of a passage's points, or an edge
+   * re-attached by its other end. */
+  readonly passage: EdgeAnchor | null
   /** Which end of the edge is following the pointer. A new edge always
    * drags its `to` end — you pull the arrow out towards where it points. */
   readonly movingEnd: 'from' | 'to'
@@ -105,6 +113,11 @@ export type ConnectGestureDeps = Readonly<{
    * point pulls from. */
   getLayerNodeId: () => NodeId | null
   edges: Pick<EdgeLayer, 'setEdgeHidden'>
+  /** Where a passage is in `card` now (EdgeLayer's `passagePlacement`). */
+  placePassage: (
+    card: VirtualCardRect,
+    anchor: EdgeAnchor,
+  ) => PassagePlacement | null
   /** Makes this the gesture in flight. */
   begin: (interaction: ConnectInteraction) => void
   rebuildEdgesSvg: () => void
@@ -136,9 +149,28 @@ export class ConnectGesture {
       this.deps.interactionLayerEl.dataset.connecting = side
     this.beginConnect(
       { nodeId, side },
+      null,
       'to',
       null,
       isSoleSelection(this.core.getSelectedIds(), nodeId),
+      e,
+    )
+    return true
+  }
+
+  /** A connection pulled out of a passage's points (./passagePoints.ts):
+   * the edge it makes reaches that passage. */
+  startFromPassage(source: PassageSource, e: PointerEvent): boolean {
+    if (!this.core.canEdit()) return false
+    if (this.core.getNode(source.nodeId) === undefined) return false
+    // Keeps the selection the points stand for, and the card's focus.
+    e.preventDefault()
+    this.beginConnect(
+      { nodeId: source.nodeId, side: source.side },
+      source.anchor,
+      'to',
+      null,
+      false,
       e,
     )
     return true
@@ -154,21 +186,44 @@ export class ConnectGesture {
     const from = edge && this.core.getNode(edge.fromNode)
     const to = edge && this.core.getNode(edge.toNode)
     if (!edge || !from || !to) return false
-    const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
+    const ends = this.endsOf(edge, from, to)
+    const geometry = computeEdgeGeometry(
+      from,
+      to,
+      ends.fromSide,
+      ends.toSide,
+      ends,
+    )
     const world = this.core.worldPointFromEvent(e)
-    const toFrom = distanceBetween(world, anchorPoint(from, sides.fromSide))
-    const toTo = distanceBetween(world, anchorPoint(to, sides.toSide))
+    const toFrom = distanceBetween(world, geometry.start)
+    const toTo = distanceBetween(world, geometry.end)
     const movingEnd = toFrom <= toTo ? 'from' : 'to'
     const anchor: SideAnchor =
       movingEnd === 'from'
-        ? { nodeId: edge.toNode, side: sides.toSide }
-        : { nodeId: edge.fromNode, side: sides.fromSide }
-    this.beginConnect(anchor, movingEnd, edgeId, false, e)
+        ? { nodeId: edge.toNode, side: ends.toSide }
+        : { nodeId: edge.fromNode, side: ends.fromSide }
+    const passage =
+      (movingEnd === 'from' ? edge.toAnchor : edge.fromAnchor) ?? null
+    this.beginConnect(anchor, passage, movingEnd, edgeId, false, e)
     return true
+  }
+
+  /** Where an edge's ends are drawn, passages placed (domain/edges.ts's
+   * `resolveEdgeEnds`). */
+  private endsOf(
+    edge: Pick<Edge, 'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor'>,
+    from: VirtualCardRect,
+    to: VirtualCardRect,
+  ) {
+    return resolveEdgeEnds(edge, from, to, {
+      from: edge.fromAnchor && this.deps.placePassage(from, edge.fromAnchor),
+      to: edge.toAnchor && this.deps.placePassage(to, edge.toAnchor),
+    })
   }
 
   private beginConnect(
     anchor: SideAnchor,
+    passage: EdgeAnchor | null,
     movingEnd: 'from' | 'to',
     edgeId: EdgeId | null,
     wasSoleSelection: boolean,
@@ -178,6 +233,7 @@ export class ConnectGesture {
       kind: 'connect',
       pointerId: e.pointerId,
       anchor,
+      passage,
       movingEnd,
       edgeId,
       startClient: { x: e.clientX, y: e.clientY },
@@ -231,20 +287,31 @@ export class ConnectGesture {
         : { id: '', x: world.x, y: world.y, w: 0, h: 0 }
     const freeSide =
       target && targetCard ? target.side : oppositeSide(interaction.anchor.side)
-    const geometry =
-      interaction.movingEnd === 'to'
-        ? computeEdgeGeometry(
-            anchorCard,
-            free,
-            interaction.anchor.side,
-            freeSide,
-          )
-        : computeEdgeGeometry(
-            free,
-            anchorCard,
-            freeSide,
-            interaction.anchor.side,
-          )
+    const pinned = {
+      side: interaction.anchor.side,
+      passage: interaction.passage ?? undefined,
+    }
+    const pinnedIsFrom = interaction.movingEnd === 'to'
+    const from = pinnedIsFrom ? anchorCard : free
+    const to = pinnedIsFrom ? free : anchorCard
+    const ends = this.endsOf(
+      pinnedIsFrom
+        ? {
+            fromSide: pinned.side,
+            toSide: freeSide,
+            fromAnchor: pinned.passage,
+          }
+        : { fromSide: freeSide, toSide: pinned.side, toAnchor: pinned.passage },
+      from,
+      to,
+    )
+    const geometry = computeEdgeGeometry(
+      from,
+      to,
+      ends.fromSide,
+      ends.toSide,
+      ends,
+    )
     preview.setAttribute('d', buildEdgePathD(geometry))
     preview.classList.remove(EDGE_HIDDEN_CLASS)
   }
@@ -311,11 +378,17 @@ export class ConnectGesture {
       interaction.edgeId === null
         ? addEdge(
             board,
-            buildEdge(
-              this.core.nextEdgeId(),
-              interaction.anchor,
-              interaction.movingEnd,
-              target,
+            anchorEdgeEnd(
+              buildEdge(
+                this.core.nextEdgeId(),
+                interaction.anchor,
+                interaction.movingEnd,
+                target,
+              ),
+              interaction.movingEnd === 'to' ? 'from' : 'to',
+              interaction.passage ?? undefined,
+              board.nodes.find((node) => node.id === interaction.anchor.nodeId)
+                ?.type,
             ),
           )
         : updateEdge(

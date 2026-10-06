@@ -45,7 +45,11 @@ import {
   AnnotationController,
   type ExcerptDrag,
 } from '../pdf/annotationController'
-import type { PdfReader, ReaderAnnotationEvents } from '../pdf/pdfReader'
+import type {
+  PdfReader,
+  ReaderAnnotationEvents,
+  ReaderTextSelection,
+} from '../pdf/pdfReader'
 import { READER_PANEL_DEFAULT_WIDTH, ReaderPanel } from '../pdf/readerPanel'
 
 import type { CanvasCore } from './core'
@@ -91,6 +95,15 @@ export type PdfIntegrationDeps = Readonly<{
    * drawn as it will read (`body`), or — with null — shows none. */
   showExcerptLanding: (
     landing: Readonly<{ rect: Rect; body: HTMLElement }> | null,
+  ) => void
+  /** Text was selected in a PDF card on the board (`nodeId`), or the
+   * selection went away (null) — what a passage's connection points stand
+   * for (./passagePoints.ts). Not told of the reading panel's: it is not on
+   * the board for an edge to leave. */
+  onPassageSelection: (
+    nodeId: NodeId,
+    reader: PdfReader,
+    selection: ReaderTextSelection | null,
   ) => void
 }>
 
@@ -179,7 +192,18 @@ export class PdfIntegration {
   /** What every reader of this view reports its selections and annotation
    * clicks to. */
   get annotationEvents(): ReaderAnnotationEvents {
-    return this.annotationController.events
+    const events = this.annotationController.events
+    return {
+      ...events,
+      onTextSelection: (reader, selection) => {
+        events.onTextSelection(reader, selection)
+        if (this.readerPanel?.getReader() === reader) return
+        const nodeId = this.pdfNodeForReader(reader)
+        if (nodeId !== null) {
+          this.deps.onPassageSelection(nodeId, reader, selection)
+        }
+      },
+    }
   }
 
   /** Releases the panel (its position is already in what the host saved —

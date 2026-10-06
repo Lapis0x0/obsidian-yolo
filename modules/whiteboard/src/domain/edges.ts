@@ -12,7 +12,15 @@
 // (temporary coordinates the caller passes in), so this module only ever
 // sees plain rectangles, never live elements.
 
-import type { Edge, EdgeEnd, EdgeId, NodeId, NodeSide } from './fileFormat'
+import type {
+  BoardNode,
+  Edge,
+  EdgeAnchor,
+  EdgeEnd,
+  EdgeId,
+  NodeId,
+  NodeSide,
+} from './fileFormat'
 import type { CardRect, CardSize } from './resize'
 import type { VirtualCardRect } from './virtualization'
 
@@ -426,6 +434,35 @@ export function buildEdge(
     fromEnd: 'none',
     toEnd: 'arrow',
     extra: {},
+  }
+}
+
+/**
+ * `edge` with one end reaching `anchor` inside its node, or — with
+ * `undefined` — the whole node again. A passage of a PDF's card also names
+ * its page (`fromPage`/`toPage`), so the end lands on that page's sheet when
+ * the document is spread out; a sheet is already the page. Letting go of a
+ * passage keeps the page: the end stays with the page it was on.
+ */
+export function anchorEdgeEnd(
+  edge: Edge,
+  end: 'from' | 'to',
+  anchor: EdgeAnchor | undefined,
+  nodeType: BoardNode['type'] | undefined,
+): Edge {
+  const page =
+    anchor?.kind === 'pdf' && nodeType === 'file' ? anchor.page : undefined
+  if (end === 'from') {
+    return {
+      ...edge,
+      fromAnchor: anchor,
+      ...(page === undefined ? {} : { fromPage: page }),
+    }
+  }
+  return {
+    ...edge,
+    toAnchor: anchor,
+    ...(page === undefined ? {} : { toPage: page }),
   }
 }
 

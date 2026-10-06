@@ -109,6 +109,7 @@ import {
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { Minimap } from './canvas/minimap'
 import { OverviewLayer } from './canvas/overviewLayer'
+import { PassagePoints } from './canvas/passagePoints'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import { SpreadFrame } from './canvas/spreadFrame'
@@ -141,6 +142,8 @@ import {
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
+import { passageAnchorFromSelection } from './pdf/passageAnchor'
+import type { PdfReader, ReaderTextSelection } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PdfThumbnails, type WantedThumbnail } from './pdf/thumbnails'
 import { applyColorToElement } from './selectionToolbar'
@@ -367,6 +370,11 @@ export class WhiteboardCanvas {
   /** The frame and reflow handle around a selected PDF spread
    * (./canvas/spreadFrame.ts). */
   private spreadFrame: SpreadFrame | null = null
+  /** The connection points of text selected in a PDF card. */
+  private passagePoints: PassagePoints | null = null
+  /** Bumped by every selection reported, so a passage made for an older one
+   * (it is made asynchronously) is dropped. */
+  private passageSelection = 0
   /**
    * The overview tier's renderer. Built in `ensureDom`; null before
    * that, which `clear()` can reach.
@@ -685,6 +693,8 @@ export class WhiteboardCanvas {
     this.overviewLayer = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
+    this.passagePoints?.destroy()
+    this.passagePoints = null
     this.pdfThumbnails?.destroy()
     this.pdfThumbnails = null
     this.pictureAnnotations?.destroy()
@@ -785,6 +795,11 @@ export class WhiteboardCanvas {
     // Mounted last so it sits above every card.
     const interactionLayer = buildInteractionLayer(doc)
     world.appendChild(interactionLayer)
+    this.passagePoints?.destroy()
+    this.passagePoints = new PassagePoints(doc, world, {
+      getNodeRect: (id) => this.nodesById.get(id) ?? null,
+      placePassage: (id, anchor) => this.placePassage(id, anchor),
+    })
     this.snapGuideLayer?.destroy()
     const snapGuides = new SnapGuideLayer(doc, world)
     this.snapGuideLayer = snapGuides
@@ -969,7 +984,10 @@ export class WhiteboardCanvas {
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: this.core.getNode,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
-      onPassagesMove: (id) => this.edgeLayer.redrawPassageEdges(id),
+      onPassagesMove: (id) => {
+        this.edgeLayer.redrawPassageEdges(id)
+        if (this.passagePoints?.isOn(id)) this.passagePoints.sync()
+      },
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
       isEditing: (id) => this.editing.isEditing(id),
@@ -1128,6 +1146,8 @@ export class WhiteboardCanvas {
       runEscape: () => this.keymap.run('escape'),
       excerptDropPoint: (e) => this.dropImport.pointerDropPoint(e),
       showExcerptLanding: (rect) => this.dropImport.showLandingSlot(rect),
+      onPassageSelection: (id, reader, selection) =>
+        this.selectPassage(id, reader, selection),
     })
     this.dropImport = new DropImport({
       core: this.core,
@@ -1175,6 +1195,9 @@ export class WhiteboardCanvas {
       getNodesById: () => this.nodesById,
       camera: this.cameraController,
       edges: this.edgeLayer,
+      passagePoints: {
+        sourceAt: (target) => this.passagePoints?.sourceAt(target) ?? null,
+      },
       snapGuides,
       toolbar: this.toolbarController,
       editing: this.editing,
@@ -2838,6 +2861,28 @@ export class WhiteboardCanvas {
     this.edgeLayer.clearEdgesSvg()
   }
 
+  /** Text selected in a PDF card, or the selection gone: the passage it
+   * names is what its connection points pull an edge from. */
+  private selectPassage(
+    id: NodeId,
+    reader: PdfReader,
+    selection: ReaderTextSelection | null,
+  ): void {
+    const ticket = ++this.passageSelection
+    if (!selection) {
+      this.passagePoints?.setSource(null)
+      return
+    }
+    passageAnchorFromSelection(reader, selection)
+      .then((anchor) => {
+        if (ticket !== this.passageSelection) return
+        this.passagePoints?.setSource(anchor && { nodeId: id, anchor })
+      })
+      .catch((error: unknown) =>
+        this.core.reportError('passage selection', error),
+      )
+  }
+
   /**
    * Where a passage an edge end reaches is in its card, measured down from
    * the card's top edge: asked of the card's reader for a PDF passage. Null
@@ -2887,6 +2932,7 @@ export class WhiteboardCanvas {
     )
     this.syncEmptyHint()
     this.spreadFrame?.sync()
+    this.passagePoints?.sync()
     this.cardRenderer.syncSpreadTitleWidths()
     this.pdfThumbnails?.retain()
     this.pictureAnnotations?.retain(

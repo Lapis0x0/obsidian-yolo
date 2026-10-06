@@ -1,0 +1,60 @@
+/* --- a passage's connection points ------------------------------------------
+ * Text selected in a card on the board shows two connection points, on the
+ * card's left and right edges level with the selection
+ * (ui/canvas/passagePoints.ts): where an edge reaching that passage leaves
+ * the card. Pulled out, they start a connection from the passage.
+ *
+ * The layer is parked across the card at the passage's height and has no
+ * height of its own; each point straddles the card's edge as a card's own
+ * connection point does (resize-handles.css), at the same size and in the
+ * same dot — shown the whole time there is a selection, since the selection
+ * is what asked for them. World units weighted by the zoom multiplier the
+ * camera writes, like every other piece of chrome in the world layer. */
+
+.yolo-whiteboard-passage-points {
+  --yolo-whiteboard-passage-point-extent: calc(
+    var(--yolo-whiteboard-resizer-size) *
+      var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  position: absolute;
+  height: 0;
+  pointer-events: none;
+  /* With the handle layer, over a dragged card (drag.css). */
+  z-index: 3;
+}
+
+.yolo-whiteboard-passage-points.yolo-whiteboard-passage-points-hidden {
+  display: none;
+}
+
+.yolo-whiteboard-passage-point {
+  position: absolute;
+  top: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
+  width: var(--yolo-whiteboard-passage-point-extent);
+  height: var(--yolo-whiteboard-passage-point-extent);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.yolo-whiteboard-passage-point[data-side='left'] {
+  left: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
+}
+
+.yolo-whiteboard-passage-point[data-side='right'] {
+  right: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
+}
+
+/* The dot, as a card's connection point draws it. */
+.yolo-whiteboard-passage-point::after {
+  content: ' ';
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 75%;
+  height: 75%;
+  margin: auto;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--interactive-accent);
+  border: 2px solid var(--background-modifier-border);
+}

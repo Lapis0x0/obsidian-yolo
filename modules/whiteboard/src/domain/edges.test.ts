@@ -2,6 +2,7 @@ import {
   ARROW_DIRECTIONS,
   EDGE_CONTROL_MAX_PX,
   PASSAGE_EDGE_INSET,
+  anchorEdgeEnd,
   anchorPoint,
   arrowDirection,
   arrowEnds,
@@ -459,5 +460,38 @@ describe('resolveEdgeEnds', () => {
     expect(
       resolveEdgeEnds({ fromAnchor: anchor }, from, to, { from: null }),
     ).toEqual(resolveEdgeSides(from, to))
+  })
+})
+
+describe('anchorEdgeEnd', () => {
+  const edge = buildEdge('e', { nodeId: 'a', side: 'right' }, 'to', {
+    nodeId: 'b',
+    side: 'left',
+  })
+  const passage = {
+    kind: 'pdf',
+    page: 4,
+    quadPoints: [0, 10, 50, 10, 0, 0, 50, 0],
+    quote: { exact: 'x' },
+  } as const
+
+  it('names the page of a passage on a PDF card', () => {
+    expect(anchorEdgeEnd(edge, 'from', passage, 'file')).toMatchObject({
+      fromAnchor: passage,
+      fromPage: 4,
+    })
+  })
+
+  it('leaves the page alone on a sheet, which is the page', () => {
+    const anchored = anchorEdgeEnd(edge, 'to', passage, 'pdf-page')
+    expect(anchored.toAnchor).toBe(passage)
+    expect(anchored.toPage).toBeUndefined()
+  })
+
+  it('lets go of a passage and keeps the page', () => {
+    const anchored = anchorEdgeEnd(edge, 'from', passage, 'file')
+    const released = anchorEdgeEnd(anchored, 'from', undefined, 'file')
+    expect(released.fromAnchor).toBeUndefined()
+    expect(released.fromPage).toBe(4)
   })
 })
