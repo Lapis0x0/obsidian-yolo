@@ -1,15 +1,17 @@
-## 0.0.5 Minimap & Smoother Zooming 🗺️
+## 0.0.6 Passage-Level Connections 🔗
 
-- Added a minimap, so you can view and jump across the whole whiteboard at any time while zoomed in to read.
-- Raised the whiteboard's maximum zoom to 500%.
-- Improved trackpad zoom speed.
-- Improved the smoothness of PDF interactions.
+- Added passage-level connections: any passage in any card can now connect to any other.
+- Introduced alignment for the whiteboard's zoomed-out view.
+- Improved the loading speed of spread-out PDF pages, and improved the whiteboard's performance.
+- Improved how long PDF titles are displayed.
+- Improved selecting and editing text cards when zoomed out.
 
 ---
 
-## 0.0.5 小地图与更顺手的缩放 🗺️
+## 0.0.6 段落级连线 🔗
 
-- 新增小地图，放大阅读时可随时查看并跳转画板全局。
-- 白板最大缩放提高到 500%。
-- 优化触控板的缩放速度。
-- 优化 PDF 的交互流畅度。
+- 新增段落级连线，任意卡片的任意段落都能互相连接。
+- 为缩略态白板引入对齐机制。
+- 优化 PDF 分页的加载速度，优化白板的性能表现。
+- 优化 PDF 长标题的展示逻辑。
+- 优化缩放较小时文字卡片的选中与编辑手感。
