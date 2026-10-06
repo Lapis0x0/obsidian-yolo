@@ -218,6 +218,7 @@ const WORLD_CLASS = 'yolo-whiteboard-world'
 const WORLD_OVERVIEW_CLASS = 'yolo-whiteboard-world-overview'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
 const EDGES_GROUP_CLASS = 'yolo-whiteboard-edges-group'
+const PASSAGE_RUNS_CLASS = 'yolo-whiteboard-edge-passage-runs'
 const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
@@ -399,6 +400,16 @@ export class WhiteboardCanvas {
   /** The passage points stand for text selected in a text or note card
    * (`syncTextSelection`), not a PDF's. */
   private textPassageSelected = false
+  /** The text last selected in a PDF card that the passage points stood
+   * for, kept so a connection pulled from it can mark it where it was read
+   * — past the selection itself, which a press on a point may take away.
+   * Matched by the very anchor the connection carries, so it marks nothing
+   * but that passage. */
+  private pdfPassage: Readonly<{
+    reader: PdfReader
+    selection: ReaderTextSelection
+    anchor: EdgeAnchor
+  }> | null = null
   /** The card whose editor was open at the last editing change. */
   private lastEditingId: NodeId | null = null
   private selectionFrame: number | null = null
@@ -825,6 +836,18 @@ export class WhiteboardCanvas {
     edgesSvg.appendChild(preview)
     world.appendChild(edgesSvg)
 
+    // The runs edges make on over a card to the passage they reach: over
+    // the cards, where the curves are under them (styles/edges.css).
+    const passageRunsSvg = doc.createElementNS(SVG_NS, 'svg')
+    passageRunsSvg.setAttribute(
+      'class',
+      `${EDGES_SVG_CLASS} ${PASSAGE_RUNS_CLASS}`,
+    )
+    const passageRuns = doc.createElementNS(SVG_NS, 'g')
+    passageRuns.setAttribute('class', EDGES_GROUP_CLASS)
+    passageRunsSvg.appendChild(passageRuns)
+    world.appendChild(passageRunsSvg)
+
     const edgeLabels = doc.createElement('div')
     edgeLabels.className = EDGE_LABELS_CLASS
     world.appendChild(edgeLabels)
@@ -1001,6 +1024,7 @@ export class WhiteboardCanvas {
     this.edgeLayer = new EdgeLayer(
       this.context,
       edgesGroup,
+      passageRuns,
       edgeLabels,
       this.arrowMarkerId,
       {
@@ -1285,6 +1309,7 @@ export class WhiteboardCanvas {
           this.cardRenderer.getRuntime(id)?.pdfReader?.nudge(deltaY) ?? false,
         cardClientRect: (id) =>
           this.cardRenderer.getRuntime(id)?.el?.getBoundingClientRect() ?? null,
+        passagesConnected: (anchors) => this.passagesConnected(anchors),
       },
       snapGuides,
       toolbar: this.toolbarController,
@@ -2988,22 +3013,29 @@ export class WhiteboardCanvas {
     return edge?.fromAnchor !== undefined || edge?.toAnchor !== undefined
   }
 
-  /** The passages edges reach in `id`'s card, marked on its pages: strongly
-   * for an edge pointed at or selected. */
+  /** The passages the edge pointed at or selected reaches in `id`'s card,
+   * marked on its pages. */
   private passageMarks(id: NodeId): ReaderPassageMark[] {
     const marks: ReaderPassageMark[] = []
-    for (const edge of this.board.edges) {
-      const strong =
-        edge.id === this.hoveredEdgeId || this.selectedEdgeIds.has(edge.id)
+    for (const edge of this.markedEdges()) {
       for (const [node, anchor] of [
         [edge.fromNode, edge.fromAnchor],
         [edge.toNode, edge.toAnchor],
       ] as const) {
         if (node !== id || anchor?.kind !== 'pdf') continue
-        marks.push({ page: anchor.page, quadPoints: anchor.quadPoints, strong })
+        marks.push({ page: anchor.page, quadPoints: anchor.quadPoints })
       }
     }
     return marks
+  }
+
+  /** The edges whose passages are marked: the one pointed at, and those
+   * selected. At rest an edge marks nothing — it runs on to its passage. */
+  private markedEdges(): Edge[] {
+    return this.board.edges.filter(
+      (edge) =>
+        edge.id === this.hoveredEdgeId || this.selectedEdgeIds.has(edge.id),
+    )
   }
 
   /** The passage of `id`'s card under a client point: the paragraph there,
@@ -3049,16 +3081,13 @@ export class WhiteboardCanvas {
     )
   }
 
-  /** Marks every passage edges reach again: in PDF cards on their pages,
-   * in text and note cards as highlights over their text — strongly for an
-   * edge pointed at or selected. */
+  /** Marks again the passages of the edge pointed at or selected: in PDF
+   * cards on their pages, in text and note cards as highlights over their
+   * text. */
   private refreshPassageMarks(): void {
     this.cardRenderer.refreshPassageMarks()
-    const faint: Range[] = []
     const strong: Range[] = []
-    for (const edge of this.board.edges) {
-      const marked =
-        edge.id === this.hoveredEdgeId || this.selectedEdgeIds.has(edge.id)
+    for (const edge of this.markedEdges()) {
       for (const [id, anchor] of [
         [edge.fromNode, edge.fromAnchor],
         [edge.toNode, edge.toAnchor],
@@ -3068,12 +3097,10 @@ export class WhiteboardCanvas {
         const source = this.passageSource(id)
         if (!body || source === null) continue
         const range = passageRange(body, source, anchor)
-        if (range) (marked ? strong : faint).push(range)
+        if (range) strong.push(range)
       }
     }
-    const doc = this.context.getDocument()
-    paintPassages(doc, PASSAGE_HIGHLIGHT.mark, faint)
-    paintPassages(doc, PASSAGE_HIGHLIGHT.strong, strong)
+    paintPassages(this.context.getDocument(), PASSAGE_HIGHLIGHT.strong, strong)
   }
 
   /** A card's Markdown as the passages in it are found in: what its open
@@ -3161,7 +3188,9 @@ export class WhiteboardCanvas {
   /** Text selected in a text or note card, or the selection gone from one:
    * the passage of its source it names is what the passage's connection
    * points pull an edge from. A PDF card's selection is its reader's to
-   * report (`selectPassage`). */
+   * report (`selectPassage`) — but no selection at all, however it went,
+   * is this one's to see: the points stand for selected text, and with none
+   * there they go. */
   private readonly onSelectionChange = (): void => {
     if (this.selectionFrame !== null) return
     this.selectionFrame = this.context.getWindow().requestAnimationFrame(() => {
@@ -3172,6 +3201,12 @@ export class WhiteboardCanvas {
 
   private syncTextSelection(): void {
     const selection = this.context.getDocument().getSelection()
+    if (!selection || selection.isCollapsed) {
+      this.passageSelection += 1
+      this.textPassageSelected = false
+      this.passagePoints?.setSource(null)
+      return
+    }
     const node = selection?.anchorNode ?? null
     const el = node
       ? node.nodeType === Node.ELEMENT_NODE
@@ -3190,12 +3225,25 @@ export class WhiteboardCanvas {
     if (id !== null && anchor) {
       this.passageSelection += 1
       this.textPassageSelected = true
+      this.pdfPassage = null
       this.passagePoints?.setSource({ nodeId: id, anchor })
       return
     }
     if (!this.textPassageSelected) return
     this.textPassageSelected = false
     this.passagePoints?.setSource(null)
+  }
+
+  /** A connection was made reaching `anchors`. Text selected in a PDF and
+   * connected — pulled from, or let go on — stays marked where it was read,
+   * as a selection dropped as an excerpt does: what was taken from the
+   * passage leaves the same trace whichever it became. A passage the board
+   * found under the pointer is not marked: only what the reader chose. */
+  private passagesConnected(anchors: readonly EdgeAnchor[]): void {
+    const passage = this.pdfPassage
+    if (!passage || !anchors.includes(passage.anchor)) return
+    this.pdfPassage = null
+    this.pdf.markPassage(passage.reader, passage.selection)
   }
 
   /** Text selected in a PDF card, or the selection gone: the passage it
@@ -3214,6 +3262,7 @@ export class WhiteboardCanvas {
     passageAnchorFromSelection(reader, selection)
       .then((anchor) => {
         if (ticket !== this.passageSelection) return
+        this.pdfPassage = anchor && { reader, selection, anchor }
         this.passagePoints?.setSource(anchor && { nodeId: id, anchor })
       })
       .catch((error: unknown) =>
@@ -3244,17 +3293,21 @@ export class WhiteboardCanvas {
     if (!placement || placement.state !== 'visible') return placement
     // The reader measures from its own top edge; the card's is above it by
     // whatever the card puts first (its border).
-    let offset = 0
+    let offsetTop = 0
+    let offsetLeft = 0
     let el: HTMLElement | null = reader.root
     while (el && el !== runtime.el) {
-      offset += el.offsetTop
+      offsetTop += el.offsetTop
+      offsetLeft += el.offsetLeft
       el = el.offsetParent as HTMLElement | null
     }
     if (el !== runtime.el) return null
     return {
       state: 'visible',
-      top: placement.top + offset,
-      bottom: placement.bottom + offset,
+      top: placement.top + offsetTop,
+      bottom: placement.bottom + offsetTop,
+      left: placement.left + offsetLeft,
+      right: placement.right + offsetLeft,
     }
   }
 

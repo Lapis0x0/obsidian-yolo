@@ -5,8 +5,9 @@
 // A card shows its source rendered (or, being typed into, in an editor that
 // hides some of it), so everything read off the screen is matched to the
 // source loosely, and a passage of the source found on the screen the same
-// way (`findLoose`). What the card has not drawn — a note's lines outside
-// its window — cannot be found, and the caller falls back to the whole card.
+// way (`findLoose`). What the card has not drawn — lines an editor or a
+// note keeps outside its window — cannot be measured, but it can still be
+// told to be above or below what is drawn, by where each is in the source.
 //
 // Marks are CSS highlights (`::highlight`, styles/cards/passages.css): ranges
 // painted by the browser over the text without a single element added to the
@@ -31,7 +32,6 @@ import type { CardPassagePlacement } from './edgeLayer'
 
 /** The highlight names styles/cards/passages.css paints. */
 export const PASSAGE_HIGHLIGHT = {
-  mark: 'yolo-whiteboard-passage',
   strong: 'yolo-whiteboard-passage-strong',
   hint: 'yolo-whiteboard-passage-hint',
 } as const
@@ -235,7 +235,7 @@ export function placeTextPassage(
   anchor: TextAnchor,
 ): CardPassagePlacement | null {
   const range = passageRange(body, source, anchor)
-  if (!range) return null
+  if (!range) return passageBeyond(body, source, anchor)
   const rects = Array.from(range.getClientRects()).filter(
     (rect) => rect.height > 0,
   )
@@ -248,11 +248,41 @@ export function placeTextPassage(
   const cardRect = card.getBoundingClientRect()
   const scale = card.offsetHeight > 0 ? cardRect.height / card.offsetHeight : 0
   if (!(scale > 0)) return null
+  // Across only the lines in sight: those are what the edge can run to.
+  const seen = rects.filter(
+    (rect) => rect.bottom > shown.top && rect.top < shown.bottom,
+  )
   return {
     state: 'visible',
     top: (Math.max(top, shown.top) - cardRect.top) / scale,
     bottom: (Math.min(bottom, shown.bottom) - cardRect.top) / scale,
+    left: (Math.min(...seen.map((rect) => rect.left)) - cardRect.left) / scale,
+    right:
+      (Math.max(...seen.map((rect) => rect.right)) - cardRect.left) / scale,
   }
+}
+
+/** How many characters at either end of what a body draws are looked for
+ * in the source to tell where the drawing starts and ends — enough to be
+ * found once. */
+const DRAWN_EDGE_CHARS = 64
+
+/** A passage the body has not drawn, placed by its source: before all it
+ * draws, it is above; after, below. Null when the passage is gone, or the
+ * body draws nothing the source can be matched to. */
+function passageBeyond(
+  body: HTMLElement,
+  source: string,
+  anchor: TextAnchor,
+): CardPassagePlacement | null {
+  const span = resolveTextAnchor(source, anchor)
+  const shown = displayedText(body).text
+  if (!span || shown.trim().length === 0) return null
+  const first = findLoose(source, shown.slice(0, DRAWN_EDGE_CHARS))
+  const last = findLoose(source, shown.slice(-DRAWN_EDGE_CHARS))
+  if (first && span[1] <= first[0]) return { state: 'above' }
+  if (last && span[0] >= last[1]) return { state: 'below' }
+  return null
 }
 
 /** The passage of the source a selection in a body names, or null when it

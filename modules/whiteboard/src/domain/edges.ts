@@ -43,6 +43,11 @@ export type EdgeGeometry = Readonly<{
   c2: Point
   /** Point at t=0.5 along the curve — where a label is anchored. */
   label: Point
+  /** Where an end that reaches a passage in sight goes on to, inside its
+   * card: the passage's own edge, level with `start` / `end`. The curve
+   * stops at the card's edge; the rest is a straight run over the card. */
+  startInner?: Point
+  endInner?: Point
 }>
 
 /** How far a control point is pushed out along its anchor side's outward
@@ -130,17 +135,24 @@ export function resolveEdgeSides(
 // --- ends that reach a passage --------------------------------------------
 //
 // An end with an anchor (fileFormat.ts's `EdgeAnchor`) reaches a passage
-// inside its card, and is drawn from it: from the card's left or right edge,
-// level with the passage, on whichever side faces the other end — never the
-// top or bottom, where an edge would say nothing about which lines it means.
+// inside its card, and is drawn to it: the curve meets the card's left or
+// right edge level with the passage, on whichever side faces the other end —
+// never the top or bottom, where an edge would say nothing about which lines
+// it means — and, while the passage is in sight, runs straight on over the
+// card to the passage's own edge on that side.
 // Where the passage is comes from whoever draws the card (a reader knows its
 // scroll), as a `PassagePlacement`; this module only turns it into a point.
 
 /** Where the passage an end reaches is, as its card shows it now: on screen
- * between two heights (world units), or scrolled past the card's top or
- * bottom edge. */
+ * in a box (world units), or scrolled past the card's top or bottom edge. */
 export type PassagePlacement =
-  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{
+      state: 'visible'
+      top: number
+      bottom: number
+      left: number
+      right: number
+    }>
   | Readonly<{ state: 'above' | 'below' }>
 
 /** How far in from the card's top or bottom corner an end is held when its
@@ -155,6 +167,9 @@ export type EdgeEnds = Readonly<{
   toSide: NodeSide
   start?: Point
   end?: Point
+  /** See `EdgeGeometry`'s. */
+  startInner?: Point
+  endInner?: Point
 }>
 
 /**
@@ -178,11 +193,15 @@ export function resolveEdgeEnds(
   const facing = facingSides(from, to)
   const fromSide = fromPlaced ? facing.fromSide : sides.fromSide
   const toSide = toPlaced ? facing.toSide : sides.toSide
+  const start = fromPlaced && passagePoint(from, fromSide, fromPlaced)
+  const end = toPlaced && passagePoint(to, toSide, toPlaced)
   return {
     fromSide,
     toSide,
-    ...(fromPlaced ? { start: passagePoint(from, fromSide, fromPlaced) } : {}),
-    ...(toPlaced ? { end: passagePoint(to, toSide, toPlaced) } : {}),
+    ...(start ? { start: start.edge } : {}),
+    ...(start && start.inner ? { startInner: start.inner } : {}),
+    ...(end ? { end: end.edge } : {}),
+    ...(end && end.inner ? { endInner: end.inner } : {}),
   }
 }
 
@@ -197,20 +216,25 @@ function facingSides(
     : { fromSide: 'left', toSide: 'right' }
 }
 
+/** Where an end meets its card's edge, and, for a passage in sight, the
+ * passage's edge it runs on to. */
 function passagePoint(
   card: VirtualCardRect,
   side: NodeSide,
   placement: PassagePlacement,
-): Point {
+): Readonly<{ edge: Point; inner?: Point }> {
   const x = side === 'right' ? card.x + card.w : card.x
   const inset = Math.min(PASSAGE_EDGE_INSET, card.h / 2)
   const top = card.y + inset
   const bottom = card.y + card.h - inset
   if (placement.state !== 'visible') {
-    return { x, y: placement.state === 'above' ? top : bottom }
+    return { edge: { x, y: placement.state === 'above' ? top : bottom } }
   }
   const middle = (placement.top + placement.bottom) / 2
-  return { x, y: Math.min(bottom, Math.max(top, middle)) }
+  const y = Math.min(bottom, Math.max(top, middle))
+  const reach = side === 'right' ? placement.right : placement.left
+  const inner = Math.min(card.x + card.w, Math.max(card.x, reach))
+  return { edge: { x, y }, inner: { x: inner, y } }
 }
 
 function extrapolate(anchor: Point, side: NodeSide, distance: number): Point {
@@ -247,7 +271,12 @@ export function computeEdgeGeometry(
   to: VirtualCardRect,
   fromSide: NodeSide,
   toSide: NodeSide,
-  points?: Readonly<{ start?: Point; end?: Point }>,
+  points?: Readonly<{
+    start?: Point
+    end?: Point
+    startInner?: Point
+    endInner?: Point
+  }>,
 ): EdgeGeometry {
   const start = points?.start ?? anchorPoint(from, fromSide)
   const end = points?.end ?? anchorPoint(to, toSide)
@@ -260,6 +289,8 @@ export function computeEdgeGeometry(
     c1,
     c2,
     label: cubicBezierPointAt(start, c1, c2, end, 0.5),
+    ...(points?.startInner ? { startInner: points.startInner } : {}),
+    ...(points?.endInner ? { endInner: points.endInner } : {}),
   }
 }
 

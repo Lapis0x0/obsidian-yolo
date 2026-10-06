@@ -46,6 +46,13 @@ const EDGE_SELECTED_CLASS = 'yolo-whiteboard-edge-selected'
 /** The mark on an end that reaches a passage inside its card rather than
  * the whole card — drawn wherever that end is, placed or not. */
 const EDGE_PASSAGE_END_CLASS = 'yolo-whiteboard-edge-passage-end'
+/** The straight run on over a card, from its edge to the passage an end
+ * reaches, while the card shows it (domain/edges.ts's `startInner`). */
+/** A ring with nothing to say: its end runs on to the passage. Its own
+ * class, apart from the one a connection drag hides the edge with. */
+const EDGE_PASSAGE_END_OFF_CLASS = 'yolo-whiteboard-edge-passage-end-off'
+const EDGE_PASSAGE_RUN_CLASS = 'yolo-whiteboard-edge-passage-run'
+const EDGE_HOVERED_CLASS = 'yolo-whiteboard-edge-hovered'
 
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
@@ -59,13 +66,23 @@ type EdgeDomEntry = Readonly<{
   /** The marks on the ends that reach a passage (`EDGE_PASSAGE_END_CLASS`). */
   fromMark: SVGCircleElement | null
   toMark: SVGCircleElement | null
+  /** The runs on over the card to those passages, drawn above the cards
+   * (`passageRunsEl`) where the curve is drawn beneath them. */
+  fromRun: SVGPathElement | null
+  toRun: SVGPathElement | null
 }>
 
 /** Where a passage is inside its card, measured down from the card's top
  * edge in world units — or past its top or bottom — as whoever draws the
  * card can tell. */
 export type CardPassagePlacement =
-  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{
+      state: 'visible'
+      top: number
+      bottom: number
+      left: number
+      right: number
+    }>
   | Readonly<{ state: 'above' | 'below' }>
 
 /**
@@ -130,6 +147,8 @@ export class EdgeLayer {
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly edgesGroupEl: SVGGElement,
+    /** Over the cards, where the edges' runs to their passages go. */
+    private readonly passageRunsEl: SVGGElement,
     private readonly edgeLabelsEl: HTMLElement,
     private readonly arrowMarkerId: string,
     private readonly callbacks: EdgeLayerCallbacks,
@@ -149,6 +168,7 @@ export class EdgeLayer {
     // An edge label being typed is about to lose the element it is typed in.
     this.callbacks.cancelActiveEdgeRename()
     this.edgesGroupEl.replaceChildren()
+    this.passageRunsEl.replaceChildren()
     this.edgeLabelsEl.replaceChildren()
     this.edgeElsById.clear()
     this.culledIds.clear()
@@ -212,6 +232,8 @@ export class EdgeLayer {
       dom.label?.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.fromMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.toMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.fromRun?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.toRun?.classList.toggle(EDGE_CULLED_CLASS, culled)
       if (culled) {
         this.culledIds.add(edgeId)
         continue
@@ -242,6 +264,8 @@ export class EdgeLayer {
     dom.label?.classList.remove(EDGE_CULLED_CLASS)
     dom.fromMark?.classList.remove(EDGE_CULLED_CLASS)
     dom.toMark?.classList.remove(EDGE_CULLED_CLASS)
+    dom.fromRun?.classList.remove(EDGE_CULLED_CLASS)
+    dom.toRun?.classList.remove(EDGE_CULLED_CLASS)
     this.culledIds.delete(edgeId)
     if (this.staleIds.has(edgeId)) this.redrawEdge(edgeId)
   }
@@ -300,10 +324,8 @@ export class EdgeLayer {
     const hit = doc.createElementNS(SVG_NS, 'path')
     hit.setAttribute('class', EDGE_HIT_CLASS)
     hit.dataset.edgeId = edge.id
-    hit.addEventListener('pointerenter', () =>
-      this.callbacks.onEdgeHover(edge.id),
-    )
-    hit.addEventListener('pointerleave', () => this.callbacks.onEdgeHover(null))
+    hit.addEventListener('pointerenter', () => this.hover(edge.id, true))
+    hit.addEventListener('pointerleave', () => this.hover(edge.id, false))
     this.edgesGroupEl.appendChild(hit)
 
     const path = doc.createElementNS(SVG_NS, 'path')
@@ -312,12 +334,6 @@ export class EdgeLayer {
     // one overlay draws every edge, so per-edge colour has to be per-element.
     // The arrowhead marker picks it up through `fill: context-stroke`.
     applyColorToElement(path, edge.color)
-    if (edge.toEnd === 'arrow') {
-      path.setAttribute('marker-end', `url(#${this.arrowMarkerId})`)
-    }
-    if (edge.fromEnd === 'arrow') {
-      path.setAttribute('marker-start', `url(#${this.arrowMarkerId})`)
-    }
     this.edgesGroupEl.appendChild(path)
 
     const hasLabel = (edge.label?.trim().length ?? 0) > 0
@@ -327,7 +343,27 @@ export class EdgeLayer {
       label: hasLabel ? this.createEdgeLabelEl(edge) : null,
       fromMark: edge.fromAnchor ? this.createPassageMark(edge) : null,
       toMark: edge.toAnchor ? this.createPassageMark(edge) : null,
+      fromRun: edge.fromAnchor ? this.createPassageRun(edge) : null,
+      toRun: edge.toAnchor ? this.createPassageRun(edge) : null,
     })
+  }
+
+  private createPassageRun(edge: Edge): SVGPathElement {
+    const run = this.context.getDocument().createElementNS(SVG_NS, 'path')
+    run.setAttribute('class', EDGE_PASSAGE_RUN_CLASS)
+    applyColorToElement(run, edge.color)
+    this.passageRunsEl.appendChild(run)
+    return run
+  }
+
+  /** The pointer came onto an edge or left it: the runs over its cards are
+   * not siblings of its hit path, so they are told rather than styled by
+   * `:hover`. */
+  private hover(edgeId: EdgeId, on: boolean): void {
+    const dom = this.edgeElsById.get(edgeId)
+    dom?.fromRun?.classList.toggle(EDGE_HOVERED_CLASS, on)
+    dom?.toRun?.classList.toggle(EDGE_HOVERED_CLASS, on)
+    this.callbacks.onEdgeHover(on ? edgeId : null)
   }
 
   private createPassageMark(edge: Edge): SVGCircleElement {
@@ -404,14 +440,17 @@ export class EdgeLayer {
     dom.label?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
     dom.fromMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
     dom.toMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.fromRun?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.toRun?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
   }
 
   /** Toggles an edge's selected styling — the DOM half of canvas.ts's own
    * `markEdgeSelected`, now that this class owns `edgeElsById`. */
   setEdgeSelected(id: EdgeId, selected: boolean): void {
-    this.edgeElsById
-      .get(id)
-      ?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    const dom = this.edgeElsById.get(id)
+    dom?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    dom?.fromRun?.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    dom?.toRun?.classList.toggle(EDGE_SELECTED_CLASS, selected)
   }
 
   /** Board-data rect for `id`, or its live drag position from `overrides`
@@ -451,8 +490,20 @@ export class EdgeLayer {
       dom.label.style.left = `${geometry.label.x}px`
       dom.label.style.top = `${geometry.label.y}px`
     }
-    placeMark(dom.fromMark, geometry.start)
-    placeMark(dom.toMark, geometry.end)
+    // The ring says "a passage in there"; once the edge runs on to the
+    // passage itself, the passage's own mark says it.
+    placeMark(dom.fromMark, geometry.startInner ? null : geometry.start)
+    placeMark(dom.toMark, geometry.endInner ? null : geometry.end)
+    placeRun(dom.fromRun, geometry.start, geometry.startInner)
+    placeRun(dom.toRun, geometry.end, geometry.endInner)
+    // An arrowhead goes where the end is drawn to: the passage when the run
+    // reaches it, the card's edge otherwise.
+    const fromArrow = edge.fromEnd === 'arrow'
+    const toArrow = edge.toEnd === 'arrow'
+    this.setMarker(dom.path, 'marker-start', fromArrow && !geometry.startInner)
+    this.setMarker(dom.path, 'marker-end', toArrow && !geometry.endInner)
+    if (dom.fromRun) this.setMarker(dom.fromRun, 'marker-end', fromArrow)
+    if (dom.toRun) this.setMarker(dom.toRun, 'marker-end', toArrow)
   }
 
   /** Where an edge is drawn now — its ends placed at the passages they
@@ -490,6 +541,8 @@ export class EdgeLayer {
       state: 'visible',
       top: card.y + placement.top,
       bottom: card.y + placement.bottom,
+      left: card.x + placement.left,
+      right: card.x + placement.right,
     }
   }
 
@@ -542,16 +595,24 @@ export class EdgeLayer {
     if (dom.label) applyColorToElement(dom.label, color)
     if (dom.fromMark) applyColorToElement(dom.fromMark, color)
     if (dom.toMark) applyColorToElement(dom.toMark, color)
+    if (dom.fromRun) applyColorToElement(dom.fromRun, color)
+    if (dom.toRun) applyColorToElement(dom.toRun, color)
   }
 
   /** Toggles an edge's start/end arrowhead markers to match its
    * `fromEnd`/`toEnd`. Board-side persistence is canvas.ts's
    * `setEdgeEnds`; this is only the DOM half. */
   setEdgeArrowEnds(edgeId: EdgeId, fromArrow: boolean, toArrow: boolean): void {
-    const path = this.edgeElsById.get(edgeId)?.path
-    if (!path) return
-    this.setMarker(path, 'marker-start', fromArrow)
-    this.setMarker(path, 'marker-end', toArrow)
+    const edge = this.edgesById.get(edgeId)
+    if (!edge) return
+    // Which element carries an arrowhead depends on where the end is drawn
+    // to, which `redrawEdge` works out.
+    this.edgesById.set(edgeId, {
+      ...edge,
+      fromEnd: fromArrow ? 'arrow' : 'none',
+      toEnd: toArrow ? 'arrow' : 'none',
+    })
+    this.redrawEdge(edgeId)
   }
 
   private setMarker(
@@ -567,8 +628,27 @@ export class EdgeLayer {
   }
 }
 
-function placeMark(mark: SVGCircleElement | null, at: Point): void {
+/** Puts a ring at a point, or takes it away (null). */
+function placeMark(mark: SVGCircleElement | null, at: Point | null): void {
   if (!mark) return
+  mark.classList.toggle(EDGE_PASSAGE_END_OFF_CLASS, !at)
+  if (!at) return
   mark.setAttribute('cx', String(at.x))
   mark.setAttribute('cy', String(at.y))
+}
+
+/** Draws a run from the card's edge on to the passage, or none when the
+ * passage is not in sight (`to` absent). Drawn edge-first, so its
+ * arrowhead points in. */
+function placeRun(
+  run: SVGPathElement | null,
+  from: Point,
+  to: Point | undefined,
+): void {
+  if (!run) return
+  if (!to) {
+    run.removeAttribute('d')
+    return
+  }
+  run.setAttribute('d', `M${from.x},${from.y} L${to.x},${to.y}`)
 }

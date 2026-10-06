@@ -384,17 +384,23 @@ export class AnnotationController {
     if (this.mode?.reader === reader) this.close()
   }
 
-  /** The selection a drop made into a card stays marked where it was read,
-   * in the colour a highlight would take now. Quietly not, on a PDF whose
-   * annotations are read-only: the excerpt itself was what was asked for. */
+  /** The selection a drop made into a card stays marked where it was read. */
   markDropped(drag: ExcerptDrag): void {
-    if (!drag.reader.getAnnotationStore()?.writable) {
-      drag.reader.clearTextSelection()
+    this.markSelection(drag.reader, drag.selection)
+  }
+
+  /** Selected text taken onto the board — as an excerpt, or as a passage an
+   * edge reaches — stays marked where it was read, in the colour a highlight
+   * would take now. Quietly not, on a PDF whose annotations are read-only:
+   * what was taken was what was asked for. */
+  markSelection(reader: PdfReader, selection: ReaderTextSelection): void {
+    if (!reader.getAnnotationStore()?.writable) {
+      reader.clearTextSelection()
       return
     }
     void this.highlight(
-      drag.reader,
-      drag.selection,
+      reader,
+      selection,
       this.options.prefs.getDefaultColor(),
       false,
     )

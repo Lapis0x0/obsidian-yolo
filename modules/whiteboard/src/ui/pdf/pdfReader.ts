@@ -142,12 +142,11 @@ export type PdfReaderOptions = Readonly<{
   reportError?: (stage: string, error: unknown) => void
 }>
 
-/** A passage an edge reaches, marked where it is on its page: faintly, or
- * — while its edge is pointed at or selected — strongly. */
+/** A passage an edge reaches, marked where it is on its page while its edge
+ * is pointed at or selected. */
 export type ReaderPassageMark = Readonly<{
   page: number
   quadPoints: readonly number[]
-  strong: boolean
 }>
 
 /** Where a passage's first and last characters are on screen, as the
@@ -159,7 +158,13 @@ export type PassageEnds = Readonly<{
 
 /** Where a passage is in a reader (`PdfReader.placePassage`). */
 export type ReaderPassagePlacement =
-  | Readonly<{ state: 'visible'; top: number; bottom: number }>
+  | Readonly<{
+      state: 'visible'
+      top: number
+      bottom: number
+      left: number
+      right: number
+    }>
   | Readonly<{ state: 'above' | 'below' }>
 
 /** Text selected on a reader's pages, one piece per page it touches. */
@@ -232,7 +237,6 @@ const TEXT_PROBE_CLASS = 'yolo-whiteboard-pdf-text-probe'
 const PASSAGE_HINT_CLASS = 'yolo-whiteboard-pdf-passage-hint'
 const PASSAGE_MARKS_CLASS = 'yolo-whiteboard-pdf-passage-marks'
 const PASSAGE_MARK_CLASS = 'yolo-whiteboard-pdf-passage-mark'
-const PASSAGE_MARK_STRONG_CLASS = 'yolo-whiteboard-pdf-passage-mark-strong'
 const INDICATOR_CLASS = 'yolo-whiteboard-pdf-indicator'
 const PAGE_INPUT_CLASS = 'yolo-whiteboard-pdf-page-input'
 const PAGE_COUNT_CLASS = 'yolo-whiteboard-pdf-page-count'
@@ -942,7 +946,16 @@ export class PdfReader {
     if (bottom <= 0) return { state: 'above' }
     if (height > 0 && top >= height) return { state: 'below' }
     const offset = this.scrollerEl.offsetTop
-    return { state: 'visible', top: top + offset, bottom: bottom + offset }
+    // Pages run the column's width, inset by its padding (./readerLayout.ts).
+    const pageLeft = this.scrollerEl.offsetLeft + READER_METRICS.padding
+    const pageWidth = layout.pageWidth
+    return {
+      state: 'visible',
+      top: top + offset,
+      bottom: bottom + offset,
+      left: pageLeft + Math.min(...boxes.map((box) => box.left)) * pageWidth,
+      right: pageLeft + Math.max(...boxes.map((box) => box.right)) * pageWidth,
+    }
   }
 
   /**
@@ -1974,7 +1987,6 @@ export class PdfReader {
       for (const box of quadBoxes(mark.quadPoints, frame as PageFrame)) {
         const el = doc.createElement('div')
         el.className = PASSAGE_MARK_CLASS
-        el.classList.toggle(PASSAGE_MARK_STRONG_CLASS, mark.strong)
         placeBox(el, box)
         els.push(el)
       }

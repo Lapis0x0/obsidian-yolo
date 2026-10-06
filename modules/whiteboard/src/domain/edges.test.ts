@@ -423,17 +423,18 @@ describe('resolveEdgeEnds', () => {
   it('leaves an end without an anchor at its side middle', () => {
     expect(
       resolveEdgeEnds({}, from, to, {
-        from: { state: 'visible', top: 50, bottom: 60 },
+        from: { state: 'visible', top: 50, bottom: 60, left: 10, right: 90 },
       }),
     ).toEqual(resolveEdgeSides(from, to))
   })
 
   it('draws a placed passage from the facing side, level with it', () => {
     const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, to, {
-      from: { state: 'visible', top: 40, bottom: 60 },
+      from: { state: 'visible', top: 40, bottom: 60, left: 10, right: 70 },
     })
     expect(ends.fromSide).toBe('right')
     expect(ends.start).toEqual({ x: 100, y: 50 })
+    expect(ends.startInner).toEqual({ x: 70, y: 50 })
     expect(ends.end).toBeUndefined()
   })
 
@@ -447,11 +448,12 @@ describe('resolveEdgeEnds', () => {
       from: { state: 'below' },
     })
     expect(below.start).toEqual({ x: 100, y: 200 - PASSAGE_EDGE_INSET })
+    expect(below.startInner).toBeUndefined()
   })
 
   it('keeps a passage partly out of sight on the card', () => {
     const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, to, {
-      from: { state: 'visible', top: -40, bottom: 0 },
+      from: { state: 'visible', top: -40, bottom: 0, left: 0, right: 100 },
     })
     expect(ends.start).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
   })

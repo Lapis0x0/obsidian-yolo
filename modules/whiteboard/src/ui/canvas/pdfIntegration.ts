@@ -418,6 +418,12 @@ export class PdfIntegration {
     return true
   }
 
+  /** Marks text selected in a reader where it was read, as a dropped
+   * excerpt is (`AnnotationController.markSelection`). */
+  markPassage(reader: PdfReader, selection: ReaderTextSelection): void {
+    this.annotationController.markSelection(reader, selection)
+  }
+
   // -- links into this board's PDFs --------------------------------------
 
   /**

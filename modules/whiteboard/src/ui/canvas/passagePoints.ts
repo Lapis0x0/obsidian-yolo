@@ -1,6 +1,6 @@
 // The connection points of a passage: text selected in a card on the board
-// shows two, on the card's left and right edges level with the selection —
-// where an edge reaching that passage leaves the card (domain/edges.ts's
+// shows two, at the selection's own left and right edges, level with its
+// middle — where an edge reaching that passage ends (domain/edges.ts's
 // `resolveEdgeEnds`), so what is dragged out is where the edge will be.
 // Pulled out, they start a connection from the passage
 // (./connectGesture.ts's `startFromPassage`); the selected text itself, still
@@ -88,9 +88,9 @@ export class PassagePoints {
     }
     const middle = (placement.top + placement.bottom) / 2
     this.layerEl.setCssProps({
-      left: `${rect.x}px`,
+      left: `${rect.x + placement.left}px`,
       top: `${rect.y + middle}px`,
-      width: `${rect.w}px`,
+      width: `${Math.max(0, placement.right - placement.left)}px`,
     })
     this.layerEl.classList.remove(LAYER_HIDDEN_CLASS)
   }

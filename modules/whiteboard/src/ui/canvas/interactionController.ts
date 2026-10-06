@@ -251,10 +251,15 @@ export type InteractionControllerDeps = Readonly<{
   /** The connection points of a selected passage (./passagePoints.ts). */
   passagePoints: Pick<PassagePoints, 'sourceAt'>
   /** What a connection held over a card asks of it: the passage under the
-   * pointer, a mark on it, a scroll towards one out of view. */
+   * pointer, a mark on it, a scroll towards one out of view — and, made,
+   * what it tells of the passages it reached. */
   passageTargets: Pick<
     ConnectGestureDeps,
-    'passageAt' | 'showPassageHint' | 'nudgeCard' | 'cardClientRect'
+    | 'passageAt'
+    | 'showPassageHint'
+    | 'nudgeCard'
+    | 'cardClientRect'
+    | 'passagesConnected'
   >
   snapGuides: SnapGuideLayer
   toolbar: Pick<

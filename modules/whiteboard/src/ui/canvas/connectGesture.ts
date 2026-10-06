@@ -128,6 +128,9 @@ export type ConnectGestureDeps = Readonly<{
   enterEditMode: (id: NodeId) => void
   /** What a click on the card means (`DragGestures.clickCard`). */
   clickCard: (id: NodeId, wasSoleSelection: boolean, e: PointerEvent) => void
+  /** An edge was made or re-attached reaching these passages — the
+   * selection one was pulled from may now be marked where it was read. */
+  passagesConnected: (anchors: readonly EdgeAnchor[]) => void
   /** The passage of `nodeId`'s card under a client point, as its reader
    * reads it — null at once for a card that cannot say (no reader). */
   passageAt: (
@@ -626,6 +629,11 @@ export class ConnectGesture {
           ),
     )
     this.deps.rebuildEdgesSvg()
+    this.deps.passagesConnected(
+      [interaction.passage, landed].filter(
+        (anchor): anchor is EdgeAnchor => !!anchor,
+      ),
+    )
 
     if (created) {
       this.core.recomputeVisibility()
