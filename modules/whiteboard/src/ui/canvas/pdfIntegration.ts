@@ -35,6 +35,7 @@ import type {
 } from '../../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
 import { addNode } from '../../domain/operations'
+import type { HighlightAnchor } from '../../domain/pdfAnnotations'
 import type { Rect } from '../../domain/placement'
 import { isMostlyInView } from '../../domain/virtualization'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
@@ -105,6 +106,12 @@ export type PdfIntegrationDeps = Readonly<{
     reader: PdfReader,
     selection: ReaderTextSelection | null,
   ) => void
+  /** A highlight was opened in a PDF card on the board, or let go (null):
+   * its passage stands for the connection points as a selection's does. */
+  onPassageHighlight: (nodeId: NodeId, anchor: HighlightAnchor | null) => void
+  /** Whether a node is one of a passage's connection points: a press there
+   * pulls an edge from the open highlight, and must not close it first. */
+  isPassagePoint: (target: Node | null) => boolean
 }>
 
 export class PdfIntegration {
@@ -152,6 +159,12 @@ export class PdfIntegration {
       t: core.t,
       getSourcePath: core.getSourcePath,
       registerKeymap: (bindings) => core.context.registerKeymap(bindings),
+      onActiveHighlight: (reader, anchor) => {
+        if (this.readerPanel?.getReader() === reader) return
+        const nodeId = this.pdfNodeForReader(reader)
+        if (nodeId !== null) this.deps.onPassageHighlight(nodeId, anchor)
+      },
+      continuesHighlight: (target) => deps.isPassagePoint(target),
       excerpts: {
         addText: (reader, excerpt, at) =>
           this.pdfExcerpts.addText(reader, excerpt, at),

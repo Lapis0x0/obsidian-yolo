@@ -246,7 +246,7 @@ export type InteractionControllerDeps = Readonly<{
   >
   edges: Pick<
     EdgeLayer,
-    'redrawEdgesForNodes' | 'setEdgeHidden' | 'passagePlacement'
+    'redrawEdgesForNodes' | 'setEdgeHidden' | 'endPlacement'
   >
   /** The connection points of a selected passage (./passagePoints.ts). */
   passagePoints: Pick<PassagePoints, 'sourceAt'>
@@ -400,7 +400,8 @@ export class InteractionController {
       interactionLayerEl: deps.interactionLayerEl,
       getLayerNodeId,
       edges: deps.edges,
-      placePassage: (card, anchor) => deps.edges.passagePlacement(card, anchor),
+      placeEnd: (card, anchor, page) =>
+        deps.edges.endPlacement(card, anchor, page),
       ...deps.passageTargets,
       begin,
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
@@ -525,7 +526,7 @@ export class InteractionController {
     // A press anywhere else dismisses the colour popover, the same way one
     // dismisses a menu.
     this.deps.toolbar.closePopover()
-    const nodeId = this.nodeIdAtPointer(e)
+    let nodeId = this.nodeIdAtPointer(e)
 
     if (e.button === 1 || (e.button === 0 && this.spacePanArmed)) {
       // Middle-click always pans, even starting from a card; so does a left
@@ -553,13 +554,16 @@ export class InteractionController {
       return
     }
     const handle = this.resizeHandleFromEventTarget(e.target)
-    if (
-      handle !== null &&
-      !isFixedSize(this.core.getNode(this.layerNodeId ?? '')) &&
-      this.drag.startResize(handle, e)
-    ) {
-      this.watchAutoPan(e)
-      return
+    if (handle !== null) {
+      // A sheet or a spread's title is not resized by hand: its sides are
+      // there to light its connection points when hovered, and a press on
+      // one is a press on the card.
+      if (isFixedSize(this.core.getNode(this.layerNodeId ?? ''))) {
+        nodeId = this.layerNodeId
+      } else if (this.drag.startResize(handle, e)) {
+        this.watchAutoPan(e)
+        return
+      }
     }
 
     if (nodeId !== null) {

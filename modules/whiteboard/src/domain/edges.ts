@@ -135,11 +135,12 @@ export function resolveEdgeSides(
 // --- ends that reach a passage --------------------------------------------
 //
 // An end with an anchor (fileFormat.ts's `EdgeAnchor`) reaches a passage
-// inside its card, and is drawn to it: the curve meets the card's left or
-// right edge level with the passage, on whichever side faces the other end —
-// never the top or bottom, where an edge would say nothing about which lines
-// it means — and, while the passage is in sight, runs straight on over the
-// card to the passage's own edge on that side.
+// inside its card, and is drawn to it: the curve meets the side of the card
+// that faces the other end (`autoEdgeSides`) — level with the passage on a
+// left or right side, above or below its middle on the top or bottom — and,
+// while the passage is in sight, runs straight on over the card to the
+// passage's own edge on that side. An end on one page of a PDF's card
+// (`fromPage` / `toPage`) is drawn the same way, the page its passage.
 // Where the passage is comes from whoever draws the card (a reader knows its
 // scroll), as a `PassagePlacement`; this module only turns it into a point.
 
@@ -173,12 +174,16 @@ export type EdgeEnds = Readonly<{
 }>
 
 /**
- * Where an edge's ends are drawn. An end without an anchor, or whose passage
- * cannot be placed right now (`null`: the card is not drawn, or is drawn
- * without its text), meets its side's middle as before (`resolveEdgeSides`).
+ * Where an edge's ends are drawn. An end without an anchor or a page, or
+ * whose passage cannot be placed right now (`null`: the card is not drawn, or
+ * is drawn without its text), meets its side's middle as before
+ * (`resolveEdgeSides`).
  */
 export function resolveEdgeEnds(
-  edge: Pick<Edge, 'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor'>,
+  edge: Pick<
+    Edge,
+    'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor' | 'fromPage' | 'toPage'
+  >,
   from: VirtualCardRect,
   to: VirtualCardRect,
   placements: Readonly<{
@@ -187,10 +192,12 @@ export function resolveEdgeEnds(
   }>,
 ): EdgeEnds {
   const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
-  const fromPlaced = edge.fromAnchor ? placements.from : null
-  const toPlaced = edge.toAnchor ? placements.to : null
+  const fromPlaced =
+    edge.fromAnchor || edge.fromPage !== undefined ? placements.from : null
+  const toPlaced =
+    edge.toAnchor || edge.toPage !== undefined ? placements.to : null
   if (!fromPlaced && !toPlaced) return sides
-  const facing = facingSides(from, to)
+  const facing = autoEdgeSides(from, to)
   const fromSide = fromPlaced ? facing.fromSide : sides.fromSide
   const toSide = toPlaced ? facing.toSide : sides.toSide
   const start = fromPlaced && passagePoint(from, fromSide, fromPlaced)
@@ -205,17 +212,6 @@ export function resolveEdgeEnds(
   }
 }
 
-/** The left or right side of each card that faces the other. */
-function facingSides(
-  from: VirtualCardRect,
-  to: VirtualCardRect,
-): Readonly<{ fromSide: NodeSide; toSide: NodeSide }> {
-  const dx = to.x + to.w / 2 - (from.x + from.w / 2)
-  return dx >= 0
-    ? { fromSide: 'right', toSide: 'left' }
-    : { fromSide: 'left', toSide: 'right' }
-}
-
 /** Where an end meets its card's edge, and, for a passage in sight, the
  * passage's edge it runs on to. */
 function passagePoint(
@@ -223,6 +219,18 @@ function passagePoint(
   side: NodeSide,
   placement: PassagePlacement,
 ): Readonly<{ edge: Point; inner?: Point }> {
+  if (side === 'top' || side === 'bottom') {
+    const y = side === 'bottom' ? card.y + card.h : card.y
+    if (placement.state !== 'visible') {
+      return { edge: { x: card.x + card.w / 2, y } }
+    }
+    const inset = Math.min(PASSAGE_EDGE_INSET, card.w / 2)
+    const center = (placement.left + placement.right) / 2
+    const x = Math.min(card.x + card.w - inset, Math.max(card.x + inset, center))
+    const reach = side === 'bottom' ? placement.bottom : placement.top
+    const inner = Math.min(card.y + card.h, Math.max(card.y, reach))
+    return { edge: { x, y }, inner: { x, y: inner } }
+  }
   const x = side === 'right' ? card.x + card.w : card.x
   const inset = Math.min(PASSAGE_EDGE_INSET, card.h / 2)
   const top = card.y + inset

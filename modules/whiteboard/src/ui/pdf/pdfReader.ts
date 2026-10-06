@@ -235,6 +235,14 @@ const TEXT_LAYER_HOST_CLASS = 'yolo-whiteboard-pdf-text'
 const TEXT_PROBE_CLASS = 'yolo-whiteboard-pdf-text-probe'
 /** The passage a connection being dragged would reach (`showPassageHint`). */
 const PASSAGE_HINT_CLASS = 'yolo-whiteboard-pdf-passage-hint'
+/** A whole page, in a page's own box coordinates (0 to 1 across and down). */
+const WHOLE_PAGE: PageBox = Object.freeze({
+  left: 0,
+  top: 0,
+  right: 1,
+  bottom: 1,
+})
+
 const PASSAGE_MARKS_CLASS = 'yolo-whiteboard-pdf-passage-marks'
 const PASSAGE_MARK_CLASS = 'yolo-whiteboard-pdf-passage-mark'
 const INDICATOR_CLASS = 'yolo-whiteboard-pdf-indicator'
@@ -928,6 +936,24 @@ export class PdfReader {
     page: number,
     quadPoints: readonly number[],
   ): ReaderPassagePlacement | null {
+    return this.placeOnPage(page, (frame) =>
+      frame ? quadBoxes(quadPoints, frame) : null,
+    )
+  }
+
+  /** Where one of this reader's pages is, as `placePassage` says where a
+   * passage is: the whole page its passage — what an edge reaching the page
+   * rather than anything on it is drawn to. */
+  placePage(page: number): ReaderPassagePlacement | null {
+    return this.placeOnPage(page, () => [WHOLE_PAGE])
+  }
+
+  /** Where boxes on a page (`boxesOf`, from the page's frame — null while it
+   * is not loaded) are in the reader. */
+  private placeOnPage(
+    page: number,
+    boxesOf: (frame: PageFrame | null) => readonly PageBox[] | null,
+  ): ReaderPassagePlacement | null {
     const layout = this.layout
     const slot = this.slotFor(page)
     if (!layout || !slot) return null
@@ -937,9 +963,8 @@ export class PdfReader {
     const pageHeight = layout.heights[slot.index]
     if (pageTop + pageHeight <= 0) return { state: 'above' }
     if (height > 0 && pageTop >= height) return { state: 'below' }
-    if (!slot.frame) return null
-    const boxes = quadBoxes(quadPoints, slot.frame)
-    if (boxes.length === 0) return null
+    const boxes = boxesOf(slot.frame)
+    if (!boxes || boxes.length === 0) return null
     const top = pageTop + Math.min(...boxes.map((box) => box.top)) * pageHeight
     const bottom =
       pageTop + Math.max(...boxes.map((box) => box.bottom)) * pageHeight

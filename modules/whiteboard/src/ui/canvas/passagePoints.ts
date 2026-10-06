@@ -1,7 +1,7 @@
 // The connection points of a passage: text selected in a card on the board
-// shows two, at the selection's own left and right edges, level with its
-// middle — where an edge reaching that passage ends (domain/edges.ts's
-// `resolveEdgeEnds`), so what is dragged out is where the edge will be.
+// shows four, at the middles of the selection's own sides — where an edge
+// reaching that passage ends (domain/edges.ts's `resolveEdgeEnds`), so what
+// is dragged out is where the edge will be.
 // Pulled out, they start a connection from the passage
 // (./connectGesture.ts's `startFromPassage`); the selected text itself, still
 // dragged as text, is an excerpt (../pdf/annotationController.ts).
@@ -47,7 +47,7 @@ export class PassagePoints {
   ) {
     this.layerEl = doc.createElement('div')
     this.layerEl.className = `${LAYER_CLASS} ${LAYER_HIDDEN_CLASS}`
-    for (const side of ['left', 'right'] as const) {
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
       const el = doc.createElement('div')
       el.className = POINT_CLASS
       el.dataset.side = side
@@ -86,13 +86,18 @@ export class PassagePoints {
       this.layerEl.classList.add(LAYER_HIDDEN_CLASS)
       return
     }
-    const middle = (placement.top + placement.bottom) / 2
     this.layerEl.setCssProps({
       left: `${rect.x + placement.left}px`,
-      top: `${rect.y + middle}px`,
+      top: `${rect.y + placement.top}px`,
       width: `${Math.max(0, placement.right - placement.left)}px`,
+      height: `${Math.max(0, placement.bottom - placement.top)}px`,
     })
     this.layerEl.classList.remove(LAYER_HIDDEN_CLASS)
+  }
+
+  /** Whether a node is one of the points. */
+  contains(node: Node | null): boolean {
+    return node !== null && this.layerEl.contains(node)
   }
 
   /** The passage and side a press on one of the points pulls from, or null
@@ -101,7 +106,14 @@ export class PassagePoints {
     const el = asElement(target)
     if (!this.source || !el?.classList.contains(POINT_CLASS)) return null
     const side = (el as HTMLElement).dataset.side
-    if (side !== 'left' && side !== 'right') return null
+    if (
+      side !== 'top' &&
+      side !== 'right' &&
+      side !== 'bottom' &&
+      side !== 'left'
+    ) {
+      return null
+    }
     return { ...this.source, side }
   }
 

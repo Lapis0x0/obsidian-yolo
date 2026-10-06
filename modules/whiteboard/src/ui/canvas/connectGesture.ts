@@ -117,10 +117,11 @@ export type ConnectGestureDeps = Readonly<{
    * point pulls from. */
   getLayerNodeId: () => NodeId | null
   edges: Pick<EdgeLayer, 'setEdgeHidden'>
-  /** Where a passage is in `card` now (EdgeLayer's `passagePlacement`). */
-  placePassage: (
+  /** Where an end reaches inside `card` now (EdgeLayer's `endPlacement`). */
+  placeEnd: (
     card: VirtualCardRect,
-    anchor: EdgeAnchor,
+    anchor: EdgeAnchor | undefined,
+    page: number | undefined,
   ) => PassagePlacement | null
   /** Makes this the gesture in flight. */
   begin: (interaction: ConnectInteraction) => void
@@ -255,13 +256,16 @@ export class ConnectGesture {
   /** Where an edge's ends are drawn, passages placed (domain/edges.ts's
    * `resolveEdgeEnds`). */
   private endsOf(
-    edge: Pick<Edge, 'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor'>,
+    edge: Pick<
+      Edge,
+      'fromSide' | 'toSide' | 'fromAnchor' | 'toAnchor' | 'fromPage' | 'toPage'
+    >,
     from: VirtualCardRect,
     to: VirtualCardRect,
   ) {
     return resolveEdgeEnds(edge, from, to, {
-      from: edge.fromAnchor && this.deps.placePassage(from, edge.fromAnchor),
-      to: edge.toAnchor && this.deps.placePassage(to, edge.toAnchor),
+      from: this.deps.placeEnd(from, edge.fromAnchor, edge.fromPage),
+      to: this.deps.placeEnd(to, edge.toAnchor, edge.toPage),
     })
   }
 

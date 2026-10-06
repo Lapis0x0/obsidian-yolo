@@ -417,7 +417,8 @@ describe('arrow direction', () => {
 
 describe('resolveEdgeEnds', () => {
   const from = { id: 'a', x: 0, y: 0, w: 100, h: 200 }
-  const to = { id: 'b', x: 300, y: 500, w: 100, h: 100 }
+  const to = { id: 'b', x: 600, y: 0, w: 100, h: 100 }
+  const under = { id: 'c', x: 0, y: 500, w: 100, h: 100 }
   const anchor = { kind: 'text', quote: { exact: 'x' }, offset: 0 } as const
 
   it('leaves an end without an anchor at its side middle', () => {
@@ -436,6 +437,22 @@ describe('resolveEdgeEnds', () => {
     expect(ends.start).toEqual({ x: 100, y: 50 })
     expect(ends.startInner).toEqual({ x: 70, y: 50 })
     expect(ends.end).toBeUndefined()
+  })
+
+  it('draws a passage from the bottom when the other end is below', () => {
+    const ends = resolveEdgeEnds({ fromAnchor: anchor }, from, under, {
+      from: { state: 'visible', top: 40, bottom: 60, left: 10, right: 70 },
+    })
+    expect(ends.fromSide).toBe('bottom')
+    expect(ends.start).toEqual({ x: 40, y: 200 })
+    expect(ends.startInner).toEqual({ x: 40, y: 60 })
+  })
+
+  it('places an end on a page as it would a passage', () => {
+    const ends = resolveEdgeEnds({ fromPage: 2 }, from, to, {
+      from: { state: 'above' },
+    })
+    expect(ends.start).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
   })
 
   it('holds a passage scrolled out of sight near the edge it left by', () => {

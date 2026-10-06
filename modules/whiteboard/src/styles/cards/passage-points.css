@@ -1,23 +1,29 @@
 /* --- a passage's connection points ------------------------------------------
- * Text selected in a card on the board shows two connection points, at the
- * selection's own left and right edges (ui/canvas/passagePoints.ts): where an
+ * Text selected in a card on the board shows four connection points, at the
+ * middles of the selection's own sides (ui/canvas/passagePoints.ts): where an
  * edge reaching that passage ends. Pulled out, they start a connection from
  * the passage.
  *
- * The layer is parked across the selection at its middle height and has no
- * height of its own; each point straddles the selection's edge as a card's
- * own connection point does its card's (resize-handles.css), at the same
- * size and in the same dot — shown the whole time there is a selection, since the selection
- * is what asked for them. World units weighted by the zoom multiplier the
- * camera writes, like every other piece of chrome in the world layer. */
+ * The layer is parked over the selection's box; each point stands just
+ * outside a side of it, clear of the text next to the selection, at the size
+ * and in the dot of a card's own connection point (resize-handles.css) —
+ * shown the whole time there is a selection, since the selection is what
+ * asked for them. World units weighted by the zoom multiplier the camera writes, like
+ * every other piece of chrome in the world layer. */
 
 .yolo-whiteboard-passage-points {
   --yolo-whiteboard-passage-point-extent: calc(
     var(--yolo-whiteboard-resizer-size) *
       var(--yolo-whiteboard-zoom-multiplier, 1)
   );
+  /* How far out a point stands from the side it is on: the whole dot
+   * clear of the side, so it does not sit on the text the selection is
+   * next to. */
+  --yolo-whiteboard-passage-point-offset: calc(
+    var(--yolo-whiteboard-passage-point-extent) + 2px *
+      var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
   position: absolute;
-  height: 0;
   pointer-events: none;
   /* With the handle layer, over a dragged card (drag.css). */
   z-index: 3;
@@ -29,19 +35,34 @@
 
 .yolo-whiteboard-passage-point {
   position: absolute;
-  top: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
   width: var(--yolo-whiteboard-passage-point-extent);
   height: var(--yolo-whiteboard-passage-point-extent);
   pointer-events: auto;
   cursor: pointer;
 }
 
+.yolo-whiteboard-passage-point:is([data-side='left'], [data-side='right']) {
+  top: calc(50% - var(--yolo-whiteboard-passage-point-extent) * 0.5);
+}
+
+.yolo-whiteboard-passage-point:is([data-side='top'], [data-side='bottom']) {
+  left: calc(50% - var(--yolo-whiteboard-passage-point-extent) * 0.5);
+}
+
 .yolo-whiteboard-passage-point[data-side='left'] {
-  left: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
+  left: calc(-1 * var(--yolo-whiteboard-passage-point-offset));
 }
 
 .yolo-whiteboard-passage-point[data-side='right'] {
-  right: calc(var(--yolo-whiteboard-passage-point-extent) * -0.5);
+  right: calc(-1 * var(--yolo-whiteboard-passage-point-offset));
+}
+
+.yolo-whiteboard-passage-point[data-side='top'] {
+  top: calc(-1 * var(--yolo-whiteboard-passage-point-offset));
+}
+
+.yolo-whiteboard-passage-point[data-side='bottom'] {
+  bottom: calc(-1 * var(--yolo-whiteboard-passage-point-offset));
 }
 
 /* The dot, as a card's connection point draws it. */

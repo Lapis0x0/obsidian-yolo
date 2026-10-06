@@ -61,6 +61,7 @@ import {
   updateEdge,
   updateNode,
 } from '../domain/operations'
+import type { HighlightAnchor } from '../domain/pdfAnnotations'
 import type { CardRect } from '../domain/resize'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
 import {
@@ -400,6 +401,9 @@ export class WhiteboardCanvas {
   /** The passage points stand for text selected in a text or note card
    * (`syncTextSelection`), not a PDF's. */
   private textPassageSelected = false
+  /** The passage points stand for a highlight opened in a PDF card
+   * (`selectHighlight`), which no text selection backs. */
+  private highlightSelected = false
   /** The text last selected in a PDF card that the passage points stood
    * for, kept so a connection pulled from it can mark it where it was read
    * — past the selection itself, which a press on a point may take away.
@@ -1039,6 +1043,7 @@ export class WhiteboardCanvas {
           this.editing.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.editing.endRename(true, { kind: 'edge', id }),
         placePassage: (id, anchor) => this.placePassage(id, anchor),
+        placePage: (id, page) => this.placePage(id, page),
         onEdgeHover: (id) => {
           if (id === this.hoveredEdgeId) return
           // Only an edge reaching a passage has marks to strengthen.
@@ -1252,6 +1257,8 @@ export class WhiteboardCanvas {
       showExcerptLanding: (rect) => this.dropImport.showLandingSlot(rect),
       onPassageSelection: (id, reader, selection) =>
         this.selectPassage(id, reader, selection),
+      onPassageHighlight: (id, anchor) => this.selectHighlight(id, anchor),
+      isPassagePoint: (target) => this.passagePoints?.contains(target) ?? false,
     })
     this.dropImport = new DropImport({
       core: this.core,
@@ -3202,6 +3209,8 @@ export class WhiteboardCanvas {
   private syncTextSelection(): void {
     const selection = this.context.getDocument().getSelection()
     if (!selection || selection.isCollapsed) {
+      // An open highlight is not text selected: it stands until let go.
+      if (this.highlightSelected) return
       this.passageSelection += 1
       this.textPassageSelected = false
       this.passagePoints?.setSource(null)
@@ -3225,6 +3234,7 @@ export class WhiteboardCanvas {
     if (id !== null && anchor) {
       this.passageSelection += 1
       this.textPassageSelected = true
+      this.highlightSelected = false
       this.pdfPassage = null
       this.passagePoints?.setSource({ nodeId: id, anchor })
       return
@@ -3246,6 +3256,26 @@ export class WhiteboardCanvas {
     this.pdf.markPassage(passage.reader, passage.selection)
   }
 
+  /** A highlight opened in a PDF card, or the one opened let go: its
+   * passage is what the connection points pull an edge from, as a
+   * selection's is — the same anchor, the highlight already marking it. */
+  private selectHighlight(id: NodeId, anchor: HighlightAnchor | null): void {
+    if (!anchor) {
+      if (!this.highlightSelected) return
+      this.highlightSelected = false
+      this.passageSelection += 1
+      this.passagePoints?.setSource(null)
+      return
+    }
+    this.passageSelection += 1
+    this.textPassageSelected = false
+    this.highlightSelected = true
+    this.passagePoints?.setSource({
+      nodeId: id,
+      anchor: { kind: 'pdf', ...anchor },
+    })
+  }
+
   /** Text selected in a PDF card, or the selection gone: the passage it
    * names is what its connection points pull an edge from. */
   private selectPassage(
@@ -3255,6 +3285,7 @@ export class WhiteboardCanvas {
   ): void {
     const ticket = ++this.passageSelection
     this.textPassageSelected = false
+    this.highlightSelected = false
     if (!selection) {
       this.passagePoints?.setSource(null)
       return
@@ -3286,10 +3317,28 @@ export class WhiteboardCanvas {
       if (!runtime?.el || !runtime.bodyEl || source === null) return null
       return placeTextPassage(runtime.el, runtime.bodyEl, source, anchor)
     }
+    return this.placeInReader(id, (reader) =>
+      reader.placePassage(anchor.page, anchor.quadPoints),
+    )
+  }
+
+  /** Where a page of a PDF's card is in the card, as `placePassage` says
+   * where a passage is: an edge end on the page (`fromPage` / `toPage`)
+   * reaches it as a whole. */
+  private placePage(id: NodeId, page: number): CardPassagePlacement | null {
+    return this.placeInReader(id, (reader) => reader.placePage(page))
+  }
+
+  /** What `place` says of the card's reader, measured from the card's top
+   * edge rather than the reader's. */
+  private placeInReader(
+    id: NodeId,
+    place: (reader: PdfReader) => CardPassagePlacement | null,
+  ): CardPassagePlacement | null {
     const runtime = this.cardRenderer.getRuntime(id)
     const reader = runtime?.pdfReader
     if (!runtime?.el || !reader) return null
-    const placement = reader.placePassage(anchor.page, anchor.quadPoints)
+    const placement = place(reader)
     if (!placement || placement.state !== 'visible') return placement
     // The reader measures from its own top edge; the card's is above it by
     // whatever the card puts first (its border).

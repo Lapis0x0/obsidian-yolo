@@ -110,6 +110,9 @@ export type EdgeLayerCallbacks = Readonly<{
     nodeId: NodeId,
     anchor: EdgeAnchor,
   ) => CardPassagePlacement | null
+  /** Where a page of a PDF's card is in it, as `placePassage` says where a
+   * passage is. */
+  placePage: (nodeId: NodeId, page: number) => CardPassagePlacement | null
   t: (key: string, fallback?: string) => string
 }>
 
@@ -341,10 +344,10 @@ export class EdgeLayer {
       path,
       hit,
       label: hasLabel ? this.createEdgeLabelEl(edge) : null,
-      fromMark: edge.fromAnchor ? this.createPassageMark(edge) : null,
-      toMark: edge.toAnchor ? this.createPassageMark(edge) : null,
-      fromRun: edge.fromAnchor ? this.createPassageRun(edge) : null,
-      toRun: edge.toAnchor ? this.createPassageRun(edge) : null,
+      fromMark: reachesIn(edge, 'from') ? this.createPassageMark(edge) : null,
+      toMark: reachesIn(edge, 'to') ? this.createPassageMark(edge) : null,
+      fromRun: reachesIn(edge, 'from') ? this.createPassageRun(edge) : null,
+      toRun: reachesIn(edge, 'to') ? this.createPassageRun(edge) : null,
     })
   }
 
@@ -521,21 +524,26 @@ export class EdgeLayer {
     const to = this.effectiveNodeRect(edge.toNode, overrides)
     if (!from || !to) return null
     const ends = resolveEdgeEnds(edge, from, to, {
-      from: this.passagePlacement(from, edge.fromAnchor),
-      to: this.passagePlacement(to, edge.toAnchor),
+      from: this.endPlacement(from, edge.fromAnchor, edge.fromPage),
+      to: this.endPlacement(to, edge.toAnchor, edge.toPage),
     })
     return computeEdgeGeometry(from, to, ends.fromSide, ends.toSide, ends)
   }
 
-  /** A passage's place in its card, in world units: the card's report is
-   * measured from its top edge, and `card` is where the card is now —
-   * mid-drag included. */
-  passagePlacement(
+  /** Where an end reaches inside its card, in world units: its passage, or
+   * else the page it is on — null for an end on the whole card. The card's
+   * report is measured from its top edge, and `card` is where the card is
+   * now, mid-drag included. */
+  endPlacement(
     card: VirtualCardRect,
     anchor: EdgeAnchor | undefined,
+    page: number | undefined,
   ): PassagePlacement | null {
-    if (!anchor) return null
-    const placement = this.callbacks.placePassage(card.id, anchor)
+    const placement = anchor
+      ? this.callbacks.placePassage(card.id, anchor)
+      : page !== undefined
+        ? this.callbacks.placePage(card.id, page)
+        : null
     if (!placement || placement.state !== 'visible') return placement
     return {
       state: 'visible',
@@ -563,8 +571,8 @@ export class EdgeLayer {
       const edge = this.edgesById.get(edgeId)
       if (!edge) continue
       if (
-        (edge.fromNode === nodeId && edge.fromAnchor) ||
-        (edge.toNode === nodeId && edge.toAnchor)
+        (edge.fromNode === nodeId && reachesIn(edge, 'from')) ||
+        (edge.toNode === nodeId && reachesIn(edge, 'to'))
       ) {
         this.redrawEdge(edgeId)
       }
@@ -626,6 +634,14 @@ export class EdgeLayer {
     }
     path.removeAttribute(attribute)
   }
+}
+
+/** Whether an end reaches inside its card — a passage, or a page of a PDF —
+ * rather than the whole card. */
+function reachesIn(edge: Edge, end: 'from' | 'to'): boolean {
+  return end === 'from'
+    ? edge.fromAnchor !== undefined || edge.fromPage !== undefined
+    : edge.toAnchor !== undefined || edge.toPage !== undefined
 }
 
 /** Puts a ring at a point, or takes it away (null). */

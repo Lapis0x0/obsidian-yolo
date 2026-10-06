@@ -180,10 +180,10 @@
 
 /* Parked on a title or a sheet, the handle layer keeps only its connection
  * points: neither is resized by hand (interactionController's
- * `isFixedSize`), and a press on a side handle falls through to the card to
- * drag it. */
-.yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-resizer {
-  pointer-events: none;
+ * `isFixedSize`). Its sides still take the pointer, so hovering one lights
+ * its connection point as on any card, but they look like the card they
+ * belong to, and a press on one is a press on the card. */
+.yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-resizer[data-resize] {
   cursor: default;
 }
 
@@ -195,10 +195,6 @@
     [data-resize='bottomright']
   ) {
   display: none;
-}
-
-.yolo-whiteboard-interaction-layer-fixed .yolo-whiteboard-connection-point {
-  pointer-events: auto;
 }
 
 /* The frame around a selected spread (ui/canvas/spreadFrame.ts): the space

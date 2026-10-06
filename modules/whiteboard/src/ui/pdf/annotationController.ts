@@ -48,6 +48,7 @@ import {
 import {
   ANNOTATION_COLORS,
   type AnnotationColor,
+  type HighlightAnchor,
   type HighlightAnnotation,
   type PdfAnnotation,
   type PdfRectTuple,
@@ -162,6 +163,13 @@ export type AnnotationControllerOptions = Readonly<{
     bindings: readonly YoloModuleHostKeymapBindingV1[],
   ) => () => void
   excerpts: ExcerptSink
+  /** A highlight was opened — its menu or its comment — on a reader, or the
+   * one opened was let go (null). */
+  onActiveHighlight: (reader: PdfReader, anchor: HighlightAnchor | null) => void
+  /** Whether a press is on what the open highlight puts out on the board —
+   * its passage's connection points — and so goes on with it rather than
+   * leaving it. */
+  continuesHighlight: (target: Node | null) => boolean
   reportError: (stage: string, error: unknown) => void
 }>
 
@@ -227,6 +235,11 @@ export class AnnotationController {
   private previewTimer: number | null = null
   private pointerOnPreview = false
   private mode: Mode | null = null
+  /** The highlight last told of (`onActiveHighlight`). */
+  private announced: Readonly<{
+    reader: PdfReader
+    annotation: HighlightAnnotation
+  }> | null = null
   private editor: HTMLTextAreaElement | null = null
   private editorKeymapDisposer: (() => void) | null = null
   private frameId: number | null = null
@@ -549,6 +562,32 @@ export class AnnotationController {
     )
     this.rebuild()
     this.startFollowing()
+    this.announceHighlight()
+  }
+
+  /** Tells of the highlight open now, if that changed. */
+  private announceHighlight(): void {
+    const mode = this.mode
+    const open =
+      mode?.kind === 'annotation' || mode?.kind === 'comment'
+        ? mode.reader.getAnnotationStore()?.get(mode.id)
+        : undefined
+    const highlight =
+      mode && open?.type === 'highlight'
+        ? { reader: mode.reader, annotation: open }
+        : null
+    const previous = this.announced
+    if (previous?.annotation === highlight?.annotation) return
+    this.announced = highlight
+    if (previous && previous.reader !== highlight?.reader) {
+      this.options.onActiveHighlight(previous.reader, null)
+    }
+    if (highlight) {
+      this.options.onActiveHighlight(
+        highlight.reader,
+        highlight.annotation.anchor,
+      )
+    }
   }
 
   private close(): void {
@@ -559,6 +598,7 @@ export class AnnotationController {
     this.mode = null
     this.toolbar.setModel(null)
     this.stopFollowing()
+    this.announceHighlight()
   }
 
   private rebuild(): void {
@@ -1230,6 +1270,7 @@ export class AnnotationController {
     if (this.mode?.kind !== 'annotation' && this.mode?.kind !== 'area') return
     const target = event.target as Node | null
     if (this.contains(target)) return
+    if (this.options.continuesHighlight(target)) return
     // A press on the reader's pages is the reader's to report: it may be a
     // click on another annotation, or on this one again — or, for a frame,
     // the next frame being drawn.
