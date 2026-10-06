@@ -170,6 +170,44 @@ export function carryGroupMembers(
 }
 
 /**
+ * The board as the overview tier arranges it: one rectangle per thing that
+ * stands on its own. A group is its frame and whatever it holds is part of
+ * it; an open spread is its title and every sheet, as one box; anything else
+ * not inside a group is its own rectangle. Nodes in `exclude` — what a drag
+ * is carrying — are left out, and so is a spread whose title is.
+ *
+ * What a drag lines up with from far away (ui/canvas/dragGestures.ts): at
+ * that zoom the board is arranged by its blocks, and a sheet's corner or a
+ * card inside a frame is detail the arrangement is not about.
+ */
+export function boardBlocks(
+  nodes: readonly BoardNode[],
+  exclude: ReadonlySet<NodeId>,
+): GroupRect[] {
+  const held = new Set<NodeId>()
+  for (const node of nodes) {
+    if (node.type !== 'group') continue
+    for (const id of nodesInsideGroup(node, nodes)) held.add(id)
+  }
+  const sheets = new Map<NodeId, BoardNode[]>()
+  for (const node of nodes) {
+    if (node.type !== 'pdf-page') continue
+    const list = sheets.get(node.parent)
+    if (list) list.push(node)
+    else sheets.set(node.parent, [node])
+  }
+  const blocks: GroupRect[] = []
+  for (const node of nodes) {
+    if (node.type === 'pdf-page' || held.has(node.id) || exclude.has(node.id)) {
+      continue
+    }
+    const block = groupRectForNodes([node, ...(sheets.get(node.id) ?? [])], 0)
+    if (block) blocks.push(block)
+  }
+  return blocks
+}
+
+/**
  * The rectangle a group created from `nodes` takes: their union, inflated so
  * the frame reads as holding them rather than touching them. Null when there
  * is nothing to enclose.

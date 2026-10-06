@@ -805,8 +805,7 @@ export class AnnotationController {
     const top = Math.min(rect.top, points.top)
     const right = Math.max(rect.right, points.right)
     const bottom = Math.max(rect.bottom, points.bottom)
-    const Rect = this.window()?.DOMRect ?? DOMRect
-    return new Rect(left, top, right - left, bottom - top)
+    return new DOMRect(left, top, right - left, bottom - top)
   }
 
   private startFollowing(): void {

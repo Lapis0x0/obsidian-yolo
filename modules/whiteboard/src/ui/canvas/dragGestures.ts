@@ -8,7 +8,7 @@
 // dispatches to this class and is its only importer; this module must never
 // import the canvas.
 
-import { gridStepForScale } from '../../domain/camera'
+import { gridStepForScale, unionRect } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
 import {
   boundsCenter,
@@ -16,7 +16,7 @@ import {
   placeFragment,
 } from '../../domain/clipboard'
 import { type NodeId, isPlainText } from '../../domain/fileFormat'
-import { nodesToDragWith } from '../../domain/groups'
+import { boardBlocks, nodesToDragWith } from '../../domain/groups'
 import { moveNodes, updateNode } from '../../domain/operations'
 import {
   type CardRect,
@@ -556,17 +556,27 @@ export class DragGestures {
         h: card.h,
       })
     }
-    const snap = snapMove(moving, interaction.snapCandidates, {
-      ...this.snapOptions(),
-      movedX: raw.dx !== 0,
-      movedY: raw.dy !== 0,
-    })
+    // From far away the selection lines up as one block, against the
+    // board's blocks (`snapCandidates`): a spread's three hundred sheets are
+    // one box there, not three hundred corners.
+    const whole = this.core.isOverview() ? unionRect(moving) : null
+    const snap = snapMove(
+      whole ? [whole] : moving,
+      interaction.snapCandidates,
+      {
+        ...this.snapOptions(),
+        movedX: raw.dx !== 0,
+        movedY: raw.dy !== 0,
+      },
+    )
     return { dx: raw.dx + snap.dx, dy: raw.dy + snap.dy, guides: snap.guides }
   }
 
   /**
    * What a gesture may line up with: what is on screen, minus what the
-   * gesture is moving, minus everything of the other kind.
+   * gesture is moving, minus everything of the other kind — or, in the
+   * overview tier, the blocks on screen the board is arranged by
+   * (domain/groups.ts's `boardBlocks`), whatever their kind.
    *
    * Cards line up with cards and groups with groups (Obsidian Canvas draws
    * the same line): a card dragged at a group is being dropped *into* it, and
@@ -578,19 +588,22 @@ export class DragGestures {
    * viewport rather than by the size of the board.
    */
   private snapCandidates(moving: ReadonlySet<NodeId>): readonly CardRect[] {
-    // Nothing is on offer in the overview tier (`snappingWanted`), and at that
-    // zoom "what is on screen" is most of the board — so this is also the one
-    // place the gesture would have paid for it.
-    if (this.core.isOverview()) return []
-    const groups = this.core
-      .getBoard()
-      .nodes.some((node) => moving.has(node.id) && node.type === 'group')
     const view = computeWorldViewportRect(
       this.deps.viewportEl.clientWidth,
       this.deps.viewportEl.clientHeight,
       this.core.getView(),
       0,
     )
+    // At this zoom a card dragged at a group is arranging, not dropping in,
+    // so a frame is as good a neighbour as any.
+    if (this.core.isOverview()) {
+      return boardBlocks(this.core.getBoard().nodes, moving).filter((block) =>
+        intersectsViewport(block, view),
+      )
+    }
+    const groups = this.core
+      .getBoard()
+      .nodes.some((node) => moving.has(node.id) && node.type === 'group')
     return this.core
       .getBoard()
       .nodes.filter(
@@ -624,11 +637,6 @@ export class DragGestures {
    * else. Read off the event, so it can be pressed and released mid-drag.
    */
   private snappingWanted(e: PointerEvent): boolean {
-    // Off below the overview threshold. Alignment is an offer measured
-    // in screen pixels, and down there the tolerance covers a screenful of
-    // board: the card would jump to a neighbour the user cannot see, and the
-    // guide drawn for it would be a line across the whole viewport.
-    if (this.core.isOverview()) return false
     return this.onMacOS() ? !e.ctrlKey : !e.altKey
   }
 

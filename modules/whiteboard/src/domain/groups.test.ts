@@ -2,6 +2,7 @@ import { type Board, type BoardNode, emptyBoard } from './fileFormat'
 import {
   GROUP_SELECTION_PADDING,
   arrangeTargets,
+  boardBlocks,
   carryGroupMembers,
   groupRectForNodes,
   nodesInsideGroup,
@@ -226,5 +227,53 @@ describe('groupRectForNodes', () => {
 
   it('returns null when there is nothing to enclose', () => {
     expect(groupRectForNodes([])).toBeNull()
+  })
+})
+
+describe('boardBlocks', () => {
+  function sheet(id: string, parent: string, x: number, y: number): BoardNode {
+    const page = Number(id.slice(-1))
+    return {
+      id,
+      type: 'pdf-page',
+      parent,
+      file: 'a.pdf',
+      page,
+      x,
+      y,
+      w: 40,
+      h: 60,
+      extra: {},
+    }
+  }
+
+  it('is a group with what it holds, as its frame', () => {
+    const nodes = [
+      group('g', 0, 0, 300, 300),
+      card('a', 10, 10),
+      card('b', 400, 0),
+    ]
+    expect(boardBlocks(nodes, new Set())).toEqual([
+      { x: 0, y: 0, w: 300, h: 300 },
+      { x: 400, y: 0, w: 50, h: 50 },
+    ])
+  })
+
+  it('is an open spread as one box around its title and sheets', () => {
+    const nodes = [
+      card('t', 0, 0, 40, 10),
+      sheet('t-1', 't', 0, 20),
+      sheet('t-2', 't', 50, 20),
+    ]
+    expect(boardBlocks(nodes, new Set())).toEqual([
+      { x: 0, y: 0, w: 90, h: 80 },
+    ])
+  })
+
+  it('leaves out what a drag carries', () => {
+    const nodes = [card('t', 0, 0), sheet('t-1', 't', 0, 60), card('b', 400, 0)]
+    expect(boardBlocks(nodes, new Set(['t', 't-1']))).toEqual([
+      { x: 400, y: 0, w: 50, h: 50 },
+    ])
   })
 })
