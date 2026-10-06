@@ -54,6 +54,10 @@ const EDGE_PASSAGE_END_OFF_CLASS = 'yolo-whiteboard-edge-passage-end-off'
 const EDGE_PASSAGE_RUN_CLASS = 'yolo-whiteboard-edge-passage-run'
 const EDGE_PASSAGE_RUN_LINE_CLASS = 'yolo-whiteboard-edge-passage-run-line'
 const EDGE_HOVERED_CLASS = 'yolo-whiteboard-edge-hovered'
+/** An edge with nothing to draw where it is now (domain/edges.ts's
+ * `hidden`): within one card, neither passage in sight. Its own class, apart
+ * from the culling and the connection drag's. */
+const EDGE_UNPLACED_CLASS = 'yolo-whiteboard-edge-unplaced'
 
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
@@ -506,6 +510,18 @@ export class EdgeLayer {
     if (!edge || !dom) return
     const geometry = this.geometryOf(edge, overrides)
     if (!geometry) return // dangling edges are rejected at parse time; stay defensive
+    for (const el of [
+      dom.path,
+      dom.hit,
+      dom.label,
+      dom.fromMark,
+      dom.toMark,
+      dom.fromRun?.group,
+      dom.toRun?.group,
+    ]) {
+      el?.classList.toggle(EDGE_UNPLACED_CLASS, geometry.hidden === true)
+    }
+    if (geometry.hidden) return
     const d = buildEdgePathD(geometry)
     dom.path.setAttribute('d', d)
     dom.hit.setAttribute('d', d)

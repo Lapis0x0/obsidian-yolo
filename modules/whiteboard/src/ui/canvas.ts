@@ -3313,6 +3313,10 @@ export class WhiteboardCanvas {
     passageAnchorFromSelection(reader, selection)
       .then((anchor) => {
         if (ticket !== this.passageSelection) return
+        // Made while the page's text was read: the selection may have gone
+        // in the meantime by a way that told nobody. Points stand only for
+        // text selected now.
+        if (!selection.getRect()) return
         this.pdfPassage = anchor && { reader, selection, anchor }
         this.passagePoints?.setSource(anchor && { nodeId: id, anchor })
       })

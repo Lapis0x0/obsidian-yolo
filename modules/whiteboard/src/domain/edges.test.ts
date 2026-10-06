@@ -487,6 +487,56 @@ describe('resolveEdgeEnds', () => {
     expect(ends.start).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
   })
 
+  describe('within one card', () => {
+    const card = { id: 'p', x: 0, y: 0, w: 100, h: 400 }
+    const edge = { fromAnchor: anchor, toAnchor: anchor }
+    const passage = (top: number) =>
+      ({
+        state: 'visible',
+        top,
+        bottom: top + 20,
+        left: 10,
+        right: 80,
+      }) as const
+
+    it('brackets two passages in sight out of the right side', () => {
+      const ends = resolveEdgeEnds(edge, card, card, {
+        from: passage(40),
+        to: passage(300),
+      })
+      expect(ends).toMatchObject({
+        fromSide: 'right',
+        toSide: 'right',
+        start: { x: 100, y: 50 },
+        end: { x: 100, y: 310 },
+        startInner: { x: 80, y: 50 },
+      })
+      expect(ends.hidden).toBeUndefined()
+    })
+
+    it('holds one scrolled out of sight near its corner', () => {
+      const ends = resolveEdgeEnds(edge, card, card, {
+        from: { state: 'above' },
+        to: passage(300),
+      })
+      expect(ends.start).toEqual({ x: 100, y: PASSAGE_EDGE_INSET })
+      expect(ends.hidden).toBeUndefined()
+    })
+
+    it('draws nothing with neither passage in sight', () => {
+      expect(
+        resolveEdgeEnds(edge, card, card, {
+          from: { state: 'above' },
+          to: { state: 'below' },
+        }).hidden,
+      ).toBe(true)
+      expect(
+        resolveEdgeEnds(edge, card, card, { from: null, to: passage(40) })
+          .hidden,
+      ).toBe(true)
+    })
+  })
+
   it('falls back to the side middle when the card cannot place it', () => {
     expect(
       resolveEdgeEnds({ fromAnchor: anchor }, from, to, { from: null }),

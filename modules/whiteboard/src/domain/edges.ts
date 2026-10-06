@@ -48,6 +48,9 @@ export type EdgeGeometry = Readonly<{
    * stops at the card's edge; the rest is a straight run over the card. */
   startInner?: Point
   endInner?: Point
+  /** Nothing to draw: an edge within one card neither of whose passages is
+   * in sight (`resolveEdgeEnds`). */
+  hidden?: true
 }>
 
 /** How far a control point is pushed out along its anchor side's outward
@@ -176,6 +179,7 @@ export type EdgeEnds = Readonly<{
   /** See `EdgeGeometry`'s. */
   startInner?: Point
   endInner?: Point
+  hidden?: true
 }>
 
 /**
@@ -201,6 +205,7 @@ export function resolveEdgeEnds(
     edge.fromAnchor || edge.fromPage !== undefined ? placements.from : null
   const toPlaced =
     edge.toAnchor || edge.toPage !== undefined ? placements.to : null
+  if (from.id === to.id) return withinCardEnds(from, fromPlaced, toPlaced)
   if (!fromPlaced && !toPlaced) return sides
   const facing = autoEdgeSides(from, to)
   const fromSide = fromPlaced ? facing.fromSide : sides.fromSide
@@ -214,6 +219,40 @@ export function resolveEdgeEnds(
     ...(start && start.inner ? { startInner: start.inner } : {}),
     ...(end ? { end: end.edge } : {}),
     ...(end && end.inner ? { endInner: end.inner } : {}),
+  }
+}
+
+/**
+ * An edge between two passages of one card — two pages of a PDF linked
+ * while it was spread out, now folded back into one reader. Both ends leave
+ * by the card's right side, the curve a bracket out in its margin from one
+ * passage to the other. A passage scrolled out of sight is held near the
+ * corner it went past, as any end's is; with neither in sight there is
+ * nothing in the card to point at, and nothing is drawn — nor when the card
+ * cannot place them at all.
+ */
+function withinCardEnds(
+  card: VirtualCardRect,
+  fromPlaced: PassagePlacement | null | undefined,
+  toPlaced: PassagePlacement | null | undefined,
+): EdgeEnds {
+  const side: NodeSide = 'right'
+  if (
+    !fromPlaced ||
+    !toPlaced ||
+    (fromPlaced.state !== 'visible' && toPlaced.state !== 'visible')
+  ) {
+    return { fromSide: side, toSide: side, hidden: true }
+  }
+  const start = passagePoint(card, side, fromPlaced)
+  const end = passagePoint(card, side, toPlaced)
+  return {
+    fromSide: side,
+    toSide: side,
+    start: start.edge,
+    end: end.edge,
+    ...(start.inner ? { startInner: start.inner } : {}),
+    ...(end.inner ? { endInner: end.inner } : {}),
   }
 }
 
@@ -319,6 +358,7 @@ export function computeEdgeGeometry(
     end?: Point
     startInner?: Point
     endInner?: Point
+    hidden?: true
   }>,
 ): EdgeGeometry {
   const start = points?.start ?? anchorPoint(from, fromSide)
@@ -334,6 +374,7 @@ export function computeEdgeGeometry(
     label: cubicBezierPointAt(start, c1, c2, end, 0.5),
     ...(points?.startInner ? { startInner: points.startInner } : {}),
     ...(points?.endInner ? { endInner: points.endInner } : {}),
+    ...(points?.hidden ? { hidden: true } : {}),
   }
 }
 
@@ -418,6 +459,9 @@ export function edgeAtPoint(
   const margin = EDGE_CONTROL_MAX_PX + tolerance
   for (let index = edges.length - 1; index >= 0; index -= 1) {
     const edge = edges[index]
+    // Within one card it is drawn only where the card places its passages,
+    // which the board alone cannot (`resolveEdgeEnds`).
+    if (edge.fromNode === edge.toNode) continue
     const from = nodes.get(edge.fromNode)
     const to = nodes.get(edge.toNode)
     if (!from || !to) continue

@@ -140,6 +140,12 @@
   display: none;
 }
 
+/* An edge within one card neither of whose passages is in sight
+ * (ui/canvas/edgeLayer.ts's EDGE_UNPLACED_CLASS): nothing to point at. */
+.yolo-whiteboard-edge-unplaced {
+  display: none;
+}
+
 /* An edge whose two endpoints are both far off screen
  * (ui/canvas/edgeLayer.ts's updateVisibility). Its own class rather than the
  * one above: a connection drag owns that one for the length of a gesture, and

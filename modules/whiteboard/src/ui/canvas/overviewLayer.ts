@@ -1323,6 +1323,10 @@ export class OverviewLayer {
     const margin = EDGE_CONTROL_MAX_PX
 
     for (const edge of this.callbacks.getEdges()) {
+      // Within one card an edge is drawn only where the card, drawn as a
+      // reader, places its passages — never in this tier
+      // (domain/edges.ts's `resolveEdgeEnds`).
+      if (edge.fromNode === edge.toNode) continue
       const fromNode = this.callbacks.getNode(edge.fromNode)
       const toNode = this.callbacks.getNode(edge.toNode)
       if (!fromNode || !toNode) continue

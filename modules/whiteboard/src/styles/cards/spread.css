@@ -80,19 +80,20 @@
 }
 
 /* A folded PDF card wears its title on the same line (drag.css's
- * `.yolo-whiteboard-card-title-pdf`), and so the same borders: the title
- * does not change as the pages come out or go back. */
+ * `.yolo-whiteboard-card-title-pdf`), and so the same look: the title does
+ * not change as the pages come out or go back. Its borders, though, answer
+ * only for the line itself. A spread's title is a node of its own — pointed
+ * at or selected, it is the title that is — while a folded card's title is
+ * a label on the card: the card wears its own hover and selection ring, and
+ * a second one round the label would read as a second thing selected. */
 .yolo-whiteboard-card-hovered > .yolo-whiteboard-spread-title-line,
 .yolo-whiteboard-card-hovered
-  > .yolo-whiteboard-card-title-pdf
+  > .yolo-whiteboard-card-title-pdf:hover
   > .yolo-whiteboard-spread-title-line {
   border-color: var(--background-modifier-border-focus);
 }
 
-.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line,
-.yolo-whiteboard-card-selected
-  > .yolo-whiteboard-card-title-pdf
-  > .yolo-whiteboard-spread-title-line {
+.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line {
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 1px var(--interactive-accent);
 }
