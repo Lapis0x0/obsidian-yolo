@@ -35,6 +35,19 @@
   border-color: transparent;
 }
 
+/* Over every other card: the title is a label, and a label hidden under the
+ * sheets of a neighbouring spread or a card set down near it no longer names
+ * anything. Cards otherwise stack in mount order (drag.css), and each is its
+ * own stacking context (card.css's `contain`), so the lift is the node's — a
+ * folded card's too, whose title hangs above it on the same line and so
+ * reaches into the same space. A dragged card still goes over it. The
+ * overview canvas draws these titles last for the same reason
+ * (overviewLayer.ts's `drawCards`). */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title,
+.yolo-whiteboard-card:has(> .yolo-whiteboard-card-title-pdf) {
+  z-index: 1;
+}
+
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::after {
   content: none;
@@ -182,7 +195,8 @@
     2px * var(--yolo-whiteboard-zoom-multiplier, 1)
   );
   position: absolute;
-  z-index: 2;
+  /* With the handle layer, over a dragged card. */
+  z-index: 3;
   pointer-events: none;
 }
 

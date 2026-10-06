@@ -20,7 +20,7 @@
   opacity: 0.6;
   /* Over the cards and over the handle layer, which is the only other thing
    * in the world layer a gesture puts on screen. */
-  z-index: 3;
+  z-index: 4;
 }
 
 .yolo-whiteboard-snap-guides line {

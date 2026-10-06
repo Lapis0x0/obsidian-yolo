@@ -54,7 +54,7 @@
 
 /* Being dragged. A card gets this from the block further down, which a group
  * does not match: it is not a `.yolo-whiteboard-card`, and it must not take
- * that block's `z-index: 1` either — a group is a frame and stays behind its
+ * that block's `z-index: 2` either — a group is a frame and stays behind its
  * contents while it moves. What it does want is the same grabbing cursor and
  * the same compositor hint, since a drag rewrites its transform every frame.
  *

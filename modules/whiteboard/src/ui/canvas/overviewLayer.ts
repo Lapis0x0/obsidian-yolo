@@ -804,9 +804,11 @@ export class OverviewLayer {
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
-    if (surface.text) this.drawPdfTitles(ctx, view, titles)
     const drew = texts.length > 0 || (surface.text && titles.length > 0)
-    if (visible.length === 0) return drew
+    if (visible.length === 0) {
+      if (surface.text) this.drawPdfTitles(ctx, view, titles)
+      return drew
+    }
 
     // 1. The opaque surface, in one path.
     ctx.globalAlpha = 1
@@ -922,6 +924,9 @@ export class OverviewLayer {
         ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
       }
     }
+    // 6. PDF titles, over every card, as the stylesheet stacks them
+    //    (spread.css).
+    this.drawPdfTitles(ctx, view, titles)
     return true
   }
 

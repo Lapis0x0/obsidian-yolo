@@ -5,8 +5,8 @@
   will-change: transform;
   /* Bring the dragged card above its siblings while it's being moved —
    * cards otherwise stack in plain DOM/mount order (no general z-order
-   * model). */
-  z-index: 1;
+   * model) — and above the 1 a spread's title stands at (spread.css). */
+  z-index: 2;
   /* Picked up: a hair larger and casting a shadow, so a drag reads as the
    * card being lifted off the board rather than slid across it — and set back
    * down, not dropped, when it ends. `scale` rather than `transform`, which

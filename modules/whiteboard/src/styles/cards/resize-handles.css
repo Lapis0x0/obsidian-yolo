@@ -21,9 +21,9 @@
    * handle children take pointer events. */
   pointer-events: none;
   /* Cards are appended to the world layer as they mount, i.e. after this
-   * element, so plain DOM order would bury it. 2 clears the 1 a dragged card
+   * element, so plain DOM order would bury it. 3 clears the 2 a dragged card
    * lifts itself to. */
-  z-index: 2;
+  z-index: 3;
 }
 
 .yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer-hidden {
