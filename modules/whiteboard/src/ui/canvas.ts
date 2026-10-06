@@ -1198,6 +1198,22 @@ export class WhiteboardCanvas {
       passagePoints: {
         sourceAt: (target) => this.passagePoints?.sourceAt(target) ?? null,
       },
+      passageTargets: {
+        passageAt: (id, x, y) =>
+          this.cardRenderer
+            .getRuntime(id)
+            ?.pdfReader?.passageAt(
+              x,
+              y,
+              this.passagePoints?.sourceIn(id) ?? null,
+            ) ?? null,
+        showPassageHint: (id, anchor) =>
+          this.cardRenderer.getRuntime(id)?.pdfReader?.showPassageHint(anchor),
+        nudgeCard: (id, deltaY) =>
+          this.cardRenderer.getRuntime(id)?.pdfReader?.nudge(deltaY) ?? false,
+        cardClientRect: (id) =>
+          this.cardRenderer.getRuntime(id)?.el?.getBoundingClientRect() ?? null,
+      },
       snapGuides,
       toolbar: this.toolbarController,
       editing: this.editing,
@@ -2421,7 +2437,9 @@ export class WhiteboardCanvas {
     return mintEdgeId(this.board)
   }
 
-  private worldPointFromEvent(e: MouseEvent): ScreenPoint {
+  private worldPointFromEvent(
+    e: Readonly<{ clientX: number; clientY: number }>,
+  ): ScreenPoint {
     return screenToWorld(
       this.cameraController.view,
       this.cameraController.viewportPointFromEvent(e),

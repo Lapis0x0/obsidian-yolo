@@ -168,6 +168,26 @@ svg.yolo-whiteboard-pdf-highlight {
 /* The text a followed link names, marked for a moment (pdfReader.ts's
  * `flash`): faded in on arrival, held, faded out. Above the text layer,
  * never in the way of a press on it. */
+/* A text layer built only to measure where a page's text is
+ * (ui/pdf/pdfReader.ts's `paragraphsOf`): laid out so it can be measured,
+ * never seen or pointed at, and gone once measured. */
+.yolo-whiteboard-pdf-text.yolo-whiteboard-pdf-text-probe {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The passage a connection being dragged would reach if let go
+ * (ui/pdf/pdfReader.ts's `showPassageHint`): the accent the flash uses, held
+ * while the pointer is over it rather than fading. */
+.yolo-whiteboard-pdf-passage-hint {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  box-shadow: 0 0 0 1.5px
+    color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  pointer-events: none;
+}
+
 .yolo-whiteboard-pdf-flash {
   position: absolute;
   border-radius: 2px;

@@ -211,7 +211,9 @@ export class CameraController {
   }
 
   /** Viewport-relative position of a mouse event. */
-  viewportPointFromEvent(e: MouseEvent): ScreenPoint {
+  viewportPointFromEvent(
+    e: Readonly<{ clientX: number; clientY: number }>,
+  ): ScreenPoint {
     const rect = this.viewportEl.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }

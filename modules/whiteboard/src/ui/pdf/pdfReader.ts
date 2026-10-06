@@ -40,6 +40,7 @@
 // annotation clicked, an area framed. What to do about it (the toolbar, the
 // store edits) is the owner's (./annotationController.ts).
 
+import type { EdgeAnchor } from '../../domain/fileFormat'
 import type { PdfRectTuple, SelectionTuple } from '../../domain/pdfAnnotations'
 import type {
   AnnotationLease,
@@ -52,6 +53,7 @@ import {
   type PageFrame,
   hitTestAnnotations,
   quadBoxes,
+  quoteContext,
 } from './annotationGeometry'
 import {
   NOTE_CLASS,
@@ -63,6 +65,13 @@ import {
 } from './annotationLayer'
 import type { PdfDrawClient, PdfDrawQueue } from './drawQueue'
 import { createReaderIconButton } from './icons'
+import {
+  type PageParagraph,
+  type PlacedTextItem,
+  inferParagraphs,
+  paragraphAt,
+  paragraphText,
+} from './paragraphs'
 import { PdfSearch } from './pdfSearch'
 import {
   type PageSize,
@@ -194,6 +203,11 @@ const CANVAS_CLASS = 'yolo-whiteboard-pdf-canvas'
 /** On a page's new picture while it fades in over the one it replaces. */
 const CANVAS_FADE_IN_CLASS = 'yolo-whiteboard-pdf-canvas-fade-in'
 const TEXT_LAYER_HOST_CLASS = 'yolo-whiteboard-pdf-text'
+/** A text layer built only to measure where a page's text is
+ * (`paragraphsOf`), never seen and gone once measured. */
+const TEXT_PROBE_CLASS = 'yolo-whiteboard-pdf-text-probe'
+/** The passage a connection being dragged would reach (`showPassageHint`). */
+const PASSAGE_HINT_CLASS = 'yolo-whiteboard-pdf-passage-hint'
 const INDICATOR_CLASS = 'yolo-whiteboard-pdf-indicator'
 const PAGE_INPUT_CLASS = 'yolo-whiteboard-pdf-page-input'
 const PAGE_COUNT_CLASS = 'yolo-whiteboard-pdf-page-count'
@@ -319,6 +333,16 @@ export class PdfReader {
   }
 
   private handle: YoloModuleHostPdfDocumentV1 | null = null
+  /** Each page's paragraphs, read once (`paragraphsOf`). */
+  private readonly paragraphs = new Map<
+    number,
+    Promise<Readonly<{
+      items: readonly PlacedTextItem[]
+      paragraphs: readonly PageParagraph[]
+    }> | null>
+  >()
+  /** The marks `showPassageHint` put on a page. */
+  private passageHintEls: HTMLElement[] = []
   private unsubscribeStale: (() => void) | null = null
   /** Bumped by every open and by destroy; an async result from an older one
    * is dropped rather than applied to a document it does not belong to. */
@@ -893,6 +917,197 @@ export class PdfReader {
     return { state: 'visible', top: top + offset, bottom: bottom + offset }
   }
 
+  /**
+   * The passage a connection let go at a client point would reach: the
+   * paragraph of the page under it (./paragraphs.ts), or `preferred` — a
+   * passage selected beforehand — when the point is on that. Null where the
+   * point is on no text. A page's paragraphs are read the first time it is
+   * asked about, so the answer can take a moment.
+   */
+  async passageAt(
+    clientX: number,
+    clientY: number,
+    preferred: EdgeAnchor | null,
+  ): Promise<EdgeAnchor | null> {
+    const hit = this.pagePointAt(clientX, clientY)
+    if (!hit) return null
+    const { slot, x, y } = hit
+    if (preferred?.kind === 'pdf' && preferred.page === slot.number) {
+      const frame = slot.frame
+      const inside =
+        frame !== null &&
+        quadBoxes(preferred.quadPoints, frame).some(
+          (box) =>
+            x >= box.left && x <= box.right && y >= box.top && y <= box.bottom,
+        )
+      if (inside) return preferred
+    }
+    const read = await this.paragraphsOf(slot)
+    const page = slot.page
+    if (!read || !page) return null
+    const paragraph = paragraphAt(read.paragraphs, x, y)
+    if (!paragraph) return null
+    const tuple: SelectionTuple = [
+      paragraph.first,
+      0,
+      paragraph.last,
+      read.items[paragraph.last].text.length,
+    ]
+    const context = quoteContext(read.items, tuple)
+    const quadPoints: number[] = []
+    for (const line of paragraph.lines) {
+      const corner = (fx: number, fy: number) =>
+        page.toPdfPoint([fx * page.width, fy * page.height], 1)
+      for (const [fx, fy] of [
+        [line.left, line.top],
+        [line.right, line.top],
+        [line.left, line.bottom],
+        [line.right, line.bottom],
+      ] as const) {
+        quadPoints.push(...corner(fx, fy))
+      }
+    }
+    return {
+      kind: 'pdf',
+      page: slot.number,
+      quadPoints,
+      quote: {
+        exact: paragraphText(read.items, paragraph),
+        ...(context.prefix ? { prefix: context.prefix } : {}),
+        ...(context.suffix ? { suffix: context.suffix } : {}),
+      },
+      selection: tuple,
+    }
+  }
+
+  /** Marks the passage a connection being dragged would reach, or — with
+   * null — takes the mark away. */
+  showPassageHint(anchor: EdgeAnchor | null): void {
+    for (const el of this.passageHintEls) el.remove()
+    this.passageHintEls = []
+    if (anchor?.kind !== 'pdf') return
+    const slot = this.slotFor(anchor.page)
+    if (!slot?.frame) return
+    const doc = this.rootEl.ownerDocument
+    for (const box of quadBoxes(anchor.quadPoints, slot.frame)) {
+      const el = doc.createElement('div')
+      el.className = PASSAGE_HINT_CLASS
+      placeBox(el, box)
+      slot.el.appendChild(el)
+      this.passageHintEls.push(el)
+    }
+  }
+
+  /** Scrolls by `deltaY` layout pixels if there is room — a connection held
+   * near the card's top or bottom edge reaching for a passage out of view.
+   * Whether it moved. */
+  nudge(deltaY: number): boolean {
+    if (!this.layout || this.sheet !== null) return false
+    const scroller = this.scrollerEl
+    const before = scroller.scrollTop
+    scroller.scrollTop = before + deltaY
+    return scroller.scrollTop !== before
+  }
+
+  /** The page under a client point, and where on it (page fractions). */
+  private pagePointAt(
+    clientX: number,
+    clientY: number,
+  ): Readonly<{ slot: Slot; x: number; y: number }> | null {
+    for (const slot of this.slots) {
+      const rect = slot.el.getBoundingClientRect()
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom ||
+        rect.width <= 0 ||
+        rect.height <= 0
+      ) {
+        continue
+      }
+      return {
+        slot,
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
+      }
+    }
+    return null
+  }
+
+  /**
+   * A page's text items with where each is, and the paragraphs they make —
+   * measured off the page's text layer, or, for a page that has none (a
+   * reader not being read builds none), off one built just for this and
+   * thrown away. Read once per page and kept: a page's text does not move
+   * on it.
+   */
+  private paragraphsOf(slot: Slot): Promise<Readonly<{
+    items: readonly PlacedTextItem[]
+    paragraphs: readonly PageParagraph[]
+  }> | null> {
+    const cached = this.paragraphs.get(slot.number)
+    if (cached) return cached
+    const read = this.readParagraphs(slot)
+    this.paragraphs.set(slot.number, read)
+    read.then(
+      (result) => {
+        if (!result) this.paragraphs.delete(slot.number)
+      },
+      () => this.paragraphs.delete(slot.number),
+    )
+    return read
+  }
+
+  private async readParagraphs(slot: Slot): Promise<Readonly<{
+    items: readonly PlacedTextItem[]
+    paragraphs: readonly PageParagraph[]
+  }> | null> {
+    const page = slot.page
+    const layout = this.layout
+    if (!page || !layout) return null
+    const items = await page.getTextItems()
+    let container = slot.textLayer ? slot.textEl : null
+    let probe: YoloModuleHostPdfTextLayerV1 | null = null
+    let probeEl: HTMLElement | null = null
+    try {
+      if (!container) {
+        probeEl = this.rootEl.ownerDocument.createElement('div')
+        probeEl.className = `${TEXT_LAYER_HOST_CLASS} ${TEXT_PROBE_CLASS}`
+        slot.el.appendChild(probeEl)
+        probe = await page.renderTextLayer({
+          container: probeEl,
+          scale: layout.scales[slot.index],
+        }).promise
+        container = probeEl
+      }
+      const base = container.getBoundingClientRect()
+      if (!(base.width > 0) || !(base.height > 0)) return null
+      const boxes = new Map<number, PageBox>()
+      for (const span of Array.from(
+        container.querySelectorAll<HTMLElement>('[data-idx]'),
+      )) {
+        const rect = span.getBoundingClientRect()
+        if (!(rect.width > 0) || !(rect.height > 0)) continue
+        boxes.set(Number(span.dataset.idx), {
+          left: (rect.left - base.left) / base.width,
+          top: (rect.top - base.top) / base.height,
+          right: (rect.right - base.left) / base.width,
+          bottom: (rect.bottom - base.top) / base.height,
+        })
+      }
+      const placed = items.map((item, index) => ({
+        text: item.text,
+        endsLine: item.endsLine,
+        box: boxes.get(index) ?? null,
+      }))
+      return { items: placed, paragraphs: inferParagraphs(placed) }
+    } finally {
+      probe?.destroy()
+      probeEl?.remove()
+    }
+  }
+
   isAreaMode(): boolean {
     return this.areaMode
   }
@@ -955,6 +1170,8 @@ export class PdfReader {
 
   private async open(): Promise<void> {
     const generation = ++this.generation
+    // Read off the bytes that were open; a reopen may be a changed file.
+    this.paragraphs.clear()
     let handle: YoloModuleHostPdfDocumentV1
     let first: PdfPage
     try {

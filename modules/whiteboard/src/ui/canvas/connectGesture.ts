@@ -97,6 +97,10 @@ export type ConnectInteraction = {
   readonly wasSoleSelection: boolean
   dragging: boolean
   target: SideAnchor | null
+  /** The passage inside `target` the moving end would reach if let go now:
+   * the paragraph under the pointer, or a passage selected there before —
+   * null for the whole card. */
+  targetPassage: EdgeAnchor | null
 }
 
 export type ConnectGestureDeps = Readonly<{
@@ -124,11 +128,48 @@ export type ConnectGestureDeps = Readonly<{
   enterEditMode: (id: NodeId) => void
   /** What a click on the card means (`DragGestures.clickCard`). */
   clickCard: (id: NodeId, wasSoleSelection: boolean, e: PointerEvent) => void
+  /** The passage of `nodeId`'s card under a client point, as its reader
+   * reads it — null at once for a card that cannot say (no reader). */
+  passageAt: (
+    nodeId: NodeId,
+    clientX: number,
+    clientY: number,
+  ) => Promise<EdgeAnchor | null> | null
+  /** Marks the passage a let-go would reach in `nodeId`'s card, or clears
+   * the mark (null). */
+  showPassageHint: (nodeId: NodeId, anchor: EdgeAnchor | null) => void
+  /** Scrolls `nodeId`'s card's reader by `deltaY` layout pixels; whether it
+   * moved. */
+  nudgeCard: (nodeId: NodeId, deltaY: number) => boolean
+  /** The card's rectangle on screen, for the edges a held connection
+   * scrolls it from. */
+  cardClientRect: (nodeId: NodeId) => DOMRect | null
 }>
+
+/** How deep the bands along a target card's top and bottom edges are, in
+ * screen pixels, where a held connection scrolls the card — capped at a
+ * fifth of the card on a small one. */
+const PASSAGE_SCROLL_BAND_PX = 40
+/** How far a card scrolls per frame at the very edge of the band, in its
+ * layout pixels; it eases in from the band's inner edge. */
+const PASSAGE_SCROLL_MAX_STEP = 18
 
 export class ConnectGesture {
   private readonly core: CanvasCore
   private connectTargetNodeId: NodeId | null = null
+  /** Bumped by every passage asked for, so an answer to an older question
+   * (they arrive asynchronously) is dropped. */
+  private passageTicket = 0
+  /** The card the passage mark is shown in. */
+  private hintedNodeId: NodeId | null = null
+  /** The held connection and the pointer it was last moved to, while a
+   * card is being scrolled under it (`scrollFrame`). */
+  private held: Readonly<{
+    interaction: ConnectInteraction
+    clientX: number
+    clientY: number
+  }> | null = null
+  private scrollFrameId: number | null = null
 
   constructor(private readonly deps: ConnectGestureDeps) {
     this.core = deps.core
@@ -243,6 +284,7 @@ export class ConnectGesture {
       wasSoleSelection,
       dragging: false,
       target: null,
+      targetPassage: null,
     })
     this.deps.viewportEl.setPointerCapture(e.pointerId)
   }
@@ -259,14 +301,161 @@ export class ConnectGesture {
         this.deps.edges.setEdgeHidden(interaction.edgeId, true)
       }
     }
-    const world = this.core.worldPointFromEvent(e)
+    this.held = { interaction, clientX: e.clientX, clientY: e.clientY }
+    this.retarget(interaction, e.clientX, e.clientY)
+    this.syncScroll(interaction, e.clientX, e.clientY)
+  }
+
+  /**
+   * What a let-go at a client point would connect to: a card, and — with the
+   * pointer over its text rather than its edge band or its title — the
+   * passage under the pointer, once the card's reader has said which
+   * (asynchronously, the first time a page is asked about).
+   */
+  private retarget(
+    interaction: ConnectInteraction,
+    clientX: number,
+    clientY: number,
+  ): void {
+    const world = this.core.worldPointFromEvent({ clientX, clientY })
     interaction.target = findConnectTarget(
       world,
       interaction.candidates,
       CONNECT_SNAP_WORLD_PX,
     )
-    this.setConnectTarget(interaction.target?.nodeId ?? null)
+    const target = interaction.target
+    const card = target
+      ? interaction.candidates.find((node) => node.id === target.nodeId)
+      : undefined
+    const inside =
+      card !== undefined &&
+      world.x >= card.x &&
+      world.x <= card.x + card.w &&
+      world.y >= card.y &&
+      world.y <= card.y + card.h
+    const asked =
+      target && inside
+        ? this.deps.passageAt(target.nodeId, clientX, clientY)
+        : null
+    const ticket = ++this.passageTicket
+    if (!asked) {
+      this.aimAt(interaction, null)
+    } else {
+      void asked.then(
+        (passage) => {
+          if (ticket !== this.passageTicket) return
+          if (this.held?.interaction !== interaction) return
+          this.aimAt(interaction, passage)
+        },
+        (error: unknown) => this.core.reportError('connect passage', error),
+      )
+    }
     this.drawConnectPreview(interaction, world)
+  }
+
+  /** Points the moving end at a passage of the target card, or at the
+   * whole card (null): the card is lit for the whole of it, the passage
+   * for a passage. */
+  private aimAt(
+    interaction: ConnectInteraction,
+    passage: EdgeAnchor | null,
+  ): void {
+    interaction.targetPassage = interaction.target ? passage : null
+    const nodeId = interaction.target?.nodeId ?? null
+    this.setConnectTarget(passage ? null : nodeId)
+    this.hint(passage && nodeId, passage)
+    if (this.held?.interaction === interaction) {
+      this.drawConnectPreview(
+        interaction,
+        this.core.worldPointFromEvent(this.held),
+      )
+    }
+  }
+
+  private hint(nodeId: NodeId | null, passage: EdgeAnchor | null): void {
+    if (this.hintedNodeId !== null && this.hintedNodeId !== nodeId) {
+      this.deps.showPassageHint(this.hintedNodeId, null)
+    }
+    this.hintedNodeId = nodeId
+    if (nodeId !== null) this.deps.showPassageHint(nodeId, passage)
+  }
+
+  /** Starts or stops scrolling the target card under a held connection:
+   * held in the band along its top or bottom edge, it scrolls that way, a
+   * frame at a time, re-aiming as the text moves under the pointer. */
+  private syncScroll(
+    interaction: ConnectInteraction,
+    clientX: number,
+    clientY: number,
+  ): void {
+    const step = this.scrollStep(interaction, clientX, clientY)
+    if (step === 0) {
+      this.stopScroll()
+      return
+    }
+    if (this.scrollFrameId !== null) return
+    const win = this.core.context.getWindow()
+    const tick = () => {
+      this.scrollFrameId = null
+      const held = this.held
+      const nodeId = held?.interaction.target?.nodeId
+      if (!held || !nodeId) return
+      const delta = this.scrollStep(
+        held.interaction,
+        held.clientX,
+        held.clientY,
+      )
+      if (delta === 0 || !this.deps.nudgeCard(nodeId, delta)) return
+      this.retarget(held.interaction, held.clientX, held.clientY)
+      this.scrollFrameId = win.requestAnimationFrame(tick)
+    }
+    this.scrollFrameId = win.requestAnimationFrame(tick)
+  }
+
+  /** How far to scroll the target card this frame — negative up — for a
+   * pointer at a client point; 0 outside the bands. */
+  private scrollStep(
+    interaction: ConnectInteraction,
+    clientX: number,
+    clientY: number,
+  ): number {
+    const nodeId = interaction.target?.nodeId
+    const rect = nodeId ? this.deps.cardClientRect(nodeId) : null
+    if (!rect) return 0
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return 0
+    }
+    const band = Math.min(PASSAGE_SCROLL_BAND_PX, rect.height / 5)
+    if (!(band > 0)) return 0
+    const fromTop = clientY - rect.top
+    const fromBottom = rect.bottom - clientY
+    if (fromTop < band) {
+      return -Math.ceil(PASSAGE_SCROLL_MAX_STEP * (1 - fromTop / band))
+    }
+    if (fromBottom < band) {
+      return Math.ceil(PASSAGE_SCROLL_MAX_STEP * (1 - fromBottom / band))
+    }
+    return 0
+  }
+
+  private stopScroll(): void {
+    if (this.scrollFrameId === null) return
+    this.core.context.getWindow().cancelAnimationFrame(this.scrollFrameId)
+    this.scrollFrameId = null
+  }
+
+  /** Lets go of everything a held connection put on screen besides its
+   * curve: the passage mark, the scrolling, the pointer it follows. */
+  private release(): void {
+    this.passageTicket += 1
+    this.held = null
+    this.stopScroll()
+    this.hint(null, null)
   }
 
   /** The in-flight curve: from the pinned end to the snapped target, or to a
@@ -287,21 +476,26 @@ export class ConnectGesture {
         : { id: '', x: world.x, y: world.y, w: 0, h: 0 }
     const freeSide =
       target && targetCard ? target.side : oppositeSide(interaction.anchor.side)
-    const pinned = {
-      side: interaction.anchor.side,
-      passage: interaction.passage ?? undefined,
-    }
+    const pinnedPassage = interaction.passage ?? undefined
+    const freePassage =
+      (target && targetCard && interaction.targetPassage) || undefined
     const pinnedIsFrom = interaction.movingEnd === 'to'
     const from = pinnedIsFrom ? anchorCard : free
     const to = pinnedIsFrom ? free : anchorCard
     const ends = this.endsOf(
       pinnedIsFrom
         ? {
-            fromSide: pinned.side,
+            fromSide: interaction.anchor.side,
             toSide: freeSide,
-            fromAnchor: pinned.passage,
+            fromAnchor: pinnedPassage,
+            toAnchor: freePassage,
           }
-        : { fromSide: freeSide, toSide: pinned.side, toAnchor: pinned.passage },
+        : {
+            fromSide: freeSide,
+            toSide: interaction.anchor.side,
+            fromAnchor: freePassage,
+            toAnchor: pinnedPassage,
+          },
       from,
       to,
     )
@@ -330,7 +524,14 @@ export class ConnectGesture {
     }
   }
 
+  /** Abandons whatever connection is held, the board going away under it. */
+  reset(): void {
+    this.release()
+    this.setConnectTarget(null)
+  }
+
   finish(interaction: ConnectInteraction, e: PointerEvent): void {
+    this.release()
     this.setConnectTarget(null)
     this.deps.previewPathEl?.classList.add(EDGE_HIDDEN_CLASS)
     if (this.deps.interactionLayerEl) {
@@ -374,40 +575,53 @@ export class ConnectGesture {
     const board = created
       ? addNode(this.core.getBoard(), created.node)
       : this.core.getBoard()
+    const typeOf = (id: NodeId) =>
+      board.nodes.find((node) => node.id === id)?.type
+    const landed = created
+      ? undefined
+      : (interaction.targetPassage ?? undefined)
+    const landedPage =
+      landed?.kind === 'pdf' && typeOf(target.nodeId) === 'file'
+        ? landed.page
+        : undefined
     this.core.applyBoardChange(
       interaction.edgeId === null
         ? addEdge(
             board,
             anchorEdgeEnd(
-              buildEdge(
-                this.core.nextEdgeId(),
-                interaction.anchor,
-                interaction.movingEnd,
-                target,
+              anchorEdgeEnd(
+                buildEdge(
+                  this.core.nextEdgeId(),
+                  interaction.anchor,
+                  interaction.movingEnd,
+                  target,
+                ),
+                interaction.movingEnd === 'to' ? 'from' : 'to',
+                interaction.passage ?? undefined,
+                typeOf(interaction.anchor.nodeId),
               ),
-              interaction.movingEnd === 'to' ? 'from' : 'to',
-              interaction.passage ?? undefined,
-              board.nodes.find((node) => node.id === interaction.anchor.nodeId)
-                ?.type,
+              interaction.movingEnd,
+              landed,
+              typeOf(target.nodeId),
             ),
           )
         : updateEdge(
             board,
             interaction.edgeId,
             // The page and passage the end reached belonged to where it was:
-            // re-attached, it reaches the whole of where it lands.
+            // re-attached, it reaches what it lands on there.
             interaction.movingEnd === 'from'
               ? {
                   fromNode: target.nodeId,
                   fromSide: target.side,
-                  fromPage: undefined,
-                  fromAnchor: undefined,
+                  fromPage: landedPage,
+                  fromAnchor: landed,
                 }
               : {
                   toNode: target.nodeId,
                   toSide: target.side,
-                  toPage: undefined,
-                  toAnchor: undefined,
+                  toPage: landedPage,
+                  toAnchor: landed,
                 },
           ),
     )

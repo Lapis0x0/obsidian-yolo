@@ -70,7 +70,10 @@ export type CanvasCore = Readonly<{
   /** The viewport in world coordinates, grown by `buffer` screen pixels on
    * every side (default: the virtualization buffer). */
   worldViewportRect: (buffer?: number) => WorldRect
-  worldPointFromEvent: (e: MouseEvent) => ScreenPoint
+  /** Where a pointer event — or any client point — is on the board. */
+  worldPointFromEvent: (
+    e: Readonly<{ clientX: number; clientY: number }>,
+  ) => ScreenPoint
   /** A mounted card's runtime (element, body, readers), or undefined. */
   getRuntime: (id: NodeId) => NodeRuntime | undefined
   /** Re-decides which cards are mounted after geometry changed. */

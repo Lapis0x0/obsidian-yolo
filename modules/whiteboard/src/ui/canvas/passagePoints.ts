@@ -64,6 +64,12 @@ export class PassagePoints {
     this.sync()
   }
 
+  /** The passage selected in `nodeId`'s card, if the points stand for one
+   * there: a connection let go on it reaches that passage exactly. */
+  sourceIn(nodeId: NodeId): EdgeAnchor | null {
+    return this.source?.nodeId === nodeId ? this.source.anchor : null
+  }
+
   /** Whether the points are standing for a passage in `nodeId`. */
   isOn(nodeId: NodeId): boolean {
     return this.source?.nodeId === nodeId

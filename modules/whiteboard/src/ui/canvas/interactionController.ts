@@ -50,7 +50,11 @@ import { asElement } from '../eventTarget'
 
 import type { CameraController } from './cameraController'
 import type { CardGeneration } from './cardGeneration'
-import { ConnectGesture, type ConnectInteraction } from './connectGesture'
+import {
+  ConnectGesture,
+  type ConnectGestureDeps,
+  type ConnectInteraction,
+} from './connectGesture'
 import type { CanvasCore } from './core'
 import {
   type CreateInteraction,
@@ -246,6 +250,12 @@ export type InteractionControllerDeps = Readonly<{
   >
   /** The connection points of a selected passage (./passagePoints.ts). */
   passagePoints: Pick<PassagePoints, 'sourceAt'>
+  /** What a connection held over a card asks of it: the passage under the
+   * pointer, a mark on it, a scroll towards one out of view. */
+  passageTargets: Pick<
+    ConnectGestureDeps,
+    'passageAt' | 'showPassageHint' | 'nudgeCard' | 'cardClientRect'
+  >
   snapGuides: SnapGuideLayer
   toolbar: Pick<
     ToolbarController,
@@ -386,6 +396,7 @@ export class InteractionController {
       getLayerNodeId,
       edges: deps.edges,
       placePassage: (card, anchor) => deps.edges.passagePlacement(card, anchor),
+      ...deps.passageTargets,
       begin,
       rebuildEdgesSvg: deps.rebuildEdgesSvg,
       enterEditMode: (id) => deps.editing.enterEditMode(id),
@@ -426,6 +437,7 @@ export class InteractionController {
   /** Every card is going away: whatever gesture was in flight goes with
    * them. */
   reset(): void {
+    this.connect.reset()
     this.interaction = null
     this.autoPan = null
     this.touchPoints.clear()
