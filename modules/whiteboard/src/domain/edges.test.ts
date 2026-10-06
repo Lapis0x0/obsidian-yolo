@@ -120,6 +120,18 @@ describe('resolveEdgeSides', () => {
 })
 
 describe('computeEdgeGeometry', () => {
+  it('pushes ends facing each other across a narrow gap only as far as the gap', () => {
+    const left = { id: 'a', x: 0, y: 0, w: 100, h: 1000 }
+    const right = { id: 'b', x: 160, y: 0, w: 100, h: 1000 }
+    const geometry = computeEdgeGeometry(left, right, 'right', 'left', {
+      start: { x: 100, y: 100 },
+      end: { x: 160, y: 900 },
+    })
+    // Neither control point passes the other's side: no S across the gap.
+    expect(geometry.c1).toEqual({ x: 130, y: 100 })
+    expect(geometry.c2).toEqual({ x: 130, y: 900 })
+  })
+
   it('anchors start/end at the resolved sides midpoints', () => {
     const from = rect('a', 0, 0, 100, 100)
     const to = rect('b', 500, 0, 100, 100)

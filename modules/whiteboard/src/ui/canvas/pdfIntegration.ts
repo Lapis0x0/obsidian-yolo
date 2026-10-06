@@ -112,6 +112,11 @@ export type PdfIntegrationDeps = Readonly<{
   /** Whether a node is one of a passage's connection points: a press there
    * pulls an edge from the open highlight, and must not close it first. */
   isPassagePoint: (target: Node | null) => boolean
+  /** Where the passage's connection points are on screen, or null. */
+  passagePointsRect: () => DOMRect | null
+  /** The annotation toolbar came up, or went (see AnnotationController's
+   * `onToolbarShown`). */
+  onAnnotationToolbar: (shown: boolean) => void
 }>
 
 export class PdfIntegration {
@@ -165,6 +170,8 @@ export class PdfIntegration {
         if (nodeId !== null) this.deps.onPassageHighlight(nodeId, anchor)
       },
       continuesHighlight: (target) => deps.isPassagePoint(target),
+      passagePointsRect: () => deps.passagePointsRect(),
+      onToolbarShown: (shown) => deps.onAnnotationToolbar(shown),
       excerpts: {
         addText: (reader, excerpt, at) =>
           this.pdfExcerpts.addText(reader, excerpt, at),

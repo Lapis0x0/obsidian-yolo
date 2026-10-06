@@ -100,6 +100,22 @@ export class PassagePoints {
     this.layerEl.classList.remove(LAYER_HIDDEN_CLASS)
   }
 
+  /** Where the points are on screen, all four together, or null while they
+   * are not shown. */
+  clientRect(): DOMRect | null {
+    if (this.layerEl.classList.contains(LAYER_HIDDEN_CLASS)) return null
+    const rects = Array.from(this.layerEl.children, (el) =>
+      el.getBoundingClientRect(),
+    )
+    if (rects.length === 0) return null
+    const left = Math.min(...rects.map((rect) => rect.left))
+    const top = Math.min(...rects.map((rect) => rect.top))
+    const right = Math.max(...rects.map((rect) => rect.right))
+    const bottom = Math.max(...rects.map((rect) => rect.bottom))
+    const Rect = this.layerEl.ownerDocument.defaultView?.DOMRect ?? DOMRect
+    return new Rect(left, top, right - left, bottom - top)
+  }
+
   /** Whether a node is one of the points. */
   contains(node: Node | null): boolean {
     return node !== null && this.layerEl.contains(node)

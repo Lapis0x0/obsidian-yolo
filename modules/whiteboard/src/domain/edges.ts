@@ -59,6 +59,11 @@ export const EDGE_CONTROL_FACTOR = 0.5
  * cards don't get a control point that overshoots into unrelated territory. */
 export const EDGE_CONTROL_MAX_PX = 160
 
+/** Lower bound on the push when the two ends face each other across a
+ * narrow gap: enough of a lead-in that the line still leaves and meets its
+ * sides square, not at a corner. */
+export const EDGE_CONTROL_MIN_PX = 24
+
 const SIDE_NORMALS: Readonly<Record<NodeSide, Point>> = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },
@@ -226,7 +231,10 @@ function passagePoint(
     }
     const inset = Math.min(PASSAGE_EDGE_INSET, card.w / 2)
     const center = (placement.left + placement.right) / 2
-    const x = Math.min(card.x + card.w - inset, Math.max(card.x + inset, center))
+    const x = Math.min(
+      card.x + card.w - inset,
+      Math.max(card.x + inset, center),
+    )
     const reach = side === 'bottom' ? placement.bottom : placement.top
     const inner = Math.min(card.y + card.h, Math.max(card.y, reach))
     return { edge: { x, y }, inner: { x, y: inner } }
@@ -245,9 +253,36 @@ function passagePoint(
   return { edge: { x, y }, inner: { x: inner, y } }
 }
 
-function extrapolate(anchor: Point, side: NodeSide, distance: number): Point {
-  const normal = SIDE_NORMALS[side]
+/**
+ * How far both control points are pushed out: with the distance between the
+ * ends, up to `EDGE_CONTROL_MAX_PX`. But two ends facing each other — one
+ * leaving to the right, the other entering from the left, and so on — are
+ * pushed only with the gap between them along that direction: pushed with
+ * the whole distance, two ends far apart down a narrow gap (passages high
+ * and low in two cards side by side) would each be pushed past the other's
+ * side, and the curve swings out and back in an S where a straight run
+ * across the gap was meant.
+ */
+function controlPush(
+  start: Point,
+  end: Point,
+  fromSide: NodeSide,
+  toSide: NodeSide,
+): number {
+  const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const push = Math.min(distance * EDGE_CONTROL_FACTOR, EDGE_CONTROL_MAX_PX)
+  if (toSide !== OPPOSITE_SIDES[fromSide]) return push
+  const normal = SIDE_NORMALS[fromSide]
+  const gap = (end.x - start.x) * normal.x + (end.y - start.y) * normal.y
+  if (gap <= 0) return push
+  return Math.min(
+    push,
+    Math.max(gap * EDGE_CONTROL_FACTOR, EDGE_CONTROL_MIN_PX),
+  )
+}
+
+function extrapolate(anchor: Point, side: NodeSide, push: number): Point {
+  const normal = SIDE_NORMALS[side]
   return { x: anchor.x + normal.x * push, y: anchor.y + normal.y * push }
 }
 
@@ -288,9 +323,9 @@ export function computeEdgeGeometry(
 ): EdgeGeometry {
   const start = points?.start ?? anchorPoint(from, fromSide)
   const end = points?.end ?? anchorPoint(to, toSide)
-  const distance = Math.hypot(end.x - start.x, end.y - start.y)
-  const c1 = extrapolate(start, fromSide, distance)
-  const c2 = extrapolate(end, toSide, distance)
+  const push = controlPush(start, end, fromSide, toSide)
+  const c1 = extrapolate(start, fromSide, push)
+  const c2 = extrapolate(end, toSide, push)
   return {
     start,
     end,

@@ -191,7 +191,16 @@ export class ToolbarController {
   /** Hidden for the duration of a pointer gesture (drag, resize, marquee,
    * pan, connect) — Obsidian Canvas hides its menu the same way, and a
    * toolbar that follows a card being dragged is a toolbar in the way. */
-  private suppressed = false
+  private gestureSuppressed = false
+  /** Hidden while a toolbar for something inside a card is up (a PDF's
+   * selection, highlight, frame or comment): one toolbar at a time, the one
+   * for what was just pointed at. The card stays selected, and its toolbar
+   * comes back when that one goes. */
+  private contentToolbarShown = false
+
+  private get suppressed(): boolean {
+    return this.gestureSuppressed || this.contentToolbarShown
+  }
 
   constructor(
     context: YoloModuleHostFileViewContextV1,
@@ -226,11 +235,26 @@ export class ToolbarController {
   }
 
   setToolbarSuppressed(suppressed: boolean): void {
-    if (this.suppressed === suppressed) return
-    this.suppressed = suppressed
-    this.toolbar.setSuppressed(suppressed)
+    this.update(() => {
+      this.gestureSuppressed = suppressed
+    })
+  }
+
+  /** A toolbar for something inside a card came up, or went. */
+  setContentToolbarShown(shown: boolean): void {
+    this.update(() => {
+      this.contentToolbarShown = shown
+    })
+  }
+
+  private update(change: () => void): void {
+    const was = this.suppressed
+    change()
+    const now = this.suppressed
+    if (was === now) return
+    this.toolbar.setSuppressed(now)
     // Placed as it shows, not a frame later: it would arrive where it was.
-    if (!suppressed) this.syncPosition()
+    if (!now) this.syncPosition()
   }
 
   refreshToolbar(): void {

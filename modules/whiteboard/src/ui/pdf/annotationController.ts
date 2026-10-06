@@ -170,6 +170,12 @@ export type AnnotationControllerOptions = Readonly<{
    * its passage's connection points — and so goes on with it rather than
    * leaving it. */
   continuesHighlight: (target: Node | null) => boolean
+  /** Where the connection points of the passage the toolbar acts for are on
+   * screen, or null: the toolbar stands clear of them as of the passage. */
+  passagePointsRect: () => DOMRect | null
+  /** The toolbar came up for something (a selection, a highlight, a frame,
+   * a comment), or went: the board's own toolbar gives way to it. */
+  onToolbarShown: (shown: boolean) => void
   reportError: (stage: string, error: unknown) => void
 }>
 
@@ -563,6 +569,7 @@ export class AnnotationController {
     this.rebuild()
     this.startFollowing()
     this.announceHighlight()
+    if (!previous) this.options.onToolbarShown(true)
   }
 
   /** Tells of the highlight open now, if that changed. */
@@ -591,6 +598,7 @@ export class AnnotationController {
   }
 
   private close(): void {
+    const wasOpen = this.mode !== null
     this.endGrab()
     this.closeEditor(true)
     if (this.mode?.kind === 'area') this.mode.reader.clearPendingArea()
@@ -599,6 +607,7 @@ export class AnnotationController {
     this.toolbar.setModel(null)
     this.stopFollowing()
     this.announceHighlight()
+    if (wasOpen) this.options.onToolbarShown(false)
   }
 
   private rebuild(): void {
@@ -769,11 +778,23 @@ export class AnnotationController {
   private anchorRect(): DOMRect | null {
     const mode = this.mode
     if (!mode) return null
-    if (mode.kind === 'selection') return mode.selection.getRect()
     if (mode.kind === 'area') return mode.reader.getPendingAreaRect()
     if (mode.kind === 'comment')
       return mode.reader.getAnnotationEndRect(mode.id)
-    return mode.reader.getAnnotationRect(mode.id)
+    const rect =
+      mode.kind === 'selection'
+        ? mode.selection.getRect()
+        : mode.reader.getAnnotationRect(mode.id)
+    // A passage's connection points stand just outside it; the toolbar is
+    // placed clear of them, or the one above is under it.
+    const points = this.options.passagePointsRect()
+    if (!rect || !points) return rect
+    const left = Math.min(rect.left, points.left)
+    const top = Math.min(rect.top, points.top)
+    const right = Math.max(rect.right, points.right)
+    const bottom = Math.max(rect.bottom, points.bottom)
+    const Rect = this.window()?.DOMRect ?? DOMRect
+    return new Rect(left, top, right - left, bottom - top)
   }
 
   private startFollowing(): void {

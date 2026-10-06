@@ -1275,6 +1275,9 @@ export class WhiteboardCanvas {
         this.selectPassage(id, reader, selection),
       onPassageHighlight: (id, anchor) => this.selectHighlight(id, anchor),
       isPassagePoint: (target) => this.passagePoints?.contains(target) ?? false,
+      passagePointsRect: () => this.passagePoints?.clientRect() ?? null,
+      onAnnotationToolbar: (shown) =>
+        this.toolbarController.setContentToolbarShown(shown),
     })
     this.dropImport = new DropImport({
       core: this.core,
