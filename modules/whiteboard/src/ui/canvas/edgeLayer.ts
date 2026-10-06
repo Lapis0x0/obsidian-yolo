@@ -272,6 +272,23 @@ export class EdgeLayer {
    * tiers call it too rather than waiting a throttle tick for the sweep to
    * reach the same conclusion.
    */
+  /** Every element that draws an edge — what an export of the selection
+   * leaves out for an edge it does not include. */
+  elementsOf(edgeId: EdgeId): Element[] {
+    const dom = this.edgeElsById.get(edgeId)
+    if (!dom) return []
+    const els: (Element | null | undefined)[] = [
+      dom.path,
+      dom.hit,
+      dom.label,
+      dom.fromMark,
+      dom.toMark,
+      dom.fromRun?.group,
+      dom.toRun?.group,
+    ]
+    return els.filter((el): el is Element => el != null)
+  }
+
   revealEdge(edgeId: EdgeId): void {
     if (!this.culledIds.has(edgeId)) return
     const dom = this.edgeElsById.get(edgeId)

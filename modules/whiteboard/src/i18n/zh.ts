@@ -4,6 +4,7 @@ export const zh = {
     open: '打开白板',
   },
   command: {
+    exportBoard: '导出当前白板',
     newWhiteboard: '新建白板',
     importAllCanvas: '把全部 Canvas 导入为 YOLO 白板',
   },
@@ -12,6 +13,8 @@ export const zh = {
     description: '新建 YOLO 白板，编辑板上的卡片、连线与分组。',
   },
   menu: {
+    exportBoard: '导出白板…',
+    exportSelection: '导出选中内容…',
     newWhiteboard: '新建 YOLO 白板',
     importCanvas: '导入为 YOLO 白板',
     newCard: '新建卡片',
@@ -113,7 +116,24 @@ export const zh = {
       '将为库中 {count} 个 Canvas 文件各生成一个同名 YOLO 白板，放在原文件旁边。Canvas 原文件不会被改动。',
     importAllCta: '导入',
   },
+  // 白板导出（ui/canvas/exportController.ts）。
+  export: {
+    png: '导出为 PNG · {scale}×（{width} × {height}）',
+    pdf: '导出为 PDF · {scale}×（{width} × {height}）',
+    copy: '复制为图片 · {scale}×（{width} × {height}）',
+    copyTooLarge: '复制为图片：{width} × {height} 过大，无法复制',
+    pngFilter: 'PNG 图片',
+    pdfFilter: 'PDF 文档',
+    title: '正在导出…',
+    progress: '第 {done} / {total} 块',
+    cancel: '取消',
+  },
   notice: {
+    exported: '已导出到 {name}',
+    copiedImage: '已复制图片',
+    exportCancelled: '已取消导出',
+    exportNothing: '白板上没有可导出的内容。',
+    exportBoardNotOpen: '请先打开这个白板再导出。',
     convertedToNote: '卡片已保存为 {path}',
     dropUnsupported:
       '白板目前只能接收笔记、PDF、图片、音频、视频和 HTML 文件。',
@@ -194,6 +214,7 @@ export const zh = {
     },
   },
   error: {
+    exportFailed: '无法导出这个白板。',
     title: '无法读取此白板',
     hint: '文件解析失败，内容未被修改——请在白板外修复后重新打开。',
     createFailed: '新建白板失败。',

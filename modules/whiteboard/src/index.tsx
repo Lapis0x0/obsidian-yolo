@@ -25,7 +25,10 @@ import { OpenBoards } from './host/openBoards'
 import { PdfThumbnailStore } from './host/pdfThumbnailStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
-import { createWhiteboardLocalizedText } from './i18n'
+import {
+  createWhiteboardLocalizedText,
+  createWhiteboardTranslation,
+} from './i18n'
 import { WhiteboardCanvas } from './ui/canvas'
 
 const MODULE_ID = 'whiteboard'
@@ -92,6 +95,10 @@ yolo.registerModule({
           minimapPrefs,
         )
         const forgetOpenBoard = openBoards.add(canvas)
+        // "The current board", for the commands that act on one.
+        const touch = () => openBoards.touch(canvas)
+        context.contentEl.addEventListener('pointerdown', touch, true)
+        context.contentEl.addEventListener('focusin', touch)
         return {
           setViewData: (data, clear) => canvas.setViewData(data, clear),
           getViewData: () => canvas.getViewData(),
@@ -154,6 +161,27 @@ yolo.registerModule({
         exportAnnotatedPdf(host, annotationStores, entry.path),
     })
 
+    // Exporting a board as a picture, which is saved where the user chooses
+    // in the system save dialog — only a desktop has one, so only a desktop
+    // is offered it. The board's own menus offer it too (ui/canvas/
+    // exportController.ts); these reach it from the tab's "more options" menu
+    // and the command palette, which act on the board last used.
+    if (host.ui.canSaveFile()) {
+      host.workspace.registerFileMenuAction({
+        id: 'whiteboard-export-board',
+        title: createWhiteboardLocalizedText('menu.exportBoard'),
+        icon: 'image-down',
+        appliesTo: 'file',
+        extensions: ['yoloboard'],
+        onSelect: (entry) => exportOpenBoard(host, openBoards.find(entry.path)),
+      })
+      host.workspace.registerCommand({
+        id: 'export-board',
+        name: createWhiteboardLocalizedText('command.exportBoard'),
+        callback: () => exportOpenBoard(host, openBoards.recent()),
+      })
+    }
+
     // `.canvas` import: one-way, never registers a view
     // for `.canvas` and never writes one. Two entries because they answer two
     // different questions — "bring this canvas across" (right-click one) and
@@ -174,3 +202,20 @@ yolo.registerModule({
     })
   },
 })
+
+/** Opens a board's export menu, or says the board has to be open first —
+ * the picture is made from the board on screen. */
+function exportOpenBoard(
+  host: YoloModuleHostApiV1,
+  canvas: WhiteboardCanvas | null,
+): void {
+  if (canvas) {
+    canvas.showExportMenu()
+    return
+  }
+  host.ui.notice(
+    createWhiteboardTranslation(host.i18n.getSnapshot().locale)(
+      'notice.exportBoardNotOpen',
+    ),
+  )
+}

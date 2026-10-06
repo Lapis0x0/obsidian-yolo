@@ -13,6 +13,7 @@
 import type { WhiteboardCanvas } from '../ui/canvas'
 
 export class OpenBoards {
+  /** In the order they were last used, the most recent last. */
   private readonly canvases = new Set<WhiteboardCanvas>()
 
   /** Returns the disposer the view's own teardown calls. */
@@ -21,6 +22,24 @@ export class OpenBoards {
     return () => {
       this.canvases.delete(canvas)
     }
+  }
+
+  /** `canvas` was just used: pressed, or focused. */
+  touch(canvas: WhiteboardCanvas): void {
+    if (!this.canvases.has(canvas)) return
+    this.canvases.delete(canvas)
+    this.canvases.add(canvas)
+  }
+
+  /**
+   * The board last used, or null. What a command acts on: a command carries
+   * no target, and the Host API has no active-file surface, so "the current
+   * board" is the one the user was last in.
+   */
+  recent(): WhiteboardCanvas | null {
+    let last: WhiteboardCanvas | null = null
+    for (const canvas of this.canvases) last = canvas
+    return last
   }
 
   /**

@@ -1,0 +1,63 @@
+/* --- a board export in progress (ui/export/exportOverlay.ts) ------------
+ * Covers the board while the export walks its camera across it, a part at a
+ * time: what is under the cover is the board being photographed, jumping
+ * from one place to the next, which is nothing anyone should have to watch.
+ * Opaque for that reason, and above everything else in the root — the
+ * toolbar, the minimap and the controls included — so nothing on the board
+ * can be pressed in the middle of it. */
+.yolo-whiteboard-export-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--layer-cover) + 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-primary);
+}
+
+.yolo-whiteboard-export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  width: min(320px, calc(100% - var(--size-4-8)));
+  padding: var(--size-4-4);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: var(--background-secondary);
+  box-shadow: var(--shadow-s);
+}
+
+.yolo-whiteboard-export-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-whiteboard-export-detail {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-whiteboard-export-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--background-modifier-border);
+}
+
+/* Grown by `transform` alone (CLAUDE.md's motion rule): a full-width bar
+ * scaled from its left edge. */
+.yolo-whiteboard-export-bar {
+  width: 100%;
+  height: 100%;
+  background: var(--interactive-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--yolo-anim-duration-feedback, 120ms)
+    var(--yolo-anim-ease-out);
+}
+
+button.yolo-whiteboard-export-cancel {
+  align-self: flex-end;
+}

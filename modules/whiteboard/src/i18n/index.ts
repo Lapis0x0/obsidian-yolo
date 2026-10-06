@@ -15,9 +15,11 @@ export type WhiteboardLocalizedTextKey =
   | 'module.open'
   | 'command.newWhiteboard'
   | 'command.importAllCanvas'
+  | 'command.exportBoard'
   | 'menu.newWhiteboard'
   | 'menu.importCanvas'
   | 'menu.exportAnnotatedPdf'
+  | 'menu.exportBoard'
   | 'tools.label'
   | 'tools.description'
 

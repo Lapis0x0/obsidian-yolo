@@ -102,6 +102,7 @@ import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
 import { type CardPassagePlacement, EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
+import { ExportController } from './canvas/exportController'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -478,6 +479,10 @@ export class WhiteboardCanvas {
 
   private rafId: number | null = null
   private lastRecomputeTime = 0
+  /** When an export last moved the camera: the board has caught up with it
+   * once a visibility pass has run since (`ExportController`'s `isSettled`). */
+  private exportCameraMovedAt = 0
+  private exporter: ExportController | null = null
   /** Cards whose content build ran out of a frame's budget and is owed on a
    * later one — drained a few per frame by `drainQueues` (see
    * `renderMarkdownInto`, which is what puts them here). */
@@ -1300,6 +1305,7 @@ export class WhiteboardCanvas {
       openReader: (id) => this.pdf.openReaderPanel(id),
       toggleSpread: (id) => void this.toggleSpread(id),
       exportAnnotatedPdfItem: (path) => this.pdf.exportAnnotatedPdfItem(path),
+      exportItem: (scope) => this.exporter?.menuItem(scope) ?? null,
       createGroupFromSelection: () => this.createGroupFromSelection(),
       tidySelection: () => this.tidySelection(),
       alignSelection: (edge) => this.alignSelection(edge),
@@ -1452,6 +1458,24 @@ export class WhiteboardCanvas {
       '--yolo-whiteboard-resizer-size',
       `${RESIZE_HANDLE_PX}px`,
     )
+
+    this.exporter = new ExportController({
+      core: this.core,
+      rootEl: root,
+      viewportEl: viewport,
+      worldEl: world,
+      camera: this.cameraController,
+      edges: this.edgeLayer,
+      isSettled: () =>
+        !this.overview &&
+        this.lastRecomputeTime >= this.exportCameraMovedAt &&
+        this.engine.pendingMountCount === 0 &&
+        this.contentSyncQueue.size === 0,
+      cameraMoved: () => {
+        this.exportCameraMovedAt = this.context.getWindow().performance.now()
+      },
+      commitEdit: () => this.editing.forceCommitActiveEdit(),
+    })
 
     this.setupInteraction()
     this.keymap.bindViewKeys()
@@ -1735,6 +1759,13 @@ export class WhiteboardCanvas {
   //
   // The path is the identity: a canvas is asked which board it is showing
   // rather than registered under a path, so a rename needs no bookkeeping.
+
+  /** Opens the export menu under the board's top-right corner — asked from
+   * outside the board, by a command or the tab's own menu. Exports the
+   * selection when there is one, as the board's own menus do. */
+  showExportMenu(): void {
+    this.exporter?.showMenu('selection', 'corner')
+  }
 
   /** Vault path of the board on screen; empty before a file is loaded. */
   getBoardPath(): string {

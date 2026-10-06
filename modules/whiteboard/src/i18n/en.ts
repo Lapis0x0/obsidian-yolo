@@ -4,6 +4,7 @@ export const en = {
     open: 'Open whiteboard',
   },
   command: {
+    exportBoard: 'Export current whiteboard',
     newWhiteboard: 'New whiteboard',
     importAllCanvas: 'Import every Canvas as a YOLO whiteboard',
   },
@@ -13,6 +14,8 @@ export const en = {
       'Create YOLO whiteboards and edit their cards, connections and groups.',
   },
   menu: {
+    exportBoard: 'Export whiteboard…',
+    exportSelection: 'Export selection…',
     // The folder context menu sits next to Obsidian core's own "New canvas"
     // item with no plugin prefix, so this entry names the product.
     newWhiteboard: 'New YOLO whiteboard',
@@ -119,7 +122,24 @@ export const en = {
       'Create a YOLO whiteboard beside each of the {count} Canvas file(s) in this vault. The Canvas files themselves are left untouched.',
     importAllCta: 'Import',
   },
+  // Board export (ui/canvas/exportController.ts).
+  export: {
+    png: 'Export as PNG · {scale}× ({width} × {height})',
+    pdf: 'Export as PDF · {scale}× ({width} × {height})',
+    copy: 'Copy as image · {scale}× ({width} × {height})',
+    copyTooLarge: 'Copy as image: too large at {width} × {height}',
+    pngFilter: 'PNG image',
+    pdfFilter: 'PDF document',
+    title: 'Exporting…',
+    progress: 'Part {done} of {total}',
+    cancel: 'Cancel',
+  },
   notice: {
+    exported: 'Exported to {name}',
+    copiedImage: 'Image copied',
+    exportCancelled: 'Export cancelled',
+    exportNothing: 'There is nothing on this whiteboard to export.',
+    exportBoardNotOpen: 'Open the whiteboard to export it.',
     convertedToNote: 'Card saved as {path}',
     dropUnsupported:
       'Only notes, PDFs, images, audio, video and HTML files can be dropped onto a whiteboard.',
@@ -204,6 +224,7 @@ export const en = {
     },
   },
   error: {
+    exportFailed: 'Could not export this whiteboard.',
     title: 'Could not read this whiteboard',
     hint: 'The file could not be parsed. It has not been modified — fix it outside the whiteboard and reopen.',
     createFailed: 'Could not create a new whiteboard.',

@@ -4,6 +4,7 @@ export const it = {
     open: 'Apri lavagna',
   },
   command: {
+    exportBoard: 'Esporta la lavagna corrente',
     newWhiteboard: 'Nuova lavagna',
     importAllCanvas: 'Importa tutti i Canvas come lavagne YOLO',
   },
@@ -13,6 +14,8 @@ export const it = {
       'Crea lavagne YOLO e modificane schede, collegamenti e gruppi.',
   },
   menu: {
+    exportBoard: 'Esporta lavagna…',
+    exportSelection: 'Esporta selezione…',
     newWhiteboard: 'Nuova lavagna YOLO',
     importCanvas: 'Importa come lavagna YOLO',
     newCard: 'Nuova scheda',
@@ -116,7 +119,24 @@ export const it = {
       'Verrà creata una lavagna YOLO accanto a ciascuno dei {count} file Canvas presenti in questo vault. I file Canvas originali non vengono modificati.',
     importAllCta: 'Importa',
   },
+  // Esportazione della lavagna (ui/canvas/exportController.ts).
+  export: {
+    png: 'Esporta come PNG · {scale}× ({width} × {height})',
+    pdf: 'Esporta come PDF · {scale}× ({width} × {height})',
+    copy: 'Copia come immagine · {scale}× ({width} × {height})',
+    copyTooLarge: 'Copia come immagine: troppo grande a {width} × {height}',
+    pngFilter: 'Immagine PNG',
+    pdfFilter: 'Documento PDF',
+    title: 'Esportazione in corso…',
+    progress: 'Parte {done} di {total}',
+    cancel: 'Annulla',
+  },
   notice: {
+    exported: 'Esportata in {name}',
+    copiedImage: 'Immagine copiata',
+    exportCancelled: 'Esportazione annullata',
+    exportNothing: 'Non c’è niente da esportare su questa lavagna.',
+    exportBoardNotOpen: 'Apri la lavagna per esportarla.',
     convertedToNote: 'Scheda salvata come {path}',
     dropUnsupported:
       'Su una lavagna si possono trascinare solo note, PDF, immagini, audio, video e file HTML.',
@@ -202,6 +222,7 @@ export const it = {
     },
   },
   error: {
+    exportFailed: 'Impossibile esportare questa lavagna.',
     title: 'Impossibile leggere questa lavagna',
     hint: 'Il file non è stato interpretato correttamente. Non è stato modificato: correggilo fuori dalla lavagna e riaprilo.',
     createFailed: 'Impossibile creare una nuova lavagna.',

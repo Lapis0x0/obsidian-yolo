@@ -116,6 +116,9 @@ export type DropImportDeps = Readonly<{
    * (the canvas's `toggleSpread`). */
   toggleSpread: (id: NodeId) => void
   exportAnnotatedPdfItem: (path: string) => YoloModuleHostMenuItemV1
+  /** The item that opens the board's export menu, or null where none is
+   * offered (ui/canvas/exportController.ts). */
+  exportItem: (scope: 'board' | 'selection') => YoloModuleHostMenuItemV1 | null
   // The selection's commands, which the menu shares with the toolbar.
   createGroupFromSelection: () => void
   tidySelection: () => void
@@ -261,6 +264,7 @@ export class DropImport {
           { kind: 'separator' },
         ]
       : []
+    const exportItem = this.deps.exportItem('board')
     return [
       ...creation,
       {
@@ -268,6 +272,7 @@ export class DropImport {
         icon: 'locate-fixed',
         onSelect: () => this.deps.resetCamera(),
       },
+      ...(exportItem ? [exportItem] : []),
     ]
   }
 
@@ -378,6 +383,8 @@ export class DropImport {
         this.deps.zoomToSelection()
       },
     })
+    const exportItem = this.deps.exportItem('selection')
+    if (exportItem) items.push(exportItem)
     if (single?.type === 'group' && this.core.canEdit()) {
       items.push({
         title: this.core.t('menu.renameGroup'),
