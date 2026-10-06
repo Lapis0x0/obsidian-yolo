@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 43,
+  "revision": 44,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.10",
@@ -101,7 +101,7 @@
           "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
         }
       },
-      "version": "0.0.5",
+      "version": "0.0.6",
       "hostApi": "^1.10.0",
       "platforms": [
         "desktop",
@@ -114,23 +114,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.5",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.6",
       "releaseNotes": {
-        "en": "## 0.0.5 Minimap & Smoother Zooming 🗺️\n\n- Added a minimap, so you can view and jump across the whole whiteboard at any time while zoomed in to read.\n- Raised the whiteboard's maximum zoom to 500%.\n- Improved trackpad zoom speed.\n- Improved the smoothness of PDF interactions.",
-        "zh": "## 0.0.5 小地图与更顺手的缩放 🗺️\n\n- 新增小地图，放大阅读时可随时查看并跳转画板全局。\n- 白板最大缩放提高到 500%。\n- 优化触控板的缩放速度。\n- 优化 PDF 的交互流畅度。"
+        "en": "## 0.0.6 Passage-Level Connections 🔗\n\n- Added passage-level connections: any passage in any card can now connect to any other.\n- Introduced alignment for the whiteboard's zoomed-out view.\n- Improved the loading speed of spread-out PDF pages, and improved the whiteboard's performance.\n- Improved how long PDF titles are displayed.\n- Improved selecting and editing text cards when zoomed out.",
+        "zh": "## 0.0.6 段落级连线 🔗\n\n- 新增段落级连线，任意卡片的任意段落都能互相连接。\n- 为缩略态白板引入对齐机制。\n- 优化 PDF 分页的加载速度，优化白板的性能表现。\n- 优化 PDF 长标题的展示逻辑。\n- 优化缩放较小时文字卡片的选中与编辑手感。"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.5/release-note.md",
-        "byteSize": 520,
-        "sha256": "52502e2b1cb66e9d5e5c801d4c108bf60fd0f553b0d98eca8f47ea609a56d78b"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.6/release-note.md",
+        "byteSize": 721,
+        "sha256": "ccdfb5085aece2f11ad81c2a9ad50794783b70b92e46a3a49718accdc5323521"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/whiteboard/0.0.5/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.5/module.json",
+        "mirrorPath": "modules/whiteboard/0.0.6/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.6/module.json",
         "byteSize": 1867,
-        "sha256": "49cc423dd9c3db11c860f85d326c6db4d68f15ad8a5c4589555588ac14b15b8f"
+        "sha256": "3ef9cb5c6684e49265e69e6e2cc8cddf2ce922505ef5ddd1f1d738b69b924dea"
       }
     }
   ]
