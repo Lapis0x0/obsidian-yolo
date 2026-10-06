@@ -850,6 +850,14 @@ export class WhiteboardCanvas {
     const passageRuns = doc.createElementNS(SVG_NS, 'g')
     passageRuns.setAttribute('class', EDGES_GROUP_CLASS)
     passageRunsSvg.appendChild(passageRuns)
+    // The in-flight connection's runs, beside the group rather than in it,
+    // like the curve's preview beside the edges group.
+    const [previewStartRun, previewEndRun] = [0, 1].map(() => {
+      const run = doc.createElementNS(SVG_NS, 'path')
+      run.setAttribute('class', `${EDGE_PREVIEW_CLASS} ${EDGE_HIDDEN_CLASS}`)
+      passageRunsSvg.appendChild(run)
+      return run
+    })
     world.appendChild(passageRunsSvg)
 
     const edgeLabels = doc.createElement('div')
@@ -860,7 +868,7 @@ export class WhiteboardCanvas {
     const interactionLayer = buildInteractionLayer(doc)
     world.appendChild(interactionLayer)
     this.passageHandles?.destroy()
-    this.passageHandles = new PassageHandles(doc, world, {
+    const passageHandles = new PassageHandles(doc, world, {
       getSelectedEdge: () => {
         if (this.selectedEdgeIds.size !== 1) return null
         const [id] = this.selectedEdgeIds
@@ -874,11 +882,13 @@ export class WhiteboardCanvas {
         this.setEdgeAnchor(edgeId, end, anchor, key),
       worldPoint: (point) => this.worldPointFromEvent(point),
     })
+    this.passageHandles = passageHandles
     this.passagePoints?.destroy()
-    this.passagePoints = new PassagePoints(doc, world, {
+    const passagePoints = new PassagePoints(doc, world, {
       getNodeRect: (id) => this.nodesById.get(id) ?? null,
       placePassage: (id, anchor) => this.placePassage(id, anchor),
     })
+    this.passagePoints = passagePoints
     this.snapGuideLayer?.destroy()
     const snapGuides = new SnapGuideLayer(doc, world)
     this.snapGuideLayer = snapGuides
@@ -980,10 +990,16 @@ export class WhiteboardCanvas {
       // variable on each of these rather than once on `world`, because a
       // custom property written on `world` restyles every card under it (see
       // CameraController's applyZoomScale).
-      [interactionLayer, snapGuides.element, spreadFrame.element],
-      // The two of them the overview tier takes out of the document, which is
-      // why they are handed over separately — see the same method.
-      [edgesSvg, edgeLabels],
+      [
+        interactionLayer,
+        snapGuides.element,
+        spreadFrame.element,
+        passagePoints.element,
+        passageHandles.element,
+      ],
+      // The ones the overview tier takes out of the document, which is why
+      // they are handed over separately — see the same method.
+      [edgesSvg, passageRunsSvg, edgeLabels],
       {
         isParseFailed: this.core.isParseFailed,
         isEditingWheelTarget: (target) =>
@@ -1303,6 +1319,7 @@ export class WhiteboardCanvas {
       panCaptureEl: panCapture,
       interactionLayerEl: interactionLayer,
       previewPathEl: preview,
+      previewRunEls: { start: previewStartRun, end: previewEndRun },
       getNodesById: () => this.nodesById,
       camera: this.cameraController,
       edges: this.edgeLayer,

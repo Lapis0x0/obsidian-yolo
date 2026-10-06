@@ -232,6 +232,7 @@ export type InteractionControllerDeps = Readonly<{
   interactionLayerEl: HTMLElement
   /** The connection preview path in the edges `<svg>`. */
   previewPathEl: SVGPathElement
+  previewRunEls: ConnectGestureDeps['previewRunEls']
   getNodesById: () => ReadonlyMap<NodeId, BoardNode>
   camera: Pick<
     CameraController,
@@ -397,6 +398,7 @@ export class InteractionController {
       core: deps.core,
       viewportEl: deps.viewportEl,
       previewPathEl: deps.previewPathEl,
+      previewRunEls: deps.previewRunEls,
       interactionLayerEl: deps.interactionLayerEl,
       getLayerNodeId,
       edges: deps.edges,

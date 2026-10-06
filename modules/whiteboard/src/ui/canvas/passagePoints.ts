@@ -56,6 +56,11 @@ export class PassagePoints {
     worldEl.appendChild(this.layerEl)
   }
 
+  /** The layer, for the camera to write the zoom counter-scale on. */
+  get element(): HTMLElement {
+    return this.layerEl
+  }
+
   /** The passage selected in `nodeId`'s card, or — with null — none. */
   setSource(
     source: Readonly<{ nodeId: NodeId; anchor: EdgeAnchor }> | null,

@@ -1460,6 +1460,9 @@ export class PdfReader {
     })
     this.applyScroll(layout, position)
     this.position = position
+    // Every page has a new place and size. A sheet reports no scroll to say
+    // so, and a page loaded before the first layout could not be placed.
+    this.options.onPassagesMove?.()
   }
 
   /** Puts `position` at the top, or holds it (`pendingPosition`) while the

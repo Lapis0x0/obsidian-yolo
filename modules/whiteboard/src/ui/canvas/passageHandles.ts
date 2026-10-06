@@ -74,6 +74,11 @@ export class PassageHandles {
     worldEl.appendChild(this.layerEl)
   }
 
+  /** The layer, for the camera to write the zoom counter-scale on. */
+  get element(): HTMLElement {
+    return this.layerEl
+  }
+
   /** Puts the handles where the selected edge's passages are now — or
    * takes them away when there is no such edge, or its cards cannot say. */
   sync(): void {

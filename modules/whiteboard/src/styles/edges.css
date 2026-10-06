@@ -56,9 +56,11 @@
 
 /* Hovering the hit path thickens the edge it belongs to (its immediate
  * sibling — see createEdgeDom's element order), which is the only signal
- * that a line is a thing you can grab. */
+ * that a line is a thing you can grab. Hovering a run over a card does the
+ * same through the class EdgeLayer's `hover` puts on every piece. */
 
 .yolo-whiteboard-edge-hit:hover + .yolo-whiteboard-edge-path,
+.yolo-whiteboard-edge-path.yolo-whiteboard-edge-hovered,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
   stroke-width: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
 }
@@ -96,32 +98,31 @@
 /* The straight run an edge makes on over a card to the passage it reaches
  * (ui/canvas/edgeLayer.ts's placeRun). Its own SVG over the cards — the
  * curve's is under them — mounted before any card, so it needs the z-index
- * to paint over them. Fainter than the line it continues: it crosses the
- * card's text, and is there to show where the edge goes, not to be read
- * over. Never a pointer target, so text under it can still be selected. */
+ * to paint over them. Drawn, pointed at and pressed as the line it
+ * continues — a hit path under it too — so the edge is one line from end to
+ * end. */
 .yolo-whiteboard-edges.yolo-whiteboard-edge-passage-runs {
   z-index: 3;
 }
 
-.yolo-whiteboard-edge-passage-run {
+.yolo-whiteboard-edge-passage-run-line {
   fill: none;
   stroke: var(--yolo-whiteboard-color);
   stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
-  /* The line only: an arrowhead on it takes the stroke's colour, not this,
-   * and stays as solid as the one the curve would carry. */
-  stroke-opacity: 0.5;
   pointer-events: none;
 }
 
-.yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-hovered,
-.yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-selected {
+.yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-hovered
+  .yolo-whiteboard-edge-passage-run-line,
+.yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-selected
+  .yolo-whiteboard-edge-passage-run-line {
   stroke-width: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
-  stroke-opacity: 0.8;
 }
 
 .yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-selected:not(
     .yolo-whiteboard-themed
-  ) {
+  )
+  .yolo-whiteboard-edge-passage-run-line {
   stroke: var(--interactive-accent);
 }
 

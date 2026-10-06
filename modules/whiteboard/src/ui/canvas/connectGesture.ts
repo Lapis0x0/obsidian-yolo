@@ -110,6 +110,9 @@ export type ConnectGestureDeps = Readonly<{
    * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
    * takes it out from under a live gesture. */
   previewPathEl: SVGPathElement
+  /** The preview's runs on over a card to the passage an end reaches, over
+   * the cards where the curve is under them (as EdgeLayer draws an edge's). */
+  previewRunEls: Readonly<{ start: SVGPathElement; end: SVGPathElement }>
   /** The handle layer, which carries the side being pulled from while the
    * drag is on. */
   interactionLayerEl: HTMLElement
@@ -515,6 +518,26 @@ export class ConnectGesture {
     )
     preview.setAttribute('d', buildEdgePathD(geometry))
     preview.classList.remove(EDGE_HIDDEN_CLASS)
+    const runs = this.deps.previewRunEls
+    drawPreviewRun(runs.start, geometry.start, geometry.startInner)
+    drawPreviewRun(runs.end, geometry.end, geometry.endInner)
+    // The arrowhead goes where the end is drawn to: on the passage when the
+    // run reaches one.
+    const arrow =
+      preview.getAttribute('marker-end') ?? runs.end.getAttribute('marker-end')
+    if (!arrow) return
+    const [carrier, other] =
+      geometry.endInner !== undefined
+        ? [runs.end, preview]
+        : [preview, runs.end]
+    carrier.setAttribute('marker-end', arrow)
+    other.removeAttribute('marker-end')
+  }
+
+  private hidePreview(): void {
+    this.deps.previewPathEl.classList.add(EDGE_HIDDEN_CLASS)
+    this.deps.previewRunEls.start.classList.add(EDGE_HIDDEN_CLASS)
+    this.deps.previewRunEls.end.classList.add(EDGE_HIDDEN_CLASS)
   }
 
   private setConnectTarget(nodeId: NodeId | null): void {
@@ -535,12 +558,13 @@ export class ConnectGesture {
   reset(): void {
     this.release()
     this.setConnectTarget(null)
+    this.hidePreview()
   }
 
   finish(interaction: ConnectInteraction, e: PointerEvent): void {
     this.release()
     this.setConnectTarget(null)
-    this.deps.previewPathEl?.classList.add(EDGE_HIDDEN_CLASS)
+    this.hidePreview()
     if (this.deps.interactionLayerEl) {
       delete this.deps.interactionLayerEl.dataset.connecting
     }
@@ -668,4 +692,15 @@ export class ConnectGesture {
     }
     return { node, anchor: { nodeId: node.id, side } }
   }
+}
+
+/** Draws a preview run from a card's edge on to a passage, or hides it when
+ * the end reaches none in sight. */
+function drawPreviewRun(
+  run: SVGPathElement,
+  from: Readonly<{ x: number; y: number }>,
+  to: Readonly<{ x: number; y: number }> | undefined,
+): void {
+  run.classList.toggle(EDGE_HIDDEN_CLASS, !to)
+  if (to) run.setAttribute('d', `M${from.x},${from.y} L${to.x},${to.y}`)
 }

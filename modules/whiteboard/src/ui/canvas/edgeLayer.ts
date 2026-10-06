@@ -52,6 +52,7 @@ const EDGE_PASSAGE_END_CLASS = 'yolo-whiteboard-edge-passage-end'
  * class, apart from the one a connection drag hides the edge with. */
 const EDGE_PASSAGE_END_OFF_CLASS = 'yolo-whiteboard-edge-passage-end-off'
 const EDGE_PASSAGE_RUN_CLASS = 'yolo-whiteboard-edge-passage-run'
+const EDGE_PASSAGE_RUN_LINE_CLASS = 'yolo-whiteboard-edge-passage-run-line'
 const EDGE_HOVERED_CLASS = 'yolo-whiteboard-edge-hovered'
 
 type EdgeDomEntry = Readonly<{
@@ -68,8 +69,17 @@ type EdgeDomEntry = Readonly<{
   toMark: SVGCircleElement | null
   /** The runs on over the card to those passages, drawn above the cards
    * (`passageRunsEl`) where the curve is drawn beneath them. */
-  fromRun: SVGPathElement | null
-  toRun: SVGPathElement | null
+  fromRun: PassageRun | null
+  toRun: PassageRun | null
+}>
+
+/** A run over a card: the line, and a hit path under it, as the curve has —
+ * the same edge to point at, press and drag wherever it is drawn. States
+ * (culled, hidden, selected, hovered, colour) go on the group. */
+type PassageRun = Readonly<{
+  group: SVGGElement
+  hit: SVGPathElement
+  line: SVGPathElement
 }>
 
 /** Where a passage is inside its card, measured down from the card's top
@@ -235,8 +245,8 @@ export class EdgeLayer {
       dom.label?.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.fromMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
       dom.toMark?.classList.toggle(EDGE_CULLED_CLASS, culled)
-      dom.fromRun?.classList.toggle(EDGE_CULLED_CLASS, culled)
-      dom.toRun?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.fromRun?.group.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.toRun?.group.classList.toggle(EDGE_CULLED_CLASS, culled)
       if (culled) {
         this.culledIds.add(edgeId)
         continue
@@ -267,8 +277,8 @@ export class EdgeLayer {
     dom.label?.classList.remove(EDGE_CULLED_CLASS)
     dom.fromMark?.classList.remove(EDGE_CULLED_CLASS)
     dom.toMark?.classList.remove(EDGE_CULLED_CLASS)
-    dom.fromRun?.classList.remove(EDGE_CULLED_CLASS)
-    dom.toRun?.classList.remove(EDGE_CULLED_CLASS)
+    dom.fromRun?.group.classList.remove(EDGE_CULLED_CLASS)
+    dom.toRun?.group.classList.remove(EDGE_CULLED_CLASS)
     this.culledIds.delete(edgeId)
     if (this.staleIds.has(edgeId)) this.redrawEdge(edgeId)
   }
@@ -351,21 +361,31 @@ export class EdgeLayer {
     })
   }
 
-  private createPassageRun(edge: Edge): SVGPathElement {
-    const run = this.context.getDocument().createElementNS(SVG_NS, 'path')
-    run.setAttribute('class', EDGE_PASSAGE_RUN_CLASS)
-    applyColorToElement(run, edge.color)
-    this.passageRunsEl.appendChild(run)
-    return run
+  private createPassageRun(edge: Edge): PassageRun {
+    const doc = this.context.getDocument()
+    const group = doc.createElementNS(SVG_NS, 'g')
+    group.setAttribute('class', EDGE_PASSAGE_RUN_CLASS)
+    applyColorToElement(group, edge.color)
+    const hit = doc.createElementNS(SVG_NS, 'path')
+    hit.setAttribute('class', EDGE_HIT_CLASS)
+    hit.dataset.edgeId = edge.id
+    hit.addEventListener('pointerenter', () => this.hover(edge.id, true))
+    hit.addEventListener('pointerleave', () => this.hover(edge.id, false))
+    const line = doc.createElementNS(SVG_NS, 'path')
+    line.setAttribute('class', EDGE_PASSAGE_RUN_LINE_CLASS)
+    group.append(hit, line)
+    this.passageRunsEl.appendChild(group)
+    return { group, hit, line }
   }
 
-  /** The pointer came onto an edge or left it: the runs over its cards are
-   * not siblings of its hit path, so they are told rather than styled by
-   * `:hover`. */
+  /** The pointer came onto an edge or left it — onto any of its pieces,
+   * curve or runs, which are not siblings in one SVG: each is told, so the
+   * whole edge answers wherever it was pointed at. */
   private hover(edgeId: EdgeId, on: boolean): void {
     const dom = this.edgeElsById.get(edgeId)
-    dom?.fromRun?.classList.toggle(EDGE_HOVERED_CLASS, on)
-    dom?.toRun?.classList.toggle(EDGE_HOVERED_CLASS, on)
+    dom?.path.classList.toggle(EDGE_HOVERED_CLASS, on)
+    dom?.fromRun?.group.classList.toggle(EDGE_HOVERED_CLASS, on)
+    dom?.toRun?.group.classList.toggle(EDGE_HOVERED_CLASS, on)
     this.callbacks.onEdgeHover(on ? edgeId : null)
   }
 
@@ -443,8 +463,8 @@ export class EdgeLayer {
     dom.label?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
     dom.fromMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
     dom.toMark?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
-    dom.fromRun?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
-    dom.toRun?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.fromRun?.group.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.toRun?.group.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
   }
 
   /** Toggles an edge's selected styling — the DOM half of canvas.ts's own
@@ -452,8 +472,8 @@ export class EdgeLayer {
   setEdgeSelected(id: EdgeId, selected: boolean): void {
     const dom = this.edgeElsById.get(id)
     dom?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
-    dom?.fromRun?.classList.toggle(EDGE_SELECTED_CLASS, selected)
-    dom?.toRun?.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    dom?.fromRun?.group.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    dom?.toRun?.group.classList.toggle(EDGE_SELECTED_CLASS, selected)
   }
 
   /** Board-data rect for `id`, or its live drag position from `overrides`
@@ -505,8 +525,8 @@ export class EdgeLayer {
     const toArrow = edge.toEnd === 'arrow'
     this.setMarker(dom.path, 'marker-start', fromArrow && !geometry.startInner)
     this.setMarker(dom.path, 'marker-end', toArrow && !geometry.endInner)
-    if (dom.fromRun) this.setMarker(dom.fromRun, 'marker-end', fromArrow)
-    if (dom.toRun) this.setMarker(dom.toRun, 'marker-end', toArrow)
+    if (dom.fromRun) this.setMarker(dom.fromRun.line, 'marker-end', fromArrow)
+    if (dom.toRun) this.setMarker(dom.toRun.line, 'marker-end', toArrow)
   }
 
   /** Where an edge is drawn now — its ends placed at the passages they
@@ -603,8 +623,8 @@ export class EdgeLayer {
     if (dom.label) applyColorToElement(dom.label, color)
     if (dom.fromMark) applyColorToElement(dom.fromMark, color)
     if (dom.toMark) applyColorToElement(dom.toMark, color)
-    if (dom.fromRun) applyColorToElement(dom.fromRun, color)
-    if (dom.toRun) applyColorToElement(dom.toRun, color)
+    if (dom.fromRun) applyColorToElement(dom.fromRun.group, color)
+    if (dom.toRun) applyColorToElement(dom.toRun.group, color)
   }
 
   /** Toggles an edge's start/end arrowhead markers to match its
@@ -657,14 +677,13 @@ function placeMark(mark: SVGCircleElement | null, at: Point | null): void {
  * passage is not in sight (`to` absent). Drawn edge-first, so its
  * arrowhead points in. */
 function placeRun(
-  run: SVGPathElement | null,
+  run: PassageRun | null,
   from: Point,
   to: Point | undefined,
 ): void {
   if (!run) return
-  if (!to) {
-    run.removeAttribute('d')
-    return
+  for (const path of [run.hit, run.line]) {
+    if (to) path.setAttribute('d', `M${from.x},${from.y} L${to.x},${to.y}`)
+    else path.removeAttribute('d')
   }
-  run.setAttribute('d', `M${from.x},${from.y} L${to.x},${to.y}`)
 }
