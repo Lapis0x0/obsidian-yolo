@@ -173,8 +173,10 @@ export type AnnotationControllerOptions = Readonly<{
   /** Where the connection points of the passage the toolbar acts for are on
    * screen, or null: the toolbar stands clear of them as of the passage. */
   passagePointsRect: () => DOMRect | null
-  /** The toolbar came up for something (a selection, a highlight, a frame,
-   * a comment), or went: the board's own toolbar gives way to it. */
+  /** Something inside a card took the toolbar's place, or gave it back: the
+   * toolbar is up for it (a selection, a highlight, a frame, a comment), or
+   * an annotation is being pressed — which, let go, opens it. Told from the
+   * press, so the board's own toolbar, giving way, never shows in between. */
   onToolbarShown: (shown: boolean) => void
   reportError: (stage: string, error: unknown) => void
 }>
@@ -241,6 +243,8 @@ export class AnnotationController {
   private previewTimer: number | null = null
   private pointerOnPreview = false
   private mode: Mode | null = null
+  /** What `onToolbarShown` last said. */
+  private toolbarShown = false
   /** The highlight last told of (`onActiveHighlight`). */
   private announced: Readonly<{
     reader: PdfReader
@@ -569,7 +573,16 @@ export class AnnotationController {
     this.rebuild()
     this.startFollowing()
     this.announceHighlight()
-    if (!previous) this.options.onToolbarShown(true)
+    this.syncToolbarShown()
+  }
+
+  /** Tells whether something inside a card holds the toolbar's place now,
+   * if that changed (`onToolbarShown`). */
+  private syncToolbarShown(): void {
+    const shown = this.mode !== null || this.grab !== null
+    if (shown === this.toolbarShown) return
+    this.toolbarShown = shown
+    this.options.onToolbarShown(shown)
   }
 
   /** Tells of the highlight open now, if that changed. */
@@ -598,7 +611,6 @@ export class AnnotationController {
   }
 
   private close(): void {
-    const wasOpen = this.mode !== null
     this.endGrab()
     this.closeEditor(true)
     if (this.mode?.kind === 'area') this.mode.reader.clearPendingArea()
@@ -607,7 +619,7 @@ export class AnnotationController {
     this.toolbar.setModel(null)
     this.stopFollowing()
     this.announceHighlight()
-    if (wasOpen) this.options.onToolbarShown(false)
+    this.syncToolbarShown()
   }
 
   private rebuild(): void {
@@ -1356,6 +1368,7 @@ export class AnnotationController {
       ghost: null,
       landingBody: null,
     }
+    this.syncToolbarShown()
     const doc = this.options.parent.ownerDocument
     doc.addEventListener('pointermove', this.onGrabMove)
     doc.addEventListener('pointerup', this.onGrabUp)
@@ -1445,16 +1458,18 @@ export class AnnotationController {
         ? this.options.excerpts.dropPoint(event)
         : null
     const clicked = !grab.ghost && event.type === 'pointerup'
-    this.endGrab()
-    if (at) this.dropGrabbed(grab, at)
     // Let go where it was pressed: a click on the annotation, which opens
-    // it — the reader never saw this press, so it reports no click.
+    // it — the reader never saw this press, so it reports no click. Opened
+    // before the press ends, so the toolbar's place passes from the press
+    // to what it opened without being given back in between.
     if (clicked && grab.source.kind !== 'area') {
       grab.reader.clearTextSelection()
       if (grab.source.kind === 'comment') {
         this.openComment(grab.reader, grab.source.id)
       } else this.onAnnotationClick(grab.reader, grab.source.id)
     }
+    this.endGrab()
+    if (at) this.dropGrabbed(grab, at)
   }
 
   /** Ends a press or a drag, dropping nothing. */
@@ -1462,6 +1477,7 @@ export class AnnotationController {
     const grab = this.grab
     if (!grab) return
     this.grab = null
+    this.syncToolbarShown()
     const doc = this.options.parent.ownerDocument
     doc.removeEventListener('pointermove', this.onGrabMove)
     doc.removeEventListener('pointerup', this.onGrabUp)
