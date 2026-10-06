@@ -157,6 +157,30 @@ describe('openSpread / closeSpread', () => {
     expect(closed.edges[0]).toMatchObject({ toNode: 'p', toPage: 2 })
   })
 
+  it('carries a passage an end reaches onto its sheet, and back', () => {
+    const anchor = {
+      kind: 'pdf',
+      page: 2,
+      quadPoints: [0, 10, 50, 10, 0, 0, 50, 0],
+      quote: { exact: 'a passage' },
+    } as const
+    const before = board(
+      [pdf('p'), pdf('q')],
+      [edge('e', { fromNode: 'p', fromPage: 2, fromAnchor: anchor, toNode: 'q' })],
+    )
+    const open = openSpread(before, 'p', threePages)
+    expect(open.edges[0]).toMatchObject({
+      fromNode: pdfPageNodeId('p', 2),
+      fromAnchor: anchor,
+    })
+    const closed = closeSpread(open, 'p')
+    expect(closed.edges[0]).toMatchObject({
+      fromNode: 'p',
+      fromPage: 2,
+      fromAnchor: anchor,
+    })
+  })
+
   it('puts the card back and remembers the layout', () => {
     const before = board([pdf('p', { x: 5, y: 6 })])
     const open = openSpread(before, 'p', threePages)

@@ -17,6 +17,7 @@ import type {
   Board,
   BoardNode,
   Edge,
+  EdgeAnchor,
   EdgeEnd,
   EdgeId,
   NodeColor,
@@ -47,6 +48,12 @@ export type EdgePatch = Readonly<{
   toNode?: NodeId
   fromSide?: NodeSide
   toSide?: NodeSide
+  /** `undefined` takes the field off: the end reaches the whole node, or
+   * the whole PDF. */
+  fromPage?: number
+  toPage?: number
+  fromAnchor?: EdgeAnchor
+  toAnchor?: EdgeAnchor
   fromEnd?: EdgeEnd
   toEnd?: EdgeEnd
   color?: NodeColor
@@ -288,12 +295,15 @@ export function removeEdge(board: Board, id: EdgeId): Board {
   return { ...board, edges: board.edges.filter((edge) => edge.id !== id) }
 }
 
+/** A field set to `undefined` is the field left off — a patch takes one away
+ * by writing it so — and compares equal to it. */
 function shallowEqual<T extends object>(a: T, b: T): boolean {
   if (a === b) return true
   const aRecord = a as Record<string, unknown>
   const bRecord = b as Record<string, unknown>
-  const aKeys = Object.keys(aRecord)
-  const bKeys = Object.keys(bRecord)
-  if (aKeys.length !== bKeys.length) return false
-  return aKeys.every((key) => aRecord[key] === bRecord[key])
+  const keys = new Set([...Object.keys(aRecord), ...Object.keys(bRecord)])
+  for (const key of keys) {
+    if (aRecord[key] !== bRecord[key]) return false
+  }
+  return true
 }

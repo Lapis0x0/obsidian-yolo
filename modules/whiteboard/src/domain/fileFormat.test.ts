@@ -570,3 +570,64 @@ describe('parseBoard / serializeBoard', () => {
     })
   })
 })
+
+describe('edge anchors', () => {
+  const boardWith = (edge: Record<string, unknown>) =>
+    JSON.stringify({
+      version: 1,
+      nodes: [
+        { id: 'a', type: 'file', x: 0, y: 0, w: 100, h: 100, file: 'a.pdf' },
+        { id: 'b', type: 'text', x: 200, y: 0, w: 100, h: 100, text: 'b' },
+      ],
+      edges: [{ id: 'e', fromNode: 'a', toNode: 'b', ...edge }],
+    })
+  const pdfAnchor = {
+    kind: 'pdf',
+    page: 3,
+    quadPoints: [0, 10, 50, 10, 0, 0, 50, 0],
+    quote: { exact: 'a passage', prefix: 'before ', suffix: ' after' },
+    selection: [1, 0, 1, 9],
+  }
+  const textAnchor = { kind: 'text', quote: { exact: 'b' }, offset: 0 }
+
+  it('round-trips a PDF and a text anchor', () => {
+    const raw = boardWith({
+      fromPage: 3,
+      fromAnchor: pdfAnchor,
+      toAnchor: textAnchor,
+    })
+    const result = parseBoard(raw)
+    if (!result.ok) throw new Error('parse failed')
+    const edge = result.board.edges[0]
+    expect(edge.fromAnchor).toEqual(pdfAnchor)
+    expect(edge.toAnchor).toEqual(textAnchor)
+    const again = parseBoard(serializeBoard(result.board))
+    if (!again.ok) throw new Error('reparse failed')
+    expect(again.board.edges[0]).toEqual(edge)
+  })
+
+  it('drops an anchor it cannot place, keeping the edge on the whole node', () => {
+    const raw = boardWith({
+      fromAnchor: { ...pdfAnchor, quadPoints: [1, 2, 3] },
+      toAnchor: { kind: 'text', quote: { exact: '' }, offset: 0 },
+    })
+    const result = parseBoard(raw)
+    if (!result.ok) throw new Error('parse failed')
+    const edge = result.board.edges[0]
+    expect(edge.fromAnchor).toBeUndefined()
+    expect(edge.toAnchor).toBeUndefined()
+    expect(edge.extra).toEqual({})
+  })
+
+  it('keeps a malformed selection hint out of a PDF anchor', () => {
+    const raw = boardWith({ fromAnchor: { ...pdfAnchor, selection: [1, 2] } })
+    const result = parseBoard(raw)
+    if (!result.ok) throw new Error('parse failed')
+    expect(result.board.edges[0].fromAnchor).toEqual({
+      kind: 'pdf',
+      page: 3,
+      quadPoints: pdfAnchor.quadPoints,
+      quote: pdfAnchor.quote,
+    })
+  })
+})

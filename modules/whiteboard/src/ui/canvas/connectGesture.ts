@@ -321,9 +321,21 @@ export class ConnectGesture {
         : updateEdge(
             board,
             interaction.edgeId,
+            // The page and passage the end reached belonged to where it was:
+            // re-attached, it reaches the whole of where it lands.
             interaction.movingEnd === 'from'
-              ? { fromNode: target.nodeId, fromSide: target.side }
-              : { toNode: target.nodeId, toSide: target.side },
+              ? {
+                  fromNode: target.nodeId,
+                  fromSide: target.side,
+                  fromPage: undefined,
+                  fromAnchor: undefined,
+                }
+              : {
+                  toNode: target.nodeId,
+                  toSide: target.side,
+                  toPage: undefined,
+                  toAnchor: undefined,
+                },
           ),
     )
     this.deps.rebuildEdgesSvg()

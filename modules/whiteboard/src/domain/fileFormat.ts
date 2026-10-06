@@ -237,6 +237,46 @@ export function isPlainText(
   return node?.type === 'text' && node.plain === true
 }
 
+/** A passage of text an anchor names, with a little of what surrounds it —
+ * how it is told apart from the same words elsewhere, and found again when
+ * what is around it moves. */
+export type EdgeAnchorQuote = Readonly<{
+  exact: string
+  prefix?: string
+  suffix?: string
+}>
+
+/**
+ * The passage inside a card that an edge end reaches, when it reaches a
+ * passage rather than the whole card. Not in JSON Canvas: there the edge
+ * reaches the card, which is also where it is drawn whenever the passage
+ * cannot be (the card scrolled elsewhere, not drawn, the passage gone).
+ *
+ * - `pdf`: a passage on one page of a PDF, in the same coordinates as a
+ *   highlight in its annotation file (domain/pdfAnnotations.ts's
+ *   `HighlightAnchor`) — PDF user space, one quad of eight numbers per line —
+ *   so it is placed without a text layer, and the text layer's selection
+ *   tuple is a hint. An end on a PDF's card also names the anchor's page in
+ *   `fromPage`/`toPage`, so the end lands on that page's sheet when the
+ *   document is spread out.
+ * - `text`: a passage of a text or note card's Markdown source, by its words
+ *   and their context; `offset` is where in the source it was last found.
+ */
+export type EdgeAnchor =
+  | Readonly<{
+      kind: 'pdf'
+      /** 1-based. */
+      page: number
+      quadPoints: readonly number[]
+      quote: EdgeAnchorQuote
+      selection?: readonly [number, number, number, number]
+    }>
+  | Readonly<{
+      kind: 'text'
+      quote: EdgeAnchorQuote
+      offset: number
+    }>
+
 export type Edge = Readonly<{
   id: EdgeId
   fromNode: NodeId
@@ -253,6 +293,10 @@ export type Edge = Readonly<{
    */
   fromPage?: number
   toPage?: number
+  /** The passage inside the node an end reaches (`EdgeAnchor`), when not the
+   * whole of it. */
+  fromAnchor?: EdgeAnchor
+  toAnchor?: EdgeAnchor
   /** JSON Canvas defaults: 'none' at the source, 'arrow' at the target. */
   fromEnd: EdgeEnd
   toEnd: EdgeEnd
@@ -745,6 +789,8 @@ const EDGE_KNOWN_KEYS = [
   'toEnd',
   'fromPage',
   'toPage',
+  'fromAnchor',
+  'toAnchor',
   'color',
   'label',
 ] as const
@@ -828,6 +874,8 @@ function parseEdge(
   const label = typeof entry.label === 'string' ? entry.label : undefined
   const fromPage = parseEdgePage(entry.fromPage)
   const toPage = parseEdgePage(entry.toPage)
+  const fromAnchor = parseEdgeAnchor(entry.fromAnchor)
+  const toAnchor = parseEdgeAnchor(entry.toAnchor)
   return {
     id,
     fromNode,
@@ -836,6 +884,8 @@ function parseEdge(
     toSide,
     ...(fromPage === undefined ? {} : { fromPage }),
     ...(toPage === undefined ? {} : { toPage }),
+    ...(fromAnchor === undefined ? {} : { fromAnchor }),
+    ...(toAnchor === undefined ? {} : { toAnchor }),
     fromEnd,
     toEnd,
     color,
@@ -853,6 +903,58 @@ function parseEdgePage(value: unknown): number | undefined {
     : undefined
 }
 
+/** An anchor that is not one this version can place is dropped, and the end
+ * reaches the whole node — what an edge without the field does. */
+function parseEdgeAnchor(value: unknown): EdgeAnchor | undefined {
+  if (!isPlainObject(value)) return undefined
+  const quote = parseAnchorQuote(value.quote)
+  if (!quote) return undefined
+  if (value.kind === 'pdf') {
+    const { page, quadPoints, selection } = value
+    if (!(Number.isInteger(page) && (page as number) >= 1)) return undefined
+    if (
+      !Array.isArray(quadPoints) ||
+      quadPoints.length === 0 ||
+      quadPoints.length % 8 !== 0 ||
+      !quadPoints.every(isFiniteNumber)
+    ) {
+      return undefined
+    }
+    const hint =
+      Array.isArray(selection) &&
+      selection.length === 4 &&
+      selection.every((n) => Number.isInteger(n) && (n as number) >= 0)
+        ? (selection as unknown as readonly [number, number, number, number])
+        : undefined
+    return {
+      kind: 'pdf',
+      page: page as number,
+      quadPoints: quadPoints as number[],
+      quote,
+      ...(hint === undefined ? {} : { selection: hint }),
+    }
+  }
+  if (value.kind === 'text') {
+    const { offset } = value
+    if (!(Number.isInteger(offset) && (offset as number) >= 0)) return undefined
+    return { kind: 'text', quote, offset: offset as number }
+  }
+  return undefined
+}
+
+function parseAnchorQuote(value: unknown): EdgeAnchorQuote | undefined {
+  if (!isPlainObject(value)) return undefined
+  const { exact, prefix, suffix } = value
+  if (typeof exact !== 'string' || exact.length === 0) return undefined
+  if (prefix !== undefined && typeof prefix !== 'string') return undefined
+  if (suffix !== undefined && typeof suffix !== 'string') return undefined
+  return {
+    exact,
+    ...(prefix === undefined ? {} : { prefix }),
+    ...(suffix === undefined ? {} : { suffix }),
+  }
+}
+
 export function serializeEdge(edge: Edge): Record<string, unknown> {
   return {
     id: edge.id,
@@ -862,6 +964,8 @@ export function serializeEdge(edge: Edge): Record<string, unknown> {
     toSide: edge.toSide,
     fromPage: edge.fromPage,
     toPage: edge.toPage,
+    fromAnchor: edge.fromAnchor,
+    toAnchor: edge.toAnchor,
     fromEnd: edge.fromEnd,
     toEnd: edge.toEnd,
     color: edge.color,
