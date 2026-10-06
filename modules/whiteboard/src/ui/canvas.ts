@@ -1167,6 +1167,7 @@ export class WhiteboardCanvas {
           for (const id of ids) if (id !== null) this.passagesMoved(id)
           this.refreshPassageMarks()
         })
+        this.revalidatePassagePoints()
       },
       cards: this.cardRenderer,
       edges: this.edgeLayer,
@@ -1852,6 +1853,9 @@ export class WhiteboardCanvas {
     // Selection is one of the two things that decides where the handles are.
     this.interaction.updateInteractionLayer()
     this.toolbarController.refreshToolbar()
+    // A card let go may have taken its selected text down with its editor or
+    // its reader's text layer.
+    this.revalidatePassagePoints()
   }
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
@@ -3226,9 +3230,26 @@ export class WhiteboardCanvas {
     })
   }
 
+  /** Asks again, a frame on, whether the text the passage points stand for
+   * is still selected: something just changed that can take a selection
+   * away without a word (an editor closed, a card let go). */
+  private revalidatePassagePoints(): void {
+    this.onSelectionChange()
+  }
+
   private syncTextSelection(): void {
     const selection = this.context.getDocument().getSelection()
-    if (!selection || selection.isCollapsed) {
+    // Text is selected only while the selection holds some and is still in
+    // the page: an editor closed or a reader's text layer taken down takes
+    // its selection with it, and tells nobody (no `selectionchange`) — the
+    // range is left on nodes no longer there. Hence also the calls from the
+    // editing and selection changes that do that (`revalidatePassagePoints`).
+    if (
+      !selection ||
+      selection.isCollapsed ||
+      !selection.anchorNode?.isConnected ||
+      selection.toString().trim() === ''
+    ) {
       // An open highlight is not text selected: it stands until let go.
       if (this.highlightSelected) return
       this.passageSelection += 1

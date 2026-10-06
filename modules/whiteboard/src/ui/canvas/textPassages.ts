@@ -56,7 +56,9 @@ function displayedText(body: HTMLElement): DisplayedText {
     if (!el) return false
     let known = shown.get(el)
     if (known === undefined) {
-      known = el.checkVisibility()
+      // The rendering kept beside an editor is hidden by `visibility`, which
+      // the plain check does not see.
+      known = el.checkVisibility({ checkVisibilityCSS: true })
       shown.set(el, known)
     }
     return known
