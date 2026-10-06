@@ -154,6 +154,11 @@ export class EditingController {
     return this.editing !== null
   }
 
+  /** The card whose editor is open, or null. */
+  editingNodeId(): NodeId | null {
+    return this.editing?.nodeId ?? null
+  }
+
   /** Whether this card's editor is the one open. */
   isEditing(id: NodeId | null): boolean {
     return id !== null && this.editing?.nodeId === id

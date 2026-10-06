@@ -1,0 +1,36 @@
+/* --- passages of text and note cards ---------------------------------------
+ * The passages edges reach inside a text or note card, and the one a
+ * connection being dragged would reach (ui/canvas/textPassages.ts): CSS
+ * highlights, painted over the card's text without an element of their own.
+ * The same three states a PDF's passages have (pdf/annotations.css): a faint
+ * underline at rest, washed while the edge is pointed at or selected, and the
+ * drag's wash. */
+
+::highlight(yolo-whiteboard-passage) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 45%,
+    transparent
+  );
+  text-decoration-thickness: 1.5px;
+}
+
+::highlight(yolo-whiteboard-passage-strong) {
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 16%,
+    transparent
+  );
+  text-decoration: underline;
+  text-decoration-color: var(--interactive-accent);
+  text-decoration-thickness: 1.5px;
+}
+
+::highlight(yolo-whiteboard-passage-hint) {
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 22%,
+    transparent
+  );
+}

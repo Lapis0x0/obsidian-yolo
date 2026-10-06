@@ -113,6 +113,15 @@ import { PassagePoints } from './canvas/passagePoints'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import { SpreadFrame } from './canvas/spreadFrame'
+import {
+  PASSAGE_HIGHLIGHT,
+  blockAnchorAt,
+  paintPassages,
+  passageRange,
+  placeTextPassage,
+  rangeContains,
+  selectionAnchor,
+} from './canvas/textPassages'
 import { ToolbarController } from './canvas/toolbarController'
 import { CanvasControls } from './canvasControls'
 import {
@@ -381,6 +390,12 @@ export class WhiteboardCanvas {
   /** Bumped by every selection reported, so a passage made for an older one
    * (it is made asynchronously) is dropped. */
   private passageSelection = 0
+  /** The passage points stand for text selected in a text or note card
+   * (`syncTextSelection`), not a PDF's. */
+  private textPassageSelected = false
+  /** The card whose editor was open at the last editing change. */
+  private lastEditingId: NodeId | null = null
+  private selectionFrame: number | null = null
   /**
    * The overview tier's renderer. Built in `ensureDom`; null before
    * that, which `clear()` can reach.
@@ -682,6 +697,14 @@ export class WhiteboardCanvas {
     this.interaction.destroy()
     this.clipboard.destroy()
     this.viewportEl?.removeEventListener('wheel', this.cameraController.onWheel)
+    this.viewportEl?.removeEventListener('scroll', this.onCardScroll, true)
+    this.context
+      .getDocument()
+      .removeEventListener('selectionchange', this.onSelectionChange)
+    if (this.selectionFrame !== null) {
+      win.cancelAnimationFrame(this.selectionFrame)
+      this.selectionFrame = null
+    }
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
     this.keymap.destroy()
@@ -975,7 +998,7 @@ export class WhiteboardCanvas {
           const marked =
             this.reachesPassage(this.hoveredEdgeId) || this.reachesPassage(id)
           this.hoveredEdgeId = id
-          if (marked) this.cardRenderer.refreshPassageMarks()
+          if (marked) this.refreshPassageMarks()
         },
         t: this.core.t,
       },
@@ -1012,9 +1035,17 @@ export class WhiteboardCanvas {
         this.editing.handleLabelKeyDown({ kind: 'group', id }, event),
       onGroupLabelBlur: (id) =>
         this.editing.endRename(true, { kind: 'group', id }),
-      onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
+      onTextCardRendered: (id) => {
+        this.cardGeneration.syncChips(id)
+        this.passagesMoved(id)
+        this.refreshPassageMarks()
+      },
       onTextMeasured: (id, size) => this.commitTextSize(id, size),
-      onNoteCardRendered: (id) => this.dropImport.onNoteCardRendered(id),
+      onNoteCardRendered: (id) => {
+        this.dropImport.onNoteCardRendered(id)
+        this.passagesMoved(id)
+        this.refreshPassageMarks()
+      },
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
@@ -1059,7 +1090,18 @@ export class WhiteboardCanvas {
     this.editing = new EditingController({
       core: this.core,
       zoomInToEdit: (id) => this.zoomInToEdit(id),
-      onEditingChange: () => this.toolbarController.refreshToolbar(),
+      onEditingChange: () => {
+        this.toolbarController.refreshToolbar()
+        // A card opened for typing, or closed: its text is drawn by an editor
+        // now, or by its rendering again, and the passages in it with it —
+        // a frame later, once the new one is in.
+        const ids = [this.lastEditingId, this.editing.editingNodeId()]
+        this.lastEditingId = ids[1]
+        this.context.getWindow().requestAnimationFrame(() => {
+          for (const id of ids) if (id !== null) this.passagesMoved(id)
+          this.refreshPassageMarks()
+        })
+      },
       cards: this.cardRenderer,
       edges: this.edgeLayer,
       worldEl: world,
@@ -1216,16 +1258,8 @@ export class WhiteboardCanvas {
         sourceAt: (target) => this.passagePoints?.sourceAt(target) ?? null,
       },
       passageTargets: {
-        passageAt: (id, x, y) =>
-          this.cardRenderer
-            .getRuntime(id)
-            ?.pdfReader?.passageAt(
-              x,
-              y,
-              this.passagePoints?.sourceIn(id) ?? null,
-            ) ?? null,
-        showPassageHint: (id, anchor) =>
-          this.cardRenderer.getRuntime(id)?.pdfReader?.showPassageHint(anchor),
+        passageAt: (id, x, y) => this.passageAt(id, x, y),
+        showPassageHint: (id, anchor) => this.showPassageHint(id, anchor),
         nudgeCard: (id, deltaY) =>
           this.cardRenderer.getRuntime(id)?.pdfReader?.nudge(deltaY) ?? false,
         cardClientRect: (id) =>
@@ -1362,6 +1396,18 @@ export class WhiteboardCanvas {
     this.viewportEl.addEventListener('wheel', this.cameraController.onWheel, {
       passive: false,
     })
+    this.context
+      .getDocument()
+      .addEventListener('selectionchange', this.onSelectionChange)
+    // A card's own scroll does not bubble; caught on the way down instead.
+    this.viewportEl.addEventListener('scroll', this.onCardScroll, true)
+  }
+
+  private readonly onCardScroll = (event: Event): void => {
+    const target = event.target as Element | null
+    const id = (target?.closest?.('[data-node-id]') as HTMLElement | null)
+      ?.dataset.nodeId
+    if (id !== undefined) this.passagesMoved(id)
   }
 
   /** Content-freshness: scoped to the whole vault ('' —
@@ -1802,7 +1848,7 @@ export class WhiteboardCanvas {
       if (!this.selectedEdgeIds.has(id)) this.markEdgeSelected(id, true)
     }
     this.selectedEdgeIds = next
-    this.cardRenderer.refreshPassageMarks()
+    this.refreshPassageMarks()
     this.overviewLayer?.markDirty()
     this.keymap.syncSelectionScope()
     // A label being typed belongs to the edge that was selected when it
@@ -2873,7 +2919,7 @@ export class WhiteboardCanvas {
     this.restoreEdgeSelection()
     this.syncAllChips()
     // The passages edges reach may have come or gone with them.
-    this.cardRenderer.refreshPassageMarks()
+    this.refreshPassageMarks()
   }
 
   /** Drops selected ids whose edge is gone and re-applies the class to the
@@ -2938,6 +2984,129 @@ export class WhiteboardCanvas {
     return marks
   }
 
+  /** The passage of `id`'s card under a client point: the paragraph there,
+   * or the passage selected in it beforehand when the point is on that. */
+  private passageAt(
+    id: NodeId,
+    clientX: number,
+    clientY: number,
+  ): Promise<EdgeAnchor | null> | null {
+    const runtime = this.cardRenderer.getRuntime(id)
+    const preferred = this.passagePoints?.sourceIn(id) ?? null
+    if (runtime?.pdfReader) {
+      return runtime.pdfReader.passageAt(clientX, clientY, preferred)
+    }
+    const source = this.passageSource(id)
+    const body = runtime?.bodyEl
+    if (source === null || !body) return null
+    if (preferred?.kind === 'text') {
+      const range = passageRange(body, source, preferred)
+      if (range && rangeContains(range, clientX, clientY)) {
+        return Promise.resolve(preferred)
+      }
+    }
+    return Promise.resolve(blockAnchorAt(body, clientX, clientY, source))
+  }
+
+  /** Marks the passage a connection let go would reach, or clears it. */
+  private showPassageHint(id: NodeId, anchor: EdgeAnchor | null): void {
+    const runtime = this.cardRenderer.getRuntime(id)
+    if (runtime?.pdfReader) {
+      runtime.pdfReader.showPassageHint(anchor)
+      return
+    }
+    const source = this.passageSource(id)
+    const range =
+      anchor?.kind === 'text' && runtime?.bodyEl && source !== null
+        ? passageRange(runtime.bodyEl, source, anchor)
+        : null
+    paintPassages(
+      this.context.getDocument(),
+      PASSAGE_HIGHLIGHT.hint,
+      range ? [range] : [],
+    )
+  }
+
+  /** Marks every passage edges reach again: in PDF cards on their pages,
+   * in text and note cards as highlights over their text — strongly for an
+   * edge pointed at or selected. */
+  private refreshPassageMarks(): void {
+    this.cardRenderer.refreshPassageMarks()
+    const faint: Range[] = []
+    const strong: Range[] = []
+    for (const edge of this.board.edges) {
+      const marked =
+        edge.id === this.hoveredEdgeId || this.selectedEdgeIds.has(edge.id)
+      for (const [id, anchor] of [
+        [edge.fromNode, edge.fromAnchor],
+        [edge.toNode, edge.toAnchor],
+      ] as const) {
+        if (anchor?.kind !== 'text') continue
+        const body = this.cardRenderer.getRuntime(id)?.bodyEl
+        const source = this.passageSource(id)
+        if (!body || source === null) continue
+        const range = passageRange(body, source, anchor)
+        if (range) (marked ? strong : faint).push(range)
+      }
+    }
+    const doc = this.context.getDocument()
+    paintPassages(doc, PASSAGE_HIGHLIGHT.mark, faint)
+    paintPassages(doc, PASSAGE_HIGHLIGHT.strong, strong)
+  }
+
+  /** A card's Markdown as the passages in it are found in: what its open
+   * editor holds while it is being typed into, ahead of the board. */
+  private passageSource(id: NodeId): string | null {
+    return this.editing.editingText(id) ?? this.cardMarkdown(id)
+  }
+
+  /** What a card shows moved under the passages in it — it was drawn
+   * again, or scrolled. */
+  private passagesMoved(id: NodeId): void {
+    this.edgeLayer.redrawPassageEdges(id)
+    if (this.passagePoints?.isOn(id)) this.passagePoints.sync()
+  }
+
+  /** Text selected in a text or note card, or the selection gone from one:
+   * the passage of its source it names is what the passage's connection
+   * points pull an edge from. A PDF card's selection is its reader's to
+   * report (`selectPassage`). */
+  private readonly onSelectionChange = (): void => {
+    if (this.selectionFrame !== null) return
+    this.selectionFrame = this.context.getWindow().requestAnimationFrame(() => {
+      this.selectionFrame = null
+      this.syncTextSelection()
+    })
+  }
+
+  private syncTextSelection(): void {
+    const selection = this.context.getDocument().getSelection()
+    const node = selection?.anchorNode ?? null
+    const el = node
+      ? node.nodeType === Node.ELEMENT_NODE
+        ? (node as Element)
+        : node.parentElement
+      : null
+    const id =
+      (el?.closest('[data-node-id]') as HTMLElement | null)?.dataset.nodeId ??
+      null
+    const body = id === null ? null : this.cardRenderer.getRuntime(id)?.bodyEl
+    const source = id === null ? null : this.passageSource(id)
+    const anchor =
+      selection && body && source !== null
+        ? selectionAnchor(body, selection, source)
+        : null
+    if (id !== null && anchor) {
+      this.passageSelection += 1
+      this.textPassageSelected = true
+      this.passagePoints?.setSource({ nodeId: id, anchor })
+      return
+    }
+    if (!this.textPassageSelected) return
+    this.textPassageSelected = false
+    this.passagePoints?.setSource(null)
+  }
+
   /** Text selected in a PDF card, or the selection gone: the passage it
    * names is what its connection points pull an edge from. */
   private selectPassage(
@@ -2946,6 +3115,7 @@ export class WhiteboardCanvas {
     selection: ReaderTextSelection | null,
   ): void {
     const ticket = ++this.passageSelection
+    this.textPassageSelected = false
     if (!selection) {
       this.passagePoints?.setSource(null)
       return
@@ -2970,7 +3140,12 @@ export class WhiteboardCanvas {
     id: NodeId,
     anchor: EdgeAnchor,
   ): CardPassagePlacement | null {
-    if (anchor.kind !== 'pdf') return null
+    if (anchor.kind === 'text') {
+      const runtime = this.cardRenderer.getRuntime(id)
+      const source = this.passageSource(id)
+      if (!runtime?.el || !runtime.bodyEl || source === null) return null
+      return placeTextPassage(runtime.el, runtime.bodyEl, source, anchor)
+    }
     const runtime = this.cardRenderer.getRuntime(id)
     const reader = runtime?.pdfReader
     if (!runtime?.el || !reader) return null

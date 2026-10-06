@@ -5,6 +5,7 @@
 @import './cards/group.css';
 @import './cards/resize-handles.css';
 @import './cards/passage-points.css';
+@import './cards/passages.css';
 @import './cards/drag.css';
 @import './cards/media.css';
 @import './pdf/card.css';
