@@ -153,6 +153,12 @@ export type ToolbarControllerCallbacks = Readonly<{
   ) => void
   applyColorToEdge: (edgeId: EdgeId, color: NodeColor | undefined) => void
   setEdgeEnds: (edgeId: EdgeId, direction: ArrowDirection) => void
+  /** Lets the given ends of an edge go of the passages they reach: they
+   * reach their whole cards again. */
+  releaseEdgePassages: (
+    edgeId: EdgeId,
+    ends: readonly ('from' | 'to')[],
+  ) => void
   alignSelection: (edge: AlignEdge) => void
   distributeSelection: (axis: DistributeAxis) => void
   tidySelection: () => void
@@ -458,8 +464,55 @@ export class ToolbarController {
           onSelect: () =>
             this.callbacks.beginRename({ kind: 'edge', id: edge.id }),
         },
+        ...this.wholeCardControl(edge),
       ],
     }
+  }
+
+  /**
+   * Widens an end that reaches a passage back to its whole card — the way
+   * out of a connection that snapped to a paragraph it was not meant for.
+   * One button for an edge with one such end; a menu naming the end for an
+   * edge with two, since which one to widen is then a question.
+   */
+  private wholeCardControl(edge: Edge): ToolbarItem[] {
+    const t = this.callbacks.t
+    const release = (ends: readonly ('from' | 'to')[]) => () => {
+      this.callbacks.releaseEdgePassages(edge.id, ends)
+      this.refreshToolbar()
+    }
+    if (edge.fromAnchor && edge.toAnchor) {
+      return [
+        {
+          kind: 'menu',
+          label: t('toolbar.wholeCard'),
+          icon: 'maximize-2',
+          groups: [
+            [
+              {
+                label: t('toolbar.wholeCardFrom'),
+                icon: 'arrow-left',
+                onSelect: release(['from']),
+              },
+              {
+                label: t('toolbar.wholeCardTo'),
+                icon: 'arrow-right',
+                onSelect: release(['to']),
+              },
+            ],
+          ],
+        },
+      ]
+    }
+    const end = edge.fromAnchor ? 'from' : edge.toAnchor ? 'to' : null
+    if (end === null) return []
+    return [
+      {
+        label: t('toolbar.wholeCard'),
+        icon: 'maximize-2',
+        onSelect: release([end]),
+      },
+    ]
   }
 
   /** The colour control shared by both toolbars — one picker, so a node and an

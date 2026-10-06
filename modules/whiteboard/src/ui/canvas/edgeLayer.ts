@@ -85,6 +85,8 @@ export type EdgeLayerCallbacks = Readonly<{
   getRenamingEdgeId: () => EdgeId | null
   onLabelKeyDown: (edgeId: EdgeId, event: KeyboardEvent) => void
   onLabelBlur: (edgeId: EdgeId) => void
+  /** The pointer came onto an edge, or left it (null). */
+  onEdgeHover: (edgeId: EdgeId | null) => void
   /** Where a passage an end reaches is in its card right now, or null when
    * the card cannot say (not drawn, or drawn without its text). */
   placePassage: (
@@ -298,6 +300,10 @@ export class EdgeLayer {
     const hit = doc.createElementNS(SVG_NS, 'path')
     hit.setAttribute('class', EDGE_HIT_CLASS)
     hit.dataset.edgeId = edge.id
+    hit.addEventListener('pointerenter', () =>
+      this.callbacks.onEdgeHover(edge.id),
+    )
+    hit.addEventListener('pointerleave', () => this.callbacks.onEdgeHover(null))
     this.edgesGroupEl.appendChild(hit)
 
     const path = doc.createElementNS(SVG_NS, 'path')

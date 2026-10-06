@@ -143,7 +143,11 @@ import {
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
-import type { PdfReader, ReaderTextSelection } from './pdf/pdfReader'
+import type {
+  PdfReader,
+  ReaderPassageMark,
+  ReaderTextSelection,
+} from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PdfThumbnails, type WantedThumbnail } from './pdf/thumbnails'
 import { applyColorToElement } from './selectionToolbar'
@@ -370,6 +374,8 @@ export class WhiteboardCanvas {
   /** The frame and reflow handle around a selected PDF spread
    * (./canvas/spreadFrame.ts). */
   private spreadFrame: SpreadFrame | null = null
+  /** The edge the pointer is on, whose passages are marked strongly. */
+  private hoveredEdgeId: EdgeId | null = null
   /** The connection points of text selected in a PDF card. */
   private passagePoints: PassagePoints | null = null
   /** Bumped by every selection reported, so a passage made for an older one
@@ -963,6 +969,14 @@ export class WhiteboardCanvas {
           this.editing.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.editing.endRename(true, { kind: 'edge', id }),
         placePassage: (id, anchor) => this.placePassage(id, anchor),
+        onEdgeHover: (id) => {
+          if (id === this.hoveredEdgeId) return
+          // Only an edge reaching a passage has marks to strengthen.
+          const marked =
+            this.reachesPassage(this.hoveredEdgeId) || this.reachesPassage(id)
+          this.hoveredEdgeId = id
+          if (marked) this.cardRenderer.refreshPassageMarks()
+        },
         t: this.core.t,
       },
     )
@@ -984,6 +998,7 @@ export class WhiteboardCanvas {
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: this.core.getNode,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
+      passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
         this.edgeLayer.redrawPassageEdges(id)
         if (this.passagePoints?.isOn(id)) this.passagePoints.sync()
@@ -1112,6 +1127,8 @@ export class WhiteboardCanvas {
       applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
       applyColorToEdge: (edgeId, color) => this.applyColorToEdge(edgeId, color),
       setEdgeEnds: (edgeId, direction) => this.setEdgeEnds(edgeId, direction),
+      releaseEdgePassages: (edgeId, ends) =>
+        this.releaseEdgePassages(edgeId, ends),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
       tidySelection: () => this.tidySelection(),
@@ -1785,6 +1802,7 @@ export class WhiteboardCanvas {
       if (!this.selectedEdgeIds.has(id)) this.markEdgeSelected(id, true)
     }
     this.selectedEdgeIds = next
+    this.cardRenderer.refreshPassageMarks()
     this.overviewLayer?.markDirty()
     this.keymap.syncSelectionScope()
     // A label being typed belongs to the edge that was selected when it
@@ -1858,6 +1876,22 @@ export class WhiteboardCanvas {
       fromEnd === 'arrow',
       toEnd === 'arrow',
     )
+  }
+
+  /** The given ends of an edge reach their whole cards again, the page a
+   * PDF end was on kept (domain/edges.ts's `anchorEdgeEnd`). */
+  private releaseEdgePassages(
+    edgeId: EdgeId,
+    ends: readonly ('from' | 'to')[],
+  ): void {
+    if (!this.canEdit) return
+    const patch = Object.fromEntries(
+      ends.map((end) => [`${end}Anchor`, undefined]),
+    )
+    const board = updateEdge(this.board, edgeId, patch)
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    this.rebuildEdgesSvg()
   }
 
   /** World point an edge's chrome hangs from: the midpoint of its curve, the
@@ -2838,6 +2872,8 @@ export class WhiteboardCanvas {
     }
     this.restoreEdgeSelection()
     this.syncAllChips()
+    // The passages edges reach may have come or gone with them.
+    this.cardRenderer.refreshPassageMarks()
   }
 
   /** Drops selected ids whose edge is gone and re-applies the class to the
@@ -2877,6 +2913,29 @@ export class WhiteboardCanvas {
     this.contentSyncQueue.clear()
     this.engine.reset()
     this.edgeLayer.clearEdgesSvg()
+  }
+
+  private reachesPassage(id: EdgeId | null): boolean {
+    const edge = id === null ? undefined : this.boardEdgesById.get(id)
+    return edge?.fromAnchor !== undefined || edge?.toAnchor !== undefined
+  }
+
+  /** The passages edges reach in `id`'s card, marked on its pages: strongly
+   * for an edge pointed at or selected. */
+  private passageMarks(id: NodeId): ReaderPassageMark[] {
+    const marks: ReaderPassageMark[] = []
+    for (const edge of this.board.edges) {
+      const strong =
+        edge.id === this.hoveredEdgeId || this.selectedEdgeIds.has(edge.id)
+      for (const [node, anchor] of [
+        [edge.fromNode, edge.fromAnchor],
+        [edge.toNode, edge.toAnchor],
+      ] as const) {
+        if (node !== id || anchor?.kind !== 'pdf') continue
+        marks.push({ page: anchor.page, quadPoints: anchor.quadPoints, strong })
+      }
+    }
+    return marks
   }
 
   /** Text selected in a PDF card, or the selection gone: the passage it

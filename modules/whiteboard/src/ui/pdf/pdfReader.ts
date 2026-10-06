@@ -129,10 +129,21 @@ export type PdfReaderOptions = Readonly<{
    * scrolled, or a page loaded and can now place what is on it
    * (`placePassage`). Reported for a `setPosition` too. */
   onPassagesMove?: () => void
+  /** The passages of this document that edges on the board reach from the
+   * card this reader is, marked on their pages (`refreshPassageMarks`). */
+  getPassageMarks?: () => readonly ReaderPassageMark[]
   /** The PDF's annotations, held for the reader: it lets go when destroyed. */
   annotations?: AnnotationLease
   annotationEvents?: ReaderAnnotationEvents
   reportError?: (stage: string, error: unknown) => void
+}>
+
+/** A passage an edge reaches, marked where it is on its page: faintly, or
+ * — while its edge is pointed at or selected — strongly. */
+export type ReaderPassageMark = Readonly<{
+  page: number
+  quadPoints: readonly number[]
+  strong: boolean
 }>
 
 /** Where a passage is in a reader (`PdfReader.placePassage`). */
@@ -208,6 +219,9 @@ const TEXT_LAYER_HOST_CLASS = 'yolo-whiteboard-pdf-text'
 const TEXT_PROBE_CLASS = 'yolo-whiteboard-pdf-text-probe'
 /** The passage a connection being dragged would reach (`showPassageHint`). */
 const PASSAGE_HINT_CLASS = 'yolo-whiteboard-pdf-passage-hint'
+const PASSAGE_MARKS_CLASS = 'yolo-whiteboard-pdf-passage-marks'
+const PASSAGE_MARK_CLASS = 'yolo-whiteboard-pdf-passage-mark'
+const PASSAGE_MARK_STRONG_CLASS = 'yolo-whiteboard-pdf-passage-mark-strong'
 const INDICATOR_CLASS = 'yolo-whiteboard-pdf-indicator'
 const PAGE_INPUT_CLASS = 'yolo-whiteboard-pdf-page-input'
 const PAGE_COUNT_CLASS = 'yolo-whiteboard-pdf-page-count'
@@ -269,6 +283,9 @@ type Slot = {
   textScale: number
   /** The annotation layer, while the page has a picture. */
   marksEl: HTMLElement | null
+  /** The marks of the passages edges reach on this page
+   * (`renderPassageMarks`), once there are any. */
+  passageEl: HTMLElement | null
   /** The page's PDF-to-layout transform, once the page is loaded. */
   frame: PageFrame | null
 }
@@ -1291,6 +1308,7 @@ export class PdfReader {
         textTask: null,
         textScale: 0,
         marksEl: null,
+        passageEl: null,
         frame: null,
       })
     }
@@ -1849,7 +1867,47 @@ export class PdfReader {
       toViewport: (point) => page.toViewportPoint(point, 1),
     }
     this.renderMarks(slot)
+    this.renderPassageMarks(slot)
     this.options.onPassagesMove?.()
+  }
+
+  /** Marks again the passages edges reach (`getPassageMarks`): an edge
+   * came or went, or the one pointed at or selected changed. */
+  refreshPassageMarks(): void {
+    for (const slot of this.slots) {
+      if (slot.frame || slot.passageEl) this.renderPassageMarks(slot)
+    }
+  }
+
+  private renderPassageMarks(slot: Slot): void {
+    const frame = slot.frame
+    const marks = frame
+      ? (this.options.getPassageMarks?.() ?? []).filter(
+          (mark) => mark.page === slot.number,
+        )
+      : []
+    if (marks.length === 0) {
+      slot.passageEl?.remove()
+      slot.passageEl = null
+      return
+    }
+    const doc = this.rootEl.ownerDocument
+    if (!slot.passageEl) {
+      slot.passageEl = doc.createElement('div')
+      slot.passageEl.className = PASSAGE_MARKS_CLASS
+      slot.el.appendChild(slot.passageEl)
+    }
+    const els: HTMLElement[] = []
+    for (const mark of marks) {
+      for (const box of quadBoxes(mark.quadPoints, frame as PageFrame)) {
+        const el = doc.createElement('div')
+        el.className = PASSAGE_MARK_CLASS
+        el.classList.toggle(PASSAGE_MARK_STRONG_CLASS, mark.strong)
+        placeBox(el, box)
+        els.push(el)
+      }
+    }
+    slot.passageEl.replaceChildren(...els)
   }
 
   private renderMarks(slot: Slot): void {

@@ -451,3 +451,25 @@ textarea.yolo-whiteboard-pdf-comment-input:focus-visible {
 .yolo-whiteboard-card.yolo-whiteboard-card-over-grabbable * {
   cursor: grab;
 }
+
+/* The passages edges reach from this card (ui/pdf/pdfReader.ts's
+ * `renderPassageMarks`): underlined faintly in the accent, so reading the
+ * page shows where a connection leaves it; while the edge is pointed at or
+ * selected, washed and underlined firmly. Owned by the edges — not the
+ * annotation file — so they go when the edge does. */
+.yolo-whiteboard-pdf-passage-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-pdf-passage-mark {
+  position: absolute;
+  border-bottom: 1.5px solid
+    color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+}
+
+.yolo-whiteboard-pdf-passage-mark.yolo-whiteboard-pdf-passage-mark-strong {
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+  border-bottom-color: var(--interactive-accent);
+}

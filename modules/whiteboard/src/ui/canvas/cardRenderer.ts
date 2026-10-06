@@ -40,7 +40,11 @@ import {
 } from '../constants'
 import { type PdfPageLabels, cardMarkdownWindow, nodeTitleText } from '../lod'
 import type { PdfDrawQueue } from '../pdf/drawQueue'
-import { PdfReader, type ReaderAnnotationEvents } from '../pdf/pdfReader'
+import {
+  PdfReader,
+  type ReaderAnnotationEvents,
+  type ReaderPassageMark,
+} from '../pdf/pdfReader'
 import { applyColorToElement } from '../selectionToolbar'
 import { glideScrollBy } from '../wheelScroll'
 
@@ -199,6 +203,8 @@ export type CardRendererCallbacks = Readonly<{
   /** A PDF card's reader scrolled, or loaded a page: an edge reaching a
    * passage in it may now be drawn somewhere else. */
   onPassagesMove: (id: NodeId) => void
+  /** The passages edges reach in a PDF card, to mark on its pages. */
+  passageMarks: (id: NodeId) => readonly ReaderPassageMark[]
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
@@ -736,6 +742,13 @@ export class CardRenderer {
       '--yolo-whiteboard-spread-title-max-width',
       `${this.callbacks.spreadTitleMaxWidth(id)}px`,
     )
+  }
+
+  /** Every PDF card marks its passages again (`passageMarks`). */
+  refreshPassageMarks(): void {
+    for (const id of this.pdfCards) {
+      this.runtimeByNodeId.get(id)?.pdfReader?.refreshPassageMarks()
+    }
   }
 
   unmountNode(id: NodeId): void {
@@ -1510,6 +1523,7 @@ export class CardRenderer {
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
       onPassagesMove: () => this.callbacks.onPassagesMove(id),
+      getPassageMarks: () => this.callbacks.passageMarks(id),
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
     })
     runtime.pdfReader = reader
