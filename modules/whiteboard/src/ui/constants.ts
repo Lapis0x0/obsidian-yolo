@@ -289,11 +289,13 @@ export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
  * draws at the same sizes so the title keeps its face below the tier. */
 export const SPREAD_TITLE_WORLD = {
   padding: 12,
+  paddingBlock: 6,
   gap: 8,
   badgeFont: 12,
   badgePadding: 6,
   badgeHeight: 20,
   nameFont: 16,
+  nameLineHeight: 1.5,
 } as const
 
 /** Alpha of the colour wash over an overview card — style.css's

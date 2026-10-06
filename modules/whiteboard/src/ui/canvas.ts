@@ -81,6 +81,7 @@ import {
   reflowSpread,
   scaleSpread,
   spreadPages,
+  spreadTitleMaxWidth,
 } from '../domain/spread'
 import { tidyRects } from '../domain/tidy'
 import {
@@ -833,6 +834,7 @@ export class WhiteboardCanvas {
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
       getCardNodes: this.core.getCardNodes,
+      spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       getGroupNodes: () => this.groupNodes,
       getEdges: () => this.board.edges,
       getNode: this.core.getNode,
@@ -969,6 +971,7 @@ export class WhiteboardCanvas {
     })
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: this.core.getNode,
+      spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
       isEditing: (id) => this.editing.isEditing(id),
@@ -2848,6 +2851,14 @@ export class WhiteboardCanvas {
     this.edgeLayer.clearEdgesSvg()
   }
 
+  /** How wide an open spread's title may run (domain/spread.ts's
+   * `spreadTitleMaxWidth`). */
+  private spreadTitleMaxWidthOf(id: NodeId): number {
+    const title = this.nodesById.get(id)
+    if (!title) return 0
+    return spreadTitleMaxWidth(title, spreadPages(this.board, id))
+  }
+
   private syncBoardIndex(): void {
     this.nodesById = new Map(this.board.nodes.map((node) => [node.id, node]))
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
@@ -2857,6 +2868,7 @@ export class WhiteboardCanvas {
     )
     this.syncEmptyHint()
     this.spreadFrame?.sync()
+    this.cardRenderer.syncSpreadTitleWidths()
     this.pdfThumbnails?.retain()
     this.pictureAnnotations?.retain(
       new Set(Array.from(this.wantedThumbnails(), (wanted) => wanted.path)),

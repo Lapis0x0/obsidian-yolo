@@ -158,6 +158,9 @@ export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
   /** Every non-group node, in board order — groups keep their DOM. */
   getCardNodes: () => readonly BoardNode[]
+  /** How wide an open spread's title may run before its name wraps, in
+   * world units (domain/spread.ts's `spreadTitleMaxWidth`). */
+  spreadTitleMaxWidth: (id: NodeId) => number
   /** The groups, which only the minimap draws (`paintBoard`): in the tier
    * they keep their DOM. */
   getGroupNodes: () => readonly BoardNode[]
@@ -773,13 +776,20 @@ export class OverviewLayer {
           y: y - SPREAD_METRICS.titleGap * view.scale - th,
           w,
           h: th,
+          // Its own width, never under a page's default (spread.css).
+          maxW: Math.max(w, SPREAD_METRICS.pageWidth * view.scale),
         })
       }
       // The rest of it is drawn on its own, at its own opacity
       // (`drawMotions`).
       if (moving) continue
       if (isPlainText(node)) texts.push(item)
-      else if (isSpreadTitle(node)) titles.push(item)
+      else if (isSpreadTitle(node)) {
+        titles.push({
+          ...item,
+          maxW: this.callbacks.spreadTitleMaxWidth(node.id) * view.scale,
+        })
+      }
       else visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is a block of ink,
@@ -946,7 +956,12 @@ export class OverviewLayer {
     // OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX): the name is what an overview is
     // for. Everything in the line grows by the same factor, upwards from the
     // title's bottom edge so it never covers the paper, and as far right as
-    // the whole name needs.
+    // the whole name needs up to the document's width on screen; past that
+    // the name wraps, and the line grows further up — the paper never moves
+    // for it. A grown name wraps sooner, so it can take more lines the
+    // further out the board is. Never narrower than the title's own node
+    // grown, though: a one-column document far out would leave the name a
+    // character or two a line.
     const grow = Math.max(
       1,
       OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX /
@@ -968,8 +983,20 @@ export class OverviewLayer {
         ctx.measureText(badgeText).width +
         SPREAD_TITLE_WORLD.badgePadding * 2 * u
       ctx.font = nameFont
-      const nameW = ctx.measureText(name).width
-      const h = title.h * grow
+      const measure = (text: string) => ctx.measureText(text).width
+      const lines = wrapTitleLines(
+        name,
+        Math.max(title.maxW, title.w * grow) - pad - badgeW - gap - pad,
+        Number.MAX_SAFE_INTEGER,
+        measure,
+      )
+      const nameW = Math.max(0, ...lines.map(measure))
+      const lineH =
+        SPREAD_TITLE_WORLD.nameFont * SPREAD_TITLE_WORLD.nameLineHeight * u
+      const h = Math.max(
+        title.h * grow,
+        lines.length * lineH + SPREAD_TITLE_WORLD.paddingBlock * 2 * u,
+      )
       const box = {
         x: title.x,
         y: title.y + title.h - h,
@@ -1007,7 +1034,10 @@ export class OverviewLayer {
       )
       ctx.font = nameFont
       ctx.fillStyle = palette.text
-      ctx.fillText(name, box.x + pad + badgeW + gap, mid)
+      const top = mid - ((lines.length - 1) * lineH) / 2
+      for (let i = 0; i < lines.length; i += 1) {
+        ctx.fillText(lines[i], box.x + pad + badgeW + gap, top + i * lineH)
+      }
     }
     ctx.lineWidth = 1
   }
@@ -1504,6 +1534,9 @@ type PdfTitle = Readonly<{
   y: number
   w: number
   h: number
+  /** How wide its line may run before the name wraps (spread.css): the
+   * document's width, a folded card's being its own. Screen pixels. */
+  maxW: number
 }>
 
 /** A PDF card as its reader: not an open spread's title. */

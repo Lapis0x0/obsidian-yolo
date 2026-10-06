@@ -581,6 +581,25 @@ export function currentSpreadColumns(
   return Math.max(1, count)
 }
 
+/**
+ * How wide a spread's title may run before its name wraps: across its first
+ * row of sheets, from the title's left edge — the width the document takes on
+ * the board. Never narrower than a page at its default width, though: a
+ * document sized down to thumbnails, one column across, would otherwise
+ * leave its name a character or two a line.
+ */
+export function spreadTitleMaxWidth(
+  title: Readonly<{ x: number; w: number }>,
+  sheets: readonly Readonly<{ x: number; y: number; w: number }>[],
+  metrics = SPREAD_METRICS,
+): number {
+  let right = title.x + title.w
+  for (const sheet of sheets.slice(0, currentSpreadColumns(sheets, metrics))) {
+    right = Math.max(right, sheet.x + sheet.w)
+  }
+  return Math.max(right - title.x, metrics.pageWidth)
+}
+
 function sheetHeight(page: PageSize, width: number): number {
   if (!(page.width > 0) || !(page.height > 0)) return Math.round(width * 1.294)
   return Math.round((width * page.height) / page.width)

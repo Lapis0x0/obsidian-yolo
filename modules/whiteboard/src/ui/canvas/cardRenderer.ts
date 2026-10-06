@@ -193,6 +193,9 @@ export type NodeRuntime = {
  */
 export type CardRendererCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
+  /** How wide an open spread's title may run before its name wraps
+   * (domain/spread.ts's `spreadTitleMaxWidth`). */
+  spreadTitleMaxWidth: (id: NodeId) => number
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
@@ -688,11 +691,13 @@ export class CardRenderer {
    * what a group holds, an edge reaches and a drag carries the pages with
    * (domain/spread.ts). It has no body. The node is one sheet wide
    * (`layoutSpreadGrid`); the line it shows is as wide as the whole name
-   * needs, and reaches past the node when the name is long.
+   * needs, reaching past the node as far as the document is wide, and wraps
+   * upwards from there (spread.css).
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
+    this.applySpreadTitleMaxWidth(id, el)
     const line = doc.createElement('div')
     line.className = SPREAD_TITLE_LINE_CLASS
     line.append(...pdfTitleParts(doc, file))
@@ -711,6 +716,23 @@ export class CardRenderer {
       missingFile: false,
       noteText: null,
     })
+  }
+
+  /** Re-reads how wide every mounted spread title may run: its sheets are
+   * laid out again, scaled or moved without the title itself changing. */
+  syncSpreadTitleWidths(): void {
+    for (const [id, runtime] of this.runtimeByNodeId) {
+      if (runtime.el?.classList.contains(SPREAD_TITLE_CLASS)) {
+        this.applySpreadTitleMaxWidth(id, runtime.el)
+      }
+    }
+  }
+
+  private applySpreadTitleMaxWidth(id: NodeId, el: HTMLElement): void {
+    el.style.setProperty(
+      '--yolo-whiteboard-spread-title-max-width',
+      `${this.callbacks.spreadTitleMaxWidth(id)}px`,
+    )
   }
 
   unmountNode(id: NodeId): void {

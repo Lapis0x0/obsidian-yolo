@@ -53,15 +53,28 @@
   content: none;
 }
 
+/* The node is one line tall, and the first row of sheets is right under it,
+ * so a name too long for its line wraps upwards: the line keeps its bottom
+ * edge and grows from the top (`flex-end`, which overflows at the start), and
+ * nothing it covers is moved. Its width is the name's, up to as wide as the
+ * document is (cardRenderer.ts's `applySpreadTitleMaxWidth`) — a folded
+ * card's being the card. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title {
+  justify-content: flex-end;
+}
+
 .yolo-whiteboard-spread-title-line {
   display: flex;
+  flex: 1 0 auto;
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
   width: max-content;
   min-width: 100%;
-  height: 100%;
-  padding: 0 12px;
+  /* A folded card's: its own width, but never under a page's default width
+   * (domain/spread.ts's SPREAD_METRICS.pageWidth), as a spread's is. */
+  max-width: var(--yolo-whiteboard-spread-title-max-width, max(100%, 390px));
+  padding: 6px 12px;
   border: 1px solid transparent;
   border-radius: inherit;
 }
@@ -97,10 +110,15 @@
 }
 
 .yolo-whiteboard-spread-title-text {
+  min-width: 0;
   font-size: 16px;
   font-weight: 500;
+  line-height: 1.5;
   color: var(--text-normal);
-  white-space: nowrap;
+  white-space: normal;
+  /* A file name is often one long word: it breaks inside rather than running
+   * past the document, as a card's title block does (title.css). */
+  overflow-wrap: anywhere;
 }
 
 /* The sheets of the document whose title is under the pointer (the canvas's
