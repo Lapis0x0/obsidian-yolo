@@ -498,6 +498,18 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
       abort: jest.fn(async () => undefined),
     })
 
+    it('answers whether it is offered before activation completes', () => {
+      const lifecycle = new ModuleLifecycleScope()
+      const activation = new ObsidianModuleUiCapabilityProvider({
+        app,
+        createConfirmModal: (modalApp, options) =>
+          new MockConfirmModal(modalApp, options),
+        saveFile: jest.fn(),
+      }).create('learning', lifecycle)
+      expect(activation.api.canSaveFile()).toBe(true)
+      lifecycle.dispose()
+    })
+
     it('is not offered where the device has no save dialog', async () => {
       const { lifecycle, ui } = create()
       expect(ui.canSaveFile()).toBe(false)

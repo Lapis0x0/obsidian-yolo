@@ -595,10 +595,9 @@ export class ObsidianModuleUiCapabilityProvider
           hoverParent: { hoverPopover: null },
         })
       },
-      canSaveFile: () => {
-        assertActive()
-        return this.saveFile !== undefined
-      },
+      // A fact about the device, not an action: asked while a module is
+      // still activating — to decide what to register — as readily as later.
+      canSaveFile: () => this.saveFile !== undefined,
       saveFile: async (
         options: YoloModuleSaveFileOptionsV1,
       ): Promise<YoloModuleFileSinkV1 | null> => {
