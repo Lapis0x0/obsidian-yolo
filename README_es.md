@@ -51,14 +51,14 @@
 </tr>
 <tr>
 <td width="200" align="center" valign="middle">
-  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">
-    <img src="./assets/sponsor-fluxion.png" alt="Fluxion AI" width="163">
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO">
+    <img src="./assets/sponsor-sidrune.png" alt="Sidrune AI" width="163">
   </a>
 </td>
 <td valign="middle">
-  ¡Gracias a <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> por patrocinar este proyecto! Fluxion AI es un servicio de retransmisión de API que ayuda a desarrolladores individuales y empresas a acceder y gestionar los principales modelos de IA del mundo mediante una API unificada. La planificación dinámica en varias rutas mejora la disponibilidad, y el rendimiento de los modelos, los tiempos de respuesta y los costes son transparentes. Con Fable 5.1, Fluxion AI permite ahorrar hasta aproximadamente un 90 % frente a los precios de la API oficial de Claude. Regístrate a través de este enlace y recibe 3 $ en crédito de API gratuito.
+  ¡Gracias a <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO">Sidrune AI</a></b> por patrocinar este proyecto! Sidrune AI es un servicio de retransmisión de API que ayuda a desarrolladores individuales y empresas a acceder y gestionar los principales modelos de IA del mundo mediante una API unificada. La planificación dinámica en varias rutas mejora la disponibilidad, y el rendimiento de los modelos, los tiempos de respuesta y los costes son transparentes. Con Fable 5.1, Sidrune AI permite ahorrar hasta aproximadamente un 90 % frente a los precios de la API oficial de Claude. Regístrate a través de este enlace y recibe 3 $ en crédito de API gratuito.
   <br><br>
-  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO"><b>Regístrate en Fluxion AI →</b></a>
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO"><b>Regístrate en Sidrune AI →</b></a>
 </td>
 </tr>
 </table>

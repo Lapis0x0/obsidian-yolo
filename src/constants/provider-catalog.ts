@@ -178,7 +178,7 @@ export const PROVIDER_CATALOG: Record<
     sponsor: true,
     // Referral link — see the "Sponsors" section in the README.
     apiKeyUrl:
-      'https://fluxionai.space/register?source=github&campaign=github-yolo&promo=YOLO',
+      'https://fluxionai.space/register?source=github&campaign=github-sidrune-yolo&promo=SDRYOLO',
   },
   'azure-openai': {
     monogram: 'Az',

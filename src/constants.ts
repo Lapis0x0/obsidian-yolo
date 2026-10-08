@@ -184,7 +184,7 @@ export const PROVIDER_PRESET_INFO = {
     ],
   },
   fluxion: {
-    label: 'Fluxion AI',
+    label: 'Sidrune AI',
     defaultProviderId: 'fluxion',
     requireApiKey: true,
     requireBaseUrl: false,

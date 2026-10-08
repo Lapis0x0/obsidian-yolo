@@ -51,14 +51,14 @@
 </tr>
 <tr>
 <td width="200" align="center" valign="middle">
-  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">
-    <img src="./assets/sponsor-fluxion.png" alt="Fluxion AI" width="163">
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO">
+    <img src="./assets/sponsor-sidrune.png" alt="Sidrune AI" width="163">
   </a>
 </td>
 <td valign="middle">
-  Thanks to <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> for sponsoring this project! Fluxion AI is an API relay that helps individual developers and businesses access and manage the world's leading AI models through one unified API. Multi-route dynamic scheduling keeps requests available, and model performance, response times, and costs are all transparent. With Fable 5.1, Fluxion AI can save you up to about 90% compared with Claude's official API pricing. Sign up through this link to get $3 in free API credit.
+  Thanks to <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO">Sidrune AI</a></b> for sponsoring this project! Sidrune AI is an API relay that helps individual developers and businesses access and manage the world's leading AI models through one unified API. Multi-route dynamic scheduling keeps requests available, and model performance, response times, and costs are all transparent. With Fable 5.1, Sidrune AI can save you up to about 90% compared with Claude's official API pricing. Sign up through this link to get $3 in free API credit.
   <br><br>
-  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO"><b>Sign up for Fluxion AI →</b></a>
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-sidrune-yolo&amp;promo=SDRYOLO"><b>Sign up for Sidrune AI →</b></a>
 </td>
 </tr>
 </table>
