@@ -59,6 +59,17 @@ export type CliRuntimeCoordinatorOptions = Readonly<{
   ) => CliSessionIndexStore
 }>
 
+/**
+ * Keeps an opened conversation alive until the caller either `commit`s it
+ * as the scope's selection for its runtime or `release`s it. Releasing after
+ * a commit is a no-op, so callers can release unconditionally in `finally`.
+ */
+export type CliConversationLease = {
+  readonly controller: CliConversationController
+  commit(): void
+  release(): void
+}
+
 export type CliRuntimeScope = {
   readonly sessionService: CliSessionService
   readonly chatRuntimeActions: ReturnType<typeof createCliChatRuntimeActions>
@@ -75,6 +86,13 @@ export type CliRuntimeScope = {
     profileId?: string,
   ): CliConversationController
   selectConversationSession(ref: CliSessionRef): CliConversationController
+  /**
+   * Opens `ref` without selecting it, for opens that finish asynchronously.
+   * The view's current conversation stays selected and alive until the
+   * caller commits, so a failed or superseded open never leaves the view
+   * holding a disposed controller.
+   */
+  openConversationSession(ref: CliSessionRef): CliConversationLease
   getModelCatalogSnapshot(): CliModelCatalogSnapshot
   subscribeToModelCatalog(listener: () => void): () => void
   warmModelCatalog(runtimeId: CliRuntimeId): Promise<void>
@@ -562,6 +580,7 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
     CliRuntimeId,
     CliConversationController
   >()
+  private readonly leases = new Set<() => Promise<void>>()
   private disposed = false
   private disposePromise: Promise<void> | null = null
 
@@ -615,6 +634,32 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
     return controller
   }
 
+  openConversationSession(ref: CliSessionRef): CliConversationLease {
+    this.assertActive()
+    const controller = this.workspace.selectConversationSession(ref)
+    this.workspace.retainConversation(controller)
+    const release = (): Promise<void> => {
+      if (!this.leases.delete(release)) return Promise.resolve()
+      return this.workspace.releaseConversation(controller)
+    }
+    this.leases.add(release)
+    return {
+      controller,
+      commit: () => {
+        if (!this.leases.has(release)) {
+          throw new Error('CLI conversation lease is no longer held.')
+        }
+        this.selectController(ref.runtimeId, controller)
+        void release()
+      },
+      release: () => {
+        void release().catch((error) => {
+          console.error('[YOLO] Failed to release opened CLI runtime', error)
+        })
+      },
+    }
+  }
+
   getModelCatalogSnapshot(): CliModelCatalogSnapshot {
     this.assertActive()
     return this.workspace.getModelCatalogSnapshot()
@@ -645,12 +690,14 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
       this.disposed = true
       const controllers = [...this.selectedControllers.values()]
       this.selectedControllers.clear()
+      const leases = [...this.leases]
       this.onDisposed(this)
-      const results = await Promise.allSettled(
-        controllers.map((controller) =>
+      const results = await Promise.allSettled([
+        ...controllers.map((controller) =>
           this.workspace.releaseConversation(controller),
         ),
-      )
+        ...leases.map((release) => release()),
+      ])
       const failure = results.find(
         (result): result is PromiseRejectedResult =>
           result.status === 'rejected',

@@ -75,6 +75,12 @@ const deferred = <T>() => {
   return { promise, resolve, reject }
 }
 
+const lease = (controller: CliConversationController) => ({
+  controller,
+  commit: jest.fn(),
+  release: jest.fn(),
+})
+
 const waitUntil = async (predicate: () => boolean): Promise<void> => {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (predicate()) return
@@ -434,10 +440,10 @@ describe('CLI chat integration', () => {
       hydrateSession,
       getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
-    const selectConversationSession = jest.fn(() => controller)
+    const openConversationSession = jest.fn(() => lease(controller))
     const recordOpenedSession = jest.fn(async () => undefined)
     const scope = {
-      selectConversationSession,
+      openConversationSession,
       sessionService: {
         restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
           messages: [...messages],
@@ -452,7 +458,7 @@ describe('CLI chat integration', () => {
       ref: indexedRef,
     })
 
-    expect(selectConversationSession).toHaveBeenLastCalledWith(indexedRef)
+    expect(openConversationSession).toHaveBeenLastCalledWith(indexedRef)
     expect(hydrateSession).toHaveBeenCalledTimes(1)
     expect(hydrateSession).toHaveBeenCalledWith(
       indexedRef,
@@ -503,8 +509,9 @@ describe('CLI chat integration', () => {
       const recordOpenedSession = jest.fn(async () => {
         throw new Error('stale overlay failure')
       })
+      const openedLease = lease(controller)
       const scope = {
-        selectConversationSession: jest.fn(() => controller),
+        openConversationSession: jest.fn(() => openedLease),
         sessionService: {
           restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
             messages: [...messages],
@@ -539,6 +546,10 @@ describe('CLI chat integration', () => {
       expect(commitRuntime).not.toHaveBeenCalled()
       expect(showNotice).not.toHaveBeenCalled()
       expect(recordOpenedSession).not.toHaveBeenCalled()
+      // The view keeps its current conversation, so the stale open must give
+      // its controller back instead of replacing the scope's selection.
+      expect(openedLease.commit).not.toHaveBeenCalled()
+      expect(openedLease.release).toHaveBeenCalledTimes(1)
     },
   )
 
@@ -949,7 +960,7 @@ describe('CLI chat integration', () => {
     } as unknown as CliConversationController
     const recordOpenedSession = jest.fn(async () => undefined)
     const scope = {
-      selectConversationSession: jest.fn(() => controller),
+      openConversationSession: jest.fn(() => lease(controller)),
       sessionService: {
         restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
           messages: [...messages],

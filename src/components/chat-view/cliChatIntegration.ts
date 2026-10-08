@@ -1,6 +1,7 @@
 import type {
   ChatRuntimeId,
   CliConversationController,
+  CliConversationLease,
   CliConversationSnapshot,
   CliPermissionProfileUpdate,
   CliRuntimeConfigurationUpdate,
@@ -566,6 +567,11 @@ export const resolveHermesProfileSwitchAction = ({
   return hasMessages ? 'new-conversation' : 'swap-in-place'
 }
 
+/**
+ * Opens and hydrates `ref` under a lease: the caller commits it once the view
+ * actually switches to the session, and must release it on every other path
+ * (releasing after a commit is a no-op).
+ */
 export const openCliSession = async ({
   scope,
   ref,
@@ -574,34 +580,41 @@ export const openCliSession = async ({
   scope: CliRuntimeScope
   ref: CliSessionRef
   isCurrent?: () => boolean
-}): Promise<{
-  controller: CliConversationController
-  hydration: CliSessionHydration | null
-  overlayError: Error | null
-}> => {
-  const controller = scope.selectConversationSession(ref)
-  const existingSnapshot = controller.getSnapshot()
-  const alreadyHydrated =
-    existingSnapshot.sessionRef?.runtimeId === ref.runtimeId &&
-    existingSnapshot.sessionRef.nativeSessionId === ref.nativeSessionId
-  const hydration = alreadyHydrated
-    ? {
-        ref,
-        messages: [...existingSnapshot.messages],
-        compactionBoundaries: [...existingSnapshot.compactionBoundaries],
-      }
-    : await controller.hydrateSession(ref, (messages) =>
-        scope.sessionService.restoreSessionOverlay(ref, messages),
-      )
-  let overlayError: Error | null = null
-  if (hydration && isCurrent()) {
-    try {
-      await scope.sessionService.recordOpenedSession(hydration)
-    } catch (error) {
-      overlayError = toError(error)
-    }
+}): Promise<
+  CliConversationLease & {
+    hydration: CliSessionHydration | null
+    overlayError: Error | null
   }
-  return { controller, hydration, overlayError }
+> => {
+  const lease = scope.openConversationSession(ref)
+  try {
+    const { controller } = lease
+    const existingSnapshot = controller.getSnapshot()
+    const alreadyHydrated =
+      existingSnapshot.sessionRef?.runtimeId === ref.runtimeId &&
+      existingSnapshot.sessionRef.nativeSessionId === ref.nativeSessionId
+    const hydration = alreadyHydrated
+      ? {
+          ref,
+          messages: [...existingSnapshot.messages],
+          compactionBoundaries: [...existingSnapshot.compactionBoundaries],
+        }
+      : await controller.hydrateSession(ref, (messages) =>
+          scope.sessionService.restoreSessionOverlay(ref, messages),
+        )
+    let overlayError: Error | null = null
+    if (hydration && isCurrent()) {
+      try {
+        await scope.sessionService.recordOpenedSession(hydration)
+      } catch (error) {
+        overlayError = toError(error)
+      }
+    }
+    return { ...lease, hydration, overlayError }
+  } catch (error) {
+    lease.release()
+    throw error
+  }
 }
 
 export const openCliSessionForNavigation = async ({
@@ -612,7 +625,9 @@ export const openCliSessionForNavigation = async ({
 }): Promise<Awaited<ReturnType<typeof openCliSession>> | null> => {
   if (!isCurrent()) return null
   const result = await openCliSession({ ...input, isCurrent })
-  return result.hydration && isCurrent() ? result : null
+  if (result.hydration && isCurrent()) return result
+  result.release()
+  return null
 }
 
 export type SubmitCliComposerTurnInput = {

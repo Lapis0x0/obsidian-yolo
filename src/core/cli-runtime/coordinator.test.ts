@@ -441,6 +441,71 @@ describe('CLI runtime coordinator', () => {
     )
   })
 
+  it('keeps the selected conversation alive while a session open is pending or abandoned', async () => {
+    const { coordinator } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const current = scope.selectConversationRuntime('claude-code')
+    const disposeCurrent = jest.spyOn(current, 'dispose')
+
+    const lease = scope.openConversationSession({
+      runtimeId: 'claude-code',
+      nativeSessionId: 'abandoned-session',
+    })
+    const disposeOpened = jest.spyOn(lease.controller, 'dispose')
+    expect(lease.controller).not.toBe(current)
+    expect(disposeCurrent).not.toHaveBeenCalled()
+
+    lease.release()
+    lease.release()
+    expect(disposeOpened).toHaveBeenCalledTimes(1)
+    expect(disposeCurrent).not.toHaveBeenCalled()
+    expect(scope.selectConversationRuntime('claude-code')).toBe(current)
+    expect(() => lease.commit()).toThrow(/no longer held/)
+
+    await scope.dispose()
+    await coordinator.dispose()
+  })
+
+  it('swaps the selection only when an opened session is committed', async () => {
+    const { coordinator } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const current = scope.selectConversationRuntime('claude-code')
+    const disposeCurrent = jest.spyOn(current, 'dispose')
+
+    const lease = scope.openConversationSession({
+      runtimeId: 'claude-code',
+      nativeSessionId: 'committed-session',
+    })
+    const disposeOpened = jest.spyOn(lease.controller, 'dispose')
+    lease.commit()
+    lease.release()
+
+    expect(disposeCurrent).toHaveBeenCalledTimes(1)
+    expect(disposeOpened).not.toHaveBeenCalled()
+    expect(scope.selectConversationRuntime('claude-code')).toBe(
+      lease.controller,
+    )
+
+    await scope.dispose()
+    expect(disposeOpened).toHaveBeenCalledTimes(1)
+    await coordinator.dispose()
+  })
+
+  it('releases a pending session open when its view scope closes', async () => {
+    const { coordinator } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const lease = scope.openConversationSession({
+      runtimeId: 'claude-code',
+      nativeSessionId: 'pending-session',
+    })
+    const disposeOpened = jest.spyOn(lease.controller, 'dispose')
+
+    await scope.dispose()
+    expect(disposeOpened).toHaveBeenCalledTimes(1)
+    expect(() => lease.commit()).toThrow(/no longer held/)
+    await coordinator.dispose()
+  })
+
   it('keeps an unobserved active conversation alive until it reaches a terminal state', async () => {
     const { coordinator, harness } = await createCoordinator()
     const scope = coordinator.createScope()

@@ -908,77 +908,85 @@ export function useYoloChatSession({
           ref,
           isCurrent: isCurrentNavigation,
         })
-        if (!result || !result.hydration) return
-        const modePreference = resolveCliModePreference(
-          settings,
-          ref.runtimeId,
-          overrides,
-        )
-        await prepareCliConversation({
-          controller: result.controller,
-          scope: cliRuntimeScope,
-          runtimeId: ref.runtimeId,
-          settings,
-          permissionProfile: modePreference,
-        })
-        if (!isCurrentNavigation()) return
-        lastCliRuntimeIdRef.current = ref.runtimeId
-        activeRuntimeIdRef.current = ref.runtimeId
-        setRequestedRuntimeId(ref.runtimeId)
-        persistChatRuntimePreference(ref.runtimeId)
-        setCliConversationController(result.controller)
-        setCliConversationId(conversationId)
-        // A historical CLI session's own `ChatConversationCliSession` is
-        // authoritative on which Hermes profile it lives under; no record
-        // means the default profile (see `ChatConversationCliSession.profileId`).
-        // Unless a fallback occurred — in the `openCliSessionForNavigation()`
-        // peek above or in `prepareCliConversation()`'s own `ensureReady()`
-        // load — because the stored profile no longer resolves (see
-        // `AcpCliRuntimeOptions.sessionRecovery`). Either way the *fallback*
-        // session is what's actually live, so both the header and
-        // conversation storage must reflect it instead of the now-dead
-        // requested profile — this reads the controller's settled snapshot,
-        // not just the first load's hydration, to catch a fallback from
-        // either load (see `resolveHermesSessionFallbackUpdate`).
-        const fallbackUpdate = resolveHermesSessionFallbackUpdate(
-          ref.runtimeId,
-          result.controller.getSnapshot(),
-        )
-        setHermesProfileId(
-          fallbackUpdate
-            ? fallbackUpdate.hermesProfileId
-            : ref.runtimeId === 'hermes'
-              ? ref.profileId
-              : undefined,
-        )
-        const restoredOverrides = overrides ?? null
-        setConversationOverrides(restoredOverrides)
-        conversationOverridesRef.current.set(conversationId, restoredOverrides)
-        setCliChatMode(modePreference.mode)
-        setCliYoloEnabled(modePreference.yoloEnabled)
-        prunePrePlanCliMode(
-          prePlanCliModeByConversationRef,
-          conversationId,
-          ref.runtimeId,
-          modePreference.mode,
-        )
-        if (fallbackUpdate) {
-          void createOrTouchCliConversation(
+        if (!result) return
+        try {
+          const modePreference = resolveCliModePreference(
+            settings,
+            ref.runtimeId,
+            overrides,
+          )
+          await prepareCliConversation({
+            controller: result.controller,
+            scope: cliRuntimeScope,
+            runtimeId: ref.runtimeId,
+            settings,
+            permissionProfile: modePreference,
+          })
+          if (!isCurrentNavigation()) return
+          result.commit()
+          lastCliRuntimeIdRef.current = ref.runtimeId
+          activeRuntimeIdRef.current = ref.runtimeId
+          setRequestedRuntimeId(ref.runtimeId)
+          persistChatRuntimePreference(ref.runtimeId)
+          setCliConversationController(result.controller)
+          setCliConversationId(conversationId)
+          // A historical CLI session's own `ChatConversationCliSession` is
+          // authoritative on which Hermes profile it lives under; no record
+          // means the default profile (see `ChatConversationCliSession.profileId`).
+          // Unless a fallback occurred — in the `openCliSessionForNavigation()`
+          // peek above or in `prepareCliConversation()`'s own `ensureReady()`
+          // load — because the stored profile no longer resolves (see
+          // `AcpCliRuntimeOptions.sessionRecovery`). Either way the *fallback*
+          // session is what's actually live, so both the header and
+          // conversation storage must reflect it instead of the now-dead
+          // requested profile — this reads the controller's settled snapshot,
+          // not just the first load's hydration, to catch a fallback from
+          // either load (see `resolveHermesSessionFallbackUpdate`).
+          const fallbackUpdate = resolveHermesSessionFallbackUpdate(
+            ref.runtimeId,
+            result.controller.getSnapshot(),
+          )
+          setHermesProfileId(
+            fallbackUpdate
+              ? fallbackUpdate.hermesProfileId
+              : ref.runtimeId === 'hermes'
+                ? ref.profileId
+                : undefined,
+          )
+          const restoredOverrides = overrides ?? null
+          setConversationOverrides(restoredOverrides)
+          conversationOverridesRef.current.set(
             conversationId,
-            fallbackUpdate.cliSession,
             restoredOverrides,
-          ).catch((error: unknown) => {
-            console.error(
-              '[YOLO] Failed to persist Hermes fallback session',
-              error,
-            )
-          })
-        }
-        if (result.overlayError) {
-          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+          )
+          setCliChatMode(modePreference.mode)
+          setCliYoloEnabled(modePreference.yoloEnabled)
+          prunePrePlanCliMode(
+            prePlanCliModeByConversationRef,
             conversationId,
-            error: result.overlayError.message,
-          })
+            ref.runtimeId,
+            modePreference.mode,
+          )
+          if (fallbackUpdate) {
+            void createOrTouchCliConversation(
+              conversationId,
+              fallbackUpdate.cliSession,
+              restoredOverrides,
+            ).catch((error: unknown) => {
+              console.error(
+                '[YOLO] Failed to persist Hermes fallback session',
+                error,
+              )
+            })
+          }
+          if (result.overlayError) {
+            console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+              conversationId,
+              error: result.overlayError.message,
+            })
+          }
+        } finally {
+          result.release()
         }
       }
 

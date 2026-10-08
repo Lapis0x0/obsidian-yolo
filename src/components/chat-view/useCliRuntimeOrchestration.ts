@@ -458,62 +458,67 @@ export function useCliRuntimeOrchestration({
           ref: seededRef,
           isCurrent: isCurrentRestore,
         })
-        if (!result.hydration || !isCurrentRestore()) {
-          return
-        }
-        await prepareCliConversation({
-          controller: result.controller,
-          scope: cliRuntimeScope,
-          runtimeId: seededRef.runtimeId,
-          settings,
-          permissionProfile: cliPermissionProfileRef.current,
-        })
-        if (!isCurrentRestore()) return
-        const restoredConversationId = seededCliConversationId ?? uuidv4()
-        setCliConversationController(result.controller)
-        setCliConversationId(restoredConversationId)
-        lastCliRuntimeIdRef.current = seededRef.runtimeId
-        setRequestedRuntimeId(seededRef.runtimeId)
-        activeRuntimeIdRef.current = seededRef.runtimeId
-        // A resumed session's own ref is authoritative on which Hermes
-        // profile it lives under — unless a fallback occurred, in the
-        // `openSession()` peek above or in `prepareCliConversation()`'s own
-        // `ensureReady()` load, because the requested profile no longer
-        // resolves (see `AcpCliRuntimeOptions.sessionRecovery`). Either way
-        // the *fallback* session is what's actually live and must be
-        // reflected in both the header and conversation storage, not the
-        // now-dead requested profile — so this reads the controller's
-        // settled snapshot, not just the first load's hydration, to catch a
-        // fallback from either load (see `resolveHermesSessionFallbackUpdate`).
-        const fallbackUpdate = resolveHermesSessionFallbackUpdate(
-          seededRef.runtimeId,
-          result.controller.getSnapshot(),
-        )
-        setHermesProfileId(
-          fallbackUpdate
-            ? fallbackUpdate.hermesProfileId
-            : seededRef.runtimeId === 'hermes'
-              ? seededRef.profileId
-              : undefined,
-        )
-        if (fallbackUpdate) {
-          void createOrTouchCliConversation(
-            restoredConversationId,
-            fallbackUpdate.cliSession,
-            conversationOverridesRef.current.get(restoredConversationId) ??
-              conversationOverrides,
-          ).catch((error: unknown) => {
-            console.error(
-              '[YOLO] Failed to persist Hermes fallback session',
-              error,
-            )
+        try {
+          if (!result.hydration || !isCurrentRestore()) {
+            return
+          }
+          await prepareCliConversation({
+            controller: result.controller,
+            scope: cliRuntimeScope,
+            runtimeId: seededRef.runtimeId,
+            settings,
+            permissionProfile: cliPermissionProfileRef.current,
           })
-        }
-        if (result.overlayError) {
-          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
-            conversationId: seededCliConversationId,
-            error: result.overlayError.message,
-          })
+          if (!isCurrentRestore()) return
+          result.commit()
+          const restoredConversationId = seededCliConversationId ?? uuidv4()
+          setCliConversationController(result.controller)
+          setCliConversationId(restoredConversationId)
+          lastCliRuntimeIdRef.current = seededRef.runtimeId
+          setRequestedRuntimeId(seededRef.runtimeId)
+          activeRuntimeIdRef.current = seededRef.runtimeId
+          // A resumed session's own ref is authoritative on which Hermes
+          // profile it lives under — unless a fallback occurred, in the
+          // `openSession()` peek above or in `prepareCliConversation()`'s own
+          // `ensureReady()` load, because the requested profile no longer
+          // resolves (see `AcpCliRuntimeOptions.sessionRecovery`). Either way
+          // the *fallback* session is what's actually live and must be
+          // reflected in both the header and conversation storage, not the
+          // now-dead requested profile — so this reads the controller's
+          // settled snapshot, not just the first load's hydration, to catch a
+          // fallback from either load (see `resolveHermesSessionFallbackUpdate`).
+          const fallbackUpdate = resolveHermesSessionFallbackUpdate(
+            seededRef.runtimeId,
+            result.controller.getSnapshot(),
+          )
+          setHermesProfileId(
+            fallbackUpdate
+              ? fallbackUpdate.hermesProfileId
+              : seededRef.runtimeId === 'hermes'
+                ? seededRef.profileId
+                : undefined,
+          )
+          if (fallbackUpdate) {
+            void createOrTouchCliConversation(
+              restoredConversationId,
+              fallbackUpdate.cliSession,
+              conversationOverridesRef.current.get(restoredConversationId) ??
+                conversationOverrides,
+            ).catch((error: unknown) => {
+              console.error(
+                '[YOLO] Failed to persist Hermes fallback session',
+                error,
+              )
+            })
+          }
+          if (result.overlayError) {
+            console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+              conversationId: seededCliConversationId,
+              error: result.overlayError.message,
+            })
+          }
+        } finally {
+          result.release()
         }
       })
       .catch((error) => {
