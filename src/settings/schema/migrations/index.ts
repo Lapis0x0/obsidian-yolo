@@ -86,6 +86,7 @@ import { migrateFrom84To85 } from './84_to_85'
 import { migrateFrom85To86 } from './85_to_86'
 import { migrateFrom86To87 } from './86_to_87'
 import { migrateFrom87To88 } from './87_to_88'
+import { migrateFrom88To89 } from './88_to_89'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
@@ -531,5 +532,10 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 87,
     toVersion: 88,
     migrate: migrateFrom87To88,
+  },
+  {
+    fromVersion: 88,
+    toVersion: 89,
+    migrate: migrateFrom88To89,
   },
 ]

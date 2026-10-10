@@ -183,17 +183,6 @@ export const PROVIDER_PRESET_INFO = {
       RESPONSE_STREAMING_MODE_SETTING,
     ],
   },
-  apimart: {
-    label: 'APIMart',
-    defaultProviderId: 'apimart',
-    requireApiKey: true,
-    requireBaseUrl: false,
-    supportEmbedding: false,
-    additionalSettings: [
-      REQUEST_TRANSPORT_MODE_SETTING,
-      RESPONSE_STREAMING_MODE_SETTING,
-    ],
-  },
   fluxion: {
     label: 'Sidrune AI',
     defaultProviderId: 'fluxion',

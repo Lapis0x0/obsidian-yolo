@@ -28,7 +28,6 @@ const DEFAULT_BASE_URL_BY_PRESET: Partial<
   deepseek: 'https://api.deepseek.com',
   groq: 'https://api.groq.com/openai/v1',
   openrouter: 'https://openrouter.ai/api/v1',
-  apimart: 'https://api.apimart.ai/v1',
   fluxion: 'https://sidrune.ai',
   ollama: 'http://127.0.0.1:11434',
   'lm-studio': 'http://127.0.0.1:1234',

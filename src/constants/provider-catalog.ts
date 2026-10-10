@@ -1,6 +1,5 @@
 import amazonBedrockLogo from '../assets/provider-icons/amazon-bedrock.svg'
 import anthropicLogo from '../assets/provider-icons/anthropic.svg'
-import apimartLogo from '../assets/provider-icons/apimart.svg'
 import azureOpenaiLogo from '../assets/provider-icons/azure-openai.svg'
 import cerebrasLogo from '../assets/provider-icons/cerebras.svg'
 import deepseekLogo from '../assets/provider-icons/deepseek.svg'
@@ -169,15 +168,6 @@ export const PROVIDER_CATALOG: Record<
     logo: openrouterLogo,
     apiKeyUrl: 'https://openrouter.ai/keys',
   },
-  apimart: {
-    monogram: 'AM',
-    tint: 'ink',
-    category: 'gw',
-    logo: apimartLogo,
-    sponsor: true,
-    // Referral link — see the "Sponsors" section in the README.
-    apiKeyUrl: 'https://go.apimart.ai/gh-obsidian-yolo',
-  },
   fluxion: {
     monogram: 'Fx',
     tint: 'indigo',
@@ -296,7 +286,6 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   'gemini-oauth',
   'github-copilot',
   'openrouter',
-  'apimart',
   'fluxion',
   'xai',
   'mistral',
