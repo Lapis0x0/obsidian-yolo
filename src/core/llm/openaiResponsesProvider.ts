@@ -40,7 +40,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createTransportClients } from './transportClients'
+import { WrapTransportFetch, createTransportClients } from './transportClients'
 
 export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
@@ -93,6 +93,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
+      wrapFetch?: WrapTransportFetch
     },
   ) {
     super(provider)
@@ -123,7 +124,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       (transportFetch) =>
         new OpenAI({
           ...clientOptions,
-          fetch: transportFetch,
+          fetch: options?.wrapFetch?.(transportFetch) ?? transportFetch,
         }),
       { providerId: provider.id, protocol: 'openai' },
     )

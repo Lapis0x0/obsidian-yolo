@@ -65,7 +65,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createTransportClients } from './transportClients'
+import { WrapTransportFetch, createTransportClients } from './transportClients'
 
 /**
  * Reads the `query` out of a hosted search's streamed arguments. The JSON
@@ -175,6 +175,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
   /** An `anthropic-beta` value the user set as a custom header. */
   private customBetaHeader: string | undefined
+  private readonly thinkingBlockBinding: boolean
 
   private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
     if (this.requestTransportMode === mode) {
@@ -201,11 +202,14 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
    * on top of the default reply size. A Claude model gets its generation's
    * shape (`resolveClaudeReasoningRequest`); a non-Claude model behind an
    * Anthropic-compatible endpoint keeps the adaptive shape it always had.
+   * `thinkingBlockBinding: false` keeps `block_binding` out of the request
+   * for an endpoint that does not implement it.
    */
   private static buildReasoningFields(
     modelId: string,
     level: ReturnType<typeof resolveRequestReasoningLevel>,
     requestedMaxTokens: number | undefined,
+    thinkingBlockBinding = true,
   ): Record<string, unknown> & { max_tokens: number } {
     if (level === undefined) {
       return {
@@ -224,7 +228,9 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
           : (requestedMaxTokens ??
             AnthropicProvider.DEFAULT_MAX_TOKENS + claude.thinkingTokens)
       const thinking =
-        claude.thinking && claudeBindsThinkingToPrefix(modelId)
+        claude.thinking &&
+        thinkingBlockBinding &&
+        claudeBindsThinkingToPrefix(modelId)
           ? {
               ...claude.thinking,
               block_binding: { prefix_mismatch_behavior: 'drop_block' },
@@ -259,10 +265,18 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
+      wrapFetch?: WrapTransportFetch
+      /**
+       * Whether the endpoint understands `thinking.block_binding` (and the
+       * beta header it requires). Defaults to true; a gateway that does not
+       * implement Anthropic betas, such as GitHub Copilot, turns it off.
+       */
+      thinkingBlockBinding?: boolean
     },
   ) {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
+    this.thinkingBlockBinding = options?.thinkingBlockBinding ?? true
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.customBetaHeader = Object.entries(defaultHeaders ?? {}).find(
       ([name]) => name.toLowerCase() === 'anthropic-beta',
@@ -294,7 +308,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
       (transportFetch) =>
         new Anthropic({
           ...clientOptions,
-          fetch: transportFetch,
+          fetch: options?.wrapFetch?.(transportFetch) ?? transportFetch,
         }),
       { providerId: provider.id, protocol: 'passthrough' },
     )
@@ -385,6 +399,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
           request.model,
           level,
           request.max_tokens,
+          this.thinkingBlockBinding,
         ),
         ...(claudeAcceptsSamplingParams(request.model)
           ? { temperature: request.temperature, top_p: request.top_p }
@@ -499,6 +514,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
           request.model,
           level,
           request.max_tokens,
+          this.thinkingBlockBinding,
         ),
         ...(claudeAcceptsSamplingParams(request.model)
           ? { temperature: request.temperature, top_p: request.top_p }

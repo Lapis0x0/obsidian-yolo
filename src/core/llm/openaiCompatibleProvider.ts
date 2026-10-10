@@ -33,7 +33,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createTransportClients } from './transportClients'
+import { WrapTransportFetch, createTransportClients } from './transportClients'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -128,6 +128,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       adapter?: OpenAIMessageAdapter
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
+      wrapFetch?: WrapTransportFetch
     },
   ) {
     super(provider)
@@ -165,7 +166,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       (transportFetch) =>
         new ClientCtor({
           ...clientOptions,
-          fetch: transportFetch,
+          fetch: options?.wrapFetch?.(transportFetch) ?? transportFetch,
         }),
       { providerId: provider.id, protocol: 'openai' },
     )

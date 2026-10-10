@@ -8,6 +8,7 @@ import { BaseLLMProvider } from './base'
 import { BedrockProvider } from './bedrockProvider'
 import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 import { ClaudeOAuthProvider } from './claudeOAuthProvider'
+import { CopilotProvider } from './copilotProvider'
 import { DeepSeekAnthropicProvider } from './deepseekAnthropicProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
@@ -53,6 +54,16 @@ function createProviderClient({
   }
 
   const requestPolicy = resolveModelRequestPolicy(settings)
+
+  // Copilot picks the wire format per model, not per provider, so it sits
+  // outside the apiType switch.
+  if (provider.presetType === 'github-copilot') {
+    return new CopilotProvider(provider, {
+      requestPolicy,
+      onAutoPromoteTransportMode: (mode) =>
+        onAutoPromoteTransportMode?.(provider.id, mode),
+    })
+  }
 
   switch (provider.apiType) {
     case 'openai-responses': {

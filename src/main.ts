@@ -72,6 +72,7 @@ import {
   bindClaudeSdkHost,
   unbindClaudeSdkHost,
 } from './core/llm/claude-sdk/host'
+import { clearCopilotModelCatalog } from './core/llm/copilotModelCatalog'
 import {
   isLLMDebugCaptureEnabled,
   setLLMDebugCaptureEnabled,
@@ -697,10 +698,13 @@ export default class YoloPlugin extends Plugin {
 
   async disconnectCopilotOAuthAccount(providerId: string): Promise<void> {
     await this.getCopilotOAuthService(providerId).clearCredential()
+    // The next login may be another account with other models.
+    clearCopilotModelCatalog(providerId)
   }
 
   clearCopilotOAuthRuntime(providerId: string): void {
     clearCopilotOAuthService(providerId)
+    clearCopilotModelCatalog(providerId)
   }
 
   private syncOAuthRuntimesFromSettings(

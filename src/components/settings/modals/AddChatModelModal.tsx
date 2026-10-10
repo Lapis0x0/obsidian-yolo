@@ -16,6 +16,7 @@ import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import { listChatGPTOAuthModels } from '../../../core/llm/chatgptOAuthModelCatalog'
 import { listClaudeSdkModels } from '../../../core/llm/claude-sdk/modelCatalog'
 import { claudeAcceptsSamplingParams } from '../../../core/llm/claudeReasoning'
+import { getCopilotModelCatalog } from '../../../core/llm/copilotModelCatalog'
 import { listGeminiModelIds } from '../../../core/llm/geminiModelCatalog'
 import { collectModelIdentifiers } from '../../../core/llm/modelCatalogIdentifiers'
 import type YoloPlugin from '../../../main'
@@ -411,6 +412,22 @@ function AddChatModelModalComponent({
             setAvailableModels(fallback)
             plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
           }
+          return
+        }
+
+        if (selectedProvider.presetType === 'github-copilot') {
+          // No fallback list: Copilot's models depend on the account's plan
+          // and policies, so a guessed list would offer models it cannot use.
+          const catalog = await getCopilotModelCatalog(
+            selectedProvider.id,
+            plugin.getCopilotOAuthService(selectedProvider.id),
+            { refresh: true },
+          )
+          const unique = Array.from(
+            new Set(catalog.map((model) => model.id)),
+          ).sort()
+          setAvailableModels(unique)
+          plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
           return
         }
 

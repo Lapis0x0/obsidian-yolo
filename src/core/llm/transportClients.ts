@@ -12,6 +12,14 @@ export type TransportClientSet<T> = {
   nodeClient: T
 }
 
+/**
+ * Lets a provider that reuses another provider's request shaping (Copilot
+ * reusing the OpenAI / Anthropic providers) take over the HTTP layer: the
+ * wrapper receives each transport's fetch and returns the one the SDK client
+ * calls.
+ */
+export type WrapTransportFetch = (transportFetch: typeof fetch) => typeof fetch
+
 export function createTransportClients<T>(
   createClient: (transportFetch: typeof fetch) => T,
   context: {
