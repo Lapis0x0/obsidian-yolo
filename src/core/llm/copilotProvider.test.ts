@@ -10,13 +10,17 @@ import { ChatModel } from '../../types/chat-model.types'
 import { LLMRequestNonStreaming } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 import { getCopilotOAuthService } from '../auth/copilotOAuthRuntime'
+import { CopilotOAuthError } from '../auth/copilotOAuthService'
 
 import {
   CopilotCatalogModel,
   getCopilotModelCatalog,
 } from './copilotModelCatalog'
 import { CopilotProvider } from './copilotProvider'
-import { LLMProviderNotConfiguredException } from './exception'
+import {
+  LLMAPIKeyInvalidException,
+  LLMProviderNotConfiguredException,
+} from './exception'
 
 const getServiceMock = getCopilotOAuthService as jest.Mock
 const getCatalogMock = getCopilotModelCatalog as jest.Mock
@@ -133,6 +137,37 @@ describe('CopilotProvider', () => {
     expect(headers.get('anthropic-beta') ?? '').not.toContain(
       'thinking-binding-controls',
     )
+  })
+
+  it.each(['claude-opus-5-5', 'gpt-5', 'gemini'])(
+    'words a final 401 from %s as a Copilot login problem',
+    async (id) => {
+      networkFetch.mockImplementation(
+        async () =>
+          new Response('{"error":{"message":"unauthorized"}}', {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+          }),
+      )
+      const result = new CopilotProvider(provider).generateResponse(
+        { providerId: 'copilot', id, model: id },
+        request(id),
+      )
+      await expect(result).rejects.toBeInstanceOf(LLMAPIKeyInvalidException)
+      await expect(result).rejects.toThrow(/GitHub Copilot rejected/)
+    },
+  )
+
+  it('words a missing subscription as such', async () => {
+    getCatalogMock.mockRejectedValue(
+      new CopilotOAuthError('no_subscription', 'forbidden'),
+    )
+    await expect(
+      new CopilotProvider(provider).generateResponse(
+        { providerId: 'copilot', id: 'gpt-5', model: 'gpt-5' },
+        request('gpt-5'),
+      ),
+    ).rejects.toThrow(/no Copilot access/)
   })
 
   it('does not support embeddings', async () => {

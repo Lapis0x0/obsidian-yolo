@@ -10,6 +10,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { getCopilotOAuthService } from '../auth/copilotOAuthRuntime'
+import { CopilotOAuthError } from '../auth/copilotOAuthService'
 
 import { AnthropicProvider } from './anthropic'
 import { BaseLLMProvider } from './base'
@@ -19,7 +20,10 @@ import {
   selectCopilotEndpoint,
 } from './copilotModelCatalog'
 import type { CopilotEndpoint } from './copilotRequestTraits'
-import { LLMProviderNotConfiguredException } from './exception'
+import {
+  LLMAPIKeyInvalidException,
+  LLMProviderNotConfiguredException,
+} from './exception'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { ModelRequestPolicy } from './requestPolicy'
@@ -32,6 +36,53 @@ import { AutoPromotedTransportMode } from './requestTransport'
  */
 const PLACEHOLDER_BASE_URL = 'https://api.githubcopilot.com'
 const PLACEHOLDER_API_KEY = 'github-copilot'
+
+const REAUTH_MESSAGE =
+  'GitHub Copilot rejected the login. Please reconnect your GitHub account in settings.'
+const NO_SUBSCRIPTION_MESSAGE =
+  'This GitHub account has no Copilot access, or Copilot is disabled by policy.'
+
+const findInCauseChain = <T>(
+  error: unknown,
+  pick: (candidate: unknown) => T | undefined,
+): T | undefined => {
+  let current: unknown = error
+  for (let depth = 0; current && depth < 4; depth += 1) {
+    const found = pick(current)
+    if (found !== undefined) return found
+    const next = current as { cause?: unknown; rawError?: unknown }
+    current = next.rawError ?? next.cause
+  }
+  return undefined
+}
+
+/**
+ * The inner providers word a 401 as an API-key problem for their own vendor,
+ * and a login failure inside the fetch layer reaches here wrapped by the SDK.
+ * A Copilot user has no API key, so both become one Copilot-worded error of
+ * the kind the chat surface shows with a "go to settings" action.
+ */
+const toCopilotAuthError = (
+  error: unknown,
+): LLMAPIKeyInvalidException | undefined => {
+  const loginCode = findInCauseChain(error, (candidate) =>
+    candidate instanceof CopilotOAuthError ? candidate.code : undefined,
+  )
+  if (loginCode === 'no_subscription') {
+    return new LLMAPIKeyInvalidException(
+      NO_SUBSCRIPTION_MESSAGE,
+      error as Error,
+    )
+  }
+  const unauthorized =
+    loginCode === 'reauth_required' ||
+    findInCauseChain(error, (candidate) =>
+      (candidate as { status?: unknown }).status === 401 ? true : undefined,
+    )
+  return unauthorized
+    ? new LLMAPIKeyInvalidException(REAUTH_MESSAGE, error as Error)
+    : undefined
+}
 
 /**
  * GitHub Copilot serves each model on some of three wire formats — Chat
@@ -86,8 +137,12 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    const provider = await this.resolveEndpointProvider(model)
-    return provider.generateResponse(model, request, options)
+    try {
+      const provider = await this.resolveEndpointProvider(model)
+      return await provider.generateResponse(model, request, options)
+    } catch (error) {
+      throw toCopilotAuthError(error) ?? error
+    }
   }
 
   async streamResponse(
@@ -95,8 +150,12 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    const provider = await this.resolveEndpointProvider(model)
-    return provider.streamResponse(model, request, options)
+    try {
+      const provider = await this.resolveEndpointProvider(model)
+      return await provider.streamResponse(model, request, options)
+    } catch (error) {
+      throw toCopilotAuthError(error) ?? error
+    }
   }
 
   async getEmbedding(
