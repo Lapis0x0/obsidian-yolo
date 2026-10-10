@@ -7,6 +7,7 @@ import deepseekLogo from '../assets/provider-icons/deepseek.svg'
 import doubaoLogo from '../assets/provider-icons/doubao.svg'
 import fluxionLogo from '../assets/provider-icons/fluxion.svg'
 import geminiLogo from '../assets/provider-icons/gemini.svg'
+import githubCopilotLogo from '../assets/provider-icons/github-copilot.svg'
 import groqLogo from '../assets/provider-icons/groq.svg'
 import hunyuanLogo from '../assets/provider-icons/hunyuan.svg'
 import lmStudioLogo from '../assets/provider-icons/lm-studio.svg'
@@ -119,6 +120,7 @@ export const PROVIDER_CATALOG: Record<
     tint: 'ink',
     category: 'main',
     oauth: true,
+    logo: githubCopilotLogo,
   },
   mistral: {
     monogram: 'Mi',

@@ -90,6 +90,18 @@ function ProviderFormComponent({
   ): LLMProvider['additionalSettings'] => {
     return { requestTransportMode: getDefaultRequestTransportModeByPlatform() }
   }
+  // A preset's own default id, numbered when the user already has one, so a
+  // second Copilot account becomes `github-copilot-2`. The bare custom preset
+  // has no default and stays empty for the user to name.
+  const suggestProviderId = (presetType: LLMProvider['presetType']): string => {
+    const base = PROVIDER_PRESET_INFO[presetType].defaultProviderId
+    if (!base) return ''
+    const taken = new Set(plugin.settings.providers.map((p) => p.id))
+    if (!taken.has(base)) return base
+    let suffix = 2
+    while (taken.has(`${base}-${suffix}`)) suffix += 1
+    return `${base}-${suffix}`
+  }
 
   const [formData, setFormData] = useState<LLMProvider>(
     provider
@@ -104,7 +116,7 @@ function ProviderFormComponent({
           return {
             presetType,
             apiType: getDefaultApiTypeForPresetType(presetType),
-            id: '',
+            id: suggestProviderId(presetType),
             apiKey: '',
             baseUrl: getDefaultBaseUrlForPreset(presetType) ?? '',
             additionalSettings: getDefaultAdditionalSettings(presetType),
@@ -350,8 +362,12 @@ function ProviderFormComponent({
           onChange={(value: string) =>
             setFormData((prev) => {
               const nextPreset = value as LLMProvider['presetType']
+              // Follow the preset only while the id is still the suggested one.
+              const idIsSuggested =
+                !provider && prev.id === suggestProviderId(prev.presetType)
               return {
                 ...prev,
+                ...(idIsSuggested ? { id: suggestProviderId(nextPreset) } : {}),
                 presetType: nextPreset,
                 apiType: getDefaultApiTypeForPresetType(nextPreset),
                 additionalSettings: getDefaultAdditionalSettings(nextPreset),
