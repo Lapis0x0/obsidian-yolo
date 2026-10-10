@@ -577,27 +577,27 @@
   opacity: 0.6;
 }
 
-.yolo-chatgpt-oauth-login-actions,
-.yolo-chatgpt-oauth-device-actions {
+.yolo-oauth-login-actions,
+.yolo-oauth-device-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--size-4-1);
 }
 
-.yolo-chatgpt-oauth-secondary-btn,
-.yolo-chatgpt-oauth-disconnect-btn {
+.yolo-oauth-secondary-btn,
+.yolo-oauth-disconnect-btn {
   background-color: var(--background-secondary);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
 }
 
-.yolo-chatgpt-oauth-secondary-btn:hover,
-.yolo-chatgpt-oauth-disconnect-btn:hover {
+.yolo-oauth-secondary-btn:hover,
+.yolo-oauth-disconnect-btn:hover {
   background-color: var(--background-modifier-hover);
 }
 
-.yolo-chatgpt-oauth-device-card {
+.yolo-oauth-device-card {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
@@ -608,7 +608,7 @@
   background: var(--background-secondary);
 }
 
-.yolo-chatgpt-oauth-device-code-row {
+.yolo-oauth-device-code-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -617,7 +617,7 @@
   font-size: var(--font-ui-small);
 }
 
-.yolo-chatgpt-oauth-device-code-row code {
+.yolo-oauth-device-code-row code {
   padding: var(--size-2-1) var(--size-4-2);
   border-radius: var(--radius-s);
   background: var(--background-primary);
@@ -628,13 +628,13 @@
   user-select: all;
 }
 
-.yolo-chatgpt-oauth-device-help {
+.yolo-oauth-device-help {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   line-height: var(--line-height-normal);
 }
 
-.yolo-chatgpt-oauth-device-actions {
+.yolo-oauth-device-actions {
   justify-content: flex-start;
 }
 
@@ -722,7 +722,7 @@
     gap: var(--size-4-2);
   }
 
-  .yolo-chatgpt-oauth-login-actions {
+  .yolo-oauth-login-actions {
     justify-content: flex-start;
   }
 

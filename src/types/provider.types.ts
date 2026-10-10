@@ -31,6 +31,7 @@ export const providerPresetTypeSchema = z.enum([
   'chatgpt-oauth',
   'gemini-oauth',
   'claude-oauth',
+  'github-copilot',
   'anthropic',
   'gemini',
   'deepseek',
@@ -114,6 +115,9 @@ const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
   'chatgpt-oauth': 'openai-responses',
   'gemini-oauth': 'gemini',
   'claude-oauth': 'anthropic',
+  // Copilot serves each model over its own endpoint; the provider picks it
+  // per model, so this value only satisfies the schema.
+  'github-copilot': 'openai-compatible',
   anthropic: 'anthropic',
   gemini: 'gemini',
   deepseek: 'openai-compatible',
@@ -160,6 +164,10 @@ export function getSupportedApiTypesForPresetType(
     case 'claude-oauth':
       // Served by the Claude Agent SDK rather than any HTTP endpoint, so
       // there is no alternate API type to switch to.
+      break
+    case 'github-copilot':
+      // The endpoint is chosen per model from Copilot's model catalog, so
+      // there is no provider-level API type to switch.
       break
     case 'anthropic':
       defaults.add('openai-compatible')

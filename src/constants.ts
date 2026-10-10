@@ -117,6 +117,17 @@ export const PROVIDER_PRESET_INFO = {
       RESPONSE_STREAMING_MODE_SETTING,
     ],
   },
+  'github-copilot': {
+    label: 'GitHub Copilot',
+    defaultProviderId: 'github-copilot',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [
+      REQUEST_TRANSPORT_MODE_SETTING,
+      RESPONSE_STREAMING_MODE_SETTING,
+    ],
+  },
   anthropic: {
     label: 'Anthropic',
     defaultProviderId: 'anthropic',

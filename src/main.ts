@@ -38,6 +38,13 @@ import {
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
 import {
+  clearAllCopilotOAuthServices,
+  clearCopilotOAuthService,
+  getCopilotOAuthService as getCopilotOAuthServiceRuntime,
+  initializeCopilotOAuthRuntime,
+} from './core/auth/copilotOAuthRuntime'
+import type { CopilotOAuthStatus } from './core/auth/copilotOAuthService'
+import {
   clearGeminiOAuthService,
   getGeminiOAuthService as getGeminiOAuthServiceRuntime,
   initializeGeminiOAuthRuntime,
@@ -677,6 +684,25 @@ export default class YoloPlugin extends Plugin {
     clearGeminiOAuthService(providerId)
   }
 
+  getCopilotOAuthService(providerId: string) {
+    return (
+      getCopilotOAuthServiceRuntime(providerId) ??
+      initializeCopilotOAuthRuntime(this.app, this.manifest.id, providerId)
+    )
+  }
+
+  async getCopilotOAuthStatus(providerId: string): Promise<CopilotOAuthStatus> {
+    return this.getCopilotOAuthService(providerId).getStatus()
+  }
+
+  async disconnectCopilotOAuthAccount(providerId: string): Promise<void> {
+    await this.getCopilotOAuthService(providerId).clearCredential()
+  }
+
+  clearCopilotOAuthRuntime(providerId: string): void {
+    clearCopilotOAuthService(providerId)
+  }
+
   private syncOAuthRuntimesFromSettings(
     settings: Pick<YoloSettings, 'providers'> = this.settings,
   ): void {
@@ -686,6 +712,9 @@ export default class YoloPlugin extends Plugin {
       }
       if (provider.presetType === 'gemini-oauth') {
         this.getGeminiOAuthService(provider.id)
+      }
+      if (provider.presetType === 'github-copilot') {
+        this.getCopilotOAuthService(provider.id)
       }
     }
   }
@@ -2785,6 +2814,7 @@ export default class YoloPlugin extends Plugin {
   onunload() {
     this.isUnloaded = true
     clearAllChatGPTOAuthServices()
+    clearAllCopilotOAuthServices()
     unbindClaudeSdkHost()
     this.disposeCliRuntimeCoordinator()
     this.liteSkillRegistryDispose?.()

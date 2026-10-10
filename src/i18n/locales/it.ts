@@ -959,6 +959,35 @@ export const it: DeepPartial<TranslationKeys> = {
       chatgptOAuthCodeCopied: 'Codice dispositivo copiato.',
       chatgptOAuthOpenDevicePage: 'Apri pagina di autorizzazione',
       chatgptOAuthCancelDevice: 'Annulla',
+      copilotOAuthTitle: 'GitHub Copilot',
+      copilotOAuthLogin: 'Accedi con GitHub',
+      copilotOAuthConnecting: 'In attesa di autorizzazione...',
+      copilotOAuthDisconnect: 'Disconnetti',
+      copilotOAuthLoadingStatus: "Verifica dell'accesso a GitHub Copilot...",
+      copilotOAuthConnected: 'Connesso',
+      copilotOAuthDisconnectedHelp:
+        'Non connesso. Accedi con GitHub per usare i modelli del tuo abbonamento Copilot.',
+      copilotOAuthReauthRequired:
+        "GitHub non accetta più l'accesso salvato. Accedi di nuovo.",
+      copilotOAuthNoSubscription:
+        "Questo account GitHub non ha accesso a Copilot, oppure una policy dell'organizzazione lo disattiva.",
+      copilotOAuthStatusError:
+        "Impossibile verificare l'accesso a Copilot: {message}",
+      copilotOAuthDeviceOpened:
+        'Inserisci il codice mostrato nella pagina GitHub appena aperta.',
+      copilotOAuthConnectedNotice: 'GitHub Copilot connesso.',
+      copilotOAuthDisconnectedNotice: 'GitHub Copilot disconnesso.',
+      copilotOAuthDisconnectFailed: 'Impossibile disconnettere GitHub Copilot.',
+      copilotOAuthDeviceExpired:
+        "Il codice è scaduto prima dell'approvazione. Avvia di nuovo l'accesso.",
+      copilotOAuthAccessDenied: "L'autorizzazione è stata rifiutata su GitHub.",
+      copilotOAuthPendingCode: 'Codice',
+      copilotOAuthDeviceHelp:
+        "Inserisci questo codice su github.com/login/device prima che scada. Continua solo se hai avviato tu l'accesso.",
+      copilotOAuthCopyCode: 'Copia codice',
+      copilotOAuthCodeCopied: 'Codice copiato.',
+      copilotOAuthOpenDevicePage: 'Apri GitHub',
+      copilotOAuthCancel: 'Annulla',
       oauthDesktopOnly:
         'Il login OAuth è disponibile solo su desktop. Collegati prima da desktop.',
       geminiOAuthTitle: 'Gemini OAuth',

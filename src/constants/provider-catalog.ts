@@ -114,6 +114,12 @@ export const PROVIDER_CATALOG: Record<
     oauth: true,
     logo: geminiLogo,
   },
+  'github-copilot': {
+    monogram: 'GH',
+    tint: 'ink',
+    category: 'main',
+    oauth: true,
+  },
   mistral: {
     monogram: 'Mi',
     tint: 'rose',
@@ -286,6 +292,7 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   'claude-oauth',
   'gemini',
   'gemini-oauth',
+  'github-copilot',
   'openrouter',
   'apimart',
   'fluxion',

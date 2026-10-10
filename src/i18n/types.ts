@@ -772,6 +772,28 @@ export type TranslationKeys = {
       chatgptOAuthCodeCopied: string
       chatgptOAuthOpenDevicePage: string
       chatgptOAuthCancelDevice: string
+      copilotOAuthTitle: string
+      copilotOAuthLogin: string
+      copilotOAuthConnecting: string
+      copilotOAuthDisconnect: string
+      copilotOAuthLoadingStatus: string
+      copilotOAuthConnected: string
+      copilotOAuthDisconnectedHelp: string
+      copilotOAuthReauthRequired: string
+      copilotOAuthNoSubscription: string
+      copilotOAuthStatusError: string
+      copilotOAuthDeviceOpened: string
+      copilotOAuthConnectedNotice: string
+      copilotOAuthDisconnectedNotice: string
+      copilotOAuthDisconnectFailed: string
+      copilotOAuthDeviceExpired: string
+      copilotOAuthAccessDenied: string
+      copilotOAuthPendingCode: string
+      copilotOAuthDeviceHelp: string
+      copilotOAuthCopyCode: string
+      copilotOAuthCodeCopied: string
+      copilotOAuthOpenDevicePage: string
+      copilotOAuthCancel: string
       oauthDesktopOnly?: string
       geminiOAuthTitle?: string
       geminiOAuthConnect?: string

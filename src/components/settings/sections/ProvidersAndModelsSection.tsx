@@ -35,6 +35,10 @@ import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import {
+  CopilotOAuthError,
+  type CopilotOAuthStatus,
+} from '../../../core/auth/copilotOAuthService'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
 import type YoloPlugin from '../../../main'
 import {
@@ -337,7 +341,7 @@ function ChatGPTOAuthPanel({
           {t('settings.providers.chatgptOAuthTitle', 'ChatGPT OAuth')}
         </span>
         {!connected ? (
-          <div className="yolo-chatgpt-oauth-login-actions">
+          <div className="yolo-oauth-login-actions">
             <button
               type="button"
               onClick={handleBrowserConnect}
@@ -365,7 +369,7 @@ function ChatGPTOAuthPanel({
             <button
               type="button"
               onClick={handleDeviceConnect}
-              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
               disabled={connectingMethod !== null}
             >
               {connectingMethod === 'device'
@@ -383,7 +387,7 @@ function ChatGPTOAuthPanel({
           <button
             type="button"
             onClick={handleDisconnect}
-            className="yolo-add-model-btn yolo-chatgpt-oauth-disconnect-btn"
+            className="yolo-add-model-btn yolo-oauth-disconnect-btn"
             disabled={connectingMethod !== null}
           >
             {t('settings.providers.chatgptOAuthDisconnect', 'Disconnect')}
@@ -404,30 +408,30 @@ function ChatGPTOAuthPanel({
               )}
       </div>
       {deviceAuthorization ? (
-        <div className="yolo-chatgpt-oauth-device-card">
-          <div className="yolo-chatgpt-oauth-device-code-row">
+        <div className="yolo-oauth-device-card">
+          <div className="yolo-oauth-device-code-row">
             <span>
               {t('settings.providers.chatgptOAuthPendingCode', 'Device code')}
             </span>
             <code>{deviceAuthorization.userCode}</code>
           </div>
-          <div className="yolo-chatgpt-oauth-device-help">
+          <div className="yolo-oauth-device-help">
             {t(
               'settings.providers.chatgptOAuthDeviceHelp',
               'Enter this code on the authorization page within 15 minutes. Continue only if you started this login.',
             )}
           </div>
-          <div className="yolo-chatgpt-oauth-device-actions">
+          <div className="yolo-oauth-device-actions">
             <button
               type="button"
               onClick={handleCopyDeviceCode}
-              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
             >
               {t('settings.providers.chatgptOAuthCopyCode', 'Copy code')}
             </button>
             <button
               type="button"
-              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
               onClick={() =>
                 openExternalLink(deviceAuthorization.verificationUri)
               }
@@ -440,9 +444,295 @@ function ChatGPTOAuthPanel({
             <button
               type="button"
               onClick={handleCancelDeviceConnect}
-              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
             >
               {t('settings.providers.chatgptOAuthCancelDevice', 'Cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function CopilotOAuthPanel({
+  plugin,
+  provider,
+}: {
+  plugin: YoloPlugin
+  provider: LLMProvider
+}) {
+  const { t } = useLanguage()
+  const [status, setStatus] = useState<CopilotOAuthStatus | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [deviceAuthorization, setDeviceAuthorization] = useState<{
+    userCode: string
+    verificationUri: string
+  } | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const connectionAttemptRef = useRef(0)
+
+  const refreshStatus = useCallback(async () => {
+    setStatus(null)
+    const next = await plugin.getCopilotOAuthStatus(provider.id)
+    setStatus(next)
+    return next
+  }, [plugin, provider.id])
+
+  useEffect(() => {
+    void refreshStatus()
+    return () => {
+      connectionAttemptRef.current += 1
+      abortRef.current?.abort()
+    }
+  }, [refreshStatus])
+
+  const describeLoginError = (error: unknown): string => {
+    if (error instanceof CopilotOAuthError) {
+      if (error.code === 'device_code_expired') {
+        return t(
+          'settings.providers.copilotOAuthDeviceExpired',
+          'The code expired before it was approved. Start the login again.',
+        )
+      }
+      if (error.code === 'access_denied') {
+        return t(
+          'settings.providers.copilotOAuthAccessDenied',
+          'Authorization was declined on GitHub.',
+        )
+      }
+    }
+    return error instanceof Error ? error.message : String(error)
+  }
+
+  const handleConnect = () => {
+    const attemptId = ++connectionAttemptRef.current
+    abortRef.current?.abort()
+    const abortController = new AbortController()
+    abortRef.current = abortController
+    const execute = async () => {
+      setIsConnecting(true)
+      const service = plugin.getCopilotOAuthService(provider.id)
+      const authorization = await service.beginDeviceAuthorization()
+      if (abortController.signal.aborted) {
+        return
+      }
+      setDeviceAuthorization({
+        userCode: authorization.userCode,
+        verificationUri: authorization.verificationUri,
+      })
+      openExternalLink(authorization.verificationUri)
+      new Notice(
+        t(
+          'settings.providers.copilotOAuthDeviceOpened',
+          'Enter the displayed code on the GitHub page that just opened.',
+        ),
+        10000,
+      )
+
+      await service.pollDeviceAuthorization(
+        authorization,
+        abortController.signal,
+      )
+      setDeviceAuthorization(null)
+      // Logging in only proves the GitHub account; the status check exchanges
+      // a Copilot token, which is where a missing subscription shows up.
+      const next = await refreshStatus()
+      if (next.state === 'connected') {
+        new Notice(
+          t(
+            'settings.providers.copilotOAuthConnectedNotice',
+            'GitHub Copilot connected.',
+          ),
+        )
+      }
+    }
+
+    void execute()
+      .catch((error: unknown) => {
+        if (connectionAttemptRef.current !== attemptId) {
+          return
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+        console.error('[YOLO] Failed to connect GitHub Copilot:', error)
+        new Notice(describeLoginError(error))
+      })
+      .finally(() => {
+        if (abortRef.current === abortController) {
+          abortRef.current = null
+        }
+        if (connectionAttemptRef.current === attemptId) {
+          setDeviceAuthorization(null)
+          setIsConnecting(false)
+        }
+      })
+  }
+
+  const handleCancel = () => {
+    connectionAttemptRef.current += 1
+    abortRef.current?.abort()
+    abortRef.current = null
+    setDeviceAuthorization(null)
+    setIsConnecting(false)
+  }
+
+  const handleCopyCode = () => {
+    if (!deviceAuthorization) {
+      return
+    }
+    void navigator.clipboard
+      .writeText(deviceAuthorization.userCode)
+      .then(() => {
+        new Notice(
+          t('settings.providers.copilotOAuthCodeCopied', 'Code copied.'),
+        )
+      })
+      .catch((error: unknown) => {
+        console.error('[YOLO] Failed to copy GitHub device code:', error)
+      })
+  }
+
+  const handleDisconnect = () => {
+    const execute = async () => {
+      handleCancel()
+      await plugin.disconnectCopilotOAuthAccount(provider.id)
+      new Notice(
+        t(
+          'settings.providers.copilotOAuthDisconnectedNotice',
+          'GitHub Copilot disconnected.',
+        ),
+      )
+      await refreshStatus()
+    }
+
+    void execute().catch((error: unknown) => {
+      console.error('[YOLO] Failed to disconnect GitHub Copilot:', error)
+      new Notice(
+        t(
+          'settings.providers.copilotOAuthDisconnectFailed',
+          'Failed to disconnect GitHub Copilot.',
+        ),
+      )
+    })
+  }
+
+  const statusText = (() => {
+    switch (status?.state) {
+      case undefined:
+        return t(
+          'settings.providers.copilotOAuthLoadingStatus',
+          'Checking GitHub Copilot login...',
+        )
+      case 'connected':
+        return t('settings.providers.copilotOAuthConnected', 'Connected')
+      case 'disconnected':
+        return t(
+          'settings.providers.copilotOAuthDisconnectedHelp',
+          'Not connected. Log in with GitHub to use the models in your Copilot subscription.',
+        )
+      case 'reauth_required':
+        return t(
+          'settings.providers.copilotOAuthReauthRequired',
+          'GitHub no longer accepts the saved login. Log in again.',
+        )
+      case 'no_subscription':
+        return t(
+          'settings.providers.copilotOAuthNoSubscription',
+          'This GitHub account has no Copilot access, or an organization policy disables it.',
+        )
+      case 'error':
+        return t(
+          'settings.providers.copilotOAuthStatusError',
+          'Could not check the Copilot login: {message}',
+        ).replace('{message}', status.message)
+    }
+  })()
+
+  // A stored GitHub token exists in every state but `disconnected`, so
+  // disconnect stays available even when the login is no longer usable.
+  const hasStoredLogin = status !== null && status.state !== 'disconnected'
+  const canLogin = status !== null && status.state !== 'connected'
+
+  return (
+    <div className="yolo-models-subsection">
+      <div className="yolo-models-subsection-header">
+        <span>
+          {t('settings.providers.copilotOAuthTitle', 'GitHub Copilot')}
+        </span>
+        <div className="yolo-oauth-login-actions">
+          {canLogin ? (
+            <button
+              type="button"
+              onClick={handleConnect}
+              className="yolo-add-model-btn"
+              disabled={isConnecting}
+            >
+              {isConnecting
+                ? t(
+                    'settings.providers.copilotOAuthConnecting',
+                    'Waiting for authorization...',
+                  )
+                : t(
+                    'settings.providers.copilotOAuthLogin',
+                    'Log in with GitHub',
+                  )}
+            </button>
+          ) : null}
+          {hasStoredLogin ? (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              className="yolo-add-model-btn yolo-oauth-disconnect-btn"
+              disabled={isConnecting}
+            >
+              {t('settings.providers.copilotOAuthDisconnect', 'Disconnect')}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="yolo-no-models">{statusText}</div>
+      {deviceAuthorization ? (
+        <div className="yolo-oauth-device-card">
+          <div className="yolo-oauth-device-code-row">
+            <span>
+              {t('settings.providers.copilotOAuthPendingCode', 'Code')}
+            </span>
+            <code>{deviceAuthorization.userCode}</code>
+          </div>
+          <div className="yolo-oauth-device-help">
+            {t(
+              'settings.providers.copilotOAuthDeviceHelp',
+              'Enter this code at github.com/login/device before it expires. Continue only if you started this login.',
+            )}
+          </div>
+          <div className="yolo-oauth-device-actions">
+            <button
+              type="button"
+              onClick={handleCopyCode}
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
+            >
+              {t('settings.providers.copilotOAuthCopyCode', 'Copy code')}
+            </button>
+            <button
+              type="button"
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
+              onClick={() =>
+                openExternalLink(deviceAuthorization.verificationUri)
+              }
+            >
+              {t(
+                'settings.providers.copilotOAuthOpenDevicePage',
+                'Open GitHub',
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="yolo-add-model-btn yolo-oauth-secondary-btn"
+            >
+              {t('settings.providers.copilotOAuthCancel', 'Cancel')}
             </button>
           </div>
         </div>
@@ -554,7 +844,7 @@ function GeminiOAuthPanel({
           <button
             type="button"
             onClick={handleDisconnect}
-            className="yolo-add-model-btn yolo-chatgpt-oauth-disconnect-btn"
+            className="yolo-add-model-btn yolo-oauth-disconnect-btn"
             disabled={isConnecting}
           >
             {t('settings.providers.geminiOAuthDisconnect', 'Disconnect')}
@@ -868,6 +1158,7 @@ function ProviderSectionItem({
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const isGeminiOAuth = provider.presetType === 'gemini-oauth'
   const isClaudeOAuth = provider.presetType === 'claude-oauth'
+  const isCopilotOAuth = provider.presetType === 'github-copilot'
   // `attributes` is left out: it re-declares role/tabIndex/aria on the row for
   // keyboard sorting, which this list doesn't offer (no KeyboardSensor), and
   // it would fight the header's own button semantics.
@@ -973,6 +1264,9 @@ function ProviderSectionItem({
             <GeminiOAuthPanel plugin={plugin} provider={provider} />
           )}
           {isClaudeOAuth && <ClaudeOAuthPanel app={app} provider={provider} />}
+          {isCopilotOAuth && (
+            <CopilotOAuthPanel plugin={plugin} provider={provider} />
+          )}
           <ChatModelsTable
             provider={provider}
             app={app}
@@ -1749,6 +2043,10 @@ export function ProvidersAndModelsSection({
             .cancelPendingBrowserAuthorization()
           await plugin.disconnectGeminiOAuthAccount(provider.id)
           plugin.clearGeminiOAuthRuntime(provider.id)
+        }
+        if (provider.presetType === 'github-copilot') {
+          await plugin.disconnectCopilotOAuthAccount(provider.id)
+          plugin.clearCopilotOAuthRuntime(provider.id)
         }
         if (associatedEmbeddingModels.length > 0) {
           const vectorManagers = await plugin.tryGetVectorManagers()

@@ -1039,6 +1039,34 @@ export const en: TranslationKeys = {
       chatgptOAuthCodeCopied: 'Device code copied.',
       chatgptOAuthOpenDevicePage: 'Open authorization page',
       chatgptOAuthCancelDevice: 'Cancel',
+      copilotOAuthTitle: 'GitHub Copilot',
+      copilotOAuthLogin: 'Log in with GitHub',
+      copilotOAuthConnecting: 'Waiting for authorization...',
+      copilotOAuthDisconnect: 'Disconnect',
+      copilotOAuthLoadingStatus: 'Checking GitHub Copilot login...',
+      copilotOAuthConnected: 'Connected',
+      copilotOAuthDisconnectedHelp:
+        'Not connected. Log in with GitHub to use the models in your Copilot subscription.',
+      copilotOAuthReauthRequired:
+        'GitHub no longer accepts the saved login. Log in again.',
+      copilotOAuthNoSubscription:
+        'This GitHub account has no Copilot access, or an organization policy disables it.',
+      copilotOAuthStatusError: 'Could not check the Copilot login: {message}',
+      copilotOAuthDeviceOpened:
+        'Enter the displayed code on the GitHub page that just opened.',
+      copilotOAuthConnectedNotice: 'GitHub Copilot connected.',
+      copilotOAuthDisconnectedNotice: 'GitHub Copilot disconnected.',
+      copilotOAuthDisconnectFailed: 'Failed to disconnect GitHub Copilot.',
+      copilotOAuthDeviceExpired:
+        'The code expired before it was approved. Start the login again.',
+      copilotOAuthAccessDenied: 'Authorization was declined on GitHub.',
+      copilotOAuthPendingCode: 'Code',
+      copilotOAuthDeviceHelp:
+        'Enter this code at github.com/login/device before it expires. Continue only if you started this login.',
+      copilotOAuthCopyCode: 'Copy code',
+      copilotOAuthCodeCopied: 'Code copied.',
+      copilotOAuthOpenDevicePage: 'Open GitHub',
+      copilotOAuthCancel: 'Cancel',
       oauthDesktopOnly:
         'OAuth login is only available on desktop. Please connect on desktop first.',
       geminiOAuthTitle: 'Gemini OAuth',

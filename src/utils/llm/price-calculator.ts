@@ -22,7 +22,8 @@ export const calculateLLMCost = ({
         1_000_000
       )
     }
-    case 'chatgpt-oauth': {
+    case 'chatgpt-oauth':
+    case 'github-copilot': {
       return 0
     }
     case 'anthropic': {
