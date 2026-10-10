@@ -14,6 +14,13 @@ import { CopilotOAuthError } from '../auth/copilotOAuthService'
 
 import { AnthropicProvider } from './anthropic'
 import { BaseLLMProvider } from './base'
+import {
+  COPILOT_AUTO_MODEL_ID,
+  CopilotAutoRoutingInput,
+  findCopilotAutoSessionToken,
+  getCopilotAutoSession,
+  invalidateCopilotAutoSession,
+} from './copilotAutoSession'
 import { CopilotCredentialSource, createCopilotFetch } from './copilotFetch'
 import {
   getCopilotModelCatalog,
@@ -84,6 +91,26 @@ const toCopilotAuthError = (
     : undefined
 }
 
+/** What Copilot Auto routes on: the latest user message and whether it has images. */
+const toAutoRoutingInput = (
+  request: LLMRequestNonStreaming | LLMRequestStreaming,
+): CopilotAutoRoutingInput => {
+  const lastUser = [...request.messages]
+    .reverse()
+    .find((message) => message.role === 'user')
+  const content = lastUser?.content
+  if (typeof content === 'string') {
+    return { prompt: content, hasImage: false }
+  }
+  const parts = content ?? []
+  return {
+    prompt: parts
+      .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+      .join('\n'),
+    hasImage: parts.some((part) => part.type === 'image_url'),
+  }
+}
+
 /**
  * GitHub Copilot serves each model on some of three wire formats — Chat
  * Completions, Responses, Anthropic Messages — as its `/models` catalog
@@ -113,7 +140,11 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
       apiKey: PLACEHOLDER_API_KEY,
     }
     const wrapFetch = (transportFetch: typeof fetch) =>
-      createCopilotFetch(transportFetch, () => this.getCredentialSource())
+      createCopilotFetch(transportFetch, () => this.getCredentialSource(), {
+        find: (modelId) => findCopilotAutoSessionToken(provider.id, modelId),
+        reject: (sessionToken) =>
+          invalidateCopilotAutoSession(provider.id, sessionToken),
+      })
     const innerOptions = {
       requestPolicy: options?.requestPolicy,
       onAutoPromoteTransportMode: options?.onAutoPromoteTransportMode,
@@ -138,8 +169,12 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
     try {
-      const provider = await this.resolveEndpointProvider(model)
-      return await provider.generateResponse(model, request, options)
+      const route = await this.resolveRoute(model, request)
+      return await route.provider.generateResponse(
+        route.model,
+        { ...request, model: route.model.model },
+        options,
+      )
     } catch (error) {
       throw toCopilotAuthError(error) ?? error
     }
@@ -151,8 +186,12 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
     try {
-      const provider = await this.resolveEndpointProvider(model)
-      return await provider.streamResponse(model, request, options)
+      const route = await this.resolveRoute(model, request)
+      return await route.provider.streamResponse(
+        route.model,
+        { ...request, model: route.model.model },
+        options,
+      )
     } catch (error) {
       throw toCopilotAuthError(error) ?? error
     }
@@ -178,14 +217,36 @@ export class CopilotProvider extends BaseLLMProvider<LLMProvider> {
     return service
   }
 
-  private async resolveEndpointProvider(
+  /**
+   * The inner provider and the model it is asked for. Auto stands for
+   * whichever model Copilot picked for this provider's session, so the
+   * request is sent under that model's id and on that model's endpoint.
+   */
+  private async resolveRoute(
     model: ChatModel,
-  ): Promise<BaseLLMProvider<LLMProvider>> {
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
+  ): Promise<{ provider: BaseLLMProvider<LLMProvider>; model: ChatModel }> {
+    if (model.model === COPILOT_AUTO_MODEL_ID) {
+      const session = await getCopilotAutoSession(
+        this.provider.id,
+        this.getCredentialSource(),
+        toAutoRoutingInput(request),
+      )
+      return {
+        provider:
+          this.endpointProviders[selectCopilotEndpoint(session.selectedModel)],
+        model: { ...model, model: session.selectedModel.id },
+      }
+    }
+
     const catalog = await getCopilotModelCatalog(
       this.provider.id,
       this.getCredentialSource(),
     )
     const entry = catalog.find((candidate) => candidate.id === model.model)
-    return this.endpointProviders[selectCopilotEndpoint(entry)]
+    return {
+      provider: this.endpointProviders[selectCopilotEndpoint(entry)],
+      model,
+    }
   }
 }

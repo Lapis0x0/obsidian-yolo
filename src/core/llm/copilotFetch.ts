@@ -81,6 +81,38 @@ const normalizeRequest = async (
   }
 }
 
+/**
+ * Where the fetch layer finds the `Copilot-Session-Token` that unlocks a
+ * model Copilot Auto picked, and reports a token the server turned down.
+ */
+export type CopilotSessionTokenSource = {
+  find(modelId: string): Promise<string | undefined>
+  reject(sessionToken: string): void
+}
+
+const readBodyModel = (bodyText: string | undefined): string | undefined => {
+  if (!bodyText) return undefined
+  try {
+    const model = (JSON.parse(bodyText) as { model?: unknown }).model
+    return typeof model === 'string' ? model : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Copilot answers an expired or mismatched Auto session with a 4xx whose
+ * message names the session ("Requested model not available for session").
+ */
+const isSessionRejection = async (response: Response): Promise<boolean> => {
+  if (response.status < 400 || response.status >= 500) return false
+  const text = await response
+    .clone()
+    .text()
+    .catch(() => '')
+  return /session/i.test(text)
+}
+
 /** Swaps the placeholder origin the SDK built for the account's API origin. */
 const rewriteOrigin = (url: string, apiBaseUrl: string): string => {
   const target = new URL(url)
@@ -101,10 +133,15 @@ const rewriteOrigin = (url: string, apiBaseUrl: string): string => {
  * `Copilot-Vision-Request` from the body. A 401 means the token went stale
  * before its stated expiry: it is invalidated and the request sent once more
  * with a freshly exchanged one.
+ *
+ * A request for a model an Auto session unlocks also carries that session's
+ * `Copilot-Session-Token`; if the server rejects the session, it is reported
+ * so the next request opens a new one.
  */
 export const createCopilotFetch = (
   transportFetch: typeof fetch,
   getCredentialSource: () => CopilotCredentialSource,
+  sessionTokens?: CopilotSessionTokenSource,
 ): typeof fetch => {
   return async (input, init) => {
     const source = getCredentialSource()
@@ -115,6 +152,11 @@ export const createCopilotFetch = (
     const traits = endpoint
       ? resolveCopilotRequestTraits(endpoint, request.bodyText)
       : null
+    const bodyModel = readBodyModel(request.bodyText)
+    const sessionToken =
+      sessionTokens && bodyModel
+        ? await sessionTokens.find(bodyModel)
+        : undefined
 
     const send = async (
       credential: CopilotUsableCredential,
@@ -136,6 +178,9 @@ export const createCopilotFetch = (
           headers.set('Copilot-Vision-Request', 'true')
         }
       }
+      if (sessionToken) {
+        headers.set('Copilot-Session-Token', sessionToken)
+      }
       return transportFetch(rewriteOrigin(request.url, credential.apiBaseUrl), {
         ...request.init,
         headers,
@@ -144,6 +189,10 @@ export const createCopilotFetch = (
 
     const credential = await requireCopilotCredential(source)
     const response = await send(credential)
+    if (sessionToken && (await isSessionRejection(response))) {
+      sessionTokens?.reject(sessionToken)
+      return response
+    }
     const replayable =
       request.bodyText !== undefined || request.init.body == null
     if (response.status !== 401 || !replayable) {

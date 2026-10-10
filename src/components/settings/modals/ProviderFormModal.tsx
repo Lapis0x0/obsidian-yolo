@@ -8,6 +8,7 @@ import {
 } from '../../../constants'
 import { PROVIDER_CATALOG } from '../../../constants/provider-catalog'
 import { useLanguage } from '../../../contexts/language-context'
+import { COPILOT_AUTO_MODEL_ID } from '../../../core/llm/copilotAutoSession'
 import type YoloPlugin from '../../../main'
 import {
   LLMProvider,
@@ -222,6 +223,22 @@ function ProviderFormComponent({
         await plugin.setSettings({
           ...plugin.settings,
           providers: [...plugin.settings.providers, validatedProvider],
+          // A new Copilot provider starts with Auto, the one model every
+          // Copilot plan can use, so it works as soon as the user logs in.
+          ...(validatedProvider.presetType === 'github-copilot'
+            ? {
+                chatModels: [
+                  ...plugin.settings.chatModels,
+                  {
+                    providerId: validatedProvider.id,
+                    id: `${validatedProvider.id}/${COPILOT_AUTO_MODEL_ID}`,
+                    model: COPILOT_AUTO_MODEL_ID,
+                    name: 'Copilot Auto',
+                    enable: true,
+                  },
+                ],
+              }
+            : {}),
         })
       }
 

@@ -1,6 +1,11 @@
 jest.mock('../auth/copilotOAuthRuntime', () => ({
   getCopilotOAuthService: jest.fn(),
 }))
+jest.mock('./copilotAutoSession', () => ({
+  ...jest.requireActual('./copilotAutoSession'),
+  getCopilotAutoSession: jest.fn(),
+  findCopilotAutoSessionToken: jest.fn(async () => undefined),
+}))
 jest.mock('./copilotModelCatalog', () => ({
   ...jest.requireActual('./copilotModelCatalog'),
   getCopilotModelCatalog: jest.fn(),
@@ -12,6 +17,10 @@ import { LLMProvider } from '../../types/provider.types'
 import { getCopilotOAuthService } from '../auth/copilotOAuthRuntime'
 import { CopilotOAuthError } from '../auth/copilotOAuthService'
 
+import {
+  findCopilotAutoSessionToken,
+  getCopilotAutoSession,
+} from './copilotAutoSession'
 import {
   CopilotCatalogModel,
   getCopilotModelCatalog,
@@ -168,6 +177,34 @@ describe('CopilotProvider', () => {
         request('gpt-5'),
       ),
     ).rejects.toThrow(/no Copilot access/)
+  })
+
+  it('sends Auto as the picked model, on its endpoint, with the session token', async () => {
+    getCatalogMock.mockClear()
+    ;(getCopilotAutoSession as jest.Mock).mockResolvedValue({
+      sessionToken: 'st-1',
+      selectedModel: { id: 'gpt-6-luna', supportedEndpoints: ['/responses'] },
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    })
+    ;(findCopilotAutoSessionToken as jest.Mock).mockImplementation(
+      async (_providerId: string, modelId: string) =>
+        modelId === 'gpt-6-luna' ? 'st-1' : undefined,
+    )
+
+    const { url, headers, body } = await send(
+      { providerId: 'copilot', id: 'copilot/auto', model: 'auto' },
+      { messages: [{ role: 'user', content: 'Plan my week' }] },
+    )
+
+    expect(getCopilotAutoSession).toHaveBeenCalledWith(
+      'copilot',
+      expect.anything(),
+      { prompt: 'Plan my week', hasImage: false },
+    )
+    expect(url).toBe('https://api.individual.githubcopilot.com/responses')
+    expect(body.model).toBe('gpt-6-luna')
+    expect(headers.get('copilot-session-token')).toBe('st-1')
+    expect(getCatalogMock).not.toHaveBeenCalled()
   })
 
   it('does not support embeddings', async () => {

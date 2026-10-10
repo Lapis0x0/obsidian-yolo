@@ -16,6 +16,7 @@ import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import { listChatGPTOAuthModels } from '../../../core/llm/chatgptOAuthModelCatalog'
 import { listClaudeSdkModels } from '../../../core/llm/claude-sdk/modelCatalog'
 import { claudeAcceptsSamplingParams } from '../../../core/llm/claudeReasoning'
+import { COPILOT_AUTO_MODEL_ID } from '../../../core/llm/copilotAutoSession'
 import { getCopilotModelCatalog } from '../../../core/llm/copilotModelCatalog'
 import { listGeminiModelIds } from '../../../core/llm/geminiModelCatalog'
 import { collectModelIdentifiers } from '../../../core/llm/modelCatalogIdentifiers'
@@ -423,9 +424,14 @@ function AddChatModelModalComponent({
             plugin.getCopilotOAuthService(selectedProvider.id),
             { refresh: true },
           )
-          const unique = Array.from(
-            new Set(catalog.map((model) => model.id)),
-          ).sort()
+          // Auto first: on Free and Student plans it is the only way to the
+          // newer models, and their catalog lists none to pick by id.
+          const unique = [
+            COPILOT_AUTO_MODEL_ID,
+            ...Array.from(new Set(catalog.map((model) => model.id)))
+              .filter((id) => id !== COPILOT_AUTO_MODEL_ID)
+              .sort(),
+          ]
           setAvailableModels(unique)
           plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
           return

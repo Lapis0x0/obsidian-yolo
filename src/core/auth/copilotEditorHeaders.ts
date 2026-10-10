@@ -7,9 +7,11 @@
  * here only.
  */
 export const COPILOT_EDITOR_HEADERS: Readonly<Record<string, string>> = {
-  'Editor-Version': 'vscode/1.104.1',
-  'Editor-Plugin-Version': 'copilot-chat/0.31.0',
-  'User-Agent': 'GitHubCopilotChat/0.31.0',
+  'Editor-Version': 'vscode/1.120.0',
+  'Editor-Plugin-Version': 'copilot-chat/0.70.0',
+  'User-Agent': 'GitHubCopilotChat/0.70.0',
   'Copilot-Integration-Id': 'vscode-chat',
-  'X-GitHub-Api-Version': '2025-05-01',
+  // `/auto` (the only way Free and Student plans reach newer models) answers
+  // 404 to API versions older than the one current VS Code sends.
+  'X-GitHub-Api-Version': '2026-08-01',
 }
