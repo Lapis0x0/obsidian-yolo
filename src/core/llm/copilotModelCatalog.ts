@@ -44,9 +44,13 @@ const optionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value ? value : undefined
 
 /**
- * Keeps the models the account can actually chat with: chat-type, shown in
- * Copilot's own model picker, and not disabled by policy (a model with no
- * `policy` needs no opt-in).
+ * Keeps the models the account can actually chat with: chat-type, and either
+ * enabled by policy, or policy-free and offered in Copilot's own picker.
+ *
+ * `policy.state` is what tracks the account's entitlement; observed accounts
+ * get `model_picker_enabled: false` on every model, so it cannot gate
+ * policy-carrying models. It still matters for policy-free ones, which are
+ * otherwise Copilot's internal models (search, agent routing, compaction).
  */
 export const parseCopilotModelCatalog = (
   json: unknown,
@@ -63,9 +67,11 @@ export const parseCopilotModelCatalog = (
 
     const capabilities = asRecord(model.capabilities)
     if (capabilities?.type !== 'chat') return []
-    if (model.model_picker_enabled !== true) return []
     const policy = asRecord(model.policy)
-    if (policy && policy.state !== 'enabled') return []
+    const available = policy
+      ? policy.state === 'enabled'
+      : model.model_picker_enabled === true
+    if (!available) return []
 
     const limits = asRecord(capabilities.limits)
     const supports = asRecord(capabilities.supports)

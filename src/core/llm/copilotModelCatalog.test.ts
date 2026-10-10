@@ -37,13 +37,22 @@ const chatModel = (id: string, extra: Record<string, unknown> = {}) => ({
 })
 
 describe('parseCopilotModelCatalog', () => {
-  it('keeps picker-enabled chat models the policy allows', () => {
+  it('keeps chat models the policy allows, or policy-free picker models', () => {
     const models = parseCopilotModelCatalog({
       data: [
         chatModel('gpt-5'),
         chatModel('claude-opus', { policy: { state: 'enabled' } }),
+        // Real accounts report `model_picker_enabled: false` on every model.
+        chatModel('claude-haiku', {
+          model_picker_enabled: false,
+          policy: { state: 'enabled' },
+        }),
         chatModel('needs-opt-in', { policy: { state: 'unconfigured' } }),
-        chatModel('hidden', { model_picker_enabled: false }),
+        chatModel('not-in-plan', {
+          model_picker_enabled: false,
+          policy: { state: 'disabled' },
+        }),
+        chatModel('internal', { model_picker_enabled: false }),
         {
           id: 'embed',
           model_picker_enabled: true,
@@ -52,7 +61,11 @@ describe('parseCopilotModelCatalog', () => {
         { model_picker_enabled: true, capabilities: { type: 'chat' } },
       ],
     })
-    expect(models.map((model) => model.id)).toEqual(['gpt-5', 'claude-opus'])
+    expect(models.map((model) => model.id)).toEqual([
+      'gpt-5',
+      'claude-opus',
+      'claude-haiku',
+    ])
   })
 
   it('keeps endpoints, limits and supports', () => {
