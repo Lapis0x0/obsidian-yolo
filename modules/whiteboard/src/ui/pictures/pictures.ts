@@ -320,9 +320,14 @@ export class Pictures {
     }
 
     const byDistance = (a: Want, b: Want) => a.distance - b.distance
+    // Up a level, likewise only once the board is still: a zoom passing
+    // through would have every picture on screen read again at each level
+    // it crosses — hundreds of reads a gesture, each a synchronous trip to
+    // the browser to make its `Blob` (up to 12 ms, measured) — while the
+    // smaller one shows it meanwhile, a little soft.
     const toRead = [
       ...toReadMissing.sort(byDistance),
-      ...toReadLarger.sort(byDistance),
+      ...(this.deps.idle() ? toReadLarger.sort(byDistance) : []),
     ]
     let nearestDraw: Want | null = null
     for (const want of toDraw.values()) {
@@ -339,6 +344,7 @@ export class Pictures {
       if (
         !waiting &&
         toShrink.length === 0 &&
+        toReadLarger.length === 0 &&
         this.reading.size === 0 &&
         this.shrinking.size === 0 &&
         this.drawing.size === 0

@@ -288,6 +288,24 @@ describe('Pictures', () => {
     expect(pictures.get(ref('1'))?.width).toBe(25)
   })
 
+  it('reads a picture up a level once the board is still', async () => {
+    const { pictures, state } = setup({ stored: { '1': kept() } })
+    state.wanted = [want('1', 0)]
+    state.resolution = 0.2
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(25)
+
+    // Zoomed in, still moving: the small one stays up.
+    state.resolution = 1
+    state.idle = false
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(25)
+
+    state.idle = true
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(100)
+  })
+
   it('past its budget, lets go of the farthest for a nearer one', async () => {
     // Room for one 100×100 picture.
     const { pictures, state } = setup({
