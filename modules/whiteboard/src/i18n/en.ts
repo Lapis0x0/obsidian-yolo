@@ -167,6 +167,9 @@ export const en = {
     stop: 'Stop',
     failed: 'Could not write this card.',
   },
+  pictureCache: {
+    activity: 'Processing whiteboard cache',
+  },
   card: {
     missingFile: 'File missing',
     missingFileHint: 'This card refers to "{path}", which no longer exists.',

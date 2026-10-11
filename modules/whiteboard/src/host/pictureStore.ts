@@ -394,4 +394,5 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /** The stores a board keeps its pictures in, one per kind of picture. */
 export type PictureStores = Readonly<{
   pdf: PictureStore
+  image: PictureStore
 }>

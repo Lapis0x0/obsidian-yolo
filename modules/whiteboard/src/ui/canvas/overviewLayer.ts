@@ -840,10 +840,10 @@ export class OverviewLayer {
       ctx.fill()
     }
 
-    // 2b. A PDF's pages, as pictures of themselves where there are some —
-    //     what the card shows in the DOM tiers, over its wash as the page's
-    //     canvas is over its card. Such a card needs no title block: it
-    //     shows its own.
+    // 2b. A card's picture of itself where there is one (../pictures/) — a
+    //     PDF's pages, an image — what the card shows in the DOM tiers, over
+    //     its wash as the content is over its card. Such a card needs no
+    //     title block: it shows its own.
     const pictured = new Set<NodeId>()
     ctx.globalAlpha = 1
     for (const card of visible) {
@@ -1065,10 +1065,12 @@ export class OverviewLayer {
   }
 
   /**
-   * What a PDF card shows at this tier where there are pictures: a sheet its
-   * page; a folded card the pages its reader shows from where it was left
-   * (../pdf/readerLayout.ts: edge to edge at the card's width, a seam between
-   * each), as far down as there are pictures. False when there is none.
+   * What a card shows at this tier where it has a picture: an image card its
+   * image, fitted in the card as the card fits it (cards/media.css); a sheet
+   * its page; a folded PDF card the pages its reader shows from where it was
+   * left (../pdf/readerLayout.ts: edge to edge at the card's width, a seam
+   * between each), as far down as there are pictures. False when there is
+   * none.
    */
   private drawPicture(
     ctx: CanvasRenderingContext2D,
@@ -1078,6 +1080,21 @@ export class OverviewLayer {
     scale: number,
   ): boolean {
     if (rect.w < PICTURE_MIN_SCREEN_PX) return false
+    if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
+      const picture = this.callbacks.picture(node, dark)
+      if (!picture) return false
+      const fit = Math.min(rect.w / picture.width, rect.h / picture.height)
+      const w = picture.width * fit
+      const h = picture.height * fit
+      ctx.drawImage(
+        picture,
+        rect.x + (rect.w - w) / 2,
+        rect.y + (rect.h - h) / 2,
+        w,
+        h,
+      )
+      return true
+    }
     if (node.type === 'pdf-page') {
       const picture = this.callbacks.picture(node, dark)
       if (!picture) return false

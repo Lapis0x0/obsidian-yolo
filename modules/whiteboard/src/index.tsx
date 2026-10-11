@@ -77,6 +77,12 @@ yolo.registerModule({
         'pdf thumbnail',
         reportError,
       ),
+      image: new PictureStore(
+        host.privateStorage.deviceLocal,
+        'image-thumbnails',
+        'image thumbnail',
+        reportError,
+      ),
     }
     host.lifecycle.add(() => {
       for (const store of Object.values(pictureStores)) store.dispose()

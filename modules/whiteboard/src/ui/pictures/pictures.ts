@@ -59,7 +59,7 @@ const SCAN_INTERVAL_MOVING_MS = 70
 const ENCODING = 'image/webp'
 const ENCODING_QUALITY = 0.8
 
-export type PictureSourceId = 'pdf'
+export type PictureSourceId = 'pdf' | 'image'
 
 /** Which picture: of what source, in which of its groups (host/
  * pictureStore.ts), under which key there. */
@@ -141,6 +141,9 @@ export type PicturesDeps = Readonly<{
   idle: () => boolean
   /** A picture arrived (`key`), or a group's were all dropped (null). */
   onChange: (source: PictureSourceId, group: string, key: string | null) => void
+  /** Whether there are pictures to make — being made, or waiting for the
+   * board to be still or for their source's turn — changed. */
+  onBusy?: (busy: boolean) => void
   reportError: (stage: string, error: unknown) => void
   /** Only tests set this. */
   budgetBytes?: number
@@ -197,6 +200,8 @@ export class Pictures {
   private complete = false
   private completeAt = 0
   private lastScanAt = Number.NEGATIVE_INFINITY
+  /** What was last told `onBusy`. */
+  private busy = false
   private readonly budget: number
   private readonly wake = (): void => this.pump()
 
@@ -320,6 +325,7 @@ export class Pictures {
       nearestDraw && (!toRead[0] || nearestDraw.distance < toRead[0].distance)
         ? nearestDraw
         : (toRead[0] ?? null)
+    this.setBusy(toDraw.size > 0 || this.drawing.size > 0)
     if (!nearest) {
       if (
         !waiting &&
@@ -334,35 +340,29 @@ export class Pictures {
       this.withdrawAll()
       return
     }
-    if (full) {
-      // Room is made by bringing pictures down a level first, and only then
-      // by letting go of the farthest.
-      if (toShrink.length > 0 || this.shrinking.size > 0) {
-        this.withdrawAll()
-        return
-      }
-      // Full: a picture nearer than the farthest one held takes its place —
-      // once it can be had now, or a picture would go for nothing.
+    // Room is made by bringing pictures down a level first, and only then
+    // by letting go of the farthest.
+    if (full && (toShrink.length > 0 || this.shrinking.size > 0)) {
+      this.withdrawAll()
+      return
+    }
+    // Full: a picture nearer than the farthest one held takes its place —
+    // once it can be had now, or a picture would go for nothing.
+    if (full && farthestHeld && farthestHeld.distance > nearest.distance) {
       const canTake =
         nearest === nearestDraw
           ? this.canDraw(nearest.source)
           : this.reading.size < READS_AT_ONCE
-      if (
-        !canTake ||
-        !farthestHeld ||
-        farthestHeld.distance <= nearest.distance
-      ) {
-        this.withdrawAll()
-        return
-      }
-      this.forget(refKey(farthestHeld))
+      if (canTake) this.forget(refKey(farthestHeld))
     }
 
     /** Sources read back as far as the nearest picture they have to make:
-     * nothing of theirs past it is read before it is made. */
+     * nothing of theirs past it is read before it is made. Nothing is read
+     * with no room to hold it. */
     const readUpTo = new Set<PictureSourceId>()
     for (const want of toRead) {
       if (this.reading.size >= READS_AT_ONCE) break
+      if (this.bytes >= this.budget) break
       if (readUpTo.has(want.source)) continue
       const draw = toDraw.get(want.source)
       if (draw && want.distance > draw.distance) {
@@ -371,6 +371,10 @@ export class Pictures {
       }
       this.read(want)
     }
+
+    // Made whether or not there is room to hold it: one made past the
+    // budget is kept on the device and read back when it is near enough
+    // (`draw`) — what is not made now would be made by nobody.
 
     for (const source of this.sources.values()) {
       const want = toDraw.get(source.id)
@@ -418,11 +422,18 @@ export class Pictures {
 
   destroy(): void {
     this.destroyed = true
+    this.setBusy(false)
     this.withdrawAll()
     for (const k of [...this.groups.keys()]) this.dropGroup(k)
     for (const entry of this.entries.values()) this.close(entry)
     this.entries.clear()
     this.bytes = 0
+  }
+
+  private setBusy(busy: boolean): void {
+    if (busy === this.busy) return
+    this.busy = busy
+    this.deps.onBusy?.(busy)
   }
 
   private canDraw(source: PictureSourceId): boolean {
@@ -535,15 +546,20 @@ export class Pictures {
       if (!win) return
       const fullWidth = canvas.width
       const level = levelFor(want.screen, fullWidth)
+      // Past the budget it is only kept, not held: the scan reads it back
+      // once it is nearer than the farthest held.
+      const held = this.bytes < this.budget
       const [bitmap, encoded] = await Promise.all([
-        win.createImageBitmap(canvas, resizedTo(level, fullWidth)),
+        held
+          ? win.createImageBitmap(canvas, resizedTo(level, fullWidth))
+          : null,
         encode(canvas),
       ])
       if (this.destroyed || this.groups.get(gk) !== group) {
-        bitmap.close()
+        bitmap?.close()
         return
       }
-      this.hold(k, { bitmap, level, fullWidth, stamp: want.stamp })
+      if (bitmap) this.hold(k, { bitmap, level, fullWidth, stamp: want.stamp })
       if (meta !== null) group.metas.set(want.key, meta)
       if (encoded) {
         const picture: StoredPicture = {
@@ -561,7 +577,7 @@ export class Pictures {
         )
         group.stored?.set(want.key, picture)
       }
-      this.deps.onChange(want.source, want.group, want.key)
+      if (bitmap) this.deps.onChange(want.source, want.group, want.key)
     } catch (error) {
       // A group dropped meanwhile was closed under the draw: not a failure.
       if (this.groups.get(gk) !== group) return

@@ -33,7 +33,10 @@ function fakeCanvas(width: number, height: number): HTMLCanvasElement {
  * given, a source that makes 100-pixel pictures, and a board whose wanted
  * pictures, stillness and zoom the test sets. */
 function setup(
-  options: Readonly<{ stored?: Record<string, StoredPicture> }> = {},
+  options: Readonly<{
+    stored?: Record<string, StoredPicture>
+    budgetBytes?: number
+  }> = {},
 ) {
   const stored = new Map(Object.entries(options.stored ?? {}))
   const writes: { key: string; picture: StoredPicture }[] = []
@@ -60,6 +63,8 @@ function setup(
     turnOpen: true,
     wake: null as (() => void) | null,
     drawResult: null as (() => DrawnPicture | 'unavailable' | null) | null,
+    /** Every `onBusy`, in order. */
+    busy: [] as boolean[],
   }
   const source: PictureSource = {
     id: 'pdf',
@@ -79,8 +84,11 @@ function setup(
       return state.drawResult?.() ?? { canvas: fakeCanvas(100, 80), meta: null }
     },
   }
+  // Time moves on between looks: a moving board is looked over only every
+  // so often.
+  let clock = 0
   const win = {
-    performance: { now: () => 0 },
+    performance: { now: () => (clock += 100) },
     createImageBitmap: async (
       from: { width?: number },
       resize?: ImageBitmapOptions,
@@ -93,9 +101,11 @@ function setup(
     resolution: () => state.resolution,
     idle: () => state.idle,
     onChange: () => undefined,
+    onBusy: (busy) => state.busy.push(busy),
     reportError: (stage, error) => {
       throw new Error(`${stage}: ${String(error)}`)
     },
+    budgetBytes: options.budgetBytes,
   })
   return { pictures, state, drawn, writes, stored }
 }
@@ -259,23 +269,58 @@ describe('Pictures', () => {
   })
 
   it('past its budget, lets go of the farthest for a nearer one', async () => {
-    const { state, stored } = setup()
-    stored.set('far', kept())
-    stored.set('near', kept())
     // Room for one 100×100 picture.
-    const budget = new Pictures({
-      ...setupDeps(state, stored),
+    const { pictures, state } = setup({
+      stored: { far: kept(), near: kept() },
       budgetBytes: 100 * 100 * 4,
     })
     state.wanted = [want('far', 90)]
-    await run(budget)
-    expect(budget.get(ref('far'))).not.toBeNull()
+    await run(pictures)
+    expect(pictures.get(ref('far'))).not.toBeNull()
 
     state.wanted = [want('far', 90), want('near', 10)]
-    budget.retain()
-    await run(budget)
-    expect(budget.get(ref('near'))).not.toBeNull()
-    expect(budget.get(ref('far'))).toBeNull()
+    pictures.retain()
+    await run(pictures)
+    expect(pictures.get(ref('near'))).not.toBeNull()
+    expect(pictures.get(ref('far'))).toBeNull()
+  })
+
+  it('past its budget, still makes what is far and keeps it unheld', async () => {
+    const { pictures, state, drawn, writes } = setup({
+      stored: { near: kept() },
+      budgetBytes: 100 * 100 * 4,
+    })
+    state.wanted = [want('near', 0)]
+    await run(pictures)
+    state.wanted = [want('near', 0), want('far', 90)]
+    pictures.retain()
+    await run(pictures)
+
+    expect(drawn).toEqual(['far'])
+    expect(writes.map((write) => write.key)).toEqual(['far'])
+    expect(pictures.get(ref('near'))).not.toBeNull()
+    expect(pictures.get(ref('far'))).toBeNull()
+    // Kept on the device: nothing left to make.
+    expect(state.busy.at(-1)).toBe(false)
+  })
+
+  it('says it is busy while there are pictures to make, moving or not', async () => {
+    const { pictures, state } = setup()
+    state.wanted = [want('1', 0), want('2', 5)]
+    state.idle = false
+    await run(pictures)
+    expect(state.busy).toEqual([true])
+
+    state.idle = true
+    await run(pictures)
+    expect(state.busy).toEqual([true, false])
+  })
+
+  it('is not busy reading kept pictures back', async () => {
+    const { pictures, state } = setup({ stored: { '1': kept() } })
+    state.wanted = [want('1', 0)]
+    await run(pictures)
+    expect(state.busy).toEqual([])
   })
 
   it('lets go of what is no longer wanted', async () => {
@@ -290,45 +335,3 @@ describe('Pictures', () => {
     expect(held.closed).toBe(true)
   })
 })
-
-/** The deps of a second `Pictures` over the same board and store as
- * `setup`'s, for a test that sets what the first does not. */
-function setupDeps(
-  state: ReturnType<typeof setup>['state'],
-  stored: Map<string, StoredPicture>,
-) {
-  const store = {
-    entries: async () => new Map(stored),
-    read: async () => new ArrayBuffer(4),
-    write: () => undefined,
-  } as unknown as PictureStore
-  const source: PictureSource = {
-    id: 'pdf',
-    label: 'test',
-    store,
-    turn: {
-      begin: () => true,
-      end: () => undefined,
-      withdraw: () => undefined,
-    },
-    version: () => 1,
-    draw: async () => null,
-  }
-  return {
-    doc: {
-      defaultView: {
-        performance: { now: () => 0 },
-        createImageBitmap: async (
-          _from: unknown,
-          resize?: ImageBitmapOptions,
-        ) => fakeBitmap(resize?.resizeWidth ?? 100),
-      },
-    } as unknown as Document,
-    sources: [source],
-    wanted: () => state.wanted,
-    resolution: () => state.resolution,
-    idle: () => state.idle,
-    onChange: () => undefined,
-    reportError: () => undefined,
-  }
-}

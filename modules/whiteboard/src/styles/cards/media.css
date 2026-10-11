@@ -60,3 +60,16 @@
     transform: translateX(100%);
   }
 }
+
+/* The card's small picture of itself (ui/pictures/), over its body until
+ * what the body shows has arrived (cardRenderer's `showPictureUntil`): an
+ * image's picture is fitted in the card as the image is. Never a pointer
+ * target — what is under it is the card. */
+.yolo-whiteboard-card-body > .yolo-whiteboard-card-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}

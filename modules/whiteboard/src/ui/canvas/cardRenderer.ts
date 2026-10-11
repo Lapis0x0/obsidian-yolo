@@ -104,6 +104,9 @@ const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 const CARD_EXITING_CLASS = 'yolo-whiteboard-card-exiting'
 /** A body whose image or page has not arrived yet (`showLoadingUntil`). */
 const CARD_BODY_LOADING_CLASS = 'yolo-whiteboard-card-body-loading'
+/** The card's picture of itself (../pictures/), standing in its body until
+ * what it shows has arrived (`showPictureUntil`). */
+const CARD_PICTURE_CLASS = 'yolo-whiteboard-card-picture'
 
 /**
  * What a web card's frame is allowed to do.
@@ -1130,7 +1133,7 @@ export class CardRenderer {
         } else if (kind === 'html') {
           this.renderFileFrameInto(runtime, node.file)
         } else {
-          this.renderMediaInto(runtime, node.file, kind)
+          this.renderMediaInto(id, runtime, node.file, kind)
         }
         return
       }
@@ -1580,6 +1583,7 @@ export class CardRenderer {
    * go on playing out of sight.
    */
   private renderMediaInto(
+    id: NodeId,
     runtime: NodeRuntime,
     path: string,
     kind: Exclude<FileNodeKind, 'markdown' | 'pdf' | 'html' | 'unsupported'>,
@@ -1600,7 +1604,12 @@ export class CardRenderer {
       image.draggable = false
       frame.appendChild(image)
       bodyEl.replaceChildren(frame)
-      this.showLoadingUntil(bodyEl, image)
+      const picture = this.callbacks.picture(id)
+      if (picture && !image.complete) {
+        this.showPictureUntil(bodyEl, picture, image.decode())
+      } else {
+        this.showLoadingUntil(bodyEl, image)
+      }
       return
     }
 
@@ -1744,6 +1753,33 @@ export class CardRenderer {
     }
     el.addEventListener('load', done, { once: true })
     el.addEventListener('error', done, { once: true })
+  }
+
+  /**
+   * Shows the card's picture of itself over its body until `ready` settles
+   * — the moment what the body holds can be painted — instead of the
+   * loading sweep: a card coming back on screen looks like itself at once,
+   * a little soft, rather than like a card still arriving.
+   */
+  private showPictureUntil(
+    bodyEl: HTMLElement,
+    picture: ImageBitmap,
+    ready: Promise<unknown>,
+  ): void {
+    const canvas = bodyEl.ownerDocument.createElement('canvas')
+    canvas.className = CARD_PICTURE_CLASS
+    canvas.width = picture.width
+    canvas.height = picture.height
+    canvas.getContext('2d')?.drawImage(picture, 0, 0)
+    bodyEl.appendChild(canvas)
+    const done = (): void => {
+      canvas.remove()
+      canvas.width = 0
+      canvas.height = 0
+    }
+    // Settled either way: an image that fails to load shows its failure,
+    // not a picture of what it was.
+    void ready.then(done, done)
   }
 
   private renderPlaceholder(

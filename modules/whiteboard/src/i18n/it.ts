@@ -164,6 +164,9 @@ export const it = {
     stop: 'Ferma',
     failed: 'Impossibile scrivere questa scheda.',
   },
+  pictureCache: {
+    activity: 'Elaborazione della cache della lavagna',
+  },
   card: {
     missingFile: 'File mancante',
     missingFileHint:

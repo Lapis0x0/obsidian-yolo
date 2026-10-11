@@ -160,6 +160,9 @@ export const zh = {
     stop: '停止',
     failed: '生成这张卡片失败。',
   },
+  pictureCache: {
+    activity: '正在处理白板缓存',
+  },
   card: {
     missingFile: '文件丢失',
     missingFileHint: '此卡片引用的「{path}」已不存在。',

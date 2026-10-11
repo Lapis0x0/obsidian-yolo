@@ -51,7 +51,7 @@ import {
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
-import { isMarkdownPath } from '../domain/naming'
+import { fileNodeKind, isMarkdownPath } from '../domain/naming'
 import {
   boardWithPageWindow,
   boardWithReadingWindow,
@@ -164,6 +164,9 @@ import type {
   ReaderTextSelection,
 } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
+import { PictureActivity } from './pictures/activity'
+import { IdleSlices } from './pictures/idle'
+import { ImageFiles, imageRef } from './pictures/imageFiles'
 import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
 import {
   type PictureRef,
@@ -522,6 +525,11 @@ export class WhiteboardCanvas {
   /** Small pictures of what the board shows — every open spread's pages —
    * made while the board is still (./pictures/pictures.ts). */
   private pictures: Pictures | null = null
+  /** The idle time pictures are made in (./pictures/idle.ts). */
+  private pictureSlices: IdleSlices | null = null
+  /** The board's line in the host's activity list while it makes pictures
+   * (./pictures/activity.ts). */
+  private pictureActivity: PictureActivity | null = null
   /** The annotations of the PDFs whose pages have pictures, which the
    * overview draws over them (./pdf/pictureAnnotations.ts). */
   private pictureAnnotations: PictureAnnotations | null = null
@@ -760,6 +768,10 @@ export class WhiteboardCanvas {
     this.passageHandles = null
     this.pictures?.destroy()
     this.pictures = null
+    this.pictureSlices?.destroy()
+    this.pictureSlices = null
+    this.pictureActivity?.destroy()
+    this.pictureActivity = null
     this.pictureAnnotations?.destroy()
     this.pictureAnnotations = null
     this.viewportObserver?.disconnect()
@@ -915,6 +927,28 @@ export class WhiteboardCanvas {
     })
     this.spreadFrame = spreadFrame
     this.pictures?.destroy()
+    this.pictureSlices?.destroy()
+    const pictureWin = this.context.getWindow()
+    /** Whether a picture may be made now: the board still, and its window
+     * shown — a window in the background makes one many times slower. */
+    const pictureReady = () =>
+      !this.interacting &&
+      !spreadFrame.dragging &&
+      doc.visibilityState === 'visible'
+    const pictureSlices = new IdleSlices(pictureWin, pictureReady)
+    this.pictureSlices = pictureSlices
+    this.pictureActivity?.destroy()
+    const pictureActivity = new PictureActivity({
+      win: pictureWin,
+      background: this.host.background,
+      board: () => {
+        const file = this.context.getFile()
+        return file ? { path: file.path, name: file.basename } : null
+      },
+      title: () => this.t('pictureCache.activity'),
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
+    this.pictureActivity = pictureActivity
     this.pictures = new Pictures({
       doc,
       sources: [
@@ -926,6 +960,14 @@ export class WhiteboardCanvas {
           mtime: (path) => this.fileMtime(path),
           onStale: (path) => this.pictures?.fileChanged(path),
         }),
+        new ImageFiles({
+          vault: this.host.vault,
+          store: this.pictureStores.image,
+          doc,
+          slices: pictureSlices,
+          mtime: (path) => this.fileMtime(path),
+          ready: pictureReady,
+        }),
       ],
       wanted: () => this.wantedPictures(),
       resolution: () =>
@@ -934,6 +976,7 @@ export class WhiteboardCanvas {
       idle: () => !this.interacting && !spreadFrame.dragging,
       onChange: (source, group, key) =>
         this.onPictureChange(source, group, key),
+      onBusy: (busy) => pictureActivity.setBusy(busy),
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.pictureAnnotations?.destroy()
@@ -2750,9 +2793,10 @@ export class WhiteboardCanvas {
     this.syncGroupLabelScale()
   }
 
-  /** Every page of every open spread, and the pages a folded PDF card shows
-   * from where it was left, with how far each is from the middle of the
-   * viewport — what pictures are made for, nearest first. */
+  /** Every page of every open spread, the pages a folded PDF card shows
+   * from where it was left, and every image card's file, with how far each
+   * is from the middle of the viewport — what pictures are made for,
+   * nearest first. */
   private *wantedPictures(): Iterable<WantedPicture> {
     const view = this.worldViewportRect(0)
     const cx = (view.left + view.right) / 2
@@ -2765,6 +2809,10 @@ export class WhiteboardCanvas {
       if (node.type === 'pdf-page') {
         const ref = pdfPageRef(node.file, node.page)
         yield { ...ref, width: node.w, distance, stamp: '' }
+        continue
+      }
+      if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
+        yield { ...imageRef(node.file), width: node.w, distance, stamp: '' }
         continue
       }
       if (!isPdfNode(node) || isSpreadTitle(node)) continue
@@ -2811,6 +2859,9 @@ export class WhiteboardCanvas {
 
   private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {
     if (node.type === 'pdf-page') return pdfPageRef(node.file, node.page)
+    if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
+      return imageRef(node.file)
+    }
     if (page !== undefined && isPdfNode(node)) {
       return pdfPageRef(node.file, page)
     }
