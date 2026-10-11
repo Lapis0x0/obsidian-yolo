@@ -89,8 +89,8 @@ import {
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
 import type { MinimapPrefs } from '../host/minimapPrefs'
-import type { PdfThumbnailStore } from '../host/pdfThumbnailStore'
 import { takePendingFit } from '../host/pendingFit'
+import type { PictureStores } from '../host/pictureStore'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
 
@@ -164,7 +164,13 @@ import type {
   ReaderTextSelection,
 } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
-import { PdfThumbnails, type WantedThumbnail } from './pdf/thumbnails'
+import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
+import {
+  type PictureRef,
+  type PictureSourceId,
+  Pictures,
+  type WantedPicture,
+} from './pictures/pictures'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -513,10 +519,10 @@ export class WhiteboardCanvas {
   private readonly pdfDraws = new PdfDrawQueue((urgent) =>
     this.spreadFrame?.dragging ? 0 : !this.interacting ? 2 : urgent ? 1 : 0,
   )
-  /** Small pictures of every open spread's pages, made while the board is
-   * still (./pdf/thumbnails.ts). */
-  private pdfThumbnails: PdfThumbnails | null = null
-  /** The annotations of the PDFs whose pages have thumbnails, which the
+  /** Small pictures of what the board shows — every open spread's pages —
+   * made while the board is still (./pictures/pictures.ts). */
+  private pictures: Pictures | null = null
+  /** The annotations of the PDFs whose pages have pictures, which the
    * overview draws over them (./pdf/pictureAnnotations.ts). */
   private pictureAnnotations: PictureAnnotations | null = null
 
@@ -534,7 +540,7 @@ export class WhiteboardCanvas {
     private readonly readerPanelPrefs: ReaderPanelPrefs,
     private readonly annotationStores: AnnotationStores,
     private readonly annotationPrefs: AnnotationPrefs,
-    private readonly pdfThumbnailStore: PdfThumbnailStore,
+    private readonly pictureStores: PictureStores,
     private readonly minimapPrefs: MinimapPrefs,
   ) {
     this.unsubscribeMinimapPrefs = minimapPrefs.subscribe(() =>
@@ -752,8 +758,8 @@ export class WhiteboardCanvas {
     this.passagePoints = null
     this.passageHandles?.destroy()
     this.passageHandles = null
-    this.pdfThumbnails?.destroy()
-    this.pdfThumbnails = null
+    this.pictures?.destroy()
+    this.pictures = null
     this.pictureAnnotations?.destroy()
     this.pictureAnnotations = null
     this.viewportObserver?.disconnect()
@@ -908,22 +914,26 @@ export class WhiteboardCanvas {
       resize: (id, pageWidth, key) => this.resizeSpreadTo(id, pageWidth, key),
     })
     this.spreadFrame = spreadFrame
-    this.pdfThumbnails?.destroy()
-    this.pdfThumbnails = new PdfThumbnails({
-      pdf: this.host.pdf,
-      store: this.pdfThumbnailStore,
-      queue: this.pdfDraws,
+    this.pictures?.destroy()
+    this.pictures = new Pictures({
       doc,
-      mtime: (path) => {
-        const entry = this.host.vault.getEntry(path)
-        return entry?.kind === 'file' ? entry.mtime : null
-      },
-      wanted: () => this.wantedThumbnails(),
+      sources: [
+        new PdfPages({
+          pdf: this.host.pdf,
+          store: this.pictureStores.pdf,
+          queue: this.pdfDraws,
+          doc,
+          mtime: (path) => this.fileMtime(path),
+          onStale: (path) => this.pictures?.fileChanged(path),
+        }),
+      ],
+      wanted: () => this.wantedPictures(),
       resolution: () =>
         this.cameraController.view.scale *
         (this.context.getWindow().devicePixelRatio || 1),
       idle: () => !this.interacting && !spreadFrame.dragging,
-      onChange: (path, page) => this.onThumbnailChange(path, page),
+      onChange: (source, group, key) =>
+        this.onPictureChange(source, group, key),
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.pictureAnnotations?.destroy()
@@ -949,12 +959,11 @@ export class WhiteboardCanvas {
       isMounted: (id) => this.engine.mounted.has(id),
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
-      pageThumbnail: (path, page, dark) =>
-        this.pdfThumbnails?.get(path, page, dark) ?? null,
+      picture: (node, dark, page) => this.pictureOf(node, dark, page),
       pageAnnotations: (path, page) => {
         const annotations = this.pictureAnnotations?.forPage(path, page)
         if (!annotations?.length) return null
-        const frame = this.pdfThumbnails?.frame(path, page)
+        const frame = pageFrame(this.pictures?.meta(pdfPageRef(path, page)))
         return frame ? { frame, annotations } : null
       },
     })
@@ -1120,7 +1129,10 @@ export class WhiteboardCanvas {
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
-      pdfThumbnail: (path, page) => this.pdfThumbnails?.get(path, page) ?? null,
+      picture: (id, page) => {
+        const node = this.nodesById.get(id)
+        return node ? this.pictureOf(node, false, page) : null
+      },
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
       },
@@ -1516,7 +1528,7 @@ export class WhiteboardCanvas {
   private setupVaultSubscription(): void {
     this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
       if (event.type !== 'create') {
-        this.pdfThumbnails?.fileChanged(
+        this.pictures?.fileChanged(
           event.type === 'rename' ? event.oldPath : event.entry.path,
         )
       }
@@ -2690,7 +2702,7 @@ export class WhiteboardCanvas {
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
     this.pdfDraws.pump()
-    this.pdfThumbnails?.pump()
+    this.pictures?.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
     // It draws the camera the world layer was just given, and the geometry
@@ -2740,8 +2752,8 @@ export class WhiteboardCanvas {
 
   /** Every page of every open spread, and the pages a folded PDF card shows
    * from where it was left, with how far each is from the middle of the
-   * viewport — what thumbnails are made for, nearest first. */
-  private *wantedThumbnails(): Iterable<WantedThumbnail> {
+   * viewport — what pictures are made for, nearest first. */
+  private *wantedPictures(): Iterable<WantedPicture> {
     const view = this.worldViewportRect(0)
     const cx = (view.left + view.right) / 2
     const cy = (view.top + view.bottom) / 2
@@ -2751,7 +2763,8 @@ export class WhiteboardCanvas {
         node.y + node.h / 2 - cy,
       )
       if (node.type === 'pdf-page') {
-        yield { path: node.file, page: node.page, width: node.w, distance }
+        const ref = pdfPageRef(node.file, node.page)
+        yield { ...ref, width: node.w, distance, stamp: '' }
         continue
       }
       if (!isPdfNode(node) || isSpreadTitle(node)) continue
@@ -2760,22 +2773,55 @@ export class WhiteboardCanvas {
       const first = Math.floor(node.startPage ?? 1)
       const shown = Math.ceil(node.h / (node.w * FOLDED_PAGE_MIN_ASPECT)) + 1
       for (let page = first; page < first + shown; page += 1) {
-        yield { path: node.file, page, width: node.w, distance }
+        const ref = pdfPageRef(node.file, page)
+        yield { ...ref, width: node.w, distance, stamp: '' }
       }
     }
   }
 
-  /** A thumbnail was made (`page`), or a file's were dropped (null): the
-   * overview redraws, and the sheet showing that page takes it if it has
-   * nothing better yet. */
-  private onThumbnailChange(path: string, page: number | null): void {
+  /** A picture arrived (`key`), or a group's were dropped (null): the
+   * overview redraws, and the sheet showing a page that has one takes it if
+   * it has nothing better yet. */
+  private onPictureChange(
+    source: PictureSourceId,
+    group: string,
+    key: string | null,
+  ): void {
     this.overviewLayer?.markDirty()
-    if (page === null) return
+    if (key === null || source !== 'pdf') return
+    const page = Number(key)
     for (const node of this.cardNodes) {
       if (node.type !== 'pdf-page' || node.page !== page) continue
-      if (node.file !== path) continue
+      if (node.file !== group) continue
       this.cardRenderer.getRuntime(node.id)?.pdfReader?.placeholderReady()
     }
+  }
+
+  /** The picture standing for `node` (./pictures), as the theme shows it —
+   * for a PDF, the one of its page `page` — or null while it has none. The
+   * one way the overview and the cards ask for a picture. */
+  private pictureOf(
+    node: BoardNode,
+    dark: boolean,
+    page?: number,
+  ): ImageBitmap | null {
+    const ref = this.pictureRefOf(node, page)
+    return ref ? (this.pictures?.get(ref, dark) ?? null) : null
+  }
+
+  private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {
+    if (node.type === 'pdf-page') return pdfPageRef(node.file, node.page)
+    if (page !== undefined && isPdfNode(node)) {
+      return pdfPageRef(node.file, page)
+    }
+    return null
+  }
+
+  /** When the file at `path` was last modified; null when it is not a
+   * file now. */
+  private fileMtime(path: string): number | null {
+    const entry = this.host.vault.getEntry(path)
+    return entry?.kind === 'file' ? entry.mtime : null
   }
 
   /** How far a card's middle is from the viewport's, in world units — the
@@ -3456,10 +3502,12 @@ export class WhiteboardCanvas {
     this.passagePoints?.sync()
     this.passageHandles?.sync()
     this.cardRenderer.syncSpreadTitleWidths()
-    this.pdfThumbnails?.retain()
-    this.pictureAnnotations?.retain(
-      new Set(Array.from(this.wantedThumbnails(), (wanted) => wanted.path)),
-    )
+    this.pictures?.retain()
+    const pdfs = new Set<string>()
+    for (const wanted of this.wantedPictures()) {
+      if (wanted.source === 'pdf') pdfs.add(wanted.group)
+    }
+    this.pictureAnnotations?.retain(pdfs)
     // The overview tier draws from this index rather than from the DOM, so
     // every board change is a redraw — this is the one place they all pass
     // through.

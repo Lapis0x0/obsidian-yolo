@@ -186,15 +186,12 @@ export type OverviewLayerCallbacks = Readonly<{
   /** What a PDF card's or a sheet's title says about its page — see
    * ui/lod.ts's `nodeTitleText`. */
   pdfPageLabels: PdfPageLabels
-  /** A small picture of a spread's page (ui/pdf/thumbnails.ts), as the
-   * theme shows it, or null while it has none. */
-  pageThumbnail: (
-    path: string,
-    page: number,
-    dark: boolean,
-  ) => ImageBitmap | null
-  /** The annotations on a page that has a thumbnail, and where its PDF
-   * points land on it (../pdf/thumbnails.ts's `frame`); null when there are
+  /** The small picture standing for a card (../pictures/pictures.ts), as
+   * the theme shows it — for a PDF card, the one of its page `page` — or
+   * null while it has none. */
+  picture: (node: BoardNode, dark: boolean, page?: number) => ImageBitmap | null
+  /** The annotations on a page that has a picture, and where its PDF points
+   * land on it (../pictures/pdfPages.ts's `pageFrame`); null when there are
    * none to draw. */
   pageAnnotations: (
     path: string,
@@ -346,7 +343,7 @@ export class OverviewLayer {
 
   /**
    * Changes whenever what the board shows does — its contents, the
-   * selection, a thumbnail arriving, the theme — and not when the camera
+   * selection, a picture arriving, the theme — and not when the camera
    * moves, which reaches `render` by the view's identity instead. What a
    * surface holding the board at a view of its own (the minimap) watches to
    * know when to draw again.
@@ -1082,7 +1079,7 @@ export class OverviewLayer {
   ): boolean {
     if (rect.w < PICTURE_MIN_SCREEN_PX) return false
     if (node.type === 'pdf-page') {
-      const picture = this.callbacks.pageThumbnail(node.file, node.page, dark)
+      const picture = this.callbacks.picture(node, dark)
       if (!picture) return false
       ctx.drawImage(picture, rect.x, rect.y, rect.w, rect.h)
       this.drawAnnotations(ctx, node.file, node.page, rect, dark)
@@ -1091,7 +1088,7 @@ export class OverviewLayer {
     if (!isFoldedPdf(node)) return false
     const start = node.startPage ?? 1
     let page = Math.floor(start)
-    let picture = this.callbacks.pageThumbnail(node.file, page, dark)
+    let picture = this.callbacks.picture(node, dark, page)
     if (!picture) return false
     const bottom = rect.y + rect.h
     let y = rect.y - (start - page) * pageHeight(picture, rect.w)
@@ -1105,8 +1102,7 @@ export class OverviewLayer {
       this.drawAnnotations(ctx, node.file, page, { ...rect, y, h }, dark)
       y += h + READER_METRICS.gap * scale
       page += 1
-      picture =
-        y < bottom ? this.callbacks.pageThumbnail(node.file, page, dark) : null
+      picture = y < bottom ? this.callbacks.picture(node, dark, page) : null
     }
     ctx.restore()
     return true

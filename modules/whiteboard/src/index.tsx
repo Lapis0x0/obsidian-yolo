@@ -22,7 +22,7 @@ import {
 } from './host/importCanvasFile'
 import { MinimapPrefs } from './host/minimapPrefs'
 import { OpenBoards } from './host/openBoards'
-import { PdfThumbnailStore } from './host/pdfThumbnailStore'
+import { PictureStore, type PictureStores } from './host/pictureStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import {
@@ -67,12 +67,20 @@ yolo.registerModule({
       host.privateStorage.synchronized,
       reportError,
     )
-    // PDF page thumbnails, kept on this device for every board.
-    const pdfThumbnailStore = new PdfThumbnailStore(
-      host.privateStorage.deviceLocal,
-      reportError,
-    )
-    host.lifecycle.add(() => pdfThumbnailStore.dispose())
+    // The pictures boards make of what they show (ui/pictures/), kept on
+    // this device for every board: one store per kind, each with a budget of
+    // its own.
+    const pictureStores: PictureStores = {
+      pdf: new PictureStore(
+        host.privateStorage.deviceLocal,
+        'pdf-thumbnails',
+        'pdf thumbnail',
+        reportError,
+      ),
+    }
+    host.lifecycle.add(() => {
+      for (const store of Object.values(pictureStores)) store.dispose()
+    })
 
     host.workspace.registerFileView({
       viewType: VIEW_TYPE,
@@ -91,7 +99,7 @@ yolo.registerModule({
           readerPanelPrefs,
           annotationStores,
           annotationPrefs,
-          pdfThumbnailStore,
+          pictureStores,
           minimapPrefs,
         )
         const forgetOpenBoard = openBoards.add(canvas)

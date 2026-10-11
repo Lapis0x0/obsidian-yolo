@@ -1,5 +1,5 @@
 // The annotations of every PDF whose pages a board shows as pictures
-// (./thumbnails.ts) — what the overview draws over them, as a reader draws
+// (../pictures/pdfPages.ts) — what the overview draws over them, as a reader draws
 // a page's annotations over its picture.
 //
 // Held from the module's shared stores (../../host/annotationStore.ts), the

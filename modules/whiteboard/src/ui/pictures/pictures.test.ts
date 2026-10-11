@@ -1,0 +1,334 @@
+import type { PictureStore, StoredPicture } from '../../host/pictureStore'
+
+import {
+  type DrawnPicture,
+  type PictureSource,
+  Pictures,
+  type WantedPicture,
+  levelFor,
+  resizedTo,
+} from './pictures'
+
+type FakeBitmap = { width: number; height: number; closed: boolean }
+
+function fakeBitmap(width: number, height = width): ImageBitmap {
+  const bitmap: FakeBitmap = { width, height, closed: false }
+  return Object.assign(bitmap, {
+    close: () => {
+      bitmap.closed = true
+    },
+  }) as unknown as ImageBitmap
+}
+
+/** A canvas as far as the scheduler uses one: its size, and an encoding. */
+function fakeCanvas(width: number, height: number): HTMLCanvasElement {
+  return {
+    width,
+    height,
+    toBlob: (done: (blob: Blob | null) => void) => done(new Blob(['x'])),
+  } as unknown as HTMLCanvasElement
+}
+
+/** Everything a test needs around a `Pictures`: a store holding what it is
+ * given, a source that makes 100-pixel pictures, and a board whose wanted
+ * pictures, stillness and zoom the test sets. */
+function setup(
+  options: Readonly<{ stored?: Record<string, StoredPicture> }> = {},
+) {
+  const stored = new Map(Object.entries(options.stored ?? {}))
+  const writes: { key: string; picture: StoredPicture }[] = []
+  const store = {
+    entries: async () => new Map(stored),
+    read: async (_group: string, _version: number, key: string) =>
+      stored.has(key) ? new ArrayBuffer(4) : null,
+    write: (
+      _group: string,
+      _version: number,
+      key: string,
+      _data: ArrayBuffer,
+      picture: StoredPicture,
+    ) => {
+      writes.push({ key, picture })
+      stored.set(key, picture)
+    },
+  } as unknown as PictureStore
+  const drawn: string[] = []
+  const state = {
+    wanted: [] as WantedPicture[],
+    idle: true,
+    resolution: 1,
+    turnOpen: true,
+    wake: null as (() => void) | null,
+    drawResult: null as (() => DrawnPicture | 'unavailable' | null) | null,
+  }
+  const source: PictureSource = {
+    id: 'pdf',
+    label: 'test',
+    store,
+    turn: {
+      begin: (_next, wake) => {
+        state.wake = wake
+        return state.turnOpen
+      },
+      end: () => undefined,
+      withdraw: () => undefined,
+    },
+    version: () => 1,
+    draw: async (want) => {
+      drawn.push(want.key)
+      return state.drawResult?.() ?? { canvas: fakeCanvas(100, 80), meta: null }
+    },
+  }
+  const win = {
+    performance: { now: () => 0 },
+    createImageBitmap: async (
+      from: { width?: number },
+      resize?: ImageBitmapOptions,
+    ) => fakeBitmap(resize?.resizeWidth ?? from.width ?? 100),
+  }
+  const pictures = new Pictures({
+    doc: { defaultView: win } as unknown as Document,
+    sources: [source],
+    wanted: () => state.wanted,
+    resolution: () => state.resolution,
+    idle: () => state.idle,
+    onChange: () => undefined,
+    reportError: (stage, error) => {
+      throw new Error(`${stage}: ${String(error)}`)
+    },
+  })
+  return { pictures, state, drawn, writes, stored }
+}
+
+const want = (
+  key: string,
+  distance: number,
+  extra: Partial<WantedPicture> = {},
+): WantedPicture => ({
+  source: 'pdf',
+  group: 'a.pdf',
+  key,
+  width: 100,
+  distance,
+  stamp: '',
+  ...extra,
+})
+
+const kept = (stamp = ''): StoredPicture => ({
+  width: 100,
+  height: 80,
+  stamp,
+  meta: null,
+})
+
+/** Lets every pending read, draw and decode land. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+}
+
+/** Pumps until nothing more happens. */
+async function run(pictures: Pictures): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    pictures.pump()
+    await settle()
+  }
+}
+
+describe('levels', () => {
+  it('holds a picture at the smallest fraction that covers the screen', () => {
+    expect(levelFor(30, 160)).toBe(0.25)
+    expect(levelFor(41, 160)).toBe(0.5)
+    expect(levelFor(120, 160)).toBe(1)
+    expect(levelFor(500, 160)).toBe(1)
+    // Whatever the picture's width: a card is as wide as it was made.
+    expect(levelFor(60, 400)).toBe(0.25)
+  })
+
+  it('decodes a fraction at its width, and the whole as it is', () => {
+    expect(resizedTo(0.25, 160)).toEqual({
+      resizeWidth: 40,
+      resizeQuality: 'medium',
+    })
+    expect(resizedTo(1, 160)).toBeUndefined()
+  })
+})
+
+describe('Pictures', () => {
+  const ref = (key: string) => ({ source: 'pdf' as const, group: 'a.pdf', key })
+
+  it('reads kept pictures back at the level the screen shows them', async () => {
+    const { pictures, state, drawn } = setup({
+      stored: { '1': kept(), '2': kept() },
+    })
+    state.wanted = [want('1', 10), want('2', 20)]
+    state.resolution = 0.3 // 30 device pixels: a quarter of 100 is not enough
+    await run(pictures)
+
+    expect(pictures.get(ref('1'))?.width).toBe(50)
+    expect(pictures.get(ref('2'))?.width).toBe(50)
+    expect(drawn).toEqual([])
+  })
+
+  it('makes what is not kept, nearest first, and keeps it', async () => {
+    const { pictures, state, drawn, writes } = setup()
+    state.wanted = [want('far', 50), want('near', 5)]
+    await run(pictures)
+
+    expect(drawn).toEqual(['near', 'far'])
+    expect(writes.map((write) => write.key)).toEqual(['near', 'far'])
+    expect(pictures.get(ref('near'))?.width).toBe(100)
+  })
+
+  it('makes nothing while the board moves', async () => {
+    const { pictures, state, drawn } = setup()
+    state.wanted = [want('1', 0)]
+    state.idle = false
+    await run(pictures)
+    expect(drawn).toEqual([])
+
+    state.idle = true
+    await run(pictures)
+    expect(drawn).toEqual(['1'])
+  })
+
+  it('waits for its source to give it a turn', async () => {
+    const { pictures, state, drawn } = setup()
+    state.wanted = [want('1', 0)]
+    state.turnOpen = false
+    await run(pictures)
+    expect(drawn).toEqual([])
+
+    state.turnOpen = true
+    state.wake?.()
+    await settle()
+    expect(drawn).toEqual(['1'])
+  })
+
+  it('shows no picture made from something else, and makes it again', async () => {
+    const { pictures, state, drawn, writes } = setup({
+      stored: { card: kept('old') },
+    })
+    // Kept, but of another version: not read back, made again.
+    state.wanted = [want('card', 0, { stamp: 'new' })]
+    await run(pictures)
+    expect(drawn).toEqual(['card'])
+    expect(writes.at(-1)?.picture.stamp).toBe('new')
+    expect(pictures.get(ref('card'))).not.toBeNull()
+
+    // The card changes: what is held of it is not it any more.
+    state.wanted = [want('card', 0, { stamp: 'newer' })]
+    state.turnOpen = false
+    pictures.retain()
+    pictures.pump()
+    expect(pictures.get(ref('card'))).toBeNull()
+    state.turnOpen = true
+    await run(pictures)
+    expect(drawn).toEqual(['card', 'card'])
+    expect(writes.at(-1)?.picture.stamp).toBe('newer')
+  })
+
+  it('does not ask again for what could not be made until it changes', async () => {
+    const { pictures, state, drawn } = setup()
+    state.drawResult = () => 'unavailable'
+    state.wanted = [want('9', 0, { stamp: 'a' })]
+    await run(pictures)
+    pictures.retain()
+    await run(pictures)
+    expect(drawn).toEqual(['9'])
+
+    state.wanted = [want('9', 0, { stamp: 'b' })]
+    pictures.retain()
+    await run(pictures)
+    expect(drawn).toEqual(['9', '9'])
+  })
+
+  it('brings a picture down a level once the board is still', async () => {
+    const { pictures, state } = setup({ stored: { '1': kept() } })
+    state.wanted = [want('1', 0)]
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(100)
+
+    state.resolution = 0.2
+    state.idle = false
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(100)
+
+    state.idle = true
+    await run(pictures)
+    expect(pictures.get(ref('1'))?.width).toBe(25)
+  })
+
+  it('past its budget, lets go of the farthest for a nearer one', async () => {
+    const { state, stored } = setup()
+    stored.set('far', kept())
+    stored.set('near', kept())
+    // Room for one 100×100 picture.
+    const budget = new Pictures({
+      ...setupDeps(state, stored),
+      budgetBytes: 100 * 100 * 4,
+    })
+    state.wanted = [want('far', 90)]
+    await run(budget)
+    expect(budget.get(ref('far'))).not.toBeNull()
+
+    state.wanted = [want('far', 90), want('near', 10)]
+    budget.retain()
+    await run(budget)
+    expect(budget.get(ref('near'))).not.toBeNull()
+    expect(budget.get(ref('far'))).toBeNull()
+  })
+
+  it('lets go of what is no longer wanted', async () => {
+    const { pictures, state } = setup({ stored: { '1': kept(), '2': kept() } })
+    state.wanted = [want('1', 0), want('2', 0)]
+    await run(pictures)
+    const held = pictures.get(ref('2')) as unknown as FakeBitmap
+
+    state.wanted = [want('1', 0)]
+    pictures.retain()
+    expect(pictures.get(ref('2'))).toBeNull()
+    expect(held.closed).toBe(true)
+  })
+})
+
+/** The deps of a second `Pictures` over the same board and store as
+ * `setup`'s, for a test that sets what the first does not. */
+function setupDeps(
+  state: ReturnType<typeof setup>['state'],
+  stored: Map<string, StoredPicture>,
+) {
+  const store = {
+    entries: async () => new Map(stored),
+    read: async () => new ArrayBuffer(4),
+    write: () => undefined,
+  } as unknown as PictureStore
+  const source: PictureSource = {
+    id: 'pdf',
+    label: 'test',
+    store,
+    turn: {
+      begin: () => true,
+      end: () => undefined,
+      withdraw: () => undefined,
+    },
+    version: () => 1,
+    draw: async () => null,
+  }
+  return {
+    doc: {
+      defaultView: {
+        performance: { now: () => 0 },
+        createImageBitmap: async (
+          _from: unknown,
+          resize?: ImageBitmapOptions,
+        ) => fakeBitmap(resize?.resizeWidth ?? 100),
+      },
+    } as unknown as Document,
+    sources: [source],
+    wanted: () => state.wanted,
+    resolution: () => state.resolution,
+    idle: () => state.idle,
+    onChange: () => undefined,
+    reportError: () => undefined,
+  }
+}

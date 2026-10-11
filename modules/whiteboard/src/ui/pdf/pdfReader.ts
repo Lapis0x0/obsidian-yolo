@@ -122,7 +122,7 @@ export type PdfReaderOptions = Readonly<{
   drawQueue?: PdfDrawQueue
   /** Where this reader stands in `drawQueue`: lower goes first. */
   drawPriority?: () => number
-  /** A small picture of a page (./thumbnails.ts), shown until the page's
+  /** A small picture of a page (../pictures/pdfPages.ts), shown until the page's
    * own is drawn; null when there is none yet. */
   placeholder?: (page: number) => ImageBitmap | null
   /** Called when the reading position changes — by scrolling, a page jump,

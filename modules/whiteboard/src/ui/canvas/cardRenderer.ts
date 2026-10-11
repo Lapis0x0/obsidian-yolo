@@ -231,8 +231,9 @@ export type CardRendererCallbacks = Readonly<{
   /** How far a card is from the middle of the viewport, for the order its
    * pages are drawn in. */
   drawPriority: (id: NodeId) => number
-  /** A page's thumbnail (../pdf/thumbnails.ts), or null if it has none. */
-  pdfThumbnail: (path: string, page: number) => ImageBitmap | null
+  /** The small picture standing for a card (../pictures/pictures.ts) — for
+   * a PDF card, the one of its page `page` — or null while it has none. */
+  picture: (id: NodeId, page?: number) => ImageBitmap | null
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
   getMountedCount: () => number
@@ -1519,7 +1520,7 @@ export class CardRenderer {
       canStartWork: () => this.callbacks.canBuildContent(),
       drawQueue: this.callbacks.pdfDraws,
       drawPriority: () => this.callbacks.drawPriority(id),
-      placeholder: (page) => this.callbacks.pdfThumbnail(path, page),
+      placeholder: (page) => this.callbacks.picture(id, page),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
       onPassagesMove: () => this.callbacks.onPassagesMove(id),
