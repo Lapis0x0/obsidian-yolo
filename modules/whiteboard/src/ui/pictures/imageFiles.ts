@@ -71,6 +71,11 @@ export class ImageFiles implements PictureSource {
     return this.deps.mtime(path)
   }
 
+  /** What is drawn is kept in an idle slice of its own. */
+  settle(): Promise<boolean> {
+    return this.deps.slices.next()
+  }
+
   async draw(
     want: WantedPicture,
     _version: number,

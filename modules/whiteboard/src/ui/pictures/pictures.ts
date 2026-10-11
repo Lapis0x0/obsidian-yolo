@@ -125,6 +125,11 @@ export type PictureSource = Readonly<{
   /** Whether `want` can be made now at all; one that cannot is not waited
    * for (the board says when that may have changed: `invalidate`). */
   canDraw?(want: WantedPicture): boolean
+  /** Waits for a moment to keep what was drawn in — encoding it costs the
+   * main thread a few milliseconds more, which a source drawing in idle
+   * slices (./idle.ts) has already spent: true then, false if the board
+   * closed first. Without it, what is drawn is kept at once. */
+  settle?(): Promise<boolean>
   /** A group is no longer wanted: whatever the source holds open for it
    * goes. */
   release?(group: string): void
@@ -554,6 +559,8 @@ export class Pictures {
       const { canvas, meta } = drawn
       const win = this.deps.doc.defaultView
       if (!win) return
+      if (source.settle && !(await source.settle())) return
+      if (this.destroyed || this.groups.get(gk) !== group) return
       const fullWidth = canvas.width
       const level = levelFor(want.screen, fullWidth)
       // Past the budget it is only kept, not held: the scan reads it back

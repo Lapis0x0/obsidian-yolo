@@ -1,0 +1,22 @@
+/* --- the picture stage ------------------------------------------------------
+ * Where a card that is not on the board is built to have its picture taken
+ * (ui/pictures/cardStage.ts). What is built here is never styled, laid out
+ * or painted: `content-visibility: hidden` skips all of it, as it does for a
+ * parked card (parked.css). The picture lays the card out itself, inside the
+ * SVG image it is drawn from; laying it out here as well would cost the
+ * board's frames a style pass over every element of a long note, for
+ * nothing. Whatever a renderer asks of the layout is still answered: a query
+ * lays out what it asks about.
+ *
+ * Out of sight and out of reach besides, as the preheat element is. */
+
+.yolo-whiteboard-picture-stage {
+  position: absolute;
+  left: -99999px;
+  top: -99999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
+}

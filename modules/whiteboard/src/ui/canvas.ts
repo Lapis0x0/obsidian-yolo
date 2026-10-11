@@ -167,6 +167,7 @@ import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PictureActivity } from './pictures/activity'
 import { CardPictures, cardRef } from './pictures/cardPictures'
 import { cardSignature, isCardPictured } from './pictures/cardSignature'
+import { CardStage } from './pictures/cardStage'
 import { IdleSlices } from './pictures/idle'
 import { ImageFiles, imageRef } from './pictures/imageFiles'
 import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
@@ -536,6 +537,9 @@ export class WhiteboardCanvas {
   /** The board's line in the host's activity list while it makes pictures
    * (./pictures/activity.ts). */
   private pictureActivity: PictureActivity | null = null
+  /** Where cards that are not mounted are built to have their pictures
+   * taken (./pictures/cardStage.ts). */
+  private cardStage: CardStage | null = null
   /** The annotations of the PDFs whose pages have pictures, which the
    * overview draws over them (./pdf/pictureAnnotations.ts). */
   private pictureAnnotations: PictureAnnotations | null = null
@@ -789,6 +793,8 @@ export class WhiteboardCanvas {
     this.pictureStyles = null
     this.pictureActivity?.destroy()
     this.pictureActivity = null
+    this.cardStage?.destroy()
+    this.cardStage = null
     this.pictureAnnotations?.destroy()
     this.pictureAnnotations = null
     this.viewportObserver?.disconnect()
@@ -979,6 +985,13 @@ export class WhiteboardCanvas {
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.pictureActivity = pictureActivity
+    this.cardStage?.destroy()
+    const cardStage = new CardStage({
+      host: this.host,
+      root,
+      boardPath: () => this.sourcePathForBoard(),
+    })
+    this.cardStage = cardStage
     this.pictures = new Pictures({
       doc,
       sources: [
@@ -1011,6 +1024,8 @@ export class WhiteboardCanvas {
             this.contentSyncQueue.size === 0,
           getNode: (id) => this.nodesById.get(id),
           mounted: (id) => this.cardRenderer.pictureSource(id),
+          pending: (id) => this.cardRenderer.contentPending(id),
+          stage: cardStage,
           rootClass: ROOT_CLASS,
           worldClass: WORLD_CLASS,
           reportError: (stage, error) => this.reportError(stage, error),

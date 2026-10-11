@@ -89,8 +89,14 @@ img.${IMAGE_CLASS} { width: 100%; height: 100%; }
 export type CopyHooks = Readonly<{
   /** Elements left out of the copy. */
   excluded?: Iterable<Element>
+  /** False for an element that has never been laid out — built out of
+   * sight (../pictures/cardStage.ts): nothing in it is scrolled and its
+   * images have no size yet, so its layout is not read, which would lay it
+   * out only to be told so. */
+  laidOut?: boolean
   /** An image the copy shows from `src`, `width` CSS pixels wide on the
-   * board, as a data URL; null leaves it empty. */
+   * board (0 when that is not known), as a data URL; null leaves it
+   * empty. */
   image: (src: string, width: number) => Promise<string | null>
   /** How a PDF page is pictured in the copy, decided while its live
    * element is at hand: what to do to the page's copy, or null to leave
@@ -201,6 +207,7 @@ function tagLive(live: HTMLElement, hooks: CopyHooks): Map<string, Tagged> {
     tagged.set(id, value)
   }
   for (const el of hooks.excluded ?? []) tag(el, { kind: 'drop' })
+  const laidOut = hooks.laidOut !== false
   const walker = live.ownerDocument.createTreeWalker(
     live,
     NodeFilter.SHOW_ELEMENT,
@@ -208,7 +215,7 @@ function tagLive(live: HTMLElement, hooks: CopyHooks): Map<string, Tagged> {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const el = node as HTMLElement
     if (el.hasAttribute(TAG)) continue
-    if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+    if (laidOut && (el.scrollTop !== 0 || el.scrollLeft !== 0)) {
       tag(el, { kind: 'scroll', top: el.scrollTop, left: el.scrollLeft })
       continue
     }
@@ -226,7 +233,7 @@ function tagLive(live: HTMLElement, hooks: CopyHooks): Map<string, Tagged> {
     } else if (el.tagName === 'IMG') {
       const src = (el as HTMLImageElement).currentSrc || el.getAttribute('src')
       if (src && !src.startsWith('data:')) {
-        tag(el, { kind: 'image', src, width: el.clientWidth })
+        tag(el, { kind: 'image', src, width: laidOut ? el.clientWidth : 0 })
       }
     } else if (el.tagName === 'VIDEO') {
       tag(el, { kind: 'video', el: el as HTMLVideoElement })

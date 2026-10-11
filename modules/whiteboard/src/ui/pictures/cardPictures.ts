@@ -19,6 +19,11 @@
 // (./idle.ts) — never in a frame with something else to do, never while the
 // board moves, never with the window in the background.
 //
+// A card on the board is taken as it is, once its content is there; one that
+// is not is built off the board first (./cardStage.ts), the way the board
+// would build it, and taken down after. One at a time, nearest first, and
+// only once the cards on screen are all mounted and built.
+//
 // A card is taken once its content has been quiet for a moment
 // (`QUIET_MS`, as an export waits): what renders after its text — an image
 // arriving, a diagram — is in the picture. Never a card being edited or
@@ -31,6 +36,7 @@ import type { PictureStore } from '../../host/pictureStore'
 import { OVERVIEW_RESTORE_SCALE } from '../constants'
 import { COPY_CSS, blobToDataUrl, copyDom } from '../export/domCopy'
 
+import type { CardStage, StagedCard } from './cardStage'
 import type { IdleSlices } from './idle'
 import type {
   DrawnPicture,
@@ -93,6 +99,11 @@ export type CardPicturesDeps = Readonly<{
   /** A card's element, when it is mounted with its content built and
    * nothing — an editor, a generation — owns it; null otherwise. */
   mounted: (id: string) => HTMLElement | null
+  /** Whether a card on the board is about to show its content: its
+   * picture waits to be taken from it. */
+  pending: (id: string) => boolean
+  /** Where a card that is not on the board is built. */
+  stage: CardStage
   /** The board's root element's classes and the world layer's: the
    * picture's copy sits under the same, so the same rules reach it. */
   rootClass: string
@@ -123,9 +134,14 @@ export class CardPictures implements PictureSource {
     return boardPath === '' ? null : 0
   }
 
-  /** Only a mounted card whose content is built can be taken. */
+  /** Any card but one whose content is on its way to the board. */
   canDraw(want: WantedPicture): boolean {
-    return this.deps.mounted(want.key) !== null
+    return !this.deps.pending(want.key)
+  }
+
+  /** What is drawn is kept in an idle slice of its own. */
+  settle(): Promise<boolean> {
+    return this.deps.slices.next()
   }
 
   async draw(
@@ -133,7 +149,7 @@ export class CardPictures implements PictureSource {
     _version: number,
   ): Promise<DrawnPicture | 'unavailable' | null> {
     const el = this.deps.mounted(want.key)
-    if (!el) return null
+    if (!el) return this.drawStaged(want.key)
     const quiet = await waitQuiet(el, this.deps.doc)
     if (!quiet) return 'unavailable'
     // Taken off the board, or opened for editing, while it settled.
@@ -149,15 +165,52 @@ export class CardPictures implements PictureSource {
     return canvas ? { canvas, meta: null } : null
   }
 
+  /** A picture of card `id` built off the board for it. */
+  private async drawStaged(
+    id: string,
+  ): Promise<DrawnPicture | 'unavailable' | null> {
+    const { doc, slices, stage, getNode, reportError } = this.deps
+    const node = getNode(id)
+    if (!node) return null
+    const source = await stage.source(node)
+    if (!source) return 'unavailable'
+    if (!(await slices.next())) return null
+    // Changed while its note was read, or mounted: asked for again, as it
+    // now is.
+    if (getNode(id) !== node || this.deps.mounted(id)) return null
+    let staged: StagedCard
+    try {
+      staged = stage.build(node, source)
+    } catch (error) {
+      reportError('card picture render', error)
+      return 'unavailable'
+    }
+    try {
+      try {
+        if (!(await staged.rendered)) return null
+      } catch (error) {
+        reportError('card picture render', error)
+        return 'unavailable'
+      }
+      if (!(await waitQuiet(staged.el, doc))) return 'unavailable'
+      const canvas = await this.capture(staged.el, node.w, node.h, false)
+      return canvas ? { canvas, meta: null } : null
+    } finally {
+      staged.dispose()
+    }
+  }
+
   /**
    * A picture of `el`, a card `width` by `height` world units: its content,
    * on a transparent canvas the picture's size. Null when the board was
-   * closed, or the style environment changed, on the way.
+   * closed, or the style environment changed, on the way. `laidOut` is
+   * false for a card built on the stage (`CopyHooks.laidOut`).
    */
   private async capture(
     el: HTMLElement,
     width: number,
     height: number,
+    laidOut = true,
   ): Promise<HTMLCanvasElement | null> {
     const { doc, slices, styles } = this.deps
     const win = doc.defaultView
@@ -172,8 +225,14 @@ export class CardPictures implements PictureSource {
     // 1. The copy, read off the live card in a slice of its own.
     if (!(await slices.next())) return null
     const { copy, finish } = copyDom(el, {
+      laidOut,
+      // An image not laid out yet — not loaded, on a card just built — is
+      // taken as wide as the card, the widest it can be shown.
       image: (src, cssWidth) =>
-        this.inlineImage(src, Math.max(1, Math.round(cssWidth * scale))),
+        this.inlineImage(
+          src,
+          Math.max(1, Math.round((cssWidth || width) * scale)),
+        ),
     })
     for (const chrome of Array.from(copy.querySelectorAll(CARD_CHROME))) {
       chrome.remove()
@@ -237,7 +296,11 @@ export class CardPictures implements PictureSource {
     const canvas = doc.createElement('canvas')
     canvas.width = pixelWidth
     canvas.height = pixelHeight
-    const ctx = canvas.getContext('2d')
+    // Drawn by the main thread itself, not the GPU: on a GPU canvas the
+    // read below waits on the GPU's drawing of the picture and the copy back
+    // — 15 to 30 ms a card when it is busy, measured, against 2 to 6 here
+    // — and what is drawn is read back to be kept anyway.
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return null
     ctx.drawImage(image, 0, 0, pixelWidth, pixelHeight)
     // What `drawImage` only records is done now, in this slice, rather than

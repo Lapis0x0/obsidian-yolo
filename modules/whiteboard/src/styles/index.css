@@ -29,4 +29,5 @@
 @import './toolbar/creation-prompt.css';
 @import './canvas/parked.css';
 @import './canvas/preheat.css';
+@import './canvas/picture-stage.css';
 @import './canvas/export.css';

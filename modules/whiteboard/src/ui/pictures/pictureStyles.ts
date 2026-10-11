@@ -11,8 +11,9 @@
 //
 // It is built once per style environment, from a pass over every rule
 // spread across idle slices (./idle.ts), and grows as pictures show it
-// classes and elements it has not seen (./selectorNeeds.ts): a rule is in it
-// once one of its selectors could match something a picture has shown.
+// classes, elements, ids and attributes it has not seen (./selectorNeeds.ts):
+// a rule is in it once one of its selectors could match something a picture
+// has shown.
 // Keyframes and fonts are left out: a picture is still, and a font a theme
 // brings with it falls back to the system's in a picture (an SVG image loads
 // nothing) — accepted, rather than putting the font in every picture. The
@@ -31,15 +32,23 @@
 // element inside another view styles that view, and counting it would make
 // every picture stale whenever such a view opened.
 //
+// A stylesheet is named by a hash of its text, which runs to most of a
+// million characters for a theme: named once, a slice at a time, and the
+// name kept until its element changes.
+//
 // Popout safety: everything is the board's own document's and window's.
 
-import { hashText } from '../../domain/hash'
+import { TextHasher, hashText } from '../../domain/hash'
 
 import type { IdleSlices } from './idle'
 import { type SelectorNeeds, meets, selectorListNeeds } from './selectorNeeds'
 
-/** How long one idle slice may spend going over rules. */
+/** How long one idle slice may spend going over rules or text. */
 const SLICE_BUDGET_MS = 5
+/** Characters of a stylesheet hashed between looks at the clock. */
+const HASH_CHUNK = 32_768
+/** The longest attribute value a selector is matched against by value. */
+const MAX_MATCHED_VALUE = 200
 
 /** What a card picture is of, besides its card. */
 export type StyleEnvironment = Readonly<{
@@ -69,11 +78,17 @@ type Candidate = {
   text: string | null
 }
 
+/** A stylesheet that counts, named by what it holds. */
+type NamedSheet = Readonly<{ sheet: CSSStyleSheet; name: string }>
+
 type Index = {
   readonly env: StyleEnvironment
   readonly candidates: Candidate[]
+  /** What pictures have shown. */
   readonly classes: Set<string>
   readonly tags: Set<string>
+  readonly ids: Set<string>
+  readonly attributes: Set<string>
   /** Custom properties used by inline styles of what pictures showed. */
   readonly inlineVars: Set<string>
   css: string | null
@@ -95,6 +110,10 @@ export type PictureStylesDeps = Readonly<{
 
 export class PictureStyles {
   private env: StyleEnvironment | null = null
+  /** The stylesheets `env` is of. */
+  private sheets: readonly NamedSheet[] = []
+  /** Each style element's name for its text, until its text changes. */
+  private readonly names = new WeakMap<Node, string>()
   private index: Promise<Index | null> | null = null
   /** A look at the environment is owed (`refresh`). */
   private refreshing = false
@@ -109,7 +128,14 @@ export class PictureStyles {
       // Only what touches a stylesheet: the head also holds the window's
       // title, which changes with every file opened.
       const head = new win.MutationObserver((records) => {
-        if (records.some(touchesStyles)) this.refresh()
+        let touched = false
+        for (const record of records) {
+          for (const node of stylesTouched(record)) {
+            this.names.delete(node)
+            touched = true
+          }
+        }
+        if (touched) this.refresh()
       })
       head.observe(deps.doc.head, {
         childList: true,
@@ -121,7 +147,10 @@ export class PictureStyles {
         attributes: true,
         attributeFilter: ['class'],
       })
-      const own = new win.MutationObserver(changed)
+      const own = new win.MutationObserver(() => {
+        this.names.delete(deps.boardStyle)
+        this.refresh()
+      })
       own.observe(deps.boardStyle, {
         childList: true,
         characterData: true,
@@ -178,11 +207,13 @@ export class PictureStyles {
         // show is no card's look. Its arrival is a change, and comes back
         // here.
         if (!this.deps.boardStyle.textContent) return
-        const sheets = this.sheetsHash()
+        const sheets = await this.namedSheets()
+        if (!sheets) return
         if (!(await this.deps.slices.next())) return
-        const env = this.read(sheets)
+        const env = this.read(hashText(sheets.map((s) => s.name).join('\n')))
         if (env.hash === this.env?.hash) continue
         this.env = env
+        this.sheets = sheets
         this.index = null
         this.deps.onChange()
       } while (this.again && !this.destroyed)
@@ -193,19 +224,38 @@ export class PictureStyles {
       })
   }
 
-  /** The stylesheets that count, each named by what it holds. */
-  private includedSheets(): { sheet: CSSStyleSheet; name: string }[] {
+  /**
+   * The stylesheets that count, each named by what it holds, in document
+   * order: a sheet from a file by its address, any other by its text, hashed
+   * in idle slices where it has not been yet. Null if this is destroyed on
+   * the way.
+   */
+  private async namedSheets(): Promise<NamedSheet[] | null> {
     const doc = this.deps.doc
+    const win = doc.defaultView
+    if (!win) return null
+    let until = win.performance.now() + SLICE_BUDGET_MS
     const seen = new Set<string>()
-    const out: { sheet: CSSStyleSheet; name: string }[] = []
+    const out: NamedSheet[] = []
     for (const sheet of Array.from(doc.styleSheets)) {
       const owner = sheet.ownerNode
       if (!owner) continue
       if (owner !== this.deps.boardStyle && !doc.head.contains(owner)) continue
-      const name =
-        sheet.href !== null
-          ? `href:${sheet.href}`
-          : hashText(owner.textContent ?? '')
+      let name =
+        sheet.href !== null ? `href:${sheet.href}` : this.names.get(owner)
+      if (name === undefined) {
+        const text = owner.textContent ?? ''
+        const hasher = new TextHasher()
+        for (let at = 0; at < text.length; at += HASH_CHUNK) {
+          if (win.performance.now() >= until) {
+            if (!(await this.deps.slices.next())) return null
+            until = win.performance.now() + SLICE_BUDGET_MS
+          }
+          hasher.update(text, at, Math.min(text.length, at + HASH_CHUNK))
+        }
+        name = hasher.digest()
+        this.names.set(owner, name)
+      }
       // The same stylesheet twice — the board's own, in two boards open
       // side by side — styles nothing twice.
       if (seen.has(name)) continue
@@ -213,14 +263,6 @@ export class PictureStyles {
       out.push({ sheet, name })
     }
     return out
-  }
-
-  private sheetsHash(): string {
-    return hashText(
-      this.includedSheets()
-        .map((sheet) => sheet.name)
-        .join('\n'),
-    )
   }
 
   private read(sheets: string): StyleEnvironment {
@@ -260,12 +302,14 @@ export class PictureStyles {
       candidates: [],
       classes: new Set(),
       tags: new Set(),
+      ids: new Set(),
+      attributes: new Set(),
       inlineVars: new Set(),
       css: null,
     }
     const win = this.deps.doc.defaultView
     if (!win) return null
-    const pending = this.includedSheets().map(({ sheet }) => ({
+    const pending = this.sheets.map(({ sheet }) => ({
       rules: rulesOf(sheet),
       wrap: [] as string[],
     }))
@@ -351,17 +395,22 @@ export class PictureStyles {
    * rules that now might match. */
   private learn(index: Index, frame: Element): void {
     let grew = false
+    const add = (set: Set<string>, value: string): void => {
+      if (set.has(value)) return
+      set.add(value)
+      grew = true
+    }
     const visit = (el: Element): void => {
-      for (const name of Array.from(el.classList)) {
-        if (!index.classes.has(name)) {
-          index.classes.add(name)
-          grew = true
+      for (const name of Array.from(el.classList)) add(index.classes, name)
+      add(index.tags, el.localName.toLowerCase())
+      if (el.id) add(index.ids, el.id)
+      for (const attribute of Array.from(el.attributes)) {
+        add(index.attributes, attribute.name)
+        // By value too, for a selector that compares with `=` — but not
+        // the long ones no selector names: an inlined image, a style.
+        if (attribute.value.length <= MAX_MATCHED_VALUE) {
+          add(index.attributes, `${attribute.name}=${attribute.value}`)
         }
-      }
-      const tag = el.localName.toLowerCase()
-      if (!index.tags.has(tag)) {
-        index.tags.add(tag)
-        grew = true
       }
       const inline = el.getAttribute('style')
       if (inline?.includes('var(')) {
@@ -378,9 +427,7 @@ export class PictureStyles {
     if (!grew) return
     for (const candidate of index.candidates) {
       if (candidate.kept || !candidate.needs) continue
-      if (
-        candidate.needs.some((needs) => meets(needs, index.classes, index.tags))
-      ) {
+      if (candidate.needs.some((needs) => meets(needs, index))) {
         candidate.kept = true
         index.css = null
       }
@@ -444,20 +491,20 @@ function rulesOf(sheet: CSSStyleSheet): CSSRule[] {
   }
 }
 
-/** Whether a change in the head was to a stylesheet. */
-function touchesStyles(record: MutationRecord): boolean {
-  const isStyle = (node: Node): boolean =>
-    node.nodeName === 'STYLE' || node.nodeName === 'LINK'
+/** The style elements a change in the head was to. */
+function stylesTouched(record: MutationRecord): Node[] {
+  const isStyle = (node: Node | null): node is Node =>
+    node !== null && (node.nodeName === 'STYLE' || node.nodeName === 'LINK')
   if (record.type === 'characterData') {
-    return (
-      record.target.parentNode !== null && isStyle(record.target.parentNode)
-    )
+    const parent = record.target.parentNode
+    return isStyle(parent) ? [parent] : []
   }
-  if (isStyle(record.target)) return true
-  return (
-    Array.from(record.addedNodes).some(isStyle) ||
-    Array.from(record.removedNodes).some(isStyle)
-  )
+  // A style element's text replaced, or a style element come or gone.
+  if (isStyle(record.target)) return [record.target]
+  return [
+    ...Array.from(record.addedNodes).filter(isStyle),
+    ...Array.from(record.removedNodes).filter(isStyle),
+  ]
 }
 
 function varsIn(text: string): string[] {

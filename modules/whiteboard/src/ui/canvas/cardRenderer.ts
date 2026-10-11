@@ -38,7 +38,7 @@ import {
   SPREAD_SHEET_OF_SELECTED_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
-import { type PdfPageLabels, cardMarkdownWindow, nodeTitleText } from '../lod'
+import { type PdfPageLabels, nodeTitleText } from '../lod'
 import type { PdfDrawQueue } from '../pdf/drawQueue'
 import {
   PdfReader,
@@ -48,25 +48,14 @@ import {
 import { applyColorToElement } from '../selectionToolbar'
 import { glideScrollBy } from '../wheelScroll'
 
-/** The host's one-pass Markdown renderer. Named through the Host API rather
- * than imported: the module SDK exports no alias for it. */
-type CardMarkdownRenderer = ReturnType<
-  YoloModuleHostApiV1['ui']['createMarkdownRenderer']
->
+import {
+  type CardMarkdownRenderer,
+  clippedCardMarkdown,
+  createCardBody,
+  createNodeElement,
+  renderClippedMarkdown,
+} from './cardContent'
 
-/** Obsidian's own preview wrapper chain, rebuilt around a one-pass render.
- * Same classes as `createMarkdownContentView` produces, so every rule that
- * styles a card's content — Obsidian's element styling keyed off
- * `markdown-rendered`, and style.css's inset and card-scale type — applies to
- * both without a second set of selectors to keep in step. */
-const PREVIEW_VIEW_CLASS = 'markdown-preview-view markdown-rendered'
-const PREVIEW_SIZER_CLASS = 'markdown-preview-sizer markdown-preview-section'
-
-const CARD_CLASS = 'yolo-whiteboard-card'
-/** A text node drawn as bare text (fileFormat.ts's `plain`): a card without
- * the frame, whose box is its content's. */
-const PLAIN_TEXT_CLASS = 'yolo-whiteboard-text'
-const GROUP_CLASS = 'yolo-whiteboard-group'
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
  * standing on the board for the whole of it — no frame, no body. */
 const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
@@ -77,7 +66,6 @@ const SPREAD_TITLE_BADGE_CLASS = 'yolo-whiteboard-spread-title-badge'
 const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
 /** The page number in a sheet's corner. */
 const SPREAD_SHEET_NUMBER_CLASS = 'yolo-whiteboard-spread-sheet-number'
-const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
@@ -363,6 +351,19 @@ export class CardRenderer {
     return runtime.el
   }
 
+  /**
+   * Whether a card on the board is about to show its content — mounted, not
+   * parked, its one-pass render under way or waiting its turn — so that its
+   * picture is better taken from it in a moment (`pictureSource`) than
+   * built again off the board (../pictures/cardStage.ts).
+   */
+  contentPending(id: NodeId): boolean {
+    const runtime = this.runtimeByNodeId.get(id)
+    if (!runtime?.el || this.parkedCards.has(id)) return false
+    if (runtime.contentView !== null || runtime.contentRendered) return false
+    return !runtime.missingFile
+  }
+
   /** Tears every mounted/parked card down to nothing — used by
    * canvas.ts's `teardownAllCards` on a full reload/dispose. */
   destroyAll(): void {
@@ -554,21 +555,11 @@ export class CardRenderer {
     if (!node || existing?.el) return
 
     const doc = this.context.getDocument()
-    const el = doc.createElement('div')
-    el.className = node.type === 'group' ? GROUP_CLASS : CARD_CLASS
+    const el = createNodeElement(doc, node)
     const plain = isPlainText(node)
-    if (plain) {
-      el.classList.add(PLAIN_TEXT_CLASS)
-      el.classList.toggle(PLAIN_TEXT_AUTO_CLASS, node.autoWidth === true)
-    }
     el.style.left = `${node.x}px`
     el.style.top = `${node.y}px`
-    el.style.width = `${node.w}px`
-    el.style.height = `${node.h}px`
     el.dataset.nodeId = id
-    // JSON Canvas's `color`: a preset or a hex, both
-    // resolved to the one custom property style.css paints from.
-    applyColorToElement(el, node.color)
     // Re-apply selection state — a selected node can unmount (scrolled
     // off-screen) and remount without its selection ever changing.
     if (this.callbacks.isSelected(id)) el.classList.add(CARD_SELECTED_CLASS)
@@ -669,8 +660,7 @@ export class CardRenderer {
       el.appendChild(title)
     }
 
-    const body = doc.createElement('div')
-    body.className = CARD_BODY_CLASS
+    const body = createCardBody(doc)
     el.appendChild(body)
 
     // A sheet is a page of its document: named by the number in its corner,
@@ -1290,10 +1280,7 @@ export class CardRenderer {
       node && (node.type === 'text' || node.type === 'file')
         ? (node.startLine ?? 0)
         : 0
-    const wanted =
-      scrollable || plain
-        ? markdown
-        : cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
+    const wanted = scrollable ? markdown : clippedCardMarkdown(node, markdown)
     // Nothing to do when neither the visible source, what it resolves against,
     // nor which of the two surfaces should hold it has changed — which is
     // every edit made below an unfocused card's fold.
@@ -1360,26 +1347,23 @@ export class CardRenderer {
       }
       return
     }
-    const doc = bodyEl.ownerDocument
-    const view = doc.createElement('div')
-    view.className = PREVIEW_VIEW_CLASS
-    const sizer = doc.createElement('div')
-    sizer.className = PREVIEW_SIZER_CLASS
-    view.appendChild(sizer)
-    bodyEl.appendChild(view)
     let renderer: CardMarkdownRenderer
+    let rendered: Promise<void>
     try {
-      renderer = this.host.ui.createMarkdownRenderer()
+      ;({ renderer, rendered } = renderClippedMarkdown(
+        this.host,
+        bodyEl,
+        wanted,
+        sourcePath,
+      ))
     } catch (error) {
       this.callbacks.reportError('markdown render', error)
       return
     }
     runtime.contentRenderer = renderer
-    void renderer
-      .render(wanted, sizer, sourcePath)
+    void rendered
       .then(() => {
         if (runtime.contentRenderer !== renderer) return
-        this.markUnresolvedLinks(sizer, sourcePath)
         if (plain) this.releaseTextSize(id)
         runtime.contentRendered = true
         this.callbacks.onContentRendered(id)
@@ -1394,43 +1378,11 @@ export class CardRenderer {
   }
 
   /**
-   * Colours the links that lead nowhere.
-   *
-   * `MarkdownRenderer.render` produces a view's *markup* but not a view's
-   * knowledge: it writes every wiki link as a resolved one, because whether a
-   * link resolves is a question about the vault and the one-pass renderer was
-   * never given the vault to ask. A card showing a broken link exactly as it
-   * shows a working one is telling the reader something false about their
-   * notes. What `is-unresolved` then looks like is the theme's business —
-   * dimmed, recoloured, or both.
-   *
-   * Only this path needs it — the focused card's windowed preview is a real
-   * view and does this itself. Costs one query over a card's worth of links
-   * and an index lookup each; no layout is read, so it can run straight after
-   * the render rather than waiting for a frame.
-   */
-  private markUnresolvedLinks(root: HTMLElement, sourcePath: string): void {
-    const links = root.querySelectorAll<HTMLElement>('a.internal-link')
-    for (const link of Array.from(links)) {
-      const linktext = link.getAttribute('data-href') ?? link.textContent
-      if (!linktext) continue
-      try {
-        if (this.host.vault.resolveLink(linktext, sourcePath)) continue
-      } catch {
-        // The vault answers for as long as the module is active; if it has
-        // stopped, this card is on its way out and its colours do not matter.
-        return
-      }
-      link.classList.add('is-unresolved')
-    }
-  }
-
-  /**
    * Scrolls a card's own content by a wheel delta, reporting whether it had
    * anywhere to go.
    *
    * The scroller is Obsidian's preview element, which both content surfaces
-   * put inside the body (PREVIEW_VIEW_CLASS) — so this reads the same way for
+   * put inside the body (./cardContent.ts) — so this reads the same way for
    * the focused card's windowed view and for anything else that ends up
    * asking. Written rather than delegated to the browser because a card's
    * content is deliberately unhittable (style.css's content mask): the
