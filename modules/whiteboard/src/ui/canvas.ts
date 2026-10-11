@@ -165,6 +165,8 @@ import type {
 } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PictureActivity } from './pictures/activity'
+import { CardPictures, cardRef } from './pictures/cardPictures'
+import { cardSignature, isCardPictured } from './pictures/cardSignature'
 import { IdleSlices } from './pictures/idle'
 import { ImageFiles, imageRef } from './pictures/imageFiles'
 import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
@@ -174,6 +176,7 @@ import {
   Pictures,
   type WantedPicture,
 } from './pictures/pictures'
+import { PictureStyles } from './pictures/pictureStyles'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -527,6 +530,9 @@ export class WhiteboardCanvas {
   private pictures: Pictures | null = null
   /** The idle time pictures are made in (./pictures/idle.ts). */
   private pictureSlices: IdleSlices | null = null
+  /** The stylesheet card pictures are shown with, and the style
+   * environment they are of (./pictures/pictureStyles.ts). */
+  private pictureStyles: PictureStyles | null = null
   /** The board's line in the host's activity list while it makes pictures
    * (./pictures/activity.ts). */
   private pictureActivity: PictureActivity | null = null
@@ -623,6 +629,15 @@ export class WhiteboardCanvas {
     this.board = expandBoard(result.board)
     this.syncBoardIndex()
     this.selfHealMissingFileNodes()
+    // The pictures kept of cards this board no longer has go.
+    const boardPath = this.sourcePathForBoard()
+    if (boardPath !== '') {
+      this.pictureStores.card.keep(
+        boardPath,
+        0,
+        new Set(this.cardNodes.filter(isCardPictured).map((node) => node.id)),
+      )
+    }
     // Baseline for undo, taken after self-heal so the repaired board is the
     // oldest state anyone can get back to. Reset rather than extended: this
     // is a different file, or the same file rewritten from outside, and
@@ -770,6 +785,8 @@ export class WhiteboardCanvas {
     this.pictures = null
     this.pictureSlices?.destroy()
     this.pictureSlices = null
+    this.pictureStyles?.destroy()
+    this.pictureStyles = null
     this.pictureActivity?.destroy()
     this.pictureActivity = null
     this.pictureAnnotations?.destroy()
@@ -929,14 +946,27 @@ export class WhiteboardCanvas {
     this.pictures?.destroy()
     this.pictureSlices?.destroy()
     const pictureWin = this.context.getWindow()
-    /** Whether a picture may be made now: the board still, and its window
-     * shown — a window in the background makes one many times slower. */
+    /** Whether a picture may be made now: the board still — nothing moving
+     * the camera, a spread's frame or a card — and shown, in a window that
+     * is — a window in the background makes one many times slower. */
     const pictureReady = () =>
       !this.interacting &&
       !spreadFrame.dragging &&
-      doc.visibilityState === 'visible'
+      this.interaction.liveNodeRects === null &&
+      doc.visibilityState === 'visible' &&
+      this.getViewportSize().width > 0
     const pictureSlices = new IdleSlices(pictureWin, pictureReady)
     this.pictureSlices = pictureSlices
+    this.pictureStyles?.destroy()
+    const pictureStyles = new PictureStyles({
+      doc,
+      boardStyle: styleEl,
+      varsFrom: world,
+      slices: pictureSlices,
+      onChange: () => this.pictures?.invalidate(),
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
+    this.pictureStyles = pictureStyles
     this.pictureActivity?.destroy()
     const pictureActivity = new PictureActivity({
       win: pictureWin,
@@ -967,6 +997,23 @@ export class WhiteboardCanvas {
           slices: pictureSlices,
           mtime: (path) => this.fileMtime(path),
           ready: pictureReady,
+        }),
+        new CardPictures({
+          store: this.pictureStores.card,
+          doc,
+          slices: pictureSlices,
+          styles: pictureStyles,
+          // After the cards on screen: none is waiting to be mounted or
+          // built.
+          ready: () =>
+            pictureReady() &&
+            this.engine.pendingMountCount === 0 &&
+            this.contentSyncQueue.size === 0,
+          getNode: (id) => this.nodesById.get(id),
+          mounted: (id) => this.cardRenderer.pictureSource(id),
+          rootClass: ROOT_CLASS,
+          worldClass: WORLD_CLASS,
+          reportError: (stage, error) => this.reportError(stage, error),
         }),
       ],
       wanted: () => this.wantedPictures(),
@@ -1169,6 +1216,8 @@ export class WhiteboardCanvas {
         this.dropImport.onNoteCardRendered(id)
         this.passagesRedrawn(id)
       },
+      // A card showing its content is one a picture can be taken of.
+      onContentRendered: () => this.pictures?.invalidate(),
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
@@ -2794,18 +2843,39 @@ export class WhiteboardCanvas {
   }
 
   /** Every page of every open spread, the pages a folded PDF card shows
-   * from where it was left, and every image card's file, with how far each
-   * is from the middle of the viewport — what pictures are made for,
-   * nearest first. */
+   * from where it was left, every image card's file, and every text and
+   * note card, with how far each is from the middle of the viewport — what
+   * pictures are made for, nearest first. */
   private *wantedPictures(): Iterable<WantedPicture> {
     const view = this.worldViewportRect(0)
     const cx = (view.left + view.right) / 2
     const cy = (view.top + view.bottom) / 2
+    const boardPath = this.sourcePathForBoard()
+    const environment = this.pictureStyles?.environment ?? null
     for (const node of this.cardNodes) {
       const distance = Math.hypot(
         node.x + node.w / 2 - cx,
         node.y + node.h / 2 - cy,
       )
+      if (isCardPictured(node)) {
+        // Not before the look it would be of is known, and never a card
+        // being written in: what it shows is not on the board yet.
+        if (!environment || boardPath === '') continue
+        if (this.editing.isEditing(node.id)) continue
+        if (this.cardGeneration.isGenerating(node.id)) continue
+        const signature = cardSignature(
+          node,
+          node.type === 'file' ? this.fileMtime(node.file) : null,
+        )
+        if (signature === null) continue
+        yield {
+          ...cardRef(boardPath, node.id),
+          width: node.w,
+          distance,
+          stamp: `${signature}.${environment.hash}`,
+        }
+        continue
+      }
       if (node.type === 'pdf-page') {
         const ref = pdfPageRef(node.file, node.page)
         yield { ...ref, width: node.w, distance, stamp: '' }
@@ -2858,6 +2928,9 @@ export class WhiteboardCanvas {
   }
 
   private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {
+    if (isCardPictured(node)) {
+      return cardRef(this.sourcePathForBoard(), node.id)
+    }
     if (node.type === 'pdf-page') return pdfPageRef(node.file, node.page)
     if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
       return imageRef(node.file)
@@ -3058,6 +3131,7 @@ export class WhiteboardCanvas {
     for (const id of toUnmount) this.cardRenderer.unmountNode(id)
     if (toMount.length > 0 || toUnmount.length > 0) {
       this.overviewLayer?.markMountsChanged()
+      this.pictures?.invalidate()
     }
     this.drainContentSync()
   }

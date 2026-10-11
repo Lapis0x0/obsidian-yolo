@@ -14,8 +14,10 @@
 
 /** How long an idle period must have left for a step to start in it. The
  * longest step measured (copying a card and laying out its picture) took
- * 5 ms. */
-const IDLE_SLICE_MIN_MS = 8
+ * about 5 ms; and a board runs a frame loop at all times, so on a 120 Hz
+ * display no idle period is longer than the 5–7 ms left between two of its
+ * frames (measured) — asking for more than that would wait for ever. */
+const IDLE_SLICE_MIN_MS = 4
 /** How often a board that is not ready is asked again. */
 const NOT_READY_RETRY_MS = 120
 

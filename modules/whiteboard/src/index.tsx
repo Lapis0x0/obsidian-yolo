@@ -83,6 +83,12 @@ yolo.registerModule({
         'image thumbnail',
         reportError,
       ),
+      card: new PictureStore(
+        host.privateStorage.deviceLocal,
+        'card-pictures',
+        'card picture',
+        reportError,
+      ),
     }
     host.lifecycle.add(() => {
       for (const store of Object.values(pictureStores)) store.dispose()

@@ -63,6 +63,8 @@ function setup(
     turnOpen: true,
     wake: null as (() => void) | null,
     drawResult: null as (() => DrawnPicture | 'unavailable' | null) | null,
+    /** The keys the source cannot make yet. */
+    cannot: new Set<string>(),
     /** Every `onBusy`, in order. */
     busy: [] as boolean[],
   }
@@ -79,6 +81,7 @@ function setup(
       withdraw: () => undefined,
     },
     version: () => 1,
+    canDraw: (want) => !state.cannot.has(want.key),
     draw: async (want) => {
       drawn.push(want.key)
       return state.drawResult?.() ?? { canvas: fakeCanvas(100, 80), meta: null }
@@ -212,6 +215,23 @@ describe('Pictures', () => {
     state.wake?.()
     await settle()
     expect(drawn).toEqual(['1'])
+  })
+
+  it('passes over what its source cannot make yet, until told to look again', async () => {
+    const { pictures, state, drawn } = setup()
+    state.wanted = [want('near', 0), want('far', 50)]
+    state.cannot.add('near')
+    await run(pictures)
+    expect(drawn).toEqual(['far'])
+
+    // Nothing about the board changed: the scheduler has no reason to look.
+    state.cannot.clear()
+    await run(pictures)
+    expect(drawn).toEqual(['far'])
+
+    pictures.invalidate()
+    await run(pictures)
+    expect(drawn).toEqual(['far', 'near'])
   })
 
   it('shows no picture made from something else, and makes it again', async () => {

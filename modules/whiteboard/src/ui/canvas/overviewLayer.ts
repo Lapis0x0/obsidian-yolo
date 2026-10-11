@@ -789,12 +789,17 @@ export class OverviewLayer {
         })
       } else visible.push(item)
     }
-    // Bare text has no card to draw: at this distance it is a block of ink,
-    // in its colour, as greyed-out text is drawn — and a selection ring when
-    // it is selected, drawn with the cards' below.
+    // Bare text has no card to draw: at this distance it is its picture of
+    // itself (../pictures/cardPictures.ts) where it has one, and a block of
+    // ink, in its colour, as greyed-out text is drawn, until it does — and a
+    // selection ring when it is selected, drawn with the cards' below.
     if (texts.length > 0) {
-      ctx.globalAlpha = OVERVIEW_TEXT_ALPHA
       for (const text of texts) {
+        ctx.globalAlpha = 1
+        if (this.drawPicture(ctx, text.node, text, palette.dark, view.scale)) {
+          continue
+        }
+        ctx.globalAlpha = OVERVIEW_TEXT_ALPHA
         ctx.fillStyle = this.colorOf(text.node, palette) ?? palette.text
         ctx.fillRect(text.x, text.y, text.w, text.h)
       }
@@ -840,10 +845,10 @@ export class OverviewLayer {
       ctx.fill()
     }
 
-    // 2b. A card's picture of itself where there is one (../pictures/) — a
-    //     PDF's pages, an image — what the card shows in the DOM tiers, over
-    //     its wash as the content is over its card. Such a card needs no
-    //     title block: it shows its own.
+    // 2b. A card's picture of itself where there is one (../pictures/) — its
+    //     content, a PDF's pages, an image — what the card shows in the DOM
+    //     tiers, over its wash as the content is over its card. Such a card
+    //     needs no title block: it shows its own.
     const pictured = new Set<NodeId>()
     ctx.globalAlpha = 1
     for (const card of visible) {
@@ -1069,8 +1074,9 @@ export class OverviewLayer {
    * image, fitted in the card as the card fits it (cards/media.css); a sheet
    * its page; a folded PDF card the pages its reader shows from where it was
    * left (../pdf/readerLayout.ts: edge to edge at the card's width, a seam
-   * between each), as far down as there are pictures. False when there is
-   * none.
+   * between each), as far down as there are pictures; any other card its
+   * content, which its picture shows over the card's whole box. False when
+   * there is none.
    */
   private drawPicture(
     ctx: CanvasRenderingContext2D,
@@ -1102,7 +1108,12 @@ export class OverviewLayer {
       this.drawAnnotations(ctx, node.file, node.page, rect, dark)
       return true
     }
-    if (!isFoldedPdf(node)) return false
+    if (!isFoldedPdf(node)) {
+      const picture = this.callbacks.picture(node, dark)
+      if (!picture) return false
+      ctx.drawImage(picture, rect.x, rect.y, rect.w, rect.h)
+      return true
+    }
     const start = node.startPage ?? 1
     let page = Math.floor(start)
     let picture = this.callbacks.picture(node, dark, page)

@@ -150,6 +150,9 @@ export type NodeRuntime = {
    * the focused one holds — so what a pan pays for. Null while the card shows
    * a placeholder, is being edited, or holds the scrollable view below. */
   contentRenderer: CardMarkdownRenderer | null
+  /** `contentRenderer` has finished rendering: the card shows its content,
+   * and a picture can be taken of it (../pictures/cardPictures.ts). */
+  contentRendered: boolean
   /** The focused card's content: Obsidian's windowed preview over the *whole*
    * note, because that card can be scrolled and the rest cannot. At most one
    * card on the board has this. Mutually exclusive with `contentRenderer`. */
@@ -228,6 +231,8 @@ export type CardRendererCallbacks = Readonly<{
   /** Called after a note card's text has been read and drawn — the first
    * moment its editor can be opened (`noteText` is known). */
   onNoteCardRendered: (id: NodeId) => void
+  /** A card's one-pass render has finished: it shows its content now. */
+  onContentRendered: (id: NodeId) => void
   canBuildContent: () => boolean
   /** The board's one queue for PDF page draws (../pdf/drawQueue.ts). */
   pdfDraws: PdfDrawQueue
@@ -335,6 +340,27 @@ export class CardRenderer {
   hasLiveContent(id: NodeId): boolean {
     const bodyEl = this.runtimeByNodeId.get(id)?.bodyEl
     return bodyEl?.classList.contains(CARD_BODY_LIVE_CLASS) === true
+  }
+
+  /**
+   * The element of a card that shows its own content and nothing else has
+   * a hold on — what a picture of it is taken from
+   * (../pictures/cardPictures.ts): mounted and not parked, its one-pass
+   * render finished, and neither an editor nor a generation in its body.
+   * The focused card's scrollable preview is not one: it shows where it has
+   * been scrolled to, which is no card's look until it is let go of.
+   */
+  pictureSource(id: NodeId): HTMLElement | null {
+    const runtime = this.runtimeByNodeId.get(id)
+    if (!runtime?.el || !runtime.contentRendered) return null
+    if (runtime.contentRenderer === null || runtime.contentView !== null) {
+      return null
+    }
+    if (this.parkedCards.has(id)) return null
+    if (this.callbacks.isEditing(id) || this.callbacks.isGenerating(id)) {
+      return null
+    }
+    return runtime.el
   }
 
   /** Tears every mounted/parked card down to nothing — used by
@@ -577,6 +603,7 @@ export class CardRenderer {
         el,
         bodyEl: null,
         contentRenderer: null,
+        contentRendered: false,
         contentView: null,
         contentMarkdown: null,
         contentSourcePath: null,
@@ -684,6 +711,7 @@ export class CardRenderer {
       el,
       bodyEl: body,
       contentRenderer: null,
+      contentRendered: false,
       contentView: null,
       contentMarkdown: null,
       contentSourcePath: null,
@@ -720,6 +748,7 @@ export class CardRenderer {
       el,
       bodyEl: null,
       contentRenderer: null,
+      contentRendered: false,
       contentView: null,
       contentMarkdown: null,
       contentSourcePath: null,
@@ -1070,6 +1099,7 @@ export class CardRenderer {
   destroyCardContent(runtime: NodeRuntime): void {
     runtime.contentRenderer?.unload()
     runtime.contentRenderer = null
+    runtime.contentRendered = false
     runtime.contentView?.destroy()
     runtime.contentView = null
     runtime.contentSourcePath = null
@@ -1351,6 +1381,8 @@ export class CardRenderer {
         if (runtime.contentRenderer !== renderer) return
         this.markUnresolvedLinks(sizer, sourcePath)
         if (plain) this.releaseTextSize(id)
+        runtime.contentRendered = true
+        this.callbacks.onContentRendered(id)
       })
       .catch((error: unknown) => {
         // A render that lost its card was cancelled, not failed: `unload()`

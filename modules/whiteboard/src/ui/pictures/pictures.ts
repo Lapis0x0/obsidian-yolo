@@ -59,7 +59,7 @@ const SCAN_INTERVAL_MOVING_MS = 70
 const ENCODING = 'image/webp'
 const ENCODING_QUALITY = 0.8
 
-export type PictureSourceId = 'pdf' | 'image'
+export type PictureSourceId = 'pdf' | 'image' | 'card'
 
 /** Which picture: of what source, in which of its groups (host/
  * pictureStore.ts), under which key there. */
@@ -122,6 +122,9 @@ export type PictureSource = Readonly<{
     want: WantedPicture,
     version: number,
   ): Promise<DrawnPicture | 'unavailable' | null>
+  /** Whether `want` can be made now at all; one that cannot is not waited
+   * for (the board says when that may have changed: `invalidate`). */
+  canDraw?(want: WantedPicture): boolean
   /** A group is no longer wanted: whatever the source holds open for it
    * goes. */
   release?(group: string): void
@@ -294,8 +297,9 @@ export class Pictures {
         ;(entry ? toReadLarger : toReadMissing).push(want)
         continue
       }
+      if (entry || group.source.canDraw?.(wanted) === false) continue
       const nearest = toDraw.get(wanted.source)
-      if (!entry && (!nearest || wanted.distance < nearest.distance)) {
+      if (!nearest || wanted.distance < nearest.distance) {
         toDraw.set(wanted.source, want)
       }
     }
@@ -409,6 +413,12 @@ export class Pictures {
     for (const k of [...this.entries.keys()]) {
       if (!keys.has(k)) this.forget(k)
     }
+  }
+
+  /** What is wanted, or what can be made of it, may have changed without
+   * the board changing: looked over again on the next pump. */
+  invalidate(): void {
+    this.complete = false
   }
 
   /** The file at `path` was modified, renamed or deleted: what is held of
