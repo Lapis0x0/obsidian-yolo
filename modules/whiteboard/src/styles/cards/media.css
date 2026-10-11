@@ -73,3 +73,24 @@
   object-fit: contain;
   pointer-events: none;
 }
+
+/* A text card's or a note's picture, over its body until its content has
+ * rendered (cardRenderer's `showCardPicture`). It is a picture of the whole
+ * card, border included (ui/pictures/cardPictures.ts), so it reaches out
+ * past the body by the card's 1px border (card.css) and is stretched to the
+ * card exactly, which is the shape it was taken at. */
+.yolo-whiteboard-card-body > .yolo-whiteboard-card-picture-whole {
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  object-fit: fill;
+}
+
+/* Bare text has no border to reach past. */
+.yolo-whiteboard-text
+  > .yolo-whiteboard-card-body
+  > .yolo-whiteboard-card-picture-whole {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}

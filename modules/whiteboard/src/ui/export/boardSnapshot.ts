@@ -23,11 +23,13 @@ const FRAME_CLASS = 'yolo-whiteboard-export-frame'
 const FILL_CLASS = 'yolo-whiteboard-export-fill'
 const COPY_CLASS = 'yolo-whiteboard-export-world'
 
-/** Laid over every stylesheet in the copy. */
+/** Laid over every stylesheet in the copy: no scrollbars to show. */
 const SNAPSHOT_CSS = `
 .${FRAME_CLASS} { position: relative; overflow: hidden; }
 .${FILL_CLASS} { position: absolute; inset: 0; background: none !important; overflow: visible; }
 .${COPY_CLASS} { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+* { scrollbar-width: none !important; }
+*::-webkit-scrollbar { display: none !important; }
 ${COPY_CSS}`
 
 export type WorldRect = Readonly<{ x: number; y: number; w: number; h: number }>

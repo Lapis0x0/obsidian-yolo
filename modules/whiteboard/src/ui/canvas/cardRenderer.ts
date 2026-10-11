@@ -45,6 +45,7 @@ import {
   type ReaderAnnotationEvents,
   type ReaderPassageMark,
 } from '../pdf/pdfReader'
+import { isCardPictured } from '../pictures/cardSignature'
 import { applyColorToElement } from '../selectionToolbar'
 import { glideScrollBy } from '../wheelScroll'
 
@@ -95,6 +96,9 @@ const CARD_BODY_LOADING_CLASS = 'yolo-whiteboard-card-body-loading'
 /** The card's picture of itself (../pictures/), standing in its body until
  * what it shows has arrived (`showPictureUntil`). */
 const CARD_PICTURE_CLASS = 'yolo-whiteboard-card-picture'
+/** A picture of the whole card rather than of what its body shows: a text
+ * card's or a note's (`showCardPicture`). */
+const CARD_PICTURE_WHOLE_CLASS = 'yolo-whiteboard-card-picture-whole'
 
 /**
  * What a web card's frame is allowed to do.
@@ -181,6 +185,10 @@ export type NodeRuntime = {
    * is the only place it's available to seed the live editor. Unused for
    * text/pdf cards. */
   noteText: string | null
+  /** The card's picture of itself (../pictures/cardPictures.ts), standing
+   * in its body from its mount until its content has rendered
+   * (`showCardPicture`); null the rest of the time. */
+  picture: HTMLCanvasElement | null
 }
 
 /**
@@ -603,6 +611,7 @@ export class CardRenderer {
         pdfReader: null,
         missingFile: false,
         noteText: null,
+        picture: null,
       })
       return
     }
@@ -710,8 +719,14 @@ export class CardRenderer {
       pdfReader: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
+      picture: null,
     })
     if (plain) this.observeText(el)
+    // The focused card is the one being read: it gets the whole note at
+    // once, with nothing standing in for it.
+    if (isCardPictured(node) && !this.callbacks.isFocused(id)) {
+      this.showCardPicture(id)
+    }
 
     void this.renderCardPreview(id)
   }
@@ -747,6 +762,7 @@ export class CardRenderer {
       pdfReader: null,
       missingFile: false,
       noteText: null,
+      picture: null,
     })
   }
 
@@ -1090,6 +1106,7 @@ export class CardRenderer {
     runtime.contentRenderer?.unload()
     runtime.contentRenderer = null
     runtime.contentRendered = false
+    this.dropCardPicture(runtime)
     runtime.contentView?.destroy()
     runtime.contentView = null
     runtime.contentSourcePath = null
@@ -1275,6 +1292,9 @@ export class CardRenderer {
     const plain = isPlainText(node)
     const scrollable =
       !plain && (this.callbacks.isFocused(id) || runtime.contentView !== null)
+    // The scrollable surface is the card being read, which is shown as it
+    // is or not at all.
+    if (scrollable) this.dropCardPicture(runtime)
 
     const startLine =
       node && (node.type === 'text' || node.type === 'file')
@@ -1315,8 +1335,14 @@ export class CardRenderer {
       scrollable && startLine > 0 ? this.beginContentHandoff(runtime) : null
     if (!endHandoff) {
       if (runtime.el) this.holdTextSize(runtime.el, node)
+      // The card's picture stays over the render arriving under it, and
+      // goes once that has landed.
+      const picture = runtime.picture
+      runtime.picture = null
       this.destroyCardContent(runtime)
-      bodyEl.replaceChildren()
+      if (picture) bodyEl.replaceChildren(picture)
+      else bodyEl.replaceChildren()
+      runtime.picture = picture
     }
     runtime.contentSourcePath = sourcePath
     runtime.contentMarkdown = wanted
@@ -1357,6 +1383,7 @@ export class CardRenderer {
         sourcePath,
       ))
     } catch (error) {
+      this.dropCardPicture(runtime)
       this.callbacks.reportError('markdown render', error)
       return
     }
@@ -1366,6 +1393,7 @@ export class CardRenderer {
         if (runtime.contentRenderer !== renderer) return
         if (plain) this.releaseTextSize(id)
         runtime.contentRendered = true
+        this.dropCardPicture(runtime)
         this.callbacks.onContentRendered(id)
       })
       .catch((error: unknown) => {
@@ -1373,6 +1401,7 @@ export class CardRenderer {
         // rejects whatever was in flight, and the card has already been torn
         // down or re-rendered by whoever called it.
         if (runtime.contentRenderer !== renderer) return
+        this.dropCardPicture(runtime)
         this.callbacks.reportError('markdown render', error)
       })
   }
@@ -1764,6 +1793,37 @@ export class CardRenderer {
     // Settled either way: an image that fails to load shows its failure,
     // not a picture of what it was.
     void ready.then(done, done)
+  }
+
+  /**
+   * Puts the card's picture of itself in its body until its content has
+   * rendered (`renderMarkdownInto`): a text card or a note coming on screen
+   * looks like itself at once, a little soft, rather than like its title
+   * waiting for its text. The picture is of the whole card, its border
+   * included (../pictures/cardPictures.ts), and is laid over the whole card
+   * (media.css).
+   */
+  private showCardPicture(id: NodeId): void {
+    const runtime = this.runtimeByNodeId.get(id)
+    const picture = this.callbacks.picture(id)
+    if (!runtime?.bodyEl || !picture) return
+    const canvas = runtime.bodyEl.ownerDocument.createElement('canvas')
+    canvas.className = `${CARD_PICTURE_CLASS} ${CARD_PICTURE_WHOLE_CLASS}`
+    canvas.width = picture.width
+    canvas.height = picture.height
+    canvas.getContext('2d')?.drawImage(picture, 0, 0)
+    runtime.bodyEl.appendChild(canvas)
+    runtime.picture = canvas
+  }
+
+  /** Takes the card's picture out of its body, if it is there. */
+  private dropCardPicture(runtime: NodeRuntime): void {
+    const canvas = runtime.picture
+    if (!canvas) return
+    runtime.picture = null
+    canvas.remove()
+    canvas.width = 0
+    canvas.height = 0
   }
 
   private renderPlaceholder(

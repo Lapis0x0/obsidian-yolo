@@ -15,7 +15,8 @@
 // ruled out: a pointer or focus state, the document's own root and body,
 // which a picture has none of (its variables and type come from the board
 // itself), and the parts of a page a picture never paints — a selection, a
-// scrollbar.
+// spelling mark. (A scrollbar is not drawn either, but the room it takes is
+// part of the layout: its rules stay.)
 
 /** What one selector needs. Attributes are by name, or by `name=value`
  * where the selector compares with `=`. */
@@ -39,10 +40,10 @@ const DYNAMIC =
   /:(?:hover|active|focus|focus-visible|focus-within|target|visited|user-invalid|user-valid|drop)(?![\w-])/i
 /** The document's own root, which a picture's copy sits under none of. */
 const ROOT = /:root(?![\w-])/i
-/** What a still picture never paints: a selection, a scrollbar, a spelling
- * mark, a backdrop. */
+/** What a still picture never paints, and takes no room: a selection, a
+ * spelling mark, a backdrop. */
 const UNPAINTED =
-  /::(?:selection|target-text|spelling-error|grammar-error|highlight\(|backdrop|-webkit-scrollbar|-webkit-resizer|-moz-)/i
+  /::(?:selection|target-text|spelling-error|grammar-error|highlight\(|backdrop|-moz-)/i
 /** An attribute selector: its name, how it compares, and with what. */
 const ATTRIBUTE =
   /^\[\s*([\w-]+)\s*(?:([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s\]]*))\s*([is])?\s*)?\]$/i

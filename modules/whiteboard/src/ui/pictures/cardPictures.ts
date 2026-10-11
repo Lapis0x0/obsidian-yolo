@@ -63,7 +63,10 @@ const INLINED_IMAGES_KEPT = 48
 
 /** The picture's scaffolding, laid over the shared stylesheet. The card's
  * own box is kept — its size, its padding, its (now transparent) border —
- * and only what is drawn around the content is taken off. */
+ * and only what is drawn around the content is taken off. Its scrollbars
+ * are not drawn but keep their room: a card's content keeps a gutter for
+ * one (`scrollbar-gutter`), and a picture without it would wrap its lines
+ * wider than the card does. */
 const FILL_CLASS = 'yolo-whiteboard-picture-fill'
 const WORLD_CLASS = 'yolo-whiteboard-picture-world'
 const PICTURE_CSS = `
@@ -71,6 +74,7 @@ const PICTURE_CSS = `
 .${FILL_CLASS} { position: absolute; inset: 0; background: none !important; overflow: visible; }
 .${WORLD_CLASS} { position: absolute !important; left: 0; top: 0; transform: none !important; }
 .${WORLD_CLASS} > .yolo-whiteboard-card { left: 0 !important; top: 0 !important; background: none !important; border-color: transparent !important; box-shadow: none !important; }
+*::-webkit-scrollbar-thumb, *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner, *::-webkit-scrollbar-button { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
 ${COPY_CSS}`
 
 /** Taken out of a card's copy: what stands beside the content rather than
@@ -82,6 +86,11 @@ const CARD_CHROME = [
   '.yolo-whiteboard-card-chips',
   '.yolo-whiteboard-card-picture',
 ].join(',')
+
+/** How pictures are taken, in every card picture's stamp: raised whenever
+ * a change to the taking changes what a picture looks like, so that the
+ * pictures taken before it are taken again. */
+export const CARD_PICTURE_VERSION = 1
 
 /** The picture of card `id` of the board at `boardPath`. */
 export function cardRef(boardPath: string, id: string): PictureRef {

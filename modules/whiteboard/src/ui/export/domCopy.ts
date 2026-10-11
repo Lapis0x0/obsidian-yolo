@@ -76,14 +76,12 @@ const IMAGE_CLASS = 'yolo-whiteboard-export-image'
 
 /** The rules the copy's own scaffolding needs, laid over the stylesheet it
  * is shown with: a still picture has no motion to be caught halfway
- * through, and no scrollbars to show. */
+ * through. How its scrollbars are kept out of sight is the asker's. */
 export const COPY_CSS = `
 .${SCROLLED_CLASS} { overflow: hidden !important; }
 .${STAND_IN_CLASS} { display: flex; align-items: center; justify-content: center; padding: var(--size-4-4); color: var(--text-muted); font-size: var(--font-ui-small); word-break: break-all; text-align: center; }
 img.${IMAGE_CLASS} { width: 100%; height: 100%; }
 *, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }
-* { scrollbar-width: none !important; }
-*::-webkit-scrollbar { display: none !important; }
 `
 
 export type CopyHooks = Readonly<{

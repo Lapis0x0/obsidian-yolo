@@ -165,7 +165,11 @@ import type {
 } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PictureActivity } from './pictures/activity'
-import { CardPictures, cardRef } from './pictures/cardPictures'
+import {
+  CARD_PICTURE_VERSION,
+  CardPictures,
+  cardRef,
+} from './pictures/cardPictures'
 import { cardSignature, isCardPictured } from './pictures/cardSignature'
 import { CardStage } from './pictures/cardStage'
 import { IdleSlices } from './pictures/idle'
@@ -2887,7 +2891,7 @@ export class WhiteboardCanvas {
           ...cardRef(boardPath, node.id),
           width: node.w,
           distance,
-          stamp: `${signature}.${environment.hash}`,
+          stamp: `${signature}.${environment.hash}.${CARD_PICTURE_VERSION}`,
         }
         continue
       }

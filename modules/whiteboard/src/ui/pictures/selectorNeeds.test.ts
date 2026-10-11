@@ -69,7 +69,10 @@ describe('selectorNeeds', () => {
     expect(selectorNeeds(':root')).toBeNull()
     expect(selectorNeeds('body.theme-dark .x')).toBeNull()
     expect(selectorNeeds('.x::selection')).toBeNull()
-    expect(selectorNeeds('.x::-webkit-scrollbar-thumb')).toBeNull()
+    // A scrollbar is not painted, but the room it takes is the layout's.
+    expect(selectorNeeds('.x::-webkit-scrollbar')).toEqual(
+      needs({ classes: ['x'] }),
+    )
     // A state named inside a functional pseudo-class is not the selector's.
     expect(selectorNeeds('.x:not(:hover)')).toEqual(needs({ classes: ['x'] }))
   })
