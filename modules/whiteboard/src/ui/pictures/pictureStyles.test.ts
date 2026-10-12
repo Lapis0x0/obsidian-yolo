@@ -1,4 +1,15 @@
-import { lookClasses, lookVars } from './pictureStyles'
+import { isMathSheet, lookClasses, lookVars } from './pictureStyles'
+
+describe('isMathSheet', () => {
+  it("tells MathJax's stylesheets from the rest", () => {
+    const owner = (id: string) => ({ id }) as unknown as Node
+    expect(isMathSheet(owner('MJX-CHTML-styles'))).toBe(true)
+    expect(isMathSheet(owner('MJX-Menu-styles'))).toBe(true)
+    expect(isMathSheet(owner(''))).toBe(false)
+    expect(isMathSheet(owner('css-snippet-mjx'))).toBe(false)
+    expect(isMathSheet({} as Node)).toBe(false)
+  })
+})
 
 /** A body's style with these properties set, in this order. */
 const styleOf = (props: Record<string, string>): CSSStyleDeclaration => {

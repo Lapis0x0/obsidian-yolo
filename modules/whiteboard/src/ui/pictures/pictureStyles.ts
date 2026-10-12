@@ -39,6 +39,15 @@
 // element inside another view styles that view, and counting it would make
 // every picture stale whenever such a view opened.
 //
+// MathJax's stylesheets (`isMathSheet`) are how a formula is drawn, not the
+// look: Obsidian loads MathJax when a formula is first rendered, which then
+// puts them in the head, and adds a rule to them for every glyph it meets —
+// by `insertRule`, which changes neither their text nor the DOM. Counted,
+// every picture went stale the first time a board drew a formula, each
+// launch. Every rule in them styles only MathJax's own elements (measured),
+// so they are no part of the environment; they are read afresh instead for
+// each picture (`readMath`), glyphs met since included.
+//
 // A stylesheet is named by a hash of its text, which runs to most of a
 // million characters for a theme: named once, a slice at a time, and the
 // name kept until its element changes.
@@ -102,6 +111,11 @@ export function lookVars(style: CSSStyleDeclaration): string {
   return text
 }
 
+/** Whether a stylesheet's element is one of MathJax's. */
+export function isMathSheet(owner: Node): boolean {
+  return (owner as Partial<Element>).id?.startsWith('MJX-') === true
+}
+
 /** What a card picture is of, besides its card. */
 export type StyleEnvironment = Readonly<{
   /** Names the environment, in every picture's stamp. */
@@ -144,8 +158,17 @@ type Index = {
   readonly attributes: Set<string>
   /** Custom properties used by inline styles of what pictures showed. */
   readonly inlineVars: Set<string>
+  /** MathJax's stylesheets as last read, in document order, each with how
+   * many rules it had then (`readMath`). */
+  math: readonly MathSheet[]
   css: string | null
 }
+
+type MathSheet = Readonly<{
+  sheet: CSSStyleSheet
+  size: number
+  candidates: Candidate[]
+}>
 
 export type PictureStylesDeps = Readonly<{
   doc: Document
@@ -232,6 +255,7 @@ export class PictureStyles {
     const index = await this.index
     if (!index || index.env !== this.env) return null
     this.learn(index, frame)
+    this.readMath(index)
     index.css ??= this.compose(index)
     return index.css
   }
@@ -292,7 +316,7 @@ export class PictureStyles {
     const out: NamedSheet[] = []
     for (const sheet of Array.from(doc.styleSheets)) {
       const owner = sheet.ownerNode
-      if (!owner) continue
+      if (!owner || isMathSheet(owner)) continue
       if (owner !== this.deps.boardStyle && !doc.head.contains(owner)) continue
       let name =
         sheet.href !== null ? `href:${sheet.href}` : this.names.get(owner)
@@ -356,6 +380,7 @@ export class PictureStyles {
       ids: new Set(),
       attributes: new Set(),
       inlineVars: new Set(),
+      math: [],
       css: null,
     }
     const win = this.deps.doc.defaultView
@@ -476,20 +501,59 @@ export class PictureStyles {
     visit(frame)
     for (const el of Array.from(frame.querySelectorAll('*'))) visit(el)
     if (!grew) return
-    for (const candidate of index.candidates) {
-      if (candidate.kept || !candidate.needs) continue
-      if (candidate.needs.some((needs) => meets(needs, index))) {
-        candidate.kept = true
-        index.css = null
-      }
+    for (const candidate of index.candidates) this.keepIfMet(index, candidate)
+    for (const { candidates } of index.math) {
+      for (const candidate of candidates) this.keepIfMet(index, candidate)
     }
+  }
+
+  private keepIfMet(index: Index, candidate: Candidate): void {
+    if (candidate.kept || !candidate.needs) return
+    if (candidate.needs.some((needs) => meets(needs, index))) {
+      candidate.kept = true
+      index.css = null
+    }
+  }
+
+  /** MathJax's stylesheets as they are now: one that came, or has grown
+   * since last read, is read again — a few hundred rules, at once. */
+  private readMath(index: Index): void {
+    const doc = this.deps.doc
+    const math: MathSheet[] = []
+    for (const sheet of Array.from(doc.styleSheets)) {
+      const owner = sheet.ownerNode
+      if (!owner || !isMathSheet(owner) || !doc.head.contains(owner)) continue
+      const rules = rulesOf(sheet)
+      const known = index.math.find((read) => read.sheet === sheet)
+      if (known?.size === rules.length) {
+        math.push(known)
+        continue
+      }
+      const candidates: Candidate[] = []
+      const walk = (list: CSSRule[], wrap: string[]): void => {
+        for (const rule of list) {
+          const nested = this.visit(rule, wrap, candidates)
+          if (nested) walk(nested.rules, nested.wrap)
+        }
+      }
+      walk(rules, [])
+      for (const candidate of candidates) this.keepIfMet(index, candidate)
+      math.push({ sheet, size: rules.length, candidates })
+      index.css = null
+    }
+    if (math.length !== index.math.length) index.css = null
+    index.math = math
   }
 
   /** The kept rules in cascade order, and the frame's rule with the
    * variables they use. */
   private compose(index: Index): string {
     const parts: string[] = []
-    for (const candidate of index.candidates) {
+    const candidates = [
+      ...index.candidates,
+      ...index.math.flatMap((read) => read.candidates),
+    ]
+    for (const candidate of candidates) {
       if (!candidate.kept) continue
       candidate.text ??= candidate.wrap.reduceRight(
         (inner, wrapper) => `${wrapper} { ${inner} }`,
