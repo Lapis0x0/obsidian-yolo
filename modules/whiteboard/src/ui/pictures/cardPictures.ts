@@ -45,7 +45,11 @@ import type {
   PictureTurn,
   WantedPicture,
 } from './pictures'
-import { PICTURE_FRAME_CLASS, type PictureStyles } from './pictureStyles'
+import {
+  PICTURE_FRAME_CLASS,
+  type PictureStyles,
+  type StyleEnvironment,
+} from './pictureStyles'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 /** How long a card's content must have changed nothing before it is taken,
@@ -90,7 +94,23 @@ const CARD_CHROME = [
 /** How pictures are taken, in every card picture's stamp: raised whenever
  * a change to the taking changes what a picture looks like, so that the
  * pictures taken before it are taken again. */
-export const CARD_PICTURE_VERSION = 1
+const CARD_PICTURE_VERSION = 1
+
+/** A card picture's stamp: its card's signature (./cardSignature.ts), the
+ * style environment it is taken in, and how it is taken. */
+export function cardStamp(signature: string, env: StyleEnvironment): string {
+  return `${signature}${environmentPart(env)}`
+}
+
+/** Whether a picture asked for with `stamp` is one taken in `env`: one
+ * asked for before the environment changed is not taken after, or it
+ * would be kept as the old environment's look. */
+export function takenIn(stamp: string, env: StyleEnvironment): boolean {
+  return stamp.endsWith(environmentPart(env))
+}
+
+const environmentPart = (env: StyleEnvironment): string =>
+  `.${env.hash}.${CARD_PICTURE_VERSION}`
 
 /** The picture of card `id` of the board at `boardPath`. */
 export function cardRef(boardPath: string, id: string): PictureRef {
@@ -158,14 +178,14 @@ export class CardPictures implements PictureSource {
     _version: number,
   ): Promise<DrawnPicture | 'unavailable' | null> {
     const el = this.deps.mounted(want.key)
-    if (!el) return this.drawStaged(want.key)
+    if (!el) return this.drawStaged(want)
     const quiet = await waitQuiet(el, this.deps.doc)
     if (!quiet) return 'unavailable'
     // Taken off the board, or opened for editing, while it settled.
     if (this.deps.mounted(want.key) !== el) return null
     const node = this.deps.getNode(want.key)
     if (!node) return null
-    const canvas = await this.capture(el, node.w, node.h)
+    const canvas = await this.capture(el, node.w, node.h, want.stamp)
     if (canvas && this.deps.mounted(want.key) !== el) {
       canvas.width = 0
       canvas.height = 0
@@ -174,11 +194,12 @@ export class CardPictures implements PictureSource {
     return canvas ? { canvas, meta: null } : null
   }
 
-  /** A picture of card `id` built off the board for it. */
+  /** A picture of the card `want` is of, built off the board for it. */
   private async drawStaged(
-    id: string,
+    want: WantedPicture,
   ): Promise<DrawnPicture | 'unavailable' | null> {
     const { doc, slices, stage, getNode, reportError } = this.deps
+    const id = want.key
     const node = getNode(id)
     if (!node) return null
     const source = await stage.source(node)
@@ -202,7 +223,13 @@ export class CardPictures implements PictureSource {
         return 'unavailable'
       }
       if (!(await waitQuiet(staged.el, doc))) return 'unavailable'
-      const canvas = await this.capture(staged.el, node.w, node.h, false)
+      const canvas = await this.capture(
+        staged.el,
+        node.w,
+        node.h,
+        want.stamp,
+        false,
+      )
       return canvas ? { canvas, meta: null } : null
     } finally {
       staged.dispose()
@@ -210,15 +237,17 @@ export class CardPictures implements PictureSource {
   }
 
   /**
-   * A picture of `el`, a card `width` by `height` world units: its content,
-   * on a transparent canvas the picture's size. Null when the board was
-   * closed, or the style environment changed, on the way. `laidOut` is
-   * false for a card built on the stage (`CopyHooks.laidOut`).
+   * A picture of `el`, a card `width` by `height` world units, asked for
+   * with `stamp`: its content, on a transparent canvas the picture's size.
+   * Null when the board was closed, or the style environment is no longer
+   * the stamp's, on the way. `laidOut` is false for a card built on the
+   * stage (`CopyHooks.laidOut`).
    */
   private async capture(
     el: HTMLElement,
     width: number,
     height: number,
+    stamp: string,
     laidOut = true,
   ): Promise<HTMLCanvasElement | null> {
     const { doc, slices, styles } = this.deps
@@ -274,7 +303,7 @@ export class CardPictures implements PictureSource {
     //    body's classes, which is where a theme's rules start from.
     if (!(await slices.next())) return null
     const env = styles.environment
-    if (!env) return null
+    if (!env || !takenIn(stamp, env)) return null
     frame.className = `${env.bodyClass} ${PICTURE_FRAME_CLASS}`
     const css = await styles.sheetFor(frame)
     if (css === null) return null
