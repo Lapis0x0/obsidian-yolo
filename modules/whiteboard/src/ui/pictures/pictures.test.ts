@@ -67,6 +67,8 @@ function setup(
     cannot: new Set<string>(),
     /** Every `onBusy`, in order. */
     busy: [] as boolean[],
+    /** The version the source's group is of now. */
+    version: 1 as number | null,
   }
   const source: PictureSource = {
     id: 'pdf',
@@ -80,7 +82,7 @@ function setup(
       end: () => undefined,
       withdraw: () => undefined,
     },
-    version: () => 1,
+    version: () => state.version,
     canDraw: (want) => !state.cannot.has(want.key),
     draw: async (want) => {
       drawn.push(want.key)
@@ -359,6 +361,29 @@ describe('Pictures', () => {
     state.wanted = [want('1', 0)]
     await run(pictures)
     expect(state.busy).toEqual([])
+  })
+
+  it('lets go of what is held of a file that changed', async () => {
+    const { pictures, state } = setup({ stored: { '1': kept() } })
+    state.wanted = [want('1', 0)]
+    await run(pictures)
+    const held = pictures.get(ref('1')) as unknown as FakeBitmap
+
+    state.version = 2
+    pictures.fileChanged('a.pdf')
+    expect(pictures.get(ref('1'))).toBeNull()
+    expect(held.closed).toBe(true)
+  })
+
+  it('keeps what is held of a file whose change is not its version', async () => {
+    // A board's cards are named by the board's file, which saves its camera.
+    const { pictures, state } = setup({ stored: { '1': kept() } })
+    state.wanted = [want('1', 0)]
+    await run(pictures)
+    const held = pictures.get(ref('1'))
+
+    pictures.fileChanged('a.pdf')
+    expect(pictures.get(ref('1'))).toBe(held)
   })
 
   it('lets go of what is no longer wanted', async () => {

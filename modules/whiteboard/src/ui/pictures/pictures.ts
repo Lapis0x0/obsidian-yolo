@@ -433,11 +433,15 @@ export class Pictures {
   }
 
   /** The file at `path` was modified, renamed or deleted: what is held of
-   * it, of any source, is of the old file. */
+   * it, of any source, is of the old file — where its version says so. A
+   * group named by a file without being a picture of it (a board's cards,
+   * which the board saves its camera into) stays: each of its pictures
+   * says by its stamp whether it is still right. */
   fileChanged(path: string): void {
-    for (const id of this.sources.keys()) {
+    for (const [id, source] of this.sources) {
       const k = groupKey(id, path)
-      if (this.groups.has(k)) this.dropGroup(k)
+      const group = this.groups.get(k)
+      if (group && source.version(path) !== group.version) this.dropGroup(k)
     }
   }
 
