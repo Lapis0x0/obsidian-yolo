@@ -21,12 +21,19 @@
 // frame, as many of them as its rules use.
 //
 // The environment is what a picture's look depends on besides its card:
-// the stylesheets, the variables the board resolves, the body's classes
-// (light or dark, the theme's own). Its hash is part of every card
-// picture's stamp, so a change to any of them — another theme, a snippet,
-// a font size — makes every picture stale, and switching back makes the
-// kept ones right again. Watched for: the body's classes, and the style
-// elements in the document's head and the board's own.
+// the stylesheets, the body's classes (light or dark, the theme's own) and
+// the variables set on the body itself (the font size). Its hash is part of
+// every card picture's stamp, so a change to any of them — another theme, a
+// snippet, a font size — makes every picture stale, and switching back makes
+// the kept ones right again. Watched for: the body's classes and style, and
+// the style elements in the document's head and the board's own.
+//
+// What the body says of the window rather than the look — focused, full
+// screen, a drag — is left out of it (`WINDOW_STATE_CLASSES`). The
+// variables the board resolves are not hashed: they follow from what is,
+// and from those classes too — a drag sets `--no-tooltip`, a progress bar
+// the titlebar's colours — so hashing them let the window's state back in.
+// They are read once per environment, and every picture of it has them.
 //
 // Only the document's head and the board's own stylesheet count: a style
 // element inside another view styles that view, and counting it would make
@@ -50,11 +57,57 @@ const HASH_CHUNK = 32_768
 /** The longest attribute value a selector is matched against by value. */
 const MAX_MATCHED_VALUE = 200
 
+/** The body's classes that are the window's state, not the look: a window
+ * focused, full screen, maximized, popped out; a drag, a progress bar, the
+ * mobile toolbar and navigation coming and going. The first ones are those
+ * Obsidian itself keeps per window when it mirrors the main window's body
+ * onto a popout's. A picture is taken without them, and its stamp leaves
+ * them out: else every focus change made every picture stale, and each
+ * card's one kept picture was taken again for each state in turn. */
+const WINDOW_STATE_CLASSES: ReadonlySet<string> = new Set([
+  'is-focused',
+  'is-fullscreen',
+  'is-maximized',
+  'is-popout-window',
+  'is-grabbing',
+  'in-progress',
+  'mod-toolbar-open',
+  'is-hidden-nav',
+  'is-screenshotting',
+])
+/** Likewise the custom properties Obsidian sets on the body and keeps per
+ * window: the zoom, and the mobile keyboard's height. */
+const WINDOW_STATE_VARS: ReadonlySet<string> = new Set([
+  '--zoom-factor',
+  '--keyboard-height',
+])
+
+/** The body's classes `className` without the window's state. */
+export function lookClasses(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter((name) => name !== '' && !WINDOW_STATE_CLASSES.has(name))
+    .join(' ')
+}
+
+/** The custom properties set on the body's own style, without the
+ * window's state, as text. */
+export function lookVars(style: CSSStyleDeclaration): string {
+  let text = ''
+  for (let i = 0; i < style.length; i += 1) {
+    const name = style[i]
+    if (!name.startsWith('--') || WINDOW_STATE_VARS.has(name)) continue
+    text += `${name}:${style.getPropertyValue(name).trim()};`
+  }
+  return text
+}
+
 /** What a card picture is of, besides its card. */
 export type StyleEnvironment = Readonly<{
   /** Names the environment, in every picture's stamp. */
   hash: string
-  /** The body's classes, which the picture's frame wears. */
+  /** The body's classes but the window's state (`lookClasses`), which the
+   * picture's frame wears. */
   bodyClass: string
   /** The custom properties the board resolves, by name. */
   vars: ReadonlyMap<string, string>
@@ -145,7 +198,7 @@ export class PictureStyles {
       const body = new win.MutationObserver(changed)
       body.observe(deps.doc.body, {
         attributes: true,
-        attributeFilter: ['class'],
+        attributeFilter: ['class', 'style'],
       })
       const own = new win.MutationObserver(() => {
         this.names.delete(deps.boardStyle)
@@ -285,11 +338,9 @@ export class PictureStyles {
       lineHeight: body?.lineHeight ?? 'normal',
       color: body?.color ?? '#000',
     }
-    const bodyClass = doc.body.className
-    let varsText = ''
-    for (const [name, value] of vars) varsText += `${name}:${value};`
+    const bodyClass = lookClasses(doc.body.className)
     const hash = hashText(
-      `${bodyClass}\n${font.family}\n${font.size}\n${font.lineHeight}\n${font.color}\n${varsText}`,
+      `${bodyClass}\n${lookVars(doc.body.style)}\n${font.family}\n${font.size}\n${font.lineHeight}\n${font.color}`,
       sheets,
     )
     return { hash, bodyClass, vars, font }
