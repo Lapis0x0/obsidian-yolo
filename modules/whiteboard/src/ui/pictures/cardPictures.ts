@@ -66,8 +66,11 @@ const MAX_PIXELS = 400_000
  * to be quiet, for idle slices — and the main-thread steps each wait for
  * an idle slice of their own: side by side, the waits overlap and the work
  * still runs a slice at a time. One at a time, a card took 260 ms, 150 of
- * them the quiet wait (measured). */
-const CARDS_AT_ONCE = 4
+ * them the quiet wait (measured). On a board of 250 text cards, 4 at once
+ * took 15 s, 8 took 8 s and 16 took 6 s, none dropping a frame; 16 had
+ * started to wait longer for its slices, and a heavier card costs more of
+ * each — 8 leaves room. */
+const CARDS_AT_ONCE = 8
 /** Images inlined into pictures, kept for the next picture that shows the
  * same one at the same size. */
 const INLINED_IMAGES_KEPT = 48
