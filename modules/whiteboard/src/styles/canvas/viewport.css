@@ -183,7 +183,13 @@
   margin: 0;
 }
 
-.yolo-whiteboard-landing-body > * + * {
+/* The citation under the quote, the comment or the picture. Named, never
+ * `* + *`: a selector whose subject is anything is tried against every
+ * element of the document, and checking for a previous sibling marks every
+ * parent as one whose children's order matters — the world layer included,
+ * where then every card put in or taken out mid-list restyled every card
+ * after it, whole (70–100 ms a time on a board of rich cards, measured). */
+.yolo-whiteboard-landing-body > * + .yolo-whiteboard-landing-citation {
   margin-top: var(--p-spacing, 1rem);
 }
 
