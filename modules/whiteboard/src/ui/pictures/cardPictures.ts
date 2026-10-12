@@ -21,8 +21,9 @@
 //
 // A card on the board is taken as it is, once its content is there; one that
 // is not is built off the board first (./cardStage.ts), the way the board
-// would build it, and taken down after. One at a time, nearest first, and
-// only once the cards on screen are all mounted and built.
+// would build it, and taken down after. A few at a time (`CARDS_AT_ONCE`),
+// nearest first, and only once the cards on screen are all mounted and
+// built.
 //
 // A card is taken once its content has been quiet for a moment
 // (`QUIET_MS`, as an export waits): what renders after its text — an image
@@ -61,6 +62,12 @@ const QUIET_MS = 150
 const QUIET_TIMEOUT_MS = 4000
 /** The most pixels a card's picture has. */
 const MAX_PIXELS = 400_000
+/** Cards taken at once. Most of a card's time is waiting — for its content
+ * to be quiet, for idle slices — and the main-thread steps each wait for
+ * an idle slice of their own: side by side, the waits overlap and the work
+ * still runs a slice at a time. One at a time, a card took 260 ms, 150 of
+ * them the quiet wait (measured). */
+const CARDS_AT_ONCE = 4
 /** Images inlined into pictures, kept for the next picture that shows the
  * same one at the same size. */
 const INLINED_IMAGES_KEPT = 48
@@ -143,6 +150,7 @@ export type CardPicturesDeps = Readonly<{
 export class CardPictures implements PictureSource {
   readonly id = 'card' as const
   readonly label = 'card picture'
+  readonly concurrency = CARDS_AT_ONCE
   readonly store: PictureStore
   readonly turn: PictureTurn
   private readonly inlined = new Map<string, Promise<string | null>>()

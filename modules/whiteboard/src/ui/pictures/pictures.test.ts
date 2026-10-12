@@ -36,6 +36,7 @@ function setup(
   options: Readonly<{
     stored?: Record<string, StoredPicture>
     budgetBytes?: number
+    concurrency?: number
   }> = {},
 ) {
   const stored = new Map(Object.entries(options.stored ?? {}))
@@ -69,6 +70,8 @@ function setup(
     busy: [] as boolean[],
     /** The version the source's group is of now. */
     version: 1 as number | null,
+    /** While set, every draw waits for it. */
+    gate: null as Promise<void> | null,
   }
   const source: PictureSource = {
     id: 'pdf',
@@ -84,8 +87,10 @@ function setup(
     },
     version: () => state.version,
     canDraw: (want) => !state.cannot.has(want.key),
+    concurrency: options.concurrency,
     draw: async (want) => {
       drawn.push(want.key)
+      if (state.gate) await state.gate
       return state.drawResult?.() ?? { canvas: fakeCanvas(100, 80), meta: null }
     },
   }
@@ -204,6 +209,23 @@ describe('Pictures', () => {
     state.idle = true
     await run(pictures)
     expect(drawn).toEqual(['1'])
+  })
+
+  it('makes as many at once as its source may, nearest first', async () => {
+    const { pictures, state, drawn } = setup({ concurrency: 2 })
+    let open: () => void = () => undefined
+    state.gate = new Promise((resolve) => (open = resolve))
+    state.wanted = [want('far', 30), want('near', 10), want('mid', 20)]
+    await run(pictures)
+
+    // Two under way, each once; the third waits for one of them.
+    expect(drawn).toEqual(['near', 'mid'])
+
+    state.gate = null
+    open()
+    await run(pictures)
+    expect(drawn).toEqual(['near', 'mid', 'far'])
+    expect(pictures.get(ref('far'))).not.toBeNull()
   })
 
   it('waits for its source to give it a turn', async () => {

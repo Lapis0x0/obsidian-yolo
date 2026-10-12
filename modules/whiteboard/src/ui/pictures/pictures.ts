@@ -125,6 +125,10 @@ export type PictureSource = Readonly<{
   /** Whether `want` can be made now at all; one that cannot is not waited
    * for (the board says when that may have changed: `invalidate`). */
   canDraw?(want: WantedPicture): boolean
+  /** How many pictures it may be making at once, nearest first; one when
+   * left out. More than one for a source whose making is mostly waiting,
+   * so that the waits run side by side. */
+  concurrency?: number
   /** Waits for a moment to keep what was drawn in — encoding it costs the
    * main thread a few milliseconds more, which a source drawing in idle
    * slices (./idle.ts) has already spent: true then, false if the board
@@ -198,8 +202,8 @@ export class Pictures {
   private readonly reading = new Set<string>()
   /** Pictures being brought down to a smaller level. */
   private readonly shrinking = new Set<string>()
-  /** The sources making a picture now. */
-  private readonly drawing = new Set<PictureSourceId>()
+  /** The pictures being made now, by their source. */
+  private readonly drawing = new Map<string, PictureSourceId>()
   private bytes = 0
   private destroyed = false
   /** Every wanted picture was held at its level (or had failed) when last
@@ -262,8 +266,9 @@ export class Pictures {
     // made that sort the costliest part of a look over hundreds of pages.
     const toReadMissing: Want[] = []
     const toReadLarger: Want[] = []
-    /** The nearest picture each source has to make. */
-    const toDraw = new Map<PictureSourceId, Want>()
+    /** The nearest pictures each source has to make, nearest first: as
+     * many as it may start now. */
+    const toDraw = new Map<PictureSourceId, Want[]>()
     const toShrink: Want[] = []
     let farthestHeld: WantedPicture | null = null
     /** Some picture's group has not been answered for yet by its store. */
@@ -290,7 +295,13 @@ export class Pictures {
         // Too small for how it is shown now: a larger one is read, and this
         // one stays up until it arrives.
       }
-      if (this.failed.get(k) === wanted.stamp || this.reading.has(k)) continue
+      if (
+        this.failed.get(k) === wanted.stamp ||
+        this.reading.has(k) ||
+        this.drawing.has(k)
+      ) {
+        continue
+      }
       const group = this.group(wanted)
       if (!group) continue
       if (!group.stored) {
@@ -303,10 +314,9 @@ export class Pictures {
         continue
       }
       if (entry || group.source.canDraw?.(wanted) === false) continue
-      const nearest = toDraw.get(wanted.source)
-      if (!nearest || wanted.distance < nearest.distance) {
-        toDraw.set(wanted.source, want)
-      }
+      const nearest = toDraw.get(wanted.source) ?? []
+      toDraw.set(wanted.source, nearest)
+      keepNearest(nearest, want, Math.max(1, this.slotsOf(group.source)))
     }
 
     // Down a level: only once the board is still — a zoom passing through
@@ -330,7 +340,7 @@ export class Pictures {
       ...(this.deps.idle() ? toReadLarger.sort(byDistance) : []),
     ]
     let nearestDraw: Want | null = null
-    for (const want of toDraw.values()) {
+    for (const [want] of toDraw.values()) {
       if (!nearestDraw || want.distance < nearestDraw.distance) {
         nearestDraw = want
       }
@@ -379,7 +389,7 @@ export class Pictures {
       if (this.reading.size >= READS_AT_ONCE) break
       if (this.bytes >= this.budget) break
       if (readUpTo.has(want.source)) continue
-      const draw = toDraw.get(want.source)
+      const draw = toDraw.get(want.source)?.[0]
       if (draw && want.distance > draw.distance) {
         readUpTo.add(want.source)
         continue
@@ -392,17 +402,21 @@ export class Pictures {
     // (`draw`) — what is not made now would be made by nobody.
 
     for (const source of this.sources.values()) {
-      const want = toDraw.get(source.id)
-      if (!want || !this.canDraw(source.id)) {
+      const wants = toDraw.get(source.id)
+      if (!wants || !this.canDraw(source.id)) {
         source.turn.withdraw()
         continue
       }
-      if (!source.turn.begin(want, this.wake)) continue
-      this.drawing.add(source.id)
-      void this.draw(source, want).finally(() => {
-        this.drawing.delete(source.id)
-        source.turn.end()
-      })
+      for (const want of wants) {
+        if (!this.canDraw(source.id)) break
+        if (!source.turn.begin(want, this.wake)) break
+        const k = refKey(want)
+        this.drawing.set(k, source.id)
+        void this.draw(source, want).finally(() => {
+          this.drawing.delete(k)
+          source.turn.end()
+        })
+      }
     }
   }
 
@@ -462,7 +476,15 @@ export class Pictures {
   }
 
   private canDraw(source: PictureSourceId): boolean {
-    return !this.drawing.has(source) && this.deps.idle()
+    const known = this.sources.get(source)
+    return !!known && this.slotsOf(known) > 0 && this.deps.idle()
+  }
+
+  /** How many more pictures `source` may start now. */
+  private slotsOf(source: PictureSource): number {
+    let making = 0
+    for (const id of this.drawing.values()) if (id === source.id) making += 1
+    return (source.concurrency ?? 1) - making
   }
 
   private withdrawAll(): void {
@@ -706,6 +728,16 @@ export class Pictures {
     ctx.drawImage(bitmap, 0, 0)
     return canvas.transferToImageBitmap()
   }
+}
+
+/** Puts `want` among `nearest`, kept sorted nearest first and at most `n`
+ * long. */
+function keepNearest(nearest: Want[], want: Want, n: number): void {
+  let at = nearest.length
+  while (at > 0 && nearest[at - 1].distance > want.distance) at -= 1
+  if (at >= n) return
+  nearest.splice(at, 0, want)
+  if (nearest.length > n) nearest.pop()
 }
 
 /** Which of `LEVELS` covers a picture `fullWidth` pixels wide, shown
