@@ -71,6 +71,12 @@ type Scope = Readonly<{
 
 export class ExportController {
   private running = false
+
+  /** Whether a picture is being taken: the board walks its camera over the
+   * region, and every card in it has to be built to be copied. */
+  get isRunning(): boolean {
+    return this.running
+  }
   /** Where the pointer last pressed the board, which is where a menu opened
    * from another menu belongs. */
   private lastPress: { x: number; y: number } | null = null

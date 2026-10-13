@@ -118,6 +118,13 @@ export type EdgeLayerCallbacks = Readonly<{
     edge: Edge,
     end: 'from' | 'to',
   ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
+  /** How an edge behind a portal is weighted: its drawing is seen at the
+   * camera's scale times the portal's, and is `weight` times heavier than
+   * the board's own (edges.css's --yolo-whiteboard-portal-weight), with the
+   * arrowhead marker drawn at that weight. Null for the board's own. */
+  portalWeightOf: (
+    edge: Edge,
+  ) => Readonly<{ weight: number; markerId: string }> | null
   /** Where an edge behind a portal shows (its `clipPathOf`'s rectangle);
    * null for the board's own. */
   clipOf: (
@@ -560,6 +567,18 @@ export class EdgeLayer {
       el?.classList.toggle(EDGE_UNPLACED_CLASS, geometry.hidden === true)
     }
     if (geometry.hidden) return
+    const portal = this.callbacks.portalWeightOf(edge)
+    for (const el of [
+      dom.path,
+      dom.label,
+      dom.fromMark,
+      dom.toMark,
+      dom.fromRun?.group,
+      dom.toRun?.group,
+    ]) {
+      if (el) weigh(el, portal?.weight ?? 1)
+    }
+    const markerId = portal?.markerId ?? this.arrowMarkerId
     const d = buildEdgePathD(geometry)
     dom.path.setAttribute('d', d)
     dom.hit.setAttribute('d', d)
@@ -591,10 +610,16 @@ export class EdgeLayer {
     // reaches it, the card's edge otherwise.
     const fromArrow = edge.fromEnd === 'arrow'
     const toArrow = edge.toEnd === 'arrow'
-    this.setMarker(dom.path, 'marker-start', fromArrow && !geometry.startInner)
-    this.setMarker(dom.path, 'marker-end', toArrow && !geometry.endInner)
-    if (dom.fromRun) this.setMarker(dom.fromRun.line, 'marker-end', fromArrow)
-    if (dom.toRun) this.setMarker(dom.toRun.line, 'marker-end', toArrow)
+    setMarker(
+      dom.path,
+      'marker-start',
+      fromArrow && !geometry.startInner && markerId,
+    )
+    setMarker(dom.path, 'marker-end', toArrow && !geometry.endInner && markerId)
+    if (dom.fromRun) {
+      setMarker(dom.fromRun.line, 'marker-end', fromArrow && markerId)
+    }
+    if (dom.toRun) setMarker(dom.toRun.line, 'marker-end', toArrow && markerId)
   }
 
   /** Where an edge is drawn now — its ends placed at the passages they
@@ -721,18 +746,30 @@ export class EdgeLayer {
     })
     this.redrawEdge(edgeId)
   }
+}
 
-  private setMarker(
-    path: SVGPathElement,
-    attribute: 'marker-start' | 'marker-end',
-    present: boolean,
-  ): void {
-    if (present) {
-      path.setAttribute(attribute, `url(#${this.arrowMarkerId})`)
-      return
-    }
-    path.removeAttribute(attribute)
+/** Puts the arrowhead `markerId` names on an end of `path`, or takes it off
+ * (false). */
+function setMarker(
+  path: SVGPathElement,
+  attribute: 'marker-start' | 'marker-end',
+  markerId: string | false,
+): void {
+  if (markerId) {
+    path.setAttribute(attribute, `url(#${markerId})`)
+    return
   }
+  path.removeAttribute(attribute)
+}
+
+/** Weights an edge's piece for the scale it is seen at (edges.css's
+ * --yolo-whiteboard-portal-weight); 1 is the board's own, and no property. */
+function weigh(el: HTMLElement | SVGElement, weight: number): void {
+  if (weight === 1) {
+    el.style.removeProperty('--yolo-whiteboard-portal-weight')
+    return
+  }
+  el.style.setProperty('--yolo-whiteboard-portal-weight', String(weight))
 }
 
 /** Whether an end reaches inside its card — a passage, or a page of a PDF —

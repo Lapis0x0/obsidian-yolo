@@ -17,6 +17,7 @@ import {
 } from '../../domain/clipboard'
 import { type NodeId, isPlainText } from '../../domain/fileFormat'
 import { boardBlocks, nodesToDragWith } from '../../domain/groups'
+import { joinNodePath, splitNodePath } from '../../domain/nodePath'
 import { moveNodes, updateNode } from '../../domain/operations'
 import {
   type CardRect,
@@ -26,7 +27,12 @@ import {
   rectOfCard,
   resizeRect,
 } from '../../domain/resize'
-import { type SnapGuide, snapMove, snapResize } from '../../domain/snapping'
+import {
+  type SnapGuide,
+  type SnapOptions,
+  snapMove,
+  snapResize,
+} from '../../domain/snapping'
 import {
   computeWorldViewportRect,
   intersectsViewport,
@@ -335,7 +341,7 @@ export class DragGestures {
       rect,
       interaction.handle,
       interaction.snapCandidates,
-      this.snapOptions(),
+      this.snapOptions(homePortalOf(interaction.nodeId)),
     )
     return {
       rect: resizeRect(
@@ -586,7 +592,9 @@ export class DragGestures {
       whole ? [whole] : moving,
       interaction.snapCandidates,
       {
-        ...this.snapOptions(),
+        // The board the cards would land on, put down here (canvas.ts's
+        // `commitMove`).
+        ...this.snapOptions(this.core.portalAtPoint(world)),
         movedX: raw.dx !== 0,
         movedY: raw.dy !== 0,
       },
@@ -640,15 +648,30 @@ export class DragGestures {
   /** The offer's size and the lattice it falls back to, both of which are
    * facts about the current zoom: the tolerance is a screen distance divided
    * by the scale, and the grid is whichever lattice is currently drawn. */
-  private snapOptions(): Readonly<{ tolerance: number; gridStep: number }> {
+  /**
+   * How near alignment reaches — a screen distance, the same at every zoom —
+   * and the lattice a free axis falls onto: the grid of the board being
+   * worked in, behind portal `portal` when one is given — its lines where
+   * that board has them, spaced for the scale it is seen at — so a card put
+   * down behind a portal lands on its own board's grid.
+   */
+  private snapOptions(portal: NodeId | null): SnapOptions {
     const { scale } = this.core.getView()
+    const looking = portal === null ? null : this.core.portalViewOf(portal)
+    const node = portal === null ? undefined : this.core.getNode(portal)
+    const unit = looking && node ? looking.unit : 1
     return {
       tolerance: SNAP_SCREEN_PX / scale,
-      gridStep: gridStepForScale(
-        scale,
-        GRID_WORLD_STEP_PX,
-        GRID_MIN_SCREEN_STEP_PX,
-      ),
+      gridStep:
+        gridStepForScale(
+          scale * unit,
+          GRID_WORLD_STEP_PX,
+          GRID_MIN_SCREEN_STEP_PX,
+        ) * unit,
+      gridOrigin:
+        looking && node
+          ? { x: node.x - looking.x * unit, y: node.y - looking.y * unit }
+          : undefined,
     }
   }
 
@@ -845,7 +868,7 @@ export class DragGestures {
     const rect: CardRect = { x: center.x - w / 2, y: center.y - h / 2, w, h }
     if (!this.snappingWanted(e)) return { rect, guides: [] }
     const snap = snapMove([rect], interaction.snapCandidates, {
-      ...this.snapOptions(),
+      ...this.snapOptions(this.core.portalAtPoint(center)),
       movedX: true,
       movedY: true,
     })
@@ -892,4 +915,11 @@ export function isSoleSelection(
   id: NodeId,
 ): boolean {
   return selected.size === 1 && selected.has(id)
+}
+
+/** The portal a card on the composed board is behind — the innermost, whose
+ * board it is a card of (domain/nodePath.ts) — or null for the board's own. */
+function homePortalOf(id: NodeId): NodeId | null {
+  const path = splitNodePath(id)
+  return path.length > 1 ? joinNodePath(path.slice(0, -1)) : null
 }

@@ -54,6 +54,10 @@ export type SnapOptions = Readonly<{
   tolerance: number
   /** Lattice an axis with no object to align to falls onto. */
   gridStep: number
+  /** Where that lattice's lines start from: the origin of the board being
+   * worked in, which behind a portal is not this board's (domain/portals.ts).
+   * The board's own origin when left out. */
+  gridOrigin?: Readonly<{ x: number; y: number }>
 }>
 
 const NO_SNAP: SnapResult = Object.freeze({ dx: 0, dy: 0, guides: [] })
@@ -147,8 +151,14 @@ function alignAxis(
 }
 
 /** What it takes to put `value` on the lattice. */
-function gridDelta(value: number, step: number): number {
-  return step > 0 ? Math.round(value / step) * step - value : 0
+function gridDelta(
+  value: number,
+  { gridStep: step, gridOrigin }: SnapOptions,
+  axis: 'x' | 'y',
+): number {
+  if (!(step > 0)) return 0
+  const origin = gridOrigin?.[axis] ?? 0
+  return Math.round((value - origin) / step) * step + origin - value
 }
 
 function guidesFor(
@@ -223,12 +233,12 @@ export function snapMove(
   const dx =
     x?.delta ??
     (options.movedX
-      ? gridDelta(Math.min(...moving.map((rect) => rect.x)), options.gridStep)
+      ? gridDelta(Math.min(...moving.map((rect) => rect.x)), options, 'x')
       : 0)
   const dy =
     y?.delta ??
     (options.movedY
-      ? gridDelta(Math.min(...moving.map((rect) => rect.y)), options.gridStep)
+      ? gridDelta(Math.min(...moving.map((rect) => rect.y)), options, 'y')
       : 0)
   return result(x, y, dx, dy)
 }
@@ -284,8 +294,8 @@ export function snapResize(
           'y',
         )
   const dx =
-    x?.delta ?? (movingX === null ? 0 : gridDelta(movingX, options.gridStep))
+    x?.delta ?? (movingX === null ? 0 : gridDelta(movingX, options, 'x'))
   const dy =
-    y?.delta ?? (movingY === null ? 0 : gridDelta(movingY, options.gridStep))
+    y?.delta ?? (movingY === null ? 0 : gridDelta(movingY, options, 'y'))
   return result(x, y, dx, dy)
 }

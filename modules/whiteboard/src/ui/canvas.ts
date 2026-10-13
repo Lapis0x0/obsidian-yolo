@@ -95,6 +95,7 @@ import {
   portalAt,
   portalOf,
   portalScale,
+  portalWeight,
   tidy,
 } from '../domain/portals'
 import type { CardRect } from '../domain/resize'
@@ -352,6 +353,12 @@ export class WhiteboardCanvas {
    * cuts its edges to (`edgeClipPath`), by portal. */
   private edgeDefsEl: SVGDefsElement | null = null
   private readonly portalClipEls = new Map<NodeId, SVGClipPathElement>()
+  /** The edges' arrowhead (`arrowMarkerId`), and a copy of it per open
+   * portal weighted for the scale the portal shows its board at — a marker
+   * takes its style from where it is defined, not from the line using it
+   * (`edgePortalWeight`). */
+  private arrowMarkerEl: SVGMarkerElement | null = null
+  private readonly portalMarkerEls = new Map<NodeId, SVGMarkerElement>()
   private nodesById = new Map<NodeId, BoardNode>()
   /**
    * Every node that is not a group, in board order — the population a card
@@ -1001,6 +1008,8 @@ export class WhiteboardCanvas {
       if (portals.has(id)) continue
       el.remove()
       this.portalClipEls.delete(id)
+      this.portalMarkerEls.get(id)?.remove()
+      this.portalMarkerEls.delete(id)
     }
     const doc = this.context.getDocument()
     for (const [id, portal] of portals) {
@@ -1016,6 +1025,17 @@ export class WhiteboardCanvas {
         defs.appendChild(el)
         this.portalClipEls.set(id, el)
       }
+      let marker = this.portalMarkerEls.get(id)
+      if (!marker && this.arrowMarkerEl) {
+        marker = this.arrowMarkerEl.cloneNode(true) as SVGMarkerElement
+        marker.setAttribute('id', `${el.id}-arrow`)
+        defs.appendChild(marker)
+        this.portalMarkerEls.set(id, marker)
+      }
+      marker?.style.setProperty(
+        '--yolo-whiteboard-portal-weight',
+        String(portalWeight(portal.scale)),
+      )
       const rect = el.firstElementChild
       const clip = this.portalClip(portal)
       rect?.setAttribute('x', String(clip.x))
@@ -1031,6 +1051,19 @@ export class WhiteboardCanvas {
     const portal = commonPortal(edge.fromNode, edge.toNode, portals)
     const el = portal ? this.portalClipEls.get(portal.id) : undefined
     return el ? `url(#${el.id})` : null
+  }
+
+  /** How heavily an edge behind a portal is drawn, and with which
+   * arrowhead (edgeLayer.ts's `portalWeightOf`); null for the board's own. */
+  private edgePortalWeight(
+    edge: Edge,
+  ): Readonly<{ weight: number; markerId: string }> | null {
+    const portals = this.sources.composition.portals
+    if (portals.size === 0) return null
+    const portal = commonPortal(edge.fromNode, edge.toNode, portals)
+    const marker = portal ? this.portalMarkerEls.get(portal.id) : undefined
+    if (!portal || !marker) return null
+    return { weight: portalWeight(portal.scale), markerId: marker.id }
   }
 
   /** Where a card behind a portal shows through it; null for the board's
@@ -1359,6 +1392,18 @@ export class WhiteboardCanvas {
     this.applyBoardChange(updateNode(this.board, id, { view }), historyKey)
   }
 
+  /**
+   * How large a card is on screen: the camera's scale times the portals' it
+   * is behind (`scaleOf`). The one answer to that question, for everything
+   * that asks it about a card — how sharp its pages are drawn, whether the
+   * cards around it are built or drawn (`portalTierOf`, by the same product
+   * for what is behind a portal), how its group's label is held. Chrome
+   * weighted for it follows domain/portals.ts's `portalWeight`.
+   */
+  private seenScaleOf(id: NodeId): number {
+    return this.cameraController.view.scale * this.scaleOf(id)
+  }
+
   /** What a card is drawn at: the scale of the portals it is behind, 1 for
    * the board's own (domain/portals.ts's `ComposedPortal`). */
   private scaleOf(id: NodeId): number {
@@ -1635,6 +1680,7 @@ export class WhiteboardCanvas {
     // each end without needing two separate marker defs.
     marker.setAttribute('orient', 'auto-start-reverse')
     marker.setAttribute('markerUnits', 'userSpaceOnUse')
+    this.arrowMarkerEl = marker
     const arrowPath = doc.createElementNS(SVG_NS, 'path')
     arrowPath.setAttribute('class', EDGE_ARROW_CLASS)
     arrowPath.setAttribute('d', 'M0,0 L10,5 L0,10 Z')
@@ -1954,6 +2000,7 @@ export class WhiteboardCanvas {
       {
         getNode: this.core.getNode,
         clipPathOf: (edge) => this.edgeClipPath(edge),
+        portalWeightOf: (edge) => this.edgePortalWeight(edge),
         endClipOf: (edge, end) => {
           const portals = this.sources.composition.portals
           if (portals.size === 0) return null
@@ -2013,6 +2060,7 @@ export class WhiteboardCanvas {
       clipOf: (id) => this.clipOf(id),
       sourcePathOf: (id) => this.sourcePathOf(id),
       scaleOf: (id) => this.scaleOf(id),
+      groupLabelFontPx: (id) => this.groupLabelFontPx(id),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -2054,7 +2102,7 @@ export class WhiteboardCanvas {
       },
       getMountedCount: () => this.engine.mounted.size,
       purgeNode: (id) => this.purgeNodeRuntime(id),
-      getViewScale: () => this.cameraController.view.scale,
+      seenScaleOf: (id) => this.seenScaleOf(id),
       getPdfStartPosition: (id) => {
         const node = this.core.getNode(id)
         return node?.type === 'file' ? node.startPage : undefined
@@ -2139,7 +2187,7 @@ export class WhiteboardCanvas {
     // own settle). Same lifetime as the camera and the renderer, so nothing
     // to unsubscribe.
     this.cameraController.subscribeViewChange(() => {
-      this.cardRenderer.setViewScale(this.cameraController.view.scale)
+      this.cardRenderer.syncPdfViewScales()
       this.canvasControls?.refreshReadouts()
       // Which pictures are nearest moved with it — the ones held past the
       // budget are the nearest ones.
@@ -3921,7 +3969,12 @@ export class WhiteboardCanvas {
   private updateDrawnPortals(): void {
     const { scale } = this.cameraController.view
     const next = new Set<NodeId>()
-    for (const [id, portal] of this.sources.composition.portals) {
+    // A picture copies elements: what a portal draws rather than builds
+    // would be missing from it.
+    const portals = this.exporter?.isRunning
+      ? new Map<NodeId, ComposedPortal>()
+      : this.sources.composition.portals
+    for (const [id, portal] of portals) {
       const drawn = nextOverviewState(
         scale * portal.scale,
         this.drawnPortals.has(id),
@@ -4242,14 +4295,20 @@ export class WhiteboardCanvas {
    * custom property — see cardRenderer's `setGroupLabelFontSize`.
    */
   private syncGroupLabelScale(): void {
-    const { scale } = this.cameraController.view
-    this.cardRenderer.setGroupLabelFontSize(
-      this.overview
-        ? Math.max(
-            GROUP_LABEL_WORLD_FONT_PX,
-            OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX / scale,
-          )
-        : null,
+    this.cardRenderer.syncGroupLabelFontSizes()
+  }
+
+  /** The floor `syncGroupLabelScale` holds a group's label to, in the
+   * group's own units: by the scale the group is seen at, and while the
+   * cards around it are drawn rather than built — the board's own in the
+   * tier, a portal's while it draws what is behind it. */
+  private groupLabelFontPx(id: NodeId): number | null {
+    const tier = this.portalTierOf(id)
+    if (tier === null ? !this.overview : tier === 'built') return null
+    const seen = this.seenScaleOf(id)
+    return Math.max(
+      GROUP_LABEL_WORLD_FONT_PX,
+      OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX / seen,
     )
   }
 

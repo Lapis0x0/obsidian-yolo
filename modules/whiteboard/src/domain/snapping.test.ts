@@ -84,6 +84,19 @@ describe('snapMove', () => {
     expect(result.guides).toEqual([])
   })
 
+  it('falls onto a lattice that starts where the board worked in has it', () => {
+    // Behind a portal: that board's lines are 10 apart here and start at 5.
+    const result = snapMove([rect(103, 47)], [], {
+      tolerance: 1,
+      gridStep: 10,
+      gridOrigin: { x: 5, y: 5 },
+      movedX: true,
+      movedY: true,
+    })
+    expect(result.dx).toBe(2)
+    expect(result.dy).toBe(-2)
+  })
+
   it('measures the grid from the whole selection, keeping its spacing', () => {
     const result = snapMove([rect(47, 0), rect(200, 0)], [], {
       tolerance: 10,

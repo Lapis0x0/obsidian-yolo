@@ -192,4 +192,25 @@ describe('summarizeBoard with portals', () => {
     expect(text).toContain('a card on the board behind that board card')
     expect(text).toContain('e: t -> p/a')
   })
+
+  it('says at what scale a portal shows its board', () => {
+    const board: Board = {
+      ...emptyBoard(),
+      nodes: [
+        {
+          id: 'p',
+          type: 'file',
+          x: 20,
+          y: 0,
+          w: 10,
+          h: 10,
+          file: 'Sub.yoloboard',
+          view: { x: 0, y: 0, scale: 0.5 },
+          extra: {},
+        },
+      ],
+    }
+    const text = summarizeBoard(board, { path: 'Own.yoloboard' })
+    expect(text).toContain('p  board  20,0 10×10  Sub.yoloboard  shown at 0.5×')
+  })
 })

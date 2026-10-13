@@ -12,7 +12,14 @@
  * cameraController.ts's applyZoomScale), so the camera's own scale is half
  * cancelled and the screen size grows as sqrt(scale) instead. A line of
  * constant world weight is a hairline zoomed out and a rope zoomed in; this
- * is Obsidian Canvas's --zoom-multiplier, the same law at the same value. */
+ * is Obsidian Canvas's --zoom-multiplier, the same law at the same value.
+ *
+ * Behind a portal the drawing is seen at the camera's scale times the
+ * portal's, and is weighted for that: --yolo-whiteboard-portal-weight,
+ * written on the edge's own elements (ui/canvas/edgeLayer.ts) and on the
+ * portal's own arrowhead marker, is the square root of the portal's scale —
+ * under the same law, the portal's share of it. The hit stroke and the
+ * connection preview are not drawing but aim, and stay the screen's. */
 
 .yolo-whiteboard-edges {
   position: absolute;
@@ -31,7 +38,10 @@
 .yolo-whiteboard-edge-path {
   fill: none;
   stroke: var(--yolo-whiteboard-color);
-  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-width: calc(
+    1.5 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
   pointer-events: none;
 }
 
@@ -62,7 +72,10 @@
 .yolo-whiteboard-edge-hit:hover + .yolo-whiteboard-edge-path,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-hovered,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
-  stroke-width: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-width: calc(
+    3 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
 }
 
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
@@ -82,10 +95,16 @@
  * it is scrolled past when not, and at the side's middle when the card
  * cannot say. Weighted like the line it ends. */
 .yolo-whiteboard-edge-passage-end {
-  r: calc(3.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  r: calc(
+    3.5 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
   fill: var(--background-primary);
   stroke: var(--yolo-whiteboard-color);
-  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-width: calc(
+    1.5 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
   pointer-events: none;
 }
 
@@ -108,7 +127,10 @@
 .yolo-whiteboard-edge-passage-run-line {
   fill: none;
   stroke: var(--yolo-whiteboard-color);
-  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-width: calc(
+    1.5 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
   pointer-events: none;
 }
 
@@ -116,7 +138,10 @@
   .yolo-whiteboard-edge-passage-run-line,
 .yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-selected
   .yolo-whiteboard-edge-passage-run-line {
-  stroke-width: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-width: calc(
+    3 * var(--yolo-whiteboard-zoom-multiplier, 1) *
+      var(--yolo-whiteboard-portal-weight, 1)
+  );
 }
 
 .yolo-whiteboard-edge-passage-run.yolo-whiteboard-edge-selected:not(
@@ -171,7 +196,12 @@
    * the end of the line — so the arrow keeps its tip where the line ends at
    * every zoom, and only its size changes. Obsidian Canvas scales its own
    * arrowhead polygon about the tip for the same reason. */
-  transform: scale(var(--yolo-whiteboard-zoom-multiplier, 1));
+  transform: scale(
+    calc(
+      var(--yolo-whiteboard-zoom-multiplier, 1) *
+        var(--yolo-whiteboard-portal-weight, 1)
+    )
+  );
   transform-box: fill-box;
   transform-origin: 87.5% 50%;
   fill: var(--text-faint);

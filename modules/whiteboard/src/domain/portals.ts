@@ -86,6 +86,18 @@ export type Composition = Readonly<{
   portals: ReadonlyMap<NodeId, ComposedPortal>
 }>
 
+/**
+ * How much heavier what is drawn for a reader — an edge's line, its
+ * arrowhead, its label — is behind portals of cumulative `scale` than on the
+ * board. That weight follows 1/sqrt of the scale it is seen at
+ * (ui/canvas/cameraController.ts's `applyZoomScale`); behind a portal that
+ * is the camera's times the portal's, and the camera's share is the board's
+ * own weight already.
+ */
+export function portalWeight(scale: number): number {
+  return Math.sqrt(scale)
+}
+
 /** How large a portal shows the board behind it, against its own board. */
 export function portalScale(portal: FileNode): number {
   return portal.view?.scale ?? 1

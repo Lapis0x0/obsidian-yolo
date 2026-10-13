@@ -262,6 +262,10 @@ export type CardRendererCallbacks = Readonly<{
   /** What a card is drawn at: the scale of the portals it is behind
    * (domain/portals.ts's `ComposedPortal`), 1 for the board's own. */
   scaleOf: (id: NodeId) => number
+  /** The size a group's label is held at, in its own units, while it is
+   * seen smaller than the overview tier's threshold; null while the
+   * stylesheet's own value stands (canvas.ts's `syncGroupLabelScale`). */
+  groupLabelFontPx: (id: NodeId) => number | null
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -272,8 +276,9 @@ export type CardRendererCallbacks = Readonly<{
   clipOf: (
     id: NodeId,
   ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
-  /** The camera's current zoom — what a PDF card's pages are drawn for. */
-  getViewScale: () => number
+  /** How large a card is on screen (canvas.ts's `seenScaleOf`) — what a
+   * PDF card's pages are drawn sharp for. */
+  seenScaleOf: (id: NodeId) => number
   /** Where a PDF card's reader opens: the node's `startPage`. */
   getPdfStartPosition: (id: NodeId) => number | undefined
   /** The annotations of a PDF, for a reader to hold until it goes. */
@@ -315,12 +320,6 @@ export class CardRenderer {
    * follows WEB_FRAME_POOL_CAPACITY as usual. See `freezeParkedCapacity`.
    */
   private frozenWebFramePoolCapacity: number | null = null
-  /**
-   * Group label size in world units while the overview tier is overriding it,
-   * or null while the stylesheet's own value stands — see
-   * `setGroupLabelFontSize`.
-   */
-  private groupLabelFontPx: number | null = null
   /** Cards that hold (or held) a PDF reader — what a camera move has to
    * reach (`setViewScale`). Pruned lazily as their readers go. */
   private readonly pdfCards = new Set<NodeId>()
@@ -621,9 +620,8 @@ export class CardRenderer {
       this.worldEl.appendChild(el)
       // A group mounting while the overview tier holds labels at a screen size
       // has to arrive at that size, not at the stylesheet's.
-      if (this.groupLabelFontPx !== null) {
-        label.style.fontSize = `${this.groupLabelFontPx}px`
-      }
+      const fontPx = this.callbacks.groupLabelFontPx(id)
+      if (fontPx !== null) label.style.fontSize = `${fontPx}px`
       this.runtimeByNodeId.set(id, {
         el,
         bodyEl: null,
@@ -936,7 +934,7 @@ export class CardRenderer {
     if (runtime.pdfReader) {
       // The camera kept moving while the card was away; its pages are redrawn
       // for where it is now once that zoom has settled.
-      runtime.pdfReader.setViewScale(this.pdfViewScale(id))
+      runtime.pdfReader.setViewScale(this.callbacks.seenScaleOf(id))
       runtime.pdfReader.setVisible(true)
     }
   }
@@ -1027,8 +1025,8 @@ export class CardRenderer {
   }
 
   /**
-   * Overrides the world-unit font size of every group's label, or clears the
-   * override with `null` (see constants.ts's
+   * Holds every group's label at the size `groupLabelFontPx` gives it, or
+   * hands it back to the stylesheet (see constants.ts's
    * OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX).
    *
    * Written on the label elements themselves rather than as a custom property
@@ -1036,14 +1034,12 @@ export class CardRenderer {
    * cameraController.ts's `applyZoomScale` documents: a custom property written
    * on an element invalidates the style of its whole subtree, and the world's
    * subtree includes every edge path on the board. There are a few dozen group
-   * labels; this touches exactly them.
+   * labels; this touches exactly them, and only those whose size changed.
    */
-  setGroupLabelFontSize(worldPx: number | null): void {
-    if (worldPx === this.groupLabelFontPx) return
-    this.groupLabelFontPx = worldPx
+  syncGroupLabelFontSizes(): void {
     for (const [id, runtime] of this.runtimeByNodeId) {
       if (this.callbacks.getNode(id)?.type !== 'group') continue
-      this.applyGroupLabelFontSize(runtime)
+      this.applyGroupLabelFontSize(id, runtime)
     }
   }
 
@@ -1057,14 +1053,12 @@ export class CardRenderer {
    * Popout / Multi-window). Measured: it silently left every label at its
    * stylesheet size in a popped-out view.
    */
-  private applyGroupLabelFontSize(runtime: NodeRuntime): void {
+  private applyGroupLabelFontSize(id: NodeId, runtime: NodeRuntime): void {
     const label = runtime.el?.firstElementChild as HTMLElement | null
     if (!label) return
-    if (this.groupLabelFontPx === null) {
-      label.style.removeProperty('font-size')
-      return
-    }
-    label.style.fontSize = `${this.groupLabelFontPx}px`
+    const fontPx = this.callbacks.groupLabelFontPx(id)
+    const fontSize = fontPx === null ? '' : `${fontPx}px`
+    if (label.style.fontSize !== fontSize) label.style.fontSize = fontSize
   }
 
   private evictParkedCard(id: NodeId): void {
@@ -1498,13 +1492,12 @@ export class CardRenderer {
   }
 
   /**
-   * Tells every PDF card how far the camera is zoomed — times, behind a
-   * portal, the portal's scale (`pdfViewScale`). Called on every frame
-   * the camera moves, so it touches only the cards holding a reader; one on
-   * screen redraws for the new zoom once it holds still, one parked lets go
-   * of what the new zoom no longer needs.
+   * Tells every PDF card how large it is on screen (`seenScaleOf`). Called
+   * on every frame the camera moves, so it touches only the cards holding a
+   * reader; one on screen redraws for the new zoom once it holds still, one
+   * parked lets go of what the new zoom no longer needs.
    */
-  setViewScale(scale: number): void {
+  syncPdfViewScales(): void {
     for (const id of this.pdfCards) {
       const reader = this.runtimeByNodeId.get(id)?.pdfReader
       if (!reader) {
@@ -1514,14 +1507,8 @@ export class CardRenderer {
       // Parked readers hear it too: one that is hidden gives back the pages
       // this zoom has made too sharp to be worth keeping (see
       // PdfReader's releaseOversharp).
-      reader.setViewScale(scale * this.callbacks.scaleOf(id))
+      reader.setViewScale(this.callbacks.seenScaleOf(id))
     }
-  }
-
-  /** How large a PDF card's pages are on screen: the camera's zoom, times
-   * the portals' it is behind — what its reader draws them sharp for. */
-  private pdfViewScale(id: NodeId): number {
-    return this.callbacks.getViewScale() * this.callbacks.scaleOf(id)
   }
 
   /**
@@ -1574,7 +1561,7 @@ export class CardRenderer {
       container: bodyEl,
       sheet,
       position: this.callbacks.getPdfStartPosition(id),
-      viewScale: this.pdfViewScale(id),
+      viewScale: this.callbacks.seenScaleOf(id),
       interactive: this.callbacks.isFocused(id),
       t: (key) => this.callbacks.t(key),
       canStartWork: () => this.callbacks.canBuildContent(),
@@ -1672,7 +1659,7 @@ export class CardRenderer {
     // Its own size is what it was: only how large it is drawn changed —
     // and with it how sharp its pages are drawn.
     scaleNodeElement(runtime.el, this.callbacks.scaleOf(id))
-    runtime.pdfReader?.setViewScale(this.pdfViewScale(id))
+    runtime.pdfReader?.setViewScale(this.callbacks.seenScaleOf(id))
     this.applyClip(runtime.el, node)
   }
 

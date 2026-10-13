@@ -205,8 +205,14 @@ function cardKind(card: BoardNode): string {
 function cardHeadline(card: BoardNode): string {
   const head = `${card.id}  ${cardKind(card)}  ${position(card)}`
   switch (card.type) {
-    case 'file':
-      return `${head}  ${card.file}`
+    case 'file': {
+      // A portal shows its board larger or smaller than itself: the cards
+      // behind it are their own size on that board, drawn at this.
+      const scale = card.view?.scale
+      return scale === undefined || scale === 1
+        ? `${head}  ${card.file}`
+        : `${head}  ${card.file}  shown at ${String(scale)}×`
+    }
     case 'pdf-page':
       return `${head}  ${card.file} p.${card.page}`
     case 'link':

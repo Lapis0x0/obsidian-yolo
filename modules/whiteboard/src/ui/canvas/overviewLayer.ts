@@ -47,7 +47,7 @@ import {
   type PdfAnnotation,
   displayColor,
 } from '../../domain/pdfAnnotations'
-import { fileNodeOf, isPortal } from '../../domain/portals'
+import { fileNodeOf, isPortal, portalWeight } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import { SPREAD_METRICS, isSpreadTitle } from '../../domain/spread'
 import {
@@ -419,7 +419,7 @@ export class OverviewLayer {
     this.drawEdges(ctx, view, surface, live)
     this.drawCards(ctx, view, surface, live)
     this.inPortals(ctx, view, (layer) => {
-      this.drawEdges(ctx, view, surface, live, layer.edges)
+      this.drawEdges(ctx, view, surface, live, layer.edges, layer.scale)
       this.drawCards(
         ctx,
         view,
@@ -1528,6 +1528,7 @@ export class OverviewLayer {
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
     edges: readonly Edge[] = this.callbacks.getEdges(),
+    unit = 1,
   ): void {
     const palette = this.palette
     if (!palette) return
@@ -1535,20 +1536,22 @@ export class OverviewLayer {
     // (`--yolo-whiteboard-zoom-multiplier`, 1/sqrt(scale)), which in screen
     // pixels is `1.5 * sqrt(scale)` -- with a floor, because a line thinner
     // than a pixel is drawn as a faded one and a board of them reads as haze.
+    // Behind a portal, of the scale they are seen at: `unit` times the
+    // camera's (domain/portals.ts's `portalWeight`).
+    const weight = Math.sqrt(view.scale) * portalWeight(unit)
     const stroke = Math.max(
       OVERVIEW_MIN_EDGE_STROKE_PX,
-      EDGE_STROKE_WORLD_PX * Math.sqrt(view.scale),
+      EDGE_STROKE_WORLD_PX * weight,
     )
-    const arrow = EDGE_ARROW_WORLD_PX * Math.sqrt(view.scale)
+    const arrow = EDGE_ARROW_WORLD_PX * weight
     // The stylesheet's ring radius, under the same law.
-    const ring = EDGE_PASSAGE_MARK_WORLD_PX * Math.sqrt(view.scale)
+    const ring = EDGE_PASSAGE_MARK_WORLD_PX * weight
     const drawArrows = arrow >= OVERVIEW_ARROW_MIN_SCREEN_PX
     // Asked once, before the sweep: at the bottom of the tier there is no
     // label small enough to be worth drawing, and that is also where there are
     // the most edges to have skipped one for.
     const drawLabels =
-      surface.text &&
-      EDGE_LABEL_FONT_PX * Math.sqrt(view.scale) >= OVERVIEW_LABEL_MIN_FONT_PX
+      surface.text && EDGE_LABEL_FONT_PX * weight >= OVERVIEW_LABEL_MIN_FONT_PX
 
     type Segment = Readonly<{
       start: ScreenPoint
@@ -1683,7 +1686,7 @@ export class OverviewLayer {
       }
     }
     ctx.lineWidth = 1
-    this.drawEdgeLabels(ctx, view, surface, labels)
+    this.drawEdgeLabels(ctx, view, surface, labels, weight)
   }
 
   /** Rings on the ends that reach a passage, in the colour the pass is
@@ -1741,12 +1744,13 @@ export class OverviewLayer {
     view: CanvasView,
     surface: Surface,
     labels: readonly Readonly<{ text: string; x: number; y: number }>[],
+    /** `drawEdges`'s: sqrt of the scale the labels are seen at. */
+    root: number,
   ): void {
     const palette = this.palette
     if (!palette || labels.length === 0) return
     // The counter-scaled law the stylesheet uses, in screen pixels: a size
     // written in world units as `15 * 1/sqrt(scale)` lands at `15 * sqrt`.
-    const root = Math.sqrt(view.scale)
     const fontPx = EDGE_LABEL_FONT_PX * root
     const padX = EDGE_LABEL_PADDING_PX.x * root
     const padY = EDGE_LABEL_PADDING_PX.y * root
