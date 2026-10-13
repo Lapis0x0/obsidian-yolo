@@ -67,6 +67,7 @@ import {
   OVERVIEW_LABEL_MIN_FONT_PX,
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
+  OVERVIEW_THEMED_CARD_WASH_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
   SPREAD_TITLE_WORLD,
   TITLE_BLOCK_LINE_HEIGHT,
@@ -557,11 +558,17 @@ export class OverviewLayer {
       ctx.globalAlpha = alpha
       ctx.fillStyle = palette.background
       ctx.fillRect(x, y, w, h)
-      // The wash every card wears here (`drawCards`), or the card would land
-      // white and turn grey the frame it stops moving.
-      ctx.globalAlpha = alpha * OVERVIEW_CARD_WASH_ALPHA
-      ctx.fillStyle = this.colorOf(node, palette) ?? palette.neutral
-      ctx.fillRect(x, y, w, h)
+      // The wash it wears once it lands (`drawCards`), or it would change
+      // the frame it stops moving.
+      const picture = this.pictureOf(node, { w }, palette.dark)
+      const own = this.colorOf(node, palette)
+      if (!picture || own !== null) {
+        ctx.globalAlpha =
+          alpha *
+          (picture ? OVERVIEW_THEMED_CARD_WASH_ALPHA : OVERVIEW_CARD_WASH_ALPHA)
+        ctx.fillStyle = own ?? palette.neutral
+        ctx.fillRect(x, y, w, h)
+      }
       // Its pages, as they will be drawn once it lands (`drawCards`), and
       // then no title: a PDF's stays put, drawn by `drawCards` throughout.
       ctx.globalAlpha = alpha
@@ -571,6 +578,7 @@ export class OverviewLayer {
         { x, y, w, h },
         palette.dark,
         view.scale,
+        picture,
       )
       // The border it will have when it lands (`drawCards`): a selection's
       // ring, the faint accent of a selected spread's sheet, or the plain
@@ -829,33 +837,64 @@ export class OverviewLayer {
     for (const card of visible) ctx.rect(card.x, card.y, card.w, card.h)
     ctx.fill()
 
-    // 2. The colour wash, one path per colour.
-    const byColor = new Map<string, typeof visible>()
+    // 2. The colour wash, one path per colour and strength. A card that has
+    //    a picture of itself (../pictures/) — its content, a PDF's pages, an
+    //    image — is drawn as the DOM tiers show it with that content: washed
+    //    only if it has a colour, and as lightly as cards/color.css washes
+    //    it. One without stands in its title block's look, washed whatever
+    //    its colour. Every card's colour is kept too (`byColor`), for the
+    //    borders below.
+    const pictures = new Map<NodeId, ImageBitmap>()
     for (const card of visible) {
-      const color = this.colorOf(card.node, palette) ?? palette.neutral
+      const picture = this.pictureOf(card.node, card, palette.dark)
+      if (picture) pictures.set(card.node.id, picture)
+    }
+    const byColor = new Map<string, typeof visible>()
+    const washes = new Map<number, Map<string, typeof visible>>()
+    for (const card of visible) {
+      const own = this.colorOf(card.node, palette)
+      const color = own ?? palette.neutral
       const bucket = byColor.get(color)
       if (bucket) bucket.push(card)
       else byColor.set(color, [card])
+      const pictured = pictures.has(card.node.id)
+      if (pictured && own === null) continue
+      const alpha = pictured
+        ? OVERVIEW_THEMED_CARD_WASH_ALPHA
+        : OVERVIEW_CARD_WASH_ALPHA
+      const strength = washes.get(alpha) ?? new Map<string, typeof visible>()
+      washes.set(alpha, strength)
+      const wash = strength.get(color)
+      if (wash) wash.push(card)
+      else strength.set(color, [card])
     }
-    ctx.globalAlpha = OVERVIEW_CARD_WASH_ALPHA
-    for (const [color, cards] of byColor) {
-      ctx.fillStyle = color
-      ctx.beginPath()
-      for (const card of cards) ctx.rect(card.x, card.y, card.w, card.h)
-      ctx.fill()
-    }
-
-    // 2b. A card's picture of itself where there is one (../pictures/) — its
-    //     content, a PDF's pages, an image — what the card shows in the DOM
-    //     tiers, over its wash as the content is over its card. Such a card
-    //     needs no title block: it shows its own.
-    const pictured = new Set<NodeId>()
-    ctx.globalAlpha = 1
-    for (const card of visible) {
-      if (this.drawPicture(ctx, card.node, card, palette.dark, view.scale)) {
-        pictured.add(card.node.id)
+    for (const [alpha, strength] of washes) {
+      ctx.globalAlpha = alpha
+      for (const [color, cards] of strength) {
+        ctx.fillStyle = color
+        ctx.beginPath()
+        for (const card of cards) ctx.rect(card.x, card.y, card.w, card.h)
+        ctx.fill()
       }
     }
+
+    // 2b. The pictures, over their wash as the content is over its card.
+    //     Such a card needs no title block: it shows its own.
+    ctx.globalAlpha = 1
+    for (const card of visible) {
+      const picture = pictures.get(card.node.id)
+      if (picture) {
+        this.drawPicture(
+          ctx,
+          card.node,
+          card,
+          palette.dark,
+          view.scale,
+          picture,
+        )
+      }
+    }
+    const pictured = new Set(pictures.keys())
 
     // 3. Borders. An uncoloured card takes the theme's border token at full
     //    strength; a coloured one takes its own colour at the stylesheet's 70%.
@@ -1070,13 +1109,30 @@ export class OverviewLayer {
   }
 
   /**
+   * The picture `drawPicture` starts from — a folded PDF card's, the first
+   * page it shows — or null when the card has none to show at `rect`'s size.
+   * Asked before the card's wash too: a card with a picture is washed as a
+   * DOM card with content is, and one without as its title block.
+   */
+  private pictureOf(
+    node: BoardNode,
+    rect: Readonly<{ w: number }>,
+    dark: boolean,
+  ): ImageBitmap | null {
+    if (rect.w < PICTURE_MIN_SCREEN_PX) return null
+    return isFoldedPdf(node)
+      ? this.callbacks.picture(node, dark, Math.floor(node.startPage ?? 1))
+      : this.callbacks.picture(node, dark)
+  }
+
+  /**
    * What a card shows at this tier where it has a picture: an image card its
    * image, fitted in the card as the card fits it (cards/media.css); a sheet
    * its page; a folded PDF card the pages its reader shows from where it was
    * left (../pdf/readerLayout.ts: edge to edge at the card's width, a seam
    * between each), as far down as there are pictures; any other card its
    * content, which its picture shows over the card's whole box. False when
-   * there is none.
+   * there is none (`pictureOf`).
    */
   private drawPicture(
     ctx: CanvasRenderingContext2D,
@@ -1084,11 +1140,11 @@ export class OverviewLayer {
     rect: Readonly<{ x: number; y: number; w: number; h: number }>,
     dark: boolean,
     scale: number,
+    first = this.pictureOf(node, rect, dark),
   ): boolean {
-    if (rect.w < PICTURE_MIN_SCREEN_PX) return false
+    if (!first) return false
     if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
-      const picture = this.callbacks.picture(node, dark)
-      if (!picture) return false
+      const picture = first
       const fit = Math.min(rect.w / picture.width, rect.h / picture.height)
       const w = picture.width * fit
       const h = picture.height * fit
@@ -1102,22 +1158,17 @@ export class OverviewLayer {
       return true
     }
     if (node.type === 'pdf-page') {
-      const picture = this.callbacks.picture(node, dark)
-      if (!picture) return false
-      ctx.drawImage(picture, rect.x, rect.y, rect.w, rect.h)
+      ctx.drawImage(first, rect.x, rect.y, rect.w, rect.h)
       this.drawAnnotations(ctx, node.file, node.page, rect, dark)
       return true
     }
     if (!isFoldedPdf(node)) {
-      const picture = this.callbacks.picture(node, dark)
-      if (!picture) return false
-      ctx.drawImage(picture, rect.x, rect.y, rect.w, rect.h)
+      ctx.drawImage(first, rect.x, rect.y, rect.w, rect.h)
       return true
     }
     const start = node.startPage ?? 1
     let page = Math.floor(start)
-    let picture = this.callbacks.picture(node, dark, page)
-    if (!picture) return false
+    let picture: ImageBitmap | null = first
     const bottom = rect.y + rect.h
     let y = rect.y - (start - page) * pageHeight(picture, rect.w)
     ctx.save()

@@ -298,10 +298,14 @@ export const SPREAD_TITLE_WORLD = {
   nameLineHeight: 1.5,
 } as const
 
-/** Alpha of the colour wash over an overview card — style.css's
- * `.yolo-whiteboard-card-title-block` background, which is
+/** Alpha of the colour wash over an overview card with no picture yet —
+ * style.css's `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
 export const OVERVIEW_CARD_WASH_ALPHA = 0.1
+
+/** Alpha of the colour wash under an overview card's picture: a coloured
+ * card's own, cards/color.css's `color-mix(… 7% …)`. */
+export const OVERVIEW_THEMED_CARD_WASH_ALPHA = 0.07
 
 /** Alpha of a coloured card's border, matching the stylesheet's
  * `color-mix(in oklch, var(--yolo-whiteboard-color) 70%, transparent)`. */
