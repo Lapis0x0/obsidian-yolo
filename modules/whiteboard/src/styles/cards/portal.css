@@ -91,7 +91,11 @@
  * its own size and drawn at the portal's scale, from its top-left corner
  * (ui/canvas/cardContent.ts's `scaleNodeElement`). The scale is set inline,
  * so a drag's lift (drag.css) does not touch it, and it follows a zoom at
- * once rather than easing after it. */
+ * once rather than easing after it: its cut to the frame is written for the
+ * scale it is given, and a card easing behind it shows past the frame for
+ * the length of the ease. Above drag.css's card rule, which eases `scale`
+ * and would otherwise win on order. */
+.yolo-whiteboard-card.yolo-whiteboard-node-scaled,
 .yolo-whiteboard-node-scaled {
   transform-origin: 0 0;
   transition: none;
