@@ -14,6 +14,7 @@
 import { AnnotationPrefs } from './host/annotationPrefs'
 import { AnnotationStores } from './host/annotationStore'
 import { BoardCameras } from './host/boardCameras'
+import { BoardDocuments } from './host/boardDocuments'
 import { registerWhiteboardAgentTools } from './host/boardTools'
 import { createWhiteboard } from './host/createWhiteboard'
 import { exportAnnotatedPdf } from './host/exportAnnotatedPdf'
@@ -68,6 +69,10 @@ yolo.registerModule({
       host.privateStorage.deviceLocal,
       reportError,
     )
+    // Every board file in memory, once, shared by its own tab and every
+    // portal onto it.
+    const boardDocuments = new BoardDocuments(host, reportError)
+    host.lifecycle.add(() => boardDocuments.dispose())
     const annotationPrefs = new AnnotationPrefs(
       host.privateStorage.synchronized,
       reportError,
@@ -120,6 +125,7 @@ yolo.registerModule({
           pictureStores,
           minimapPrefs,
           boardCameras,
+          boardDocuments,
         )
         const forgetOpenBoard = openBoards.add(canvas)
         // "The current board", for the commands that act on one.

@@ -19,6 +19,8 @@ import {
   basenameWithoutExtension,
   fileNodeKind,
 } from '../../domain/naming'
+import { isPortal } from '../../domain/portals'
+import type { CardRect } from '../../domain/resize'
 import { isSpreadTitle } from '../../domain/spread'
 import type { AnnotationLease } from '../../host/annotationStore'
 import {
@@ -70,6 +72,12 @@ const SPREAD_SHEET_NUMBER_CLASS = 'yolo-whiteboard-spread-sheet-number'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
+/** A portal's card (styles/cards/portal.css), its edges, the button that
+ * opens its board, and what it says when it shows nothing. */
+const PORTAL_CLASS = 'yolo-whiteboard-portal'
+const PORTAL_EDGE_CLASS = 'yolo-whiteboard-portal-edge'
+const PORTAL_OPEN_CLASS = 'yolo-whiteboard-portal-open'
+const PORTAL_NOTICE_CLASS = 'yolo-whiteboard-portal-notice'
 /** A PDF card's title: its spread's title line (`pdfTitleParts`), in the
  * place the spread's title stands, so the two are one title. */
 const CARD_TITLE_PDF_CLASS = 'yolo-whiteboard-card-title-pdf'
@@ -249,7 +257,19 @@ export type CardRendererCallbacks = Readonly<{
    * canvas.ts and calls its own `purgeNodeRuntime`, which calls this class's
    * `destroyRuntime` for the half that moved here. */
   purgeNode: (id: NodeId) => void
-  getSourcePath: () => string
+  sourcePathOf: (id: NodeId) => string
+  /** What a portal says instead of what is behind it, when it shows
+   * nothing: null while it shows the board, or nothing at all. */
+  portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
+  /** Where a card behind a portal can be seen through it: its portals'
+   * frames, on the board; null for a card of the board's own. */
+  /** Where a gesture holds cards it has not put down yet. */
+  getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
+  clipOf: (
+    id: NodeId,
+  ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
+  /** Opens the board behind a portal, here or in a new tab. */
+  openPortal: (id: NodeId, newTab: boolean) => void
   /** The camera's current zoom — what a PDF card's pages are drawn for. */
   getViewScale: () => number
   /** Where a PDF card's reader opens: the node's `startPage`. */
@@ -568,6 +588,7 @@ export class CardRenderer {
     el.style.left = `${node.x}px`
     el.style.top = `${node.y}px`
     el.dataset.nodeId = id
+    this.applyClip(el, node)
     // Re-apply selection state — a selected node can unmount (scrolled
     // off-screen) and remount without its selection ever changing.
     if (this.callbacks.isSelected(id)) el.classList.add(CARD_SELECTED_CLASS)
@@ -667,6 +688,7 @@ export class CardRenderer {
         title.textContent = chromeTitle
       }
       el.appendChild(title)
+      if (isPortal(node)) this.dressPortal(id, el, title)
     }
 
     const body = createCardBody(doc)
@@ -891,6 +913,7 @@ export class CardRenderer {
       runtime.el.style.top = `${node.y}px`
       runtime.el.style.width = `${node.w}px`
       runtime.el.style.height = `${node.h}px`
+      this.applyClip(runtime.el, node)
       applyColorToElement(runtime.el, node.color)
       if (runtime.contentRenderer !== null) this.releaseTextSize(id)
     }
@@ -1165,7 +1188,9 @@ export class CardRenderer {
         runtime.noteText = null
         if (kind === 'pdf') {
           this.renderPdfInto(id, runtime, node.file)
-        } else if (kind === 'unsupported' || kind === 'board') {
+        } else if (kind === 'board') {
+          this.renderPortalNotice(id, runtime)
+        } else if (kind === 'unsupported') {
           this.renderUnsupportedFilePlaceholder(runtime, node.file)
         } else if (kind === 'html') {
           this.renderFileFrameInto(runtime, node.file)
@@ -1203,7 +1228,7 @@ export class CardRenderer {
       id,
       runtime,
       node.text,
-      this.callbacks.getSourcePath(),
+      this.callbacks.sourcePathOf(id),
     )
     this.callbacks.onTextCardRendered(id)
   }
@@ -1568,6 +1593,101 @@ export class CardRenderer {
   /** What a file card shows while its file type has no card of its own — a
    * CSV, an archive, anything else. Named after the file so the card still says
    * which one it is. */
+  /**
+   * A portal's frame: transparent, so what is behind it — cards mounted on
+   * their own over it — shows through, and held by its edges and its title
+   * only (styles/cards/portal.css). The title carries the button that opens
+   * the board.
+   */
+  private dressPortal(id: NodeId, el: HTMLElement, title: HTMLElement): void {
+    const doc = this.context.getDocument()
+    el.classList.add(PORTAL_CLASS)
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      const edge = doc.createElement('div')
+      edge.className = `${PORTAL_EDGE_CLASS} ${PORTAL_EDGE_CLASS}-${side}`
+      el.appendChild(edge)
+    }
+    const open = doc.createElement('button')
+    open.className = PORTAL_OPEN_CLASS
+    open.type = 'button'
+    open.setAttribute('aria-label', this.callbacks.t('card.portalOpen'))
+    open.appendChild(arrowUpRightIcon(doc))
+    // Not a press on the card: the button opens, it does not select.
+    open.addEventListener('pointerdown', (event) => event.stopPropagation())
+    open.addEventListener('click', (event) => {
+      event.stopPropagation()
+      this.callbacks.openPortal(id, event.metaKey || event.ctrlKey)
+    })
+    title.appendChild(open)
+  }
+
+  /** What a portal shows in its frame: nothing while the board behind it is
+   * there to see, and why not when it is not. */
+  private renderPortalNotice(id: NodeId, runtime: NodeRuntime): void {
+    this.destroyCardContent(runtime)
+    const notice = this.callbacks.portalNotice(id)
+    if (!notice) {
+      runtime.bodyEl?.replaceChildren()
+      return
+    }
+    this.renderPlaceholder(
+      runtime,
+      PORTAL_NOTICE_CLASS,
+      notice.title,
+      notice.hint,
+    )
+  }
+
+  /** Brings every mounted portal's notice, and every card behind a portal's
+   * clip, up to the board as it was just made. */
+  /** Cuts every card behind a portal again — while a gesture holds a frame,
+   * or a card, somewhere it has not been put down. */
+  syncClips(): void {
+    for (const [id, runtime] of this.runtimeByNodeId) {
+      const node = this.callbacks.getNode(id)
+      if (runtime.el && node) this.applyClip(runtime.el, node)
+    }
+  }
+
+  syncPortals(): void {
+    for (const [id, runtime] of this.runtimeByNodeId) {
+      if (!runtime.el) continue
+      const node = this.callbacks.getNode(id)
+      if (!node) continue
+      this.applyClip(runtime.el, node)
+      if (isPortal(node) && runtime.bodyEl) this.renderPortalNotice(id, runtime)
+    }
+  }
+
+  /** Puts a mounted card where the board now has it — for a card that only
+   * moved, which is all its element needs to know. */
+  moveNode(id: NodeId): void {
+    const runtime = this.runtimeByNodeId.get(id)
+    const node = this.callbacks.getNode(id)
+    if (!runtime?.el || !node) return
+    runtime.el.style.left = `${node.x}px`
+    runtime.el.style.top = `${node.y}px`
+    this.applyClip(runtime.el, node)
+  }
+
+  /** Cuts a card behind a portal down to what shows through it — its title
+   * included, which hangs above it and is cut by the same frame. */
+  private applyClip(el: HTMLElement, node: BoardNode): void {
+    const clip = this.callbacks.clipOf(node.id)
+    if (!clip) {
+      if (el.style.clipPath) el.style.removeProperty('clip-path')
+      return
+    }
+    // Against where the card is drawn, which a gesture may be holding it
+    // away from where the board has it.
+    const at = this.callbacks.getLiveRects()?.get(node.id) ?? node
+    const top = clip.y - at.y
+    const left = clip.x - at.x
+    const right = at.x + at.w - (clip.x + clip.w)
+    const bottom = at.y + at.h - (clip.y + clip.h)
+    el.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`
+  }
+
   private renderUnsupportedFilePlaceholder(
     runtime: NodeRuntime,
     path: string,
@@ -1860,4 +1980,23 @@ function pdfTitleParts(doc: Document, file: string): HTMLElement[] {
   text.className = SPREAD_TITLE_TEXT_CLASS
   text.textContent = basenameWithoutExtension(file)
   return [badge, text]
+}
+
+/** Lucide's `arrow-up-right`, as Obsidian draws its icons. */
+function arrowUpRightIcon(doc: Document): SVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = doc.createElementNS(ns, 'svg')
+  svg.setAttribute('class', 'svg-icon')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  for (const d of ['M7 7h10v10', 'M7 17 17 7']) {
+    const path = doc.createElementNS(ns, 'path')
+    path.setAttribute('d', d)
+    svg.appendChild(path)
+  }
+  return svg
 }

@@ -173,6 +173,15 @@ export const it = {
       'Questa scheda fa riferimento a "{path}", che non esiste più.',
     unsupportedFile: 'Non ancora visualizzabile',
     unsupportedFileHint: '"{path}" non ha ancora una scheda dedicata.',
+    portalOpen: 'Apri lavagna',
+    portalLoading: 'Apertura…',
+    portalMissing: 'Lavagna mancante',
+    portalMissingHint: 'Questo portale guarda in "{path}", che non esiste più.',
+    portalInvalid: 'Lavagna illeggibile',
+    portalInvalidHint: 'Impossibile leggere "{path}" come lavagna.',
+    portalCycle: 'Questa lavagna è già sul percorso',
+    portalCycleHint:
+      'Guardarci dentro di nuovo qui non finirebbe mai. Aprila per vederla.',
     linkNotWeb: 'Non è un indirizzo web',
     linkNotWebHint:
       'Si possono mostrare solo pagine http e https. Questa scheda punta a "{url}".',

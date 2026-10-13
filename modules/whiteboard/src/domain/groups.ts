@@ -18,7 +18,13 @@
 // card whose visible bulk is outside the frame, and intersection would carry
 // away anything the frame merely grazed.
 
-import type { Board, BoardNode, NodeId } from './fileFormat'
+import {
+  type Board,
+  type BoardNode,
+  NODE_PATH_SEPARATOR,
+  type NodeId,
+} from './fileFormat'
+import { isPortal } from './portals'
 import { isSpreadTitle } from './spread'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
@@ -50,15 +56,21 @@ export function rectContains(outer: GroupRect, inner: GroupRect): boolean {
  * PDF is in the group when its title is, and then all of it is — a sheet
  * placed outside the frame included — while a sheet inside the frame whose
  * title is elsewhere is not. A document is held or not held as a whole.
+ *
+ * And a group holds only what is on its own board: a card behind a portal
+ * (domain/portals.ts) that happens to be inside a frame of the board around
+ * it belongs to the board behind the portal, and goes where its portal goes.
  */
 export function nodesInsideGroup(
   group: BoardNode,
   nodes: readonly BoardNode[],
 ): NodeId[] {
+  const board = boardOf(group.id)
   const inside = nodes.filter(
     (node) =>
       node.id !== group.id &&
       node.type !== 'pdf-page' &&
+      boardOf(node.id) === board &&
       rectContains(group, node),
   )
   const titles = new Set(inside.filter(isSpreadTitle).map((node) => node.id))
@@ -70,15 +82,27 @@ export function nodesInsideGroup(
   return nodes.filter((node) => ids.has(node.id)).map((node) => node.id)
 }
 
+/** The way in to the board a node is on: '' for the board's own. */
+function boardOf(id: NodeId): string {
+  const end = id.lastIndexOf(NODE_PATH_SEPARATOR)
+  return end < 0 ? '' : id.slice(0, end)
+}
+
 /**
  * What moving `node` carries along: a group what it holds, a spread's title
- * its pages. Nothing for any other node.
+ * its pages, a portal everything behind it. Nothing for any other node.
  */
 function carriedBy(node: BoardNode, nodes: readonly BoardNode[]): NodeId[] {
   if (node.type === 'group') return nodesInsideGroup(node, nodes)
-  if (!isSpreadTitle(node)) return []
+  if (isSpreadTitle(node)) {
+    return nodes
+      .filter((other) => other.type === 'pdf-page' && other.parent === node.id)
+      .map((other) => other.id)
+  }
+  if (!isPortal(node)) return []
+  const inner = `${node.id}${NODE_PATH_SEPARATOR}`
   return nodes
-    .filter((other) => other.type === 'pdf-page' && other.parent === node.id)
+    .filter((other) => other.id.startsWith(inner))
     .map((other) => other.id)
 }
 

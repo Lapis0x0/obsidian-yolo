@@ -1,0 +1,130 @@
+/* --- portals ---------------------------------------------------------------
+ * A portal is a card onto another board (domain/portals.ts): what is behind
+ * it is that board's cards, mounted as cards of their own over it and cut to
+ * its frame (cardRenderer's `applyClip`). The portal itself is only the
+ * frame — transparent, so they show, and behind everything, like a group, so
+ * that a card behind it mounting before it is not hidden by it (mount order is
+ * virtualization's).
+ *
+ * Held like a group too: by its title and its edges while it is not
+ * selected, so a press inside it reaches what is behind it, or the canvas —
+ * and whole once it is selected, which is when it is the thing being moved. */
+
+.yolo-whiteboard-card.yolo-whiteboard-portal {
+  z-index: -1;
+  background-color: transparent;
+  border-style: dashed;
+  border-color: var(--background-modifier-border-focus);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-portal:not(
+    .yolo-whiteboard-card-selected
+  ) {
+  pointer-events: none;
+}
+
+.yolo-whiteboard-portal > .yolo-whiteboard-card-title,
+.yolo-whiteboard-portal > .yolo-whiteboard-portal-edge {
+  pointer-events: auto;
+}
+
+/* The frame's edges, a few pixels either side of the border: the handle a
+ * portal has while its inside belongs to what is behind it. */
+.yolo-whiteboard-portal-edge {
+  position: absolute;
+  cursor: grab;
+}
+
+.yolo-whiteboard-portal-edge-top,
+.yolo-whiteboard-portal-edge-bottom {
+  left: -4px;
+  right: -4px;
+  height: 8px;
+}
+
+.yolo-whiteboard-portal-edge-top {
+  top: -4px;
+}
+
+.yolo-whiteboard-portal-edge-bottom {
+  bottom: -4px;
+}
+
+.yolo-whiteboard-portal-edge-left,
+.yolo-whiteboard-portal-edge-right {
+  top: -4px;
+  bottom: -4px;
+  width: 8px;
+}
+
+.yolo-whiteboard-portal-edge-left {
+  left: -4px;
+}
+
+.yolo-whiteboard-portal-edge-right {
+  right: -4px;
+}
+
+/* The body holds nothing but what the portal says when it shows nothing. */
+.yolo-whiteboard-portal > .yolo-whiteboard-card-body {
+  background: transparent;
+}
+
+.yolo-whiteboard-portal-notice {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* The title says which board; its button opens it. */
+.yolo-whiteboard-portal > .yolo-whiteboard-card-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+button.yolo-whiteboard-portal-open {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.yolo-whiteboard-portal-open:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+button.yolo-whiteboard-portal-open .svg-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* What a card shows while its body is empty is its title; a portal's body is
+ * empty because what it shows is behind it. */
+.yolo-whiteboard-portal > .yolo-whiteboard-card-title-block {
+  display: none;
+}
+
+/* The handle layer parked on a portal: its top handles reach into the frame
+ * only. Straddling the border, as on any card, they lay over the title — and
+ * at low zoom, where they grow, over all of it — so the press that should
+ * move the portal, or open its board, resized it instead. */
+.yolo-whiteboard-interaction-layer-portal
+  .yolo-whiteboard-resizer:is(
+    [data-resize='top'],
+    [data-resize='topleft'],
+    [data-resize='topright']
+  ) {
+  top: 0;
+}

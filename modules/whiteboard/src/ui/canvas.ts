@@ -36,6 +36,7 @@ import {
   type Edge,
   type EdgeAnchor,
   type EdgeId,
+  type FileNode,
   type GroupNode,
   type NodeColor,
   type NodeId,
@@ -52,6 +53,7 @@ import {
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
 import { fileNodeKind, isMarkdownPath } from '../domain/naming'
+import { behindPortal } from '../domain/nodePath'
 import {
   boardWithPageWindow,
   boardWithReadingWindow,
@@ -62,6 +64,19 @@ import {
   updateNode,
 } from '../domain/operations'
 import type { HighlightAnchor } from '../domain/pdfAnnotations'
+import {
+  type BoardChanges,
+  type ComposedPortal,
+  type Rect,
+  changesBetween,
+  clipThrough,
+  commonPortal,
+  composeBoard,
+  invertChanges,
+  isPortal,
+  mergeChanges,
+  portalOf,
+} from '../domain/portals'
 import type { CardRect } from '../domain/resize'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
 import {
@@ -89,12 +104,14 @@ import {
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
 import type { BoardCameras } from '../host/boardCameras'
+import type { BoardDocuments } from '../host/boardDocuments'
 import type { MinimapPrefs } from '../host/minimapPrefs'
 import { takePendingFit } from '../host/pendingFit'
 import type { PictureStores } from '../host/pictureStore'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
 import { createWhiteboardTranslation } from '../i18n'
 
+import { BoardSources } from './canvas/boardSources'
 import { CameraController } from './canvas/cameraController'
 import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
@@ -111,7 +128,7 @@ import {
 } from './canvas/interactionController'
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { Minimap } from './canvas/minimap'
-import { OverviewLayer } from './canvas/overviewLayer'
+import { OverviewLayer, type PortalLayer } from './canvas/overviewLayer'
 import { PassageHandles } from './canvas/passageHandles'
 import { PassagePoints } from './canvas/passagePoints'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
@@ -145,6 +162,8 @@ import {
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
+  PORTAL_OPEN_MIN_PX,
+  PORTAL_PAN_STEP_GAP_MS,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SPREAD_DEAL_MAX_DELAY_MS,
@@ -262,6 +281,32 @@ const EMPTY_HINT_TOUCH_CLASS = 'yolo-whiteboard-empty-hint-touch'
  */
 export class WhiteboardCanvas {
   private board: Board = emptyBoard()
+  /** The files `board` is made from, and where edits to it go
+   * (./canvas/boardSources.ts). */
+  private readonly sources: BoardSources
+  /**
+   * Changes written without a step of their own (`commitWithoutHistory`):
+   * the next step takes them in, and an undo takes them back first — the
+   * board as the last step left it is what an undo starts from.
+   */
+  private unrecorded: BoardChanges | null = null
+  /** Nodes made by unrecorded changes, which no step has ever had. */
+  private readonly unrecordedCreations = new Set<NodeId>()
+  /** The portals on the board, whether open or not. */
+  private portalNodes: FileNode[] = []
+  /** Every node a visibility pass may mount: a node behind a portal only
+   * while some of it shows through. */
+  private visibilityNodes: readonly BoardNode[] = []
+  private sourceRefreshPending = false
+  /** The cards and edges of the board's own file, and what is behind each
+   * open portal, for the canvas tiers that draw them separately. */
+  private ownCardNodes: readonly BoardNode[] = []
+  private ownEdges: readonly Edge[] = []
+  private portalLayers: readonly PortalLayer[] = []
+  /** The edges' SVG definitions, and in them the frame each open portal
+   * cuts its edges to (`edgeClipPath`), by portal. */
+  private edgeDefsEl: SVGDefsElement | null = null
+  private readonly portalClipEls = new Map<NodeId, SVGClipPathElement>()
   private nodesById = new Map<NodeId, BoardNode>()
   /**
    * Every node that is not a group, in board order — the population a card
@@ -363,6 +408,9 @@ export class WhiteboardCanvas {
    * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
+  /** The portal the wheel last panned, and when: a pause ends the step. */
+  private portalPan: Readonly<{ id: NodeId; at: number }> | null = null
+  private portalPanSerial = 0
 
   // Selection toolbar: one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
@@ -571,7 +619,15 @@ export class WhiteboardCanvas {
     private readonly pictureStores: PictureStores,
     private readonly minimapPrefs: MinimapPrefs,
     private readonly boardCameras: BoardCameras,
+    documents: BoardDocuments,
   ) {
+    this.sources = new BoardSources({
+      documents,
+      ownPath: () => this.sourcePathForBoard(),
+      wantsOpen: (portal, _id, open) => this.wantsPortalOpen(portal, open),
+      onSourceChange: () => this.scheduleSourceRefresh(),
+      owner: { requestSave: () => this.context.requestSave() },
+    })
     this.unsubscribeMinimapPrefs = minimapPrefs.subscribe(() =>
       this.canvasControls?.refresh(),
     )
@@ -603,9 +659,38 @@ export class WhiteboardCanvas {
       recomputeVisibility: () => this.recomputeVisibility(),
       drainQueues: () => this.drainQueues(),
       getSourcePath: () => this.sourcePathForBoard(),
+      sourcePathOf: (id) => this.sourcePathOf(id),
+      portalViewOf: (id) => {
+        const portal = this.sources.composition.portals.get(id)
+        const node = this.nodesById.get(id)
+        if (!portal || !node) return null
+        return { x: node.x - portal.dx, y: node.y - portal.dy }
+      },
+      cardAtPoint: (point, portals) => this.cardAtPoint(point, portals),
+      clipOf: (id) => this.clipOf(id),
+      openPortal: (id, newTab) => this.openPortal(id, newTab),
       t: (key, fallback) => this.t(key, fallback),
       reportError: (stage, error) => this.reportError(stage, error),
     }
+  }
+
+  private cardAtPoint(point: ScreenPoint, portals: boolean): NodeId | null {
+    const inside = (rect: Rect) =>
+      point.x >= rect.x &&
+      point.x <= rect.x + rect.w &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.h
+    const nodes = this.cardNodes
+    let portal: NodeId | null = null
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const node = nodes[index]
+      if (!inside(node)) continue
+      const clip = this.clipOf(node.id)
+      if (clip && !inside(clip)) continue
+      if (!isPortal(node)) return node.id
+      if (portals) portal ??= node.id
+    }
+    return portal
   }
 
   // -----------------------------------------------------------------------
@@ -623,27 +708,31 @@ export class WhiteboardCanvas {
   setViewData(data: string, _clear: boolean): void {
     this.ensureDom()
     this.lastRawData = data
-    const result = parseBoard(data)
     // Before `teardownAllCards`, whose own commit path would land the edit on
     // the board this method is about to replace. See the doc comment.
     this.editing.endEditForIncomingBoard()
     this.teardownAllCards()
+    // The file, as the document every view of it shares has it — in the
+    // board's own shape: an open PDF spread becomes its title and a node per
+    // page (domain/spread.ts). `getViewData` folds it back.
+    const own = this.sources.load(data)
 
-    if (!result.ok) {
+    if (!own) {
+      const result = parseBoard(data)
       this.parseFailed = true
       this.board = emptyBoard()
       this.syncBoardIndex()
       this.interaction.setHoveredNode(null)
-      this.showError(result.issues)
+      this.showError(result.ok ? [] : result.issues)
       return
     }
 
     this.parseFailed = false
-    // The board's own shape of the file: an open PDF spread becomes its title
-    // and a node per page (domain/spread.ts). `getViewData` folds it back.
-    this.board = expandBoard(result.board)
+    this.board = this.sources.compose()
     this.syncBoardIndex()
     this.selfHealMissingFileNodes()
+    this.unrecorded = null
+    this.unrecordedCreations.clear()
     // The pictures kept of cards this board no longer has go.
     const boardPath = this.sourcePathForBoard()
     if (boardPath !== '') {
@@ -657,7 +746,7 @@ export class WhiteboardCanvas {
     // oldest state anyone can get back to. Reset rather than extended: this
     // is a different file, or the same file rewritten from outside, and
     // pushing the previous content over it is how an undo destroys data.
-    this.history.reset(this.board)
+    this.history.reset()
     this.rebuildEdgesSvg()
     this.cameraController.loadCamera(this.board.camera)
     this.openWhereLastLooked()
@@ -676,6 +765,229 @@ export class WhiteboardCanvas {
     }
     this.recomputeVisibility()
     this.drainQueues()
+  }
+
+  /** Sorts the board's cards and edges into its own and each open
+   * portal's (`portalLayers`). */
+  private splitPortalLayers(
+    portals: ReadonlyMap<NodeId, ComposedPortal>,
+  ): void {
+    const cards = this.board.nodes.filter((node) => node.type !== 'group')
+    if (portals.size === 0) {
+      this.ownCardNodes = cards
+      this.ownEdges = this.board.edges
+      this.portalLayers = []
+      return
+    }
+    const own: BoardNode[] = []
+    const layers = new Map<
+      NodeId,
+      { clip: Rect; nodes: BoardNode[]; edges: Edge[] }
+    >()
+    const layerOf = (portal: ComposedPortal) => {
+      let layer = layers.get(portal.id)
+      if (!layer) {
+        layer = { clip: portal.clip, nodes: [], edges: [] }
+        layers.set(portal.id, layer)
+      }
+      return layer
+    }
+    for (const node of cards) {
+      const portal = portalOf(node.id, portals)
+      if (portal) layerOf(portal).nodes.push(node)
+      else own.push(node)
+    }
+    const ownEdges: Edge[] = []
+    for (const edge of this.board.edges) {
+      const portal = commonPortal(edge.fromNode, edge.toNode, portals)
+      if (portal) layerOf(portal).edges.push(edge)
+      else ownEdges.push(edge)
+    }
+    this.ownCardNodes = own
+    this.ownEdges = ownEdges
+    this.portalLayers = [...layers.values()]
+    this.syncPortalClipPaths(portals)
+  }
+
+  /** One `<clipPath>` per open portal, its frame on the board. */
+  private syncPortalClipPaths(
+    portals: ReadonlyMap<NodeId, ComposedPortal>,
+  ): void {
+    const defs = this.edgeDefsEl
+    if (!defs) return
+    for (const [id, el] of this.portalClipEls) {
+      if (portals.has(id)) continue
+      el.remove()
+      this.portalClipEls.delete(id)
+    }
+    const doc = this.context.getDocument()
+    for (const [id, portal] of portals) {
+      let el = this.portalClipEls.get(id)
+      if (!el) {
+        el = doc.createElementNS(SVG_NS, 'clipPath')
+        el.setAttribute(
+          'id',
+          `${this.arrowMarkerId}-portal-${this.portalClipEls.size}-${Math.random().toString(36).slice(2, 8)}`,
+        )
+        el.setAttribute('clipPathUnits', 'userSpaceOnUse')
+        el.appendChild(doc.createElementNS(SVG_NS, 'rect'))
+        defs.appendChild(el)
+        this.portalClipEls.set(id, el)
+      }
+      const rect = el.firstElementChild
+      const clip = this.portalClip(portal)
+      rect?.setAttribute('x', String(clip.x))
+      rect?.setAttribute('y', String(clip.y))
+      rect?.setAttribute('width', String(clip.w))
+      rect?.setAttribute('height', String(clip.h))
+    }
+  }
+
+  private edgeClipPath(edge: Edge): string | null {
+    const portals = this.sources.composition.portals
+    if (portals.size === 0) return null
+    const portal = commonPortal(edge.fromNode, edge.toNode, portals)
+    const el = portal ? this.portalClipEls.get(portal.id) : undefined
+    return el ? `url(#${el.id})` : null
+  }
+
+  /** Where a card behind a portal shows through it; null for the board's
+   * own. */
+  private clipOf(id: NodeId): Rect | null {
+    const portals = this.sources.composition.portals
+    if (portals.size === 0) return null
+    const portal = portalOf(id, portals)
+    return portal ? this.portalClip(portal) : null
+  }
+
+  /** Where what is behind `portal` shows now — with the frames a drag or a
+   * resize is holding where they are held. */
+  private portalClip(portal: ComposedPortal): Rect {
+    const live = this.interaction.liveNodeRects
+    if (!live) return portal.clip
+    return clipThrough(portal, this.sources.composition.portals, (id) => {
+      const rect = live.get(id) ?? this.nodesById.get(id)
+      return rect
+        ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
+        : { x: 0, y: 0, w: 0, h: 0 }
+    })
+  }
+
+  /** What a portal says in place of the board behind it, when it is not
+   * showing it. */
+  private portalNotice(
+    id: NodeId,
+  ): Readonly<{ title: string; hint: string }> | null {
+    const node = this.nodesById.get(id)
+    if (!isPortal(node)) return null
+    const path = node.file
+    switch (this.sources.portalState(id)) {
+      case 'loading':
+        return { title: this.t('card.portalLoading'), hint: '' }
+      case 'missing':
+        return {
+          title: this.t('card.portalMissing'),
+          hint: this.t('card.portalMissingHint').replace('{path}', path),
+        }
+      case 'invalid':
+        return {
+          title: this.t('card.portalInvalid'),
+          hint: this.t('card.portalInvalidHint').replace('{path}', path),
+        }
+      case 'cycle':
+        return {
+          title: this.t('card.portalCycle'),
+          hint: this.t('card.portalCycleHint'),
+        }
+      default:
+        return null
+    }
+  }
+
+  /**
+   * Opens the board behind a portal — in this tab, where Obsidian's back
+   * comes back here, or in a new one — looking at what the portal showed of
+   * it, where the portal showed it.
+   */
+  private openPortal(id: NodeId, newTab: boolean): void {
+    const node = this.nodesById.get(id)
+    if (!isPortal(node)) return
+    const portal = this.sources.composition.portals.get(id)
+    const view = this.cameraController.view
+    if (portal) {
+      this.boardCameras.set(node.file, {
+        x: view.tx + portal.dx * view.scale,
+        y: view.ty + portal.dy * view.scale,
+        scale: view.scale,
+      })
+    }
+    void this.host.ui.openFileAt({ path: node.file, newLeaf: newTab })
+  }
+
+  /**
+   * The wheel over the selected portal, or over a card seen through it, moves
+   * what the portal shows — its `view` — the way the selected note card
+   * scrolls its text. A run of wheel events is one step to undo. False when
+   * the focused card is not a portal showing its board, which leaves the
+   * wheel to the board.
+   */
+  private panPortalBy(
+    target: EventTarget | null,
+    deltaX: number,
+    deltaY: number,
+  ): boolean {
+    const id = this.focusedNodeId
+    const node = id === null ? undefined : this.nodesById.get(id)
+    if (id === null || !isPortal(node)) return false
+    const over = nodeIdFromEventTarget(target)
+    if (
+      over === null ||
+      !(over === id || over.startsWith(behindPortal(id, '')))
+    )
+      return false
+    const portal = this.sources.composition.portals.get(id)
+    if (!portal) return false
+    const scale = this.cameraController.view.scale
+    const view = {
+      x: node.x - portal.dx + deltaX / scale,
+      y: node.y - portal.dy + deltaY / scale,
+    }
+    const now = this.context.getWindow().performance.now()
+    if (
+      this.portalPan?.id !== id ||
+      now - this.portalPan.at > PORTAL_PAN_STEP_GAP_MS
+    ) {
+      this.portalPanSerial += 1
+    }
+    this.portalPan = { id, at: now }
+    this.applyBoardChange(
+      updateNode(this.board, id, { view }),
+      `portal-pan:${id}:${this.portalPanSerial}`,
+    )
+    return true
+  }
+
+  /**
+   * Whether a portal should show what is behind it: when it is on screen, or
+   * near it, and large enough there to show anything. An open one stays open
+   * a little farther and a little smaller than one opens, so a camera
+   * resting on the line does not open and shut it on alternate passes.
+   */
+  private wantsPortalOpen(portal: FileNode, open: boolean): boolean {
+    const scale = this.cameraController.view.scale
+    const width = Math.min(portal.w, portal.h) * scale
+    if (width < (open ? PORTAL_OPEN_MIN_PX / 2 : PORTAL_OPEN_MIN_PX)) {
+      return false
+    }
+    const { width: vw, height: vh } = this.getViewportSize()
+    const margin = open ? Math.max(vw, vh) : VIEWPORT_BUFFER_PX
+    const view = this.worldViewportRect(margin)
+    return (
+      portal.x < view.right &&
+      portal.x + portal.w > view.left &&
+      portal.y < view.bottom &&
+      portal.y + portal.h > view.top
+    )
   }
 
   /**
@@ -744,7 +1056,10 @@ export class WhiteboardCanvas {
       const action = planNodeCommit(board, id, text)
       if (action.kind === 'updateBoard') board = action.board
     }
-    return serializeBoard(collapseBoard(board))
+    // This file's part of it: what is behind a portal is another file's.
+    const own = this.sources.ownFileBoard(board)
+    if (!own) return this.lastRawData
+    return serializeBoard({ ...own, camera: board.camera })
   }
 
   /** About to load a different file into this leaf. */
@@ -779,6 +1094,7 @@ export class WhiteboardCanvas {
    */
   dispose(): void {
     this.editing.forceCommitActiveEdit()
+    this.sources.dispose()
     const win = this.context.getWindow()
     if (this.rafId !== null) {
       win.cancelAnimationFrame(this.rafId)
@@ -882,6 +1198,7 @@ export class WhiteboardCanvas {
     const edgesSvg = doc.createElementNS(SVG_NS, 'svg')
     edgesSvg.setAttribute('class', EDGES_SVG_CLASS)
     const defs = doc.createElementNS(SVG_NS, 'defs')
+    this.edgeDefsEl = defs
     const marker = doc.createElementNS(SVG_NS, 'marker')
     marker.setAttribute('id', this.arrowMarkerId)
     // The arrowhead is counter-scaled in the stylesheet (it grows past this
@@ -1086,10 +1403,11 @@ export class WhiteboardCanvas {
     // in-flight connection's curve. See ./canvas/overviewLayer.ts.
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
-      getCardNodes: this.core.getCardNodes,
+      getCardNodes: () => this.ownCardNodes,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       getGroupNodes: () => this.groupNodes,
-      getEdges: () => this.board.edges,
+      getEdges: () => this.ownEdges,
+      getPortalLayers: () => this.portalLayers,
       getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
@@ -1158,12 +1476,13 @@ export class WhiteboardCanvas {
           this.editing.isEditing(nodeIdFromEventTarget(target)),
         scrollFocusedCardBy: (target, deltaX, deltaY) =>
           this.focusedNodeId !== null &&
-          nodeIdFromEventTarget(target) === this.focusedNodeId &&
-          this.cardRenderer.scrollCardContent(
-            this.focusedNodeId,
-            deltaX,
-            deltaY,
-          ),
+          (this.panPortalBy(target, deltaX, deltaY) ||
+            (nodeIdFromEventTarget(target) === this.focusedNodeId &&
+              this.cardRenderer.scrollCardContent(
+                this.focusedNodeId,
+                deltaX,
+                deltaY,
+              ))),
         setInteracting: (interacting) => {
           this.interacting = interacting
         },
@@ -1208,6 +1527,13 @@ export class WhiteboardCanvas {
       this.arrowMarkerId,
       {
         getNode: this.core.getNode,
+        clipPathOf: (edge) => this.edgeClipPath(edge),
+        clipOf: (edge) => {
+          const portals = this.sources.composition.portals
+          if (portals.size === 0) return null
+          const portal = commonPortal(edge.fromNode, edge.toNode, portals)
+          return portal ? this.portalClip(portal) : null
+        },
         cancelActiveEdgeRename: () => {
           if (this.editing.renamingEdgeId !== null) {
             this.editing.endRename(false)
@@ -1247,6 +1573,11 @@ export class WhiteboardCanvas {
     })
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: this.core.getNode,
+      portalNotice: (id) => this.portalNotice(id),
+      getLiveRects: () => this.interaction.liveNodeRects,
+      clipOf: (id) => this.clipOf(id),
+      sourcePathOf: (id) => this.sourcePathOf(id),
+      openPortal: (id, newTab) => this.openPortal(id, newTab),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -1288,7 +1619,6 @@ export class WhiteboardCanvas {
       },
       getMountedCount: () => this.engine.mounted.size,
       purgeNode: (id) => this.purgeNodeRuntime(id),
-      getSourcePath: this.core.getSourcePath,
       getViewScale: () => this.cameraController.view.scale,
       getPdfStartPosition: (id) => {
         const node = this.core.getNode(id)
@@ -1534,6 +1864,13 @@ export class WhiteboardCanvas {
       onLiveRectsChange: () => {
         this.overviewLayer?.markDirty()
         this.spreadFrame?.sync()
+        // What shows through a portal follows its frame, and a card behind
+        // one, as they are dragged.
+        const portals = this.sources.composition.portals
+        if (portals.size > 0) {
+          this.cardRenderer.syncClips()
+          this.syncPortalClipPaths(portals)
+        }
       },
       onHoverChange: (id) => this.syncSpreadHover(id),
       overviewSpreadTitleAt: (point) =>
@@ -1800,8 +2137,7 @@ export class WhiteboardCanvas {
   private discardText(id: NodeId, historyKey: string): void {
     if (!this.nodesById.has(id)) return
     const next = removeNode(this.board, id)
-    const recorded =
-      this.history.present()?.nodes.some((node) => node.id === id) === true
+    const recorded = !this.unrecordedCreations.has(id)
     if (recorded) this.applyBoardChange(next, historyKey)
     else this.commitWithoutHistory(next)
     this.purgeNodeRuntime(id)
@@ -1814,9 +2150,51 @@ export class WhiteboardCanvas {
    * same deal the camera has. */
   private commitWithoutHistory(next: Board): void {
     if (next === this.board) return
-    this.board = next
+    const before = this.nodesById
+    const changes = this.sources.commit(next)
+    this.unrecorded = this.unrecorded
+      ? mergeChanges(this.unrecorded, changes)
+      : changes
+    for (const node of next.nodes) {
+      if (!before.has(node.id)) this.unrecordedCreations.add(node.id)
+    }
+    this.takeComposedBoard(next)
+  }
+
+  /**
+   * The board made again from its files, after `next` was sent to them —
+   * which, for every node `next` has, is the very object `next` has
+   * (domain/portals.ts). What it does not have is what is behind a portal
+   * that was just removed or shut, or a card that has gone to another file:
+   * that leaves the screen here, since the edit that caused it did not
+   * know.
+   */
+  private takeComposedBoard(next: Board): void {
+    const composed = this.sources.compose()
+    this.board = { ...composed, camera: this.board.camera }
     this.syncBoardIndex()
-    this.context.requestSave()
+    this.cardRenderer.syncPortals()
+    const nextById = new Map(next.nodes.map((node) => [node.id, node]))
+    // Cards behind a portal that was moved through (its `view` changed) are
+    // the same cards somewhere else: moved, not rebuilt.
+    let moved = false
+    for (const [id, node] of nextById) {
+      const now = this.nodesById.get(id)
+      if (now === node) continue
+      if (now && onlyMoved(node, now)) {
+        this.cardRenderer.moveNode(id)
+        moved = true
+        continue
+      }
+      this.purgeNodeRuntime(id, { exit: !now })
+    }
+    if (
+      moved ||
+      composed.edges.length !== next.edges.length ||
+      composed.edges.some((edge, index) => edge !== next.edges[index])
+    ) {
+      this.rebuildEdgesSvg()
+    }
   }
 
   /**
@@ -1861,11 +2239,15 @@ export class WhiteboardCanvas {
   private applyBoardChange(next: Board, historyKey?: string): void {
     if (next === this.board) return
     const previous = this.nodesById
-    this.board = next
-    this.syncBoardIndex()
+    const changes = this.sources.commit(next)
+    const step = this.unrecorded
+      ? mergeChanges(this.unrecorded, changes)
+      : changes
+    this.unrecorded = null
+    this.unrecordedCreations.clear()
+    this.history.push(step, historyKey)
+    this.takeComposedBoard(next)
     this.markEntering(previous)
-    this.history.push(next, historyKey)
-    this.context.requestSave()
   }
 
   /** Records the nodes `nodesById` has and `previous` did not, as arriving. */
@@ -1877,11 +2259,11 @@ export class WhiteboardCanvas {
   }
 
   private undo(): void {
-    this.applyHistoryBoard(this.history.undo())
+    this.applyHistoryChanges(this.history.undo())
   }
 
   private redo(): void {
-    this.applyHistoryBoard(this.history.redo())
+    this.applyHistoryChanges(this.history.redo())
   }
 
   /**
@@ -1893,26 +2275,75 @@ export class WhiteboardCanvas {
    * dropped and re-mounted by the normal virtualization path. Undoing one
    * card's move on a 300-card board therefore re-renders one card.
    */
-  private applyHistoryBoard(next: Board | null): void {
-    if (!next || this.parseFailed) return
+  private applyHistoryChanges(changes: BoardChanges | null): void {
+    if (!changes || this.parseFailed) return
+    // What was written since the last step goes back first: an undo starts
+    // from the board as that step left it.
+    const all = this.unrecorded
+      ? mergeChanges(invertChanges(this.unrecorded), changes)
+      : changes
+    this.unrecorded = null
+    this.unrecordedCreations.clear()
+    this.sources.apply(all)
+    this.refreshFromSources({ clearSelection: true })
+  }
+
+  /** A change to a file this board is made from, made somewhere else — or
+   * a portal's board, read. Once per task, however many arrive. */
+  private scheduleSourceRefresh(): void {
+    if (this.sourceRefreshPending) return
+    this.sourceRefreshPending = true
+    queueMicrotask(() => {
+      this.sourceRefreshPending = false
+      if (!this.domReady || this.parseFailed) return
+      this.refreshFromSources({ clearSelection: false })
+    })
+  }
+
+  /**
+   * Makes the board again from its files and puts it on screen.
+   *
+   * Structural sharing does the diffing for us: a card the change never
+   * touched is the very same object, so it keeps the DOM and the rendered
+   * Markdown it already has, and only what actually differs is dropped and
+   * re-mounted by the normal virtualization path. Undoing one card's move on
+   * a 300-card board therefore re-renders one card.
+   */
+  private refreshFromSources(
+    options: Readonly<{ clearSelection: boolean }>,
+  ): void {
     const previous = this.nodesById
-    // The snapshot's camera is discarded: see this section's doc comment.
-    this.board = { ...next, camera: cameraFromView(this.cameraController.view) }
+    // The camera is the live one: a viewport that jumps away is the least
+    // welcome thing an undo can do.
+    this.board = {
+      ...this.sources.compose(),
+      camera: cameraFromView(this.cameraController.view),
+    }
     this.syncBoardIndex()
+    this.cardRenderer.syncPortals()
     this.markEntering(previous)
     for (const [id, card] of previous) {
-      if (this.nodesById.get(id) === card) continue
-      // A node the snapshot no longer has at all leaves the way a deleted one
+      const now = this.nodesById.get(id)
+      if (now === card) continue
+      if (now && onlyMoved(card, now)) {
+        this.cardRenderer.moveNode(id)
+        continue
+      }
+      // A node the board no longer has at all leaves the way a deleted one
       // does; one that merely changed is rebuilt in place, which is not a
       // departure.
-      this.purgeNodeRuntime(id, { exit: !this.nodesById.has(id) })
+      this.purgeNodeRuntime(id, { exit: !now })
     }
-    this.clearSelection()
+    if (options.clearSelection) {
+      this.clearSelection()
+    } else {
+      const kept = [...this.selectedIds].filter((id) => this.nodesById.has(id))
+      if (kept.length !== this.selectedIds.size) this.setSelection(kept)
+    }
     this.rebuildEdgesSvg()
     this.interaction.refreshInteractionLayer()
     this.recomputeVisibility()
     this.drainQueues()
-    this.context.requestSave()
   }
 
   // ---- Agent edit surface -------------------------------------------------
@@ -1969,12 +2400,20 @@ export class WhiteboardCanvas {
     this.editing.forceCommitActiveEdit()
     // The agent reads and writes boards the way the file has them, so it is
     // handed that shape and its answer is opened back up (domain/spread.ts).
-    const current = collapseBoard(this.board)
+    const own = this.sources.ownBoard
+    if (!own) return edit(collapseBoard(this.board))[1]
+    const current = collapseBoard(own)
     const [edited, value] = edit(current)
     if (edited && edited !== current) {
-      const next = expandBoard(edited)
-      this.history.push(next)
-      this.applyHistoryBoard(next)
+      const path = this.sourcePathForBoard()
+      const changes = changesBetween(
+        composeBoard(own, path, () => null),
+        expandBoard(edited),
+        path,
+      )
+      this.sources.apply(changes)
+      this.history.push(changes)
+      this.refreshFromSources({ clearSelection: true })
     }
     return value
   }
@@ -2902,6 +3341,15 @@ export class WhiteboardCanvas {
   private recomputeVisibility(): void {
     this.visibilityInputs = this.currentVisibilityInputs()
     if (this.parseFailed || !this.viewportEl) return
+    // A portal come on screen opens, one gone off it shuts — and the board is
+    // made again with or without what is behind it.
+    if (
+      this.portalNodes.length > 0 &&
+      this.sources.wouldChange(this.portalNodes)
+    ) {
+      this.refreshFromSources({ clearSelection: false })
+      return
+    }
     const { width, height } = this.getViewportSize()
     const rect = computeWorldViewportRect(
       width,
@@ -2919,7 +3367,7 @@ export class WhiteboardCanvas {
       this.engine.recompute(this.groupNodes, rect, this.pinnedIds, moved)
       this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
     } else {
-      this.engine.recompute(this.board.nodes, rect, this.pinnedIds, moved)
+      this.engine.recompute(this.visibilityNodes, rect, this.pinnedIds, moved)
     }
     // Edges answer to the same viewport, on the same tick — see
     // edgeLayer.ts's `updateVisibility`. Not in the overview tier: there the
@@ -3711,6 +4159,16 @@ export class WhiteboardCanvas {
 
   private syncBoardIndex(): void {
     this.nodesById = new Map(this.board.nodes.map((node) => [node.id, node]))
+    this.portalNodes = this.board.nodes.filter(isPortal)
+    const portals = this.sources.composition.portals
+    this.splitPortalLayers(portals)
+    this.visibilityNodes =
+      portals.size === 0
+        ? this.board.nodes
+        : this.board.nodes.filter((node) => {
+            const clip = portalOf(node.id, portals)?.clip
+            return !clip || overlaps(node, clip)
+          })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(
@@ -3769,11 +4227,9 @@ export class WhiteboardCanvas {
       board = updateNode(board, relocation.nodeId, { file: relocation.file })
     }
     // Not a history step: this is the view repairing a stale reference, not
-    // something the user did, and it runs before the baseline snapshot is
-    // taken (see setViewData).
-    this.board = board
-    this.syncBoardIndex()
-    this.context.requestSave()
+    // something the user did, and it runs before the history starts (see
+    // setViewData).
+    this.commitWithoutHistory(board)
   }
 
   // ---------------------------------------------------------------------
@@ -3892,6 +4348,12 @@ export class WhiteboardCanvas {
     this.viewportEl?.classList.remove(VIEWPORT_HIDDEN_CLASS)
   }
 
+  private sourcePathOf(id: NodeId): string {
+    const portals = this.sources.composition.portals
+    const portal = portals.size === 0 ? null : portalOf(id, portals)
+    return portal ? portal.file : this.sourcePathForBoard()
+  }
+
   private sourcePathForBoard(): string {
     return this.context.getFile()?.path ?? ''
   }
@@ -3911,4 +4373,29 @@ export class WhiteboardCanvas {
 /** Whether two lists hold the same things, one for one. */
 function sameInputs(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((value, i) => value === b[i])
+}
+
+/** Whether a node shows at all through `clip`. */
+function overlaps(node: Rect, clip: Rect): boolean {
+  return (
+    node.x < clip.x + clip.w &&
+    node.x + node.w > clip.x &&
+    node.y < clip.y + clip.h &&
+    node.y + node.h > clip.y
+  )
+}
+
+/** Whether `after` is `before` somewhere else, and nothing more. */
+function onlyMoved(before: BoardNode, after: BoardNode): boolean {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+  for (const key of keys) {
+    if (key === 'x' || key === 'y') continue
+    if (
+      (before as Record<string, unknown>)[key] !==
+      (after as Record<string, unknown>)[key]
+    ) {
+      return false
+    }
+  }
+  return true
 }

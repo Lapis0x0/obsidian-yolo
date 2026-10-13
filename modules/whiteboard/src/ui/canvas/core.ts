@@ -21,6 +21,7 @@ import type {
   EdgeId,
   NodeId,
 } from '../../domain/fileFormat'
+import type { Rect } from '../../domain/portals'
 import type { CanvasView, WorldRect } from '../../domain/virtualization'
 
 import type { NodeRuntime } from './cardRenderer'
@@ -81,9 +82,26 @@ export type CanvasCore = Readonly<{
   /** Mounts/unmounts what the last recompute queued, now. */
   drainQueues: () => void
 
+  /** Where an open portal is looking (domain/portals.ts's `view`, or the
+   * default it stands for); null for anything else. */
+  portalViewOf: (id: NodeId) => Readonly<{ x: number; y: number }> | null
+  /** The topmost card at a world point, for a question the DOM cannot
+   * answer — the cards behind a portal only where they show through it. A
+   * portal is the board under its inside, not a thing there: it answers only
+   * when `portals` asks, and only where nothing above it does. */
+  cardAtPoint: (point: ScreenPoint, portals: boolean) => NodeId | null
+  /** Where a card behind a portal shows through it; null for the board's
+   * own. */
+  clipOf: (id: NodeId) => Rect | null
+  /** Opens the board behind a portal (canvas.ts's `openPortal`). */
+  openPortal: (id: NodeId, newTab: boolean) => void
+
   // -- environment ------------------------------------------------------
   /** The board file's vault path; empty before one is loaded. */
   getSourcePath: () => string
+  /** The board file a node is in: this board's, or the one behind the
+   * portal it is seen through — what a card's links resolve against. */
+  sourcePathOf: (id: NodeId) => string
   t: (key: string, fallback?: string) => string
   reportError: (stage: string, error: unknown) => void
 }>

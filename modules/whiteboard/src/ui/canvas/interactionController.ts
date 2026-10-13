@@ -19,6 +19,7 @@ import {
   type NodeSide,
   isPlainText,
 } from '../../domain/fileFormat'
+import { isPortal, shownPart } from '../../domain/portals'
 import {
   type CardRect,
   type CardSize,
@@ -29,7 +30,6 @@ import {
 import {
   innermostFrameAt,
   marqueeRectFromPoints,
-  nodeAtPoint,
   nodesInMarquee,
 } from '../../domain/selection'
 import { isSpreadTitle } from '../../domain/spread'
@@ -84,6 +84,10 @@ const INTERACTION_LAYER_TEXT_CLASS = 'yolo-whiteboard-interaction-layer-text'
  * to change — a PDF spread's title or sheet (domain/spread.ts): no resize
  * handles, only the connection points. */
 const INTERACTION_LAYER_FIXED_CLASS = 'yolo-whiteboard-interaction-layer-fixed'
+/** On the layer while it is parked on a portal: its title is what moves it
+ * and opens its board, so the top handles keep off it (styles/cards/portal.css). */
+const INTERACTION_LAYER_PORTAL_CLASS =
+  'yolo-whiteboard-interaction-layer-portal'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -704,8 +708,13 @@ export class InteractionController {
     // card's title hangs above its frame, outside the rect geometry knows
     // about, so only the DOM resolves that.
     const nodeId =
-      nodeAtPoint(this.core.getCardNodes(), world) ??
-      nodeIdFromEventTarget(target)
+      this.core.cardAtPoint(world, false) ?? nodeIdFromEventTarget(target)
+    // A portal's title or frame — what of a portal a press can reach — goes
+    // in: the board behind it opens.
+    if (isPortal(this.core.getNode(nodeId ?? ''))) {
+      this.core.openPortal(nodeId as NodeId, e.metaKey || e.ctrlKey)
+      return
+    }
     if (nodeId !== null) {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
@@ -924,7 +933,7 @@ export class InteractionController {
     const world = this.core.worldPointFromEvent(e)
     return (
       this.deps.overviewSpreadTitleAt(world) ??
-      nodeAtPoint(this.core.getCardNodes(), world)
+      this.core.cardAtPoint(world, true)
     )
   }
 
@@ -1036,6 +1045,10 @@ export class InteractionController {
     layer.classList.toggle(
       INTERACTION_LAYER_FIXED_CLASS,
       isFixedSize(card ?? undefined),
+    )
+    layer.classList.toggle(
+      INTERACTION_LAYER_PORTAL_CLASS,
+      card !== null && isPortal(card),
     )
     if (card) this.placeInteractionLayer(rectOfCard(card))
   }
@@ -1321,10 +1334,13 @@ export class InteractionController {
     // selectable (a band drawn across the canvas is about the cards it
     // covers), but a marquee still ends whatever edge selection was up.
     this.core.setEdgeSelection([])
-    const hits = nodesInMarquee(
-      this.core.getBoard().nodes,
-      marqueeRectFromPoints(worldA, worldB),
-    )
+    // A card behind a portal is in the band if what shows of it is.
+    const shown = []
+    for (const node of this.core.getBoard().nodes) {
+      const part = shownPart(node, this.core.clipOf(node.id))
+      if (part) shown.push(part)
+    }
+    const hits = nodesInMarquee(shown, marqueeRectFromPoints(worldA, worldB))
     // Shift makes the band add rather than replace — a union, not a toggle:
     // dragging over something already selected must not deselect it, or a
     // second band drawn across the same area would undo the first.

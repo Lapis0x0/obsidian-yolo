@@ -177,6 +177,16 @@ describe('removeNode', () => {
     expect(next.edges).toBe(board.edges)
   })
 
+  it('cascades the edges that end behind a removed portal', () => {
+    const c1 = textCard('c1')
+    const p = textCard('p')
+    const into = edge('e1', 'c1', 'p/a')
+    const behind = edge('e2', 'p/a', 'p/b')
+    const prefix = edge('e3', 'c1', 'pp')
+    const board = boardWith([c1, p, textCard('pp')], [into, behind, prefix])
+    expect(removeNode(board, 'p').edges).toEqual([prefix])
+  })
+
   it('throws for an unknown card id', () => {
     const board = boardWith([textCard('c1')])
     expect(() => removeNode(board, 'missing')).toThrow(/not found/i)

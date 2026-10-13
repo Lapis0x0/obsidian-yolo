@@ -1,41 +1,41 @@
-// Undo/redo for a board, as a linear stack of whole-board snapshots.
+// Undo/redo for a board, as a linear list of steps — each step what it
+// changed, file by file (domain/portals.ts's `BoardChanges`).
 //
-// Snapshots rather than inverse operations, because a snapshot here is almost
-// free: every mutation goes through domain/operations.ts, which returns a new
-// Board sharing every object it did not change (the repository's "an object's
-// reference changes if and only if its content changes" rule). Two snapshots
-// either side of a card move differ by one card object and two arrays — not by
-// a copy of the board. Inverse operations would buy nothing for that price and
-// would need an undo written, and kept correct, for every future primitive.
-// (Obsidian Canvas keeps whole-data snapshots for the same reason.)
+// Changes rather than snapshots, because a board is not only edited here.
+// What is behind a portal is another file, which may be open in its own tab
+// or behind a portal on another board, and worked on there in between; and
+// this board may be behind a portal somewhere else. A snapshot put back
+// would put back everything as it was, theirs too. A step puts back only the
+// nodes and edges it touched, as they were before it — and those are cheap
+// to keep: every mutation goes through domain/operations.ts, which returns a
+// new Board sharing every object it did not change, so a step is the few
+// objects that differ.
 //
-// Deliberately ignorant of the camera: what belongs in a snapshot is decided
-// by the caller, and the canvas restores the live camera over whatever a
-// snapshot carries — a viewport that jumps away is the least welcome thing an
-// undo can do.
+// Deliberately ignorant of the camera, which no step holds: a viewport that
+// jumps away is the least welcome thing an undo can do.
 //
 // DOM-free like every other domain/ module, so the whole undo model is
 // testable without a canvas.
 
-import type { Board } from './fileFormat'
+import { type BoardChanges, invertChanges, mergeChanges } from './portals'
 
 /**
- * How many steps back the board remembers. Snapshots are cheap (see above),
- * so this is about how far back a user could plausibly want to go, not about
+ * How many steps back the board remembers. Steps are cheap (see above), so
+ * this is about how far back a user could plausibly want to go, not about
  * memory.
  */
 export const HISTORY_MAX_ENTRIES = 100
 
 export class BoardHistory {
-  /** Past-to-future; `entries[index]` is the state now on screen. */
-  private readonly entries: Board[] = []
-  private index = -1
+  private readonly steps: BoardChanges[] = []
+  /** How many of `steps` are done: the next undo undoes `steps[done - 1]`. */
+  private done = 0
   /**
-   * What produced the newest entry, when that thing is still running. A
-   * further push carrying the same key rewrites that entry instead of adding
-   * one — an editing session commits its text many times over (throttled
-   * writes plus a final flush on blur) and all of it is one thing the user
-   * did, so it has to be one thing to undo.
+   * What made the newest step, when that thing is still running. A further
+   * push carrying the same key joins that step instead of adding one — an
+   * editing session commits its text many times over (throttled writes plus
+   * a final flush on blur) and all of it is one thing the user did, so it has
+   * to be one thing to undo.
    */
   private topKey: string | null = null
 
@@ -48,63 +48,62 @@ export class BoardHistory {
     private readonly onChange: () => void = () => undefined,
   ) {}
 
-  /** Starts over from `board` as the present. Used when a file is loaded or
-   * reloaded: snapshots of the previous content cannot be applied to it, and
-   * applying them would overwrite whatever wrote the file. */
-  reset(board: Board): void {
-    this.entries.length = 0
-    this.entries.push(board)
-    this.index = 0
+  /** Forgets every step. Used when the board's file is loaded or rewritten
+   * from outside: steps taken on the previous content would be put on
+   * content they were not taken on. */
+  reset(): void {
+    this.steps.length = 0
+    this.done = 0
     this.topKey = null
     this.onChange()
   }
 
-  push(board: Board, coalesceKey?: string): void {
-    if (this.index >= 0 && this.entries[this.index] === board) return
+  push(changes: BoardChanges, coalesceKey?: string): void {
+    if (changes.size === 0) return
     if (
-      this.index >= 0 &&
+      this.done > 0 &&
+      this.done === this.steps.length &&
       coalesceKey !== undefined &&
       coalesceKey === this.topKey
     ) {
-      this.entries[this.index] = board
+      this.steps[this.done - 1] = mergeChanges(
+        this.steps[this.done - 1],
+        changes,
+      )
       return
     }
     // Anything that was ahead of us is a future we just stopped walking into.
-    this.entries.length = this.index + 1
-    this.entries.push(board)
-    if (this.entries.length > this.max) this.entries.shift()
-    this.index = this.entries.length - 1
+    this.steps.length = this.done
+    this.steps.push(changes)
+    if (this.steps.length > this.max) this.steps.shift()
+    this.done = this.steps.length
     this.topKey = coalesceKey ?? null
     this.onChange()
   }
 
-  /** The state now on screen as the history recorded it, or null before
-   * the first reset. */
-  present(): Board | null {
-    return this.index >= 0 ? this.entries[this.index] : null
-  }
-
   canUndo(): boolean {
-    return this.index > 0
+    return this.done > 0
   }
 
   canRedo(): boolean {
-    return this.index >= 0 && this.index < this.entries.length - 1
+    return this.done < this.steps.length
   }
 
-  undo(): Board | null {
+  /** What undoing the last step changes; null with nothing to undo. */
+  undo(): BoardChanges | null {
     if (!this.canUndo()) return null
-    this.index -= 1
+    this.done -= 1
     this.topKey = null
     this.onChange()
-    return this.entries[this.index]
+    return invertChanges(this.steps[this.done])
   }
 
-  redo(): Board | null {
+  /** What redoing the next step changes; null with nothing to redo. */
+  redo(): BoardChanges | null {
     if (!this.canRedo()) return null
-    this.index += 1
+    this.done += 1
     this.topKey = null
     this.onChange()
-    return this.entries[this.index]
+    return this.steps[this.done - 1]
   }
 }

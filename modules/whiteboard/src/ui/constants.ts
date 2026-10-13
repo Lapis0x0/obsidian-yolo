@@ -850,3 +850,14 @@ export const CARD_MENU_HOVER_LINGER_MS = 10_000
  * and every card made starts it again, so a run keeps the bar out throughout.
  */
 export const CARD_MENU_CREATE_LINGER_MS = 30_000
+
+/** How small, on screen, a portal may be and still open — show what is
+ * behind it (canvas.ts's `wantsPortalOpen`). Smaller, there is nothing in
+ * it to make out, and opening it would only add every card behind it to the
+ * board's work. */
+export const PORTAL_OPEN_MIN_PX = 48
+
+/** How long the wheel may pause over a portal before the next turn of it is
+ * a new step to undo (canvas.ts's `panPortalBy`): one flick, or one run of
+ * them, is one thing done. */
+export const PORTAL_PAN_STEP_GAP_MS = 500

@@ -277,3 +277,45 @@ describe('boardBlocks', () => {
     ])
   })
 })
+
+describe('portals', () => {
+  const card = (id: string, x: number, y: number): BoardNode => ({
+    id,
+    type: 'text',
+    x,
+    y,
+    w: 50,
+    h: 50,
+    text: '',
+    extra: {},
+  })
+  const nodes: BoardNode[] = [
+    { id: 'g', type: 'group', x: 0, y: 0, w: 1000, h: 1000, extra: {} },
+    {
+      id: 'p',
+      type: 'file',
+      x: 2000,
+      y: 0,
+      w: 400,
+      h: 300,
+      file: 'Sub.yoloboard',
+      extra: {},
+    },
+    card('own', 10, 10),
+    // Behind the portal, but where the group's frame is.
+    card('p/a', 20, 20),
+    card('p/q/b', 30, 30),
+  ]
+
+  it('carries everything behind a portal, portals behind it included', () => {
+    expect(nodesToDragWith(new Set(['p']), nodes).sort()).toEqual([
+      'p',
+      'p/a',
+      'p/q/b',
+    ])
+  })
+
+  it('holds only what is on its own board in a group', () => {
+    expect(nodesInsideGroup(nodes[0], nodes)).toEqual(['own'])
+  })
+})

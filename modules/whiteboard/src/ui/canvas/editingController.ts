@@ -422,7 +422,8 @@ export class EditingController {
       // What `[[links]]` in this card resolve against, and where an attachment
       // pasted into it is filed. A note card is its own document; a text card
       // lives inside the board file, so "here" is the board.
-      sourcePath: node.type === 'file' ? node.file : this.core.getSourcePath(),
+      sourcePath:
+        node.type === 'file' ? node.file : this.core.sourcePathOf(id),
       onChange: () => {
         this.scheduleEditPersist(id)
         // An empty card keeps its chips while its editor is open, and loses

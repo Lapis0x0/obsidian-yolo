@@ -175,6 +175,15 @@ export const en = {
     missingFileHint: 'This card refers to "{path}", which no longer exists.',
     unsupportedFile: 'Not shown yet',
     unsupportedFileHint: '"{path}" has no card of its own yet.',
+    portalOpen: 'Open board',
+    portalLoading: 'Opening…',
+    portalMissing: 'Board missing',
+    portalMissingHint: 'This portal looks into "{path}", which no longer exists.',
+    portalInvalid: 'Board unreadable',
+    portalInvalidHint: '"{path}" could not be read as a board.',
+    portalCycle: 'This board is already on the way in',
+    portalCycleHint:
+      'Looking into it again here would go on forever. Open it to see it.',
     linkNotWeb: 'Not a web address',
     linkNotWebHint:
       'Only http and https pages can be shown. This card points at "{url}".',

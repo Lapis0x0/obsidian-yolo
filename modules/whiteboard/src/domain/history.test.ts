@@ -1,127 +1,130 @@
-import { type Board, emptyBoard } from './fileFormat'
+import { type BoardNode } from './fileFormat'
 import { BoardHistory } from './history'
+import type { BoardChanges } from './portals'
 
-function board(tag: string): Board {
-  return { ...emptyBoard(), extra: { tag } }
+const node = (id: string, x: number): BoardNode => ({
+  id,
+  type: 'text',
+  x,
+  y: 0,
+  w: 10,
+  h: 10,
+  text: '',
+  extra: {},
+})
+
+/** A step moving `id` in `file` from `from` to `to`. */
+function step(id: string, from: number, to: number, file = 'a'): BoardChanges {
+  return new Map([
+    [
+      file,
+      {
+        nodes: new Map([
+          [id, { before: node(id, from), after: node(id, to), index: 0 }],
+        ]),
+        edges: new Map(),
+      },
+    ],
+  ])
 }
 
+const xOf = (changes: BoardChanges | null, id: string, file = 'a') =>
+  changes?.get(file)?.nodes.get(id)?.after?.x
+
 describe('BoardHistory', () => {
-  it('has nothing to undo at a fresh reset', () => {
+  it('has nothing to undo at first', () => {
     const history = new BoardHistory()
-    history.reset(board('a'))
     expect(history.canUndo()).toBe(false)
     expect(history.canRedo()).toBe(false)
     expect(history.undo()).toBeNull()
   })
 
-  it('walks back and forward through pushed states', () => {
-    const [a, b, c] = [board('a'), board('b'), board('c')]
+  it('walks back and forward through the steps pushed', () => {
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b)
-    history.push(c)
+    history.push(step('n', 0, 1))
+    history.push(step('n', 1, 2))
 
-    expect(history.undo()).toBe(b)
-    expect(history.undo()).toBe(a)
+    expect(xOf(history.undo(), 'n')).toBe(1)
+    expect(xOf(history.undo(), 'n')).toBe(0)
     expect(history.undo()).toBeNull()
-    expect(history.redo()).toBe(b)
-    expect(history.redo()).toBe(c)
+    expect(xOf(history.redo(), 'n')).toBe(1)
+    expect(xOf(history.redo(), 'n')).toBe(2)
     expect(history.redo()).toBeNull()
   })
 
-  it('drops the redo tail once a new state is pushed after an undo', () => {
-    const [a, b, c] = [board('a'), board('b'), board('c')]
+  it('drops the redo tail once a new step is pushed after an undo', () => {
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b)
+    history.push(step('n', 0, 1))
     history.undo()
-    history.push(c)
+    history.push(step('n', 0, 5))
 
     expect(history.canRedo()).toBe(false)
-    expect(history.undo()).toBe(a)
-    expect(history.redo()).toBe(c)
+    expect(xOf(history.undo(), 'n')).toBe(0)
+    expect(xOf(history.redo(), 'n')).toBe(5)
   })
 
-  it('ignores a push of the state already on top', () => {
-    const a = board('a')
+  it('ignores a step that changes nothing', () => {
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(a)
+    history.push(new Map())
     expect(history.canUndo()).toBe(false)
   })
 
-  it('coalesces successive pushes carrying the same key into one step', () => {
-    const [a, b, c] = [board('a'), board('b'), board('c')]
+  it('joins successive steps carrying the same key into one', () => {
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b, 'edit-1')
-    history.push(c, 'edit-1')
+    history.push(step('n', 0, 1), 'edit-1')
+    history.push(step('n', 1, 2), 'edit-1')
+    history.push(step('m', 0, 9, 'b'), 'edit-1')
 
-    // One editing session, one step back — landing before the session, not
-    // between two of its throttled writes.
-    expect(history.undo()).toBe(a)
-    expect(history.redo()).toBe(c)
+    // One editing session, one step back — landing before the session.
+    const undone = history.undo()
+    expect(xOf(undone, 'n')).toBe(0)
+    expect(xOf(undone, 'm', 'b')).toBe(0)
+    expect(history.canUndo()).toBe(false)
   })
 
   it('starts a new step for a different key', () => {
-    const [a, b, c] = [board('a'), board('b'), board('c')]
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b, 'edit-1')
-    history.push(c, 'edit-2')
-
-    expect(history.undo()).toBe(b)
+    history.push(step('n', 0, 1), 'edit-1')
+    history.push(step('n', 1, 2), 'edit-2')
+    expect(xOf(history.undo(), 'n')).toBe(1)
   })
 
-  it('does not coalesce into an entry that undo/redo has moved back onto', () => {
-    const [a, b, c] = [board('a'), board('b'), board('c')]
+  it('does not join a step that undo has moved back past', () => {
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b, 'edit-1')
+    history.push(step('n', 0, 1), 'edit-1')
+    history.push(step('n', 1, 2), 'edit-2')
     history.undo()
-    history.redo()
-    history.push(c, 'edit-1')
-
-    expect(history.undo()).toBe(b)
+    history.push(step('n', 1, 3), 'edit-2')
+    expect(xOf(history.undo(), 'n')).toBe(1)
+    expect(xOf(history.undo(), 'n')).toBe(0)
   })
 
-  it('forgets the oldest state past its limit', () => {
-    const boards = Array.from({ length: 5 }, (_, i) => board(String(i)))
-    const history = new BoardHistory(3)
-    history.reset(boards[0])
-    for (const entry of boards.slice(1)) history.push(entry)
-
-    expect(history.undo()).toBe(boards[3])
-    expect(history.undo()).toBe(boards[2])
-    expect(history.undo()).toBeNull()
+  it('forgets the oldest step past its limit', () => {
+    const history = new BoardHistory(2)
+    history.push(step('n', 0, 1))
+    history.push(step('n', 1, 2))
+    history.push(step('n', 2, 3))
+    history.undo()
+    history.undo()
+    expect(history.canUndo()).toBe(false)
   })
 
   it('drops everything a reset supersedes', () => {
-    const [a, b, fresh] = [board('a'), board('b'), board('fresh')]
     const history = new BoardHistory()
-    history.reset(a)
-    history.push(b)
-    history.reset(fresh)
-
+    history.push(step('n', 0, 1))
+    history.undo()
+    history.reset()
     expect(history.canUndo()).toBe(false)
     expect(history.canRedo()).toBe(false)
   })
 
   it('reports every change to what can be undone or redone', () => {
-    const [a, b] = [board('a'), board('b')]
     const onChange = jest.fn()
     const history = new BoardHistory(undefined, onChange)
-    history.reset(a)
-    history.push(b)
+    history.push(step('n', 0, 1))
     history.undo()
     history.redo()
+    history.reset()
     expect(onChange).toHaveBeenCalledTimes(4)
-
-    // Neither a coalesced rewrite nor a step with nowhere to go changes it.
-    history.push(board('b2'), 'edit')
-    onChange.mockClear()
-    history.push(board('b3'), 'edit')
-    history.redo()
-    expect(onChange).not.toHaveBeenCalled()
   })
 })

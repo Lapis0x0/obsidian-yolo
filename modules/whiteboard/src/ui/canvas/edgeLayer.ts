@@ -107,6 +107,14 @@ export type CardPassagePlacement =
  */
 export type EdgeLayerCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
+  /** The `clip-path` an edge behind a portal is cut to its frame with
+   * (`url(#…)`); null for an edge of the board's own. */
+  clipPathOf: (edge: Edge) => string | null
+  /** Where an edge behind a portal shows (its `clipPathOf`'s rectangle);
+   * null for the board's own. */
+  clipOf: (
+    edge: Edge,
+  ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
   /** An edge label being typed is about to lose the element it is typed in —
    * called before every wholesale clear, structural rebuild included. */
   cancelActiveEdgeRename: () => void
@@ -369,6 +377,11 @@ export class EdgeLayer {
     // The arrowhead marker picks it up through `fill: context-stroke`.
     applyColorToElement(path, edge.color)
     this.edgesGroupEl.appendChild(path)
+    const clip = this.callbacks.clipPathOf(edge)
+    if (clip) {
+      hit.setAttribute('clip-path', clip)
+      path.setAttribute('clip-path', clip)
+    }
 
     const hasLabel = (edge.label?.trim().length ?? 0) > 0
     this.edgeElsById.set(edge.id, {
@@ -545,6 +558,20 @@ export class EdgeLayer {
     if (dom.label) {
       dom.label.style.left = `${geometry.label.x}px`
       dom.label.style.top = `${geometry.label.y}px`
+      // Not a drawing the SVG clip reaches: behind a portal, a label shows
+      // while where it hangs from does.
+      const clip = this.callbacks.clipOf(edge)
+      const { x, y } = geometry.label
+      dom.label.classList.toggle(
+        EDGE_UNPLACED_CLASS,
+        clip !== null &&
+          !(
+            x >= clip.x &&
+            x <= clip.x + clip.w &&
+            y >= clip.y &&
+            y <= clip.y + clip.h
+          ),
+      )
     }
     // The ring says "a passage in there"; once the edge runs on to the
     // passage itself, the passage's own mark says it.

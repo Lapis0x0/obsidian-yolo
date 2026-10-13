@@ -3,6 +3,7 @@
 @import './cards/card.css';
 @import './cards/color.css';
 @import './cards/group.css';
+@import './cards/portal.css';
 @import './cards/resize-handles.css';
 @import './cards/passage-points.css';
 @import './cards/passages.css';

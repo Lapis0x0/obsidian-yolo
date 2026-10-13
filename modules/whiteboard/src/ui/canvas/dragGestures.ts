@@ -409,12 +409,22 @@ export class DragGestures {
     //
     // Bare text given a width keeps it: its width no longer follows its
     // longest line.
-    const plain = isPlainText(this.core.getNode(interaction.nodeId))
+    //
+    // A portal is a window: moving its frame's edge shows more or less of
+    // the board behind it, which stays where it is — so where it looks moves
+    // with its corner.
+    const node = this.core.getNode(interaction.nodeId)
+    const plain = isPlainText(node)
+    const view = node ? this.core.portalViewOf(node.id) : null
+    const portalPatch =
+      node && view && (rect.x !== node.x || rect.y !== node.y)
+        ? { view: { x: view.x + rect.x - node.x, y: view.y + rect.y - node.y } }
+        : {}
     this.core.applyBoardChange(
       updateNode(
         this.core.getBoard(),
         interaction.nodeId,
-        plain ? { ...rect, autoWidth: undefined } : rect,
+        plain ? { ...rect, autoWidth: undefined } : { ...rect, ...portalPatch },
       ),
     )
     // The board holds this rectangle now; the gesture's copy of it retires.

@@ -24,6 +24,7 @@ import type {
   NodeId,
   NodeSide,
 } from './fileFormat'
+import { behindPortal } from './nodePath'
 
 /** Fields `updateNode` may patch. `id`/`type` are immutable — see `updateNode`. */
 export type NodePatch = Readonly<{
@@ -39,6 +40,9 @@ export type NodePatch = Readonly<{
    * clears the field. */
   plain?: boolean
   autoWidth?: boolean
+  /** Where a portal looks into the board behind it (fileFormat.ts's
+   * `BoardWindow`). */
+  view?: Readonly<{ x: number; y: number }>
 }>
 
 /** Fields `updateEdge` may patch: where an edge is attached, and everything
@@ -183,11 +187,17 @@ export function removeNode(board: Board, id: NodeId): Board {
     throw new Error(`removeNode: node "${id}" not found`)
   }
   const nodes = board.nodes.filter((node) => node.id !== id)
+  // An edge ends on the node, or on a card behind it when it is a portal
+  // (domain/nodePath.ts): either way it has nothing left to end on.
+  const behind = behindPortal(id, '')
+  const endsHere = (end: NodeId) => end === id || end.startsWith(behind)
   const hasIncidentEdges = board.edges.some(
-    (edge) => edge.fromNode === id || edge.toNode === id,
+    (edge) => endsHere(edge.fromNode) || endsHere(edge.toNode),
   )
   const edges = hasIncidentEdges
-    ? board.edges.filter((edge) => edge.fromNode !== id && edge.toNode !== id)
+    ? board.edges.filter(
+        (edge) => !endsHere(edge.fromNode) && !endsHere(edge.toNode),
+      )
     : board.edges
   return { ...board, nodes, edges }
 }

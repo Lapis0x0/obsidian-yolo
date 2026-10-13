@@ -156,6 +156,13 @@ type Palette = Readonly<{
  * board, the camera and the selection it does not own — and, while a gesture
  * is in flight, the geometry that has not been committed to the board yet.
  */
+/** A portal's contents, and the frame they show through, in world units. */
+export type PortalLayer = Readonly<{
+  clip: Readonly<{ x: number; y: number; w: number; h: number }>
+  nodes: readonly BoardNode[]
+  edges: readonly Edge[]
+}>
+
 export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
   /** Every non-group node, in board order — groups keep their DOM. */
@@ -167,6 +174,10 @@ export type OverviewLayerCallbacks = Readonly<{
    * they keep their DOM. */
   getGroupNodes: () => readonly BoardNode[]
   getEdges: () => readonly Edge[]
+  /** What is behind each open portal (domain/portals.ts), cut to where it
+   * shows through: drawn after the board's own, each in its frame.
+   * `getCardNodes` and `getEdges` are the board's own. */
+  getPortalLayers: () => readonly PortalLayer[]
   getNode: (id: NodeId) => BoardNode | undefined
   isSelected: (id: NodeId) => boolean
   isEdgeSelected: (id: EdgeId) => boolean
@@ -372,9 +383,51 @@ export class OverviewLayer {
     const live = this.callbacks.getLiveRects()
     const surface = { ...size, text: false, selection: false }
     this.drawGroups(ctx, view, live)
+    this.drawBoard(ctx, view, surface, live)
+    ctx.globalAlpha = 1
+  }
+
+  /** Edges, then cards — the board's own, then each portal's in its frame. */
+  private drawBoard(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    surface: Surface,
+    live: ReadonlyMap<NodeId, CardRect> | null,
+  ): void {
     this.drawEdges(ctx, view, surface, live)
     this.drawCards(ctx, view, surface, live)
-    ctx.globalAlpha = 1
+    this.inPortals(ctx, view, (layer) => {
+      this.drawEdges(ctx, view, surface, live, layer.edges)
+      this.drawCards(ctx, view, surface, live, undefined, layer.nodes)
+      return true
+    })
+  }
+
+  /** Runs `draw` for each open portal, with the context cut to its frame;
+   * true if any of them drew. */
+  private inPortals(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    draw: (layer: PortalLayer) => boolean,
+  ): boolean {
+    let drew = false
+    for (const layer of this.callbacks.getPortalLayers()) {
+      const { clip } = layer
+      const x = clip.x * view.scale + view.tx
+      const y = clip.y * view.scale + view.ty
+      const w = clip.w * view.scale
+      const h = clip.h * view.scale
+      if (x >= this.width || y >= this.height || x + w <= 0 || y + h <= 0) {
+        continue
+      }
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(x, y, w, h)
+      ctx.clip()
+      if (draw(layer)) drew = true
+      ctx.restore()
+    }
+    return drew
   }
 
   /** The groups as frames: a faint wash of their colour and its border —
@@ -442,8 +495,7 @@ export class OverviewLayer {
       text: true,
       selection: true,
     }
-    this.drawEdges(ctx, view, surface, live)
-    this.drawCards(ctx, view, surface, live)
+    this.drawBoard(ctx, view, surface, live)
     this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
   }
@@ -476,13 +528,19 @@ export class OverviewLayer {
     this.palette ??= this.readPalette(ctx)
     this.resizeBackingStore(ctx)
     if (this.underlay) ctx.clearRect(0, 0, this.width, this.height)
-    const drew = this.drawCards(
-      ctx,
-      view,
-      { width: this.width, height: this.height, text: true, selection: true },
-      this.callbacks.getLiveRects(),
-      (id) => this.callbacks.isMounted(id),
+    const surface = {
+      width: this.width,
+      height: this.height,
+      text: true,
+      selection: true,
+    }
+    const live = this.callbacks.getLiveRects()
+    const mounted = (id: NodeId) => this.callbacks.isMounted(id)
+    const ownDrew = this.drawCards(ctx, view, surface, live, mounted)
+    const portalsDrew = this.inPortals(ctx, view, (layer) =>
+      this.drawCards(ctx, view, surface, live, mounted, layer.nodes),
     )
+    const drew = ownDrew || portalsDrew
     ctx.globalAlpha = 1
     if (drew === this.underlay) return
     this.underlay = drew
@@ -737,12 +795,12 @@ export class OverviewLayer {
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
     skip?: (id: NodeId) => boolean,
+    nodes: readonly BoardNode[] = this.callbacks.getCardNodes(),
   ): boolean {
     const isSelected = (id: NodeId): boolean =>
       surface.selection && this.callbacks.isSelected(id)
     const palette = this.palette
     if (!palette) return false
-    const nodes = this.callbacks.getCardNodes()
     // Screen rects of everything on screen, kept once so the passes below
     // agree and the projection is done once per card rather than four times.
     const visible: {
@@ -1338,6 +1396,7 @@ export class OverviewLayer {
     view: CanvasView,
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
+    edges: readonly Edge[] = this.callbacks.getEdges(),
   ): void {
     const palette = this.palette
     if (!palette) return
@@ -1397,7 +1456,7 @@ export class OverviewLayer {
     )
     const margin = EDGE_CONTROL_MAX_PX
 
-    for (const edge of this.callbacks.getEdges()) {
+    for (const edge of edges) {
       // Within one card an edge is drawn only where the card, drawn as a
       // reader, places its passages — never in this tier
       // (domain/edges.ts's `resolveEdgeEnds`).
