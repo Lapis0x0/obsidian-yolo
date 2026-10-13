@@ -179,7 +179,7 @@ export class ClipboardController {
       this.core.t('error.pasteFailed'),
     )
     if (paths.length === 0) return
-    const sizes = await fileCardSizes(this.core.host.pdf, paths)
+    const sizes = await fileCardSizes(this.core.host, paths)
     // The board may have been closed, or broken, while the files were
     // written and measured; the attachments stay, as a pasted one would in a
     // note.

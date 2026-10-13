@@ -129,7 +129,7 @@ async function editBoard(
   // Measured before the edit, which is applied synchronously: a PDF's card
   // is sized from its first page (`fileCardSize`).
   const fileSizes = await fileCardSizes(
-    host.pdf,
+    host,
     creates.flatMap((op) => (typeof op?.file === 'string' ? [op.file] : [])),
   )
   const context = {

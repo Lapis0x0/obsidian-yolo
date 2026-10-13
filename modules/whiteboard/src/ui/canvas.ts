@@ -49,10 +49,16 @@ import {
   arrangeTargets,
   carryGroupMembers,
   groupRectForNodes,
+  nodesToDragWith,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
-import { fileNodeKind, isMarkdownPath } from '../domain/naming'
+import {
+  fileNodeKind,
+  generateBoardFileName,
+  isMarkdownPath,
+  sanitizeFileName,
+} from '../domain/naming'
 import { behindPortal, joinNodePath, splitNodePath } from '../domain/nodePath'
 import {
   boardWithPageWindow,
@@ -81,6 +87,7 @@ import {
 } from '../domain/portals'
 import type { CardRect } from '../domain/resize'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
+import { splitOff } from '../domain/split'
 import {
   SPREAD_METRICS,
   closeSpread,
@@ -1867,6 +1874,7 @@ export class WhiteboardCanvas {
       exportAnnotatedPdfItem: (path) => this.pdf.exportAnnotatedPdfItem(path),
       exportItem: (scope) => this.exporter?.menuItem(scope) ?? null,
       createGroupFromSelection: () => this.createGroupFromSelection(),
+      moveSelectionToNewBoard: () => void this.moveSelectionToNewBoard(),
       tidySelection: () => this.tidySelection(),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
@@ -2815,6 +2823,68 @@ export class WhiteboardCanvas {
     this.recomputeVisibility()
     this.drainQueues()
     this.setSelection([group.id])
+  }
+
+  /**
+   * Moves the selection — a group with what it holds — to a new board beside
+   * this one, leaving a portal onto it where it was (domain/split.ts). Named
+   * the way a card converted to a note is: after the group, when one group
+   * is what is selected, and the default board name otherwise. Undoing it
+   * puts the cards back and leaves the file.
+   */
+  private async moveSelectionToNewBoard(): Promise<void> {
+    if (!this.canEdit || this.selectedIds.size === 0) return
+    const ids = nodesToDragWith(this.selectedIds, this.board.nodes)
+    const single =
+      this.selectedIds.size === 1
+        ? this.nodesById.get(this.selectedIds.values().next().value ?? '')
+        : undefined
+    const baseName =
+      sanitizeFileName(single?.type === 'group' ? (single.label ?? '') : '') ||
+      this.t('file.newWhiteboardBaseName')
+    const ownPath = this.sourcePathForBoard()
+    const folder = ownPath.includes('/')
+      ? ownPath.slice(0, ownPath.lastIndexOf('/'))
+      : ''
+    const taken = new Set(
+      this.host.vault
+        .listChildren(folder)
+        .filter((entry) => entry.kind === 'file')
+        .map((entry) => entry.name),
+    )
+    const fileName = generateBoardFileName(baseName, taken)
+    const path = folder ? `${folder}/${fileName}` : fileName
+    const portalName = mintNodeId(this.board)
+    const plan = () =>
+      splitOff(
+        this.board,
+        this.sources.composition,
+        ownPath,
+        ids,
+        path,
+        portalName,
+      )
+    const first = plan()
+    if (!first) return
+    const before = this.board
+    try {
+      await this.host.vault.createText(path, serializeBoard(first.content))
+    } catch (error) {
+      this.reportError('move to new board', error)
+      this.host.ui.notice(this.t('error.createFailed'))
+      return
+    }
+    // The board may have moved on while the file was written.
+    const split = this.board === before ? first : plan()
+    if (!split || this.parseFailed) return
+    const previous = this.nodesById
+    this.applyBoardChange(split.board)
+    for (const id of previous.keys()) {
+      if (!this.nodesById.has(id)) this.purgeNodeRuntime(id)
+    }
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.setSelection([split.portal])
   }
 
   /** The nodes an align or distribute acts on — domain/groups.ts's

@@ -96,6 +96,13 @@ const ICONS: Readonly<Record<CardMenuIconName, readonly string[]>> = {
     'M3.1 15.5h17.8',
     'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20',
   ],
+  // `lucide-layout-dashboard`: a board — what a portal looks onto.
+  'layout-dashboard': [
+    'M4 3h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',
+    'M15 3h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',
+    'M15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+    'M4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z',
+  ],
 }
 
 export type CardMenuIconName =
@@ -104,6 +111,7 @@ export type CardMenuIconName =
   | 'file-text'
   | 'file-image'
   | 'globe'
+  | 'layout-dashboard'
 
 export type CardMenuAction = Readonly<{
   label: string

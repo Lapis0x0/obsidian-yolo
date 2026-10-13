@@ -133,7 +133,8 @@ describe('composeBoard', () => {
       'Own.yoloboard',
       files({ 'Sub.yoloboard': sub }),
     )
-    expect(portals.get('p')).toMatchObject({ dx: -10, dy: -20 })
+    // Its content's top-left, and the padding a portal leaves around it.
+    expect(portals.get('p')).toMatchObject({ dx: 30, dy: 20 })
   })
 })
 

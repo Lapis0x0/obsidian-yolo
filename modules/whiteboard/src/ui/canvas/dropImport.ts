@@ -18,12 +18,14 @@ import {
   type DistributeAxis,
 } from '../../domain/arrange'
 import { type ScreenPoint, screenToWorld } from '../../domain/camera'
-import type {
-  FileNode,
-  GroupNode,
-  LinkNode,
-  NodeId,
-  TextNode,
+import {
+  type FileNode,
+  type GroupNode,
+  type LinkNode,
+  type NodeId,
+  type TextNode,
+  emptyBoard,
+  serializeBoard,
 } from '../../domain/fileFormat'
 import { GROUP_SELECTION_PADDING, arrangeTargets } from '../../domain/groups'
 import {
@@ -31,6 +33,7 @@ import {
   cardNoteContent,
   fileNodeKind,
   folderPathOf,
+  generateBoardFileName,
   generateCardNoteFileName,
   sanitizeFileName,
 } from '../../domain/naming'
@@ -49,6 +52,7 @@ import {
   MIN_CARD_SIZE,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  NEW_PORTAL_SIZE,
   NEW_TEXT_SIZE,
   WEB_URL_PATTERN,
   fileCardSizes,
@@ -121,6 +125,9 @@ export type DropImportDeps = Readonly<{
   exportItem: (scope: 'board' | 'selection') => YoloModuleHostMenuItemV1 | null
   // The selection's commands, which the menu shares with the toolbar.
   createGroupFromSelection: () => void
+  /** Moves the selection to a board of its own, behind a portal where it
+   * was (canvas.ts's `moveSelectionToNewBoard`). */
+  moveSelectionToNewBoard: () => void
   tidySelection: () => void
   alignSelection: (edge: AlignEdge) => void
   distributeSelection: (axis: DistributeAxis) => void
@@ -178,6 +185,12 @@ export class DropImport {
           'globe',
           NEW_EMBED_CARD_SIZE,
           (at) => this.promptForWebCard(at),
+        ),
+        this.creationAction(
+          'cardMenu.addBoard',
+          'layout-dashboard',
+          NEW_PORTAL_SIZE,
+          (at) => this.promptForBoardCard(at),
         ),
       ],
     )
@@ -255,6 +268,11 @@ export class DropImport {
             title: this.core.t('cardMenu.newWebCard'),
             icon: 'globe',
             onSelect: () => this.promptForWebCard(point),
+          },
+          {
+            title: this.core.t('cardMenu.addBoard'),
+            icon: 'layout-dashboard',
+            onSelect: () => this.promptForBoardCard(point),
           },
           {
             title: this.core.t('menu.newGroupHere'),
@@ -335,6 +353,13 @@ export class DropImport {
         title: this.core.t('menu.createGroup'),
         icon: 'group',
         onSelect: () => this.deps.createGroupFromSelection(),
+      })
+    }
+    if (this.core.canEdit()) {
+      items.push({
+        title: this.core.t('menu.moveToNewBoard'),
+        icon: 'layout-dashboard',
+        onSelect: () => this.deps.moveSelectionToNewBoard(),
       })
     }
 
@@ -740,13 +765,74 @@ export class DropImport {
       placeholder: this.core.t('prompt.searchPlaceholder'),
       mode: {
         kind: 'pick',
-        suggestions: this.collectMediaPaths('').map((path) =>
-          this.suggestionForPath(path),
-        ),
+        suggestions: this.collectPaths(
+          '',
+          (kind) =>
+            kind === 'image' ||
+            kind === 'audio' ||
+            kind === 'video' ||
+            kind === 'pdf',
+        ).map((path) => this.suggestionForPath(path)),
         emptyText: this.core.t('prompt.noMedia'),
       },
       onSubmit: (path) => void this.placeFileCards([path], center),
     })
+  }
+
+  /** A portal onto a board in the vault, or onto a new one beside this
+   * board — the note picker's arrangement, for boards. */
+  private promptForBoardCard(
+    center: ScreenPoint = this.viewportCenterWorld(),
+  ): void {
+    const own = this.core.getSourcePath()
+    this.openPrompt({
+      title: this.core.t('prompt.addBoardTitle'),
+      placeholder: this.core.t('prompt.searchPlaceholder'),
+      mode: {
+        kind: 'pick',
+        suggestions: this.collectPaths('', (kind) => kind === 'board')
+          .filter((path) => path !== own)
+          .map((path) => this.suggestionForPath(path)),
+        emptyText: this.core.t('prompt.noMatches'),
+        create: {
+          nameFor: (query) => sanitizeFileName(query) || null,
+          label: (name) =>
+            this.core.t('prompt.createBoard').replace('{name}', name),
+          onCreate: (name) => void this.createBoardCardAt(name, center),
+        },
+      },
+      onSubmit: (path) => void this.placeFileCards([path], center),
+    })
+  }
+
+  /** Writes a new, empty board beside this one and opens a portal onto it. */
+  private async createBoardCardAt(
+    baseName: string,
+    world: ScreenPoint,
+  ): Promise<void> {
+    if (!this.core.canEdit()) return
+    const folderPath = this.boardFolderPath()
+    const taken = new Set(
+      this.core.host.vault
+        .listChildren(folderPath)
+        .filter((entry) => entry.kind === 'file')
+        .map((entry) => entry.name),
+    )
+    const fileName = generateBoardFileName(baseName, taken)
+    const path = folderPath ? `${folderPath}/${fileName}` : fileName
+    try {
+      await this.core.host.vault.createText(path, serializeBoard(emptyBoard()))
+    } catch (error) {
+      this.core.reportError('create board', error)
+      this.core.host.ui.notice(this.core.t('error.createFailed'))
+      return
+    }
+    const [id] = this.addFileCards(
+      [path],
+      world,
+      new Map([[path, NEW_PORTAL_SIZE]]),
+    )
+    if (id !== undefined) this.core.setSelection([id])
   }
 
   private promptForWebCard(
@@ -786,22 +872,17 @@ export class DropImport {
    * (domain/naming.ts's `fileNodeKind`), so "you can pick it" and "it renders"
    * cannot disagree.
    */
-  private collectMediaPaths(folderPath: string): string[] {
+  private collectPaths(
+    folderPath: string,
+    wanted: (kind: ReturnType<typeof fileNodeKind>) => boolean,
+  ): string[] {
     const paths: string[] = []
     for (const entry of this.core.host.vault.listChildren(folderPath)) {
       if (entry.kind === 'folder') {
-        paths.push(...this.collectMediaPaths(entry.path))
+        paths.push(...this.collectPaths(entry.path, wanted))
         continue
       }
-      const kind = fileNodeKind(entry.path)
-      if (
-        kind === 'image' ||
-        kind === 'audio' ||
-        kind === 'video' ||
-        kind === 'pdf'
-      ) {
-        paths.push(entry.path)
-      }
+      if (wanted(fileNodeKind(entry.path))) paths.push(entry.path)
     }
     return paths
   }
@@ -902,7 +983,7 @@ export class DropImport {
     paths: readonly string[],
     world: ScreenPoint,
   ): Promise<void> {
-    const sizes = await fileCardSizes(this.core.host.pdf, paths)
+    const sizes = await fileCardSizes(this.core.host, paths)
     // The board may have been closed, or broken, meanwhile — which
     // `addFileCards` asks about itself.
     this.addFileCards(paths, world, sizes)

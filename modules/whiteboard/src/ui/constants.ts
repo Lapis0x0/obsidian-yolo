@@ -5,7 +5,9 @@
 // zero-dependency contract (it doesn't need these; only src/ui/canvas.ts's
 // rAF loop does).
 
+import { parseBoard } from '../domain/fileFormat'
 import { fileNodeKind } from '../domain/naming'
+import { portalSizeFor } from '../domain/portals'
 
 /** Camera scale clamp range. `min` is the floor for a board that fits inside
  * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN.
@@ -498,10 +500,13 @@ export const NEW_PDF_CARD_SIZE = Object.freeze({
  * it anyway.
  */
 export async function fileCardSize(
-  pdf: YoloModuleHostApiV1['pdf'],
+  host: Pick<YoloModuleHostApiV1, 'pdf' | 'vault'>,
   path: string,
 ): Promise<Readonly<{ w: number; h: number }>> {
-  if (fileNodeKind(path) !== 'pdf') return NEW_EMBED_CARD_SIZE
+  const kind = fileNodeKind(path)
+  if (kind === 'board') return portalCardSize(host, path)
+  if (kind !== 'pdf') return NEW_EMBED_CARD_SIZE
+  const { pdf } = host
   try {
     const document = await pdf.open(path)
     try {
@@ -514,13 +519,42 @@ export async function fileCardSize(
   }
 }
 
+/** A portal onto a board with nothing on it yet: room to start in. */
+export const NEW_PORTAL_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * 48,
+  h: GRID_WORLD_STEP_PX * 32,
+})
+
+/** The most of a board a portal made onto it shows at first; it can be made
+ * bigger by hand. */
+const MAX_PORTAL_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * 120,
+  h: GRID_WORLD_STEP_PX * 80,
+})
+
+/** A portal's size: all of the board behind it, up to a size a board can
+ * hold (domain/portals.ts's `portalSizeFor`). */
+async function portalCardSize(
+  host: Pick<YoloModuleHostApiV1, 'vault'>,
+  path: string,
+): Promise<Readonly<{ w: number; h: number }>> {
+  try {
+    const parsed = parseBoard(await host.vault.readText(path))
+    return parsed.ok
+      ? portalSizeFor(parsed.board, NEW_EMBED_CARD_SIZE, MAX_PORTAL_SIZE)
+      : NEW_PORTAL_SIZE
+  } catch {
+    return NEW_PORTAL_SIZE
+  }
+}
+
 /** `fileCardSize` for each of `paths`, measured together. */
 export async function fileCardSizes(
-  pdf: YoloModuleHostApiV1['pdf'],
+  host: Pick<YoloModuleHostApiV1, 'pdf' | 'vault'>,
   paths: readonly string[],
 ): Promise<Map<string, Readonly<{ w: number; h: number }>>> {
   const sizes = await Promise.all(
-    paths.map(async (path) => [path, await fileCardSize(pdf, path)] as const),
+    paths.map(async (path) => [path, await fileCardSize(host, path)] as const),
   )
   return new Map(sizes)
 }

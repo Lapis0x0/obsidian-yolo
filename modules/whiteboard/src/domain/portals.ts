@@ -86,13 +86,49 @@ export function portalView(
   behind: Board,
 ): Readonly<{ x: number; y: number }> {
   if (portal.view) return portal.view
-  let x = Infinity
-  let y = Infinity
-  for (const node of behind.nodes) {
-    x = Math.min(x, node.x)
-    y = Math.min(y, node.y)
+  const bounds = contentBounds(behind)
+  return bounds
+    ? {
+        x: bounds.x - PORTAL_CONTENT_PADDING,
+        y: bounds.y - PORTAL_CONTENT_PADDING,
+      }
+    : { x: 0, y: 0 }
+}
+
+/** How far a portal that says nowhere looks out from the board's content,
+ * and what a portal made to fit a board leaves around it — room for the
+ * titles that hang above cards. */
+export const PORTAL_CONTENT_PADDING = 40
+
+/** The rectangle everything on `board` is in; null for an empty board. */
+export function contentBounds(board: Board): Rect | null {
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
+  for (const node of board.nodes) {
+    left = Math.min(left, node.x)
+    top = Math.min(top, node.y)
+    right = Math.max(right, node.x + node.w)
+    bottom = Math.max(bottom, node.y + node.h)
   }
-  return Number.isFinite(x) ? { x, y } : { x: 0, y: 0 }
+  return Number.isFinite(left)
+    ? { x: left, y: top, w: right - left, h: bottom - top }
+    : null
+}
+
+/** The size of a portal that shows all of `board` — up to `max`, past which
+ * it shows the top-left of it — and no smaller than `min`. */
+export function portalSizeFor(
+  board: Board,
+  min: Readonly<{ w: number; h: number }>,
+  max: Readonly<{ w: number; h: number }>,
+): Readonly<{ w: number; h: number }> {
+  const bounds = contentBounds(board)
+  if (!bounds) return min
+  const fit = (size: number, low: number, high: number) =>
+    Math.round(Math.min(high, Math.max(low, size + PORTAL_CONTENT_PADDING * 2)))
+  return { w: fit(bounds.w, min.w, max.w), h: fit(bounds.h, min.h, max.h) }
 }
 
 /**
