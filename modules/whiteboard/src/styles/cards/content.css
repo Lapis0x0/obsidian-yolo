@@ -15,18 +15,174 @@
  *
  * `.markdown-preview-view` alone sets the padding and font size Obsidian uses
  * for a full document page (0,1,0), so a two-class selector is what it takes
- * to state the card's instead.
- *
- * Paragraph spacing is one line: in the editor the gap between paragraphs is
- * the blank source line itself, one line-height tall, while the preview spaces
- * them by the theme's `--p-spacing` — a rem value that ignores both the card's
- * type size and its line height. Restating it as `1lh` (resolved where it is
- * used, on each block) makes the two the same height under any theme that sets
- * line height through `--line-height-normal`. */
+ * to state the card's instead. */
 .yolo-whiteboard-card-body .markdown-preview-view {
   padding: 6px 10px;
   font-size: 13px;
-  --p-spacing: 1lh;
+}
+
+/* ---- Block spacing: the preview laid out on the editor's lines ----
+ *
+ * The editor lays a card out line by line, and a blank source line is all
+ * that separates two blocks: one body line tall, whatever the blocks are. The
+ * preview spaces blocks by kind instead — the theme's `--p-spacing` (a rem,
+ * blind to the card's type size), a heading's own spacing, a quote's em — so
+ * every block below the first one that differs sat a little further down than
+ * the line the editor puts it on, and clicking into a card moved it.
+ *
+ * So here a block is followed by exactly one body line and preceded by
+ * nothing. Bottom-only, because two kinds of wrapper disagree about
+ * collapsing: a one-pass render's blocks are siblings, while the windowed
+ * preview puts each in a section `div` — and a table's section scrolls, so
+ * margins inside it stay inside. A top margin would be counted once in the
+ * first and twice in the second; a bottom margin with nothing above the next
+ * block is one line in both. */
+
+/* The card's body line, as a length. Registered so `1lh` is resolved where it
+ * is declared — on the preview and on the editor's content, both at the
+ * card's type size — and inherited from there as that length. Unregistered,
+ * it would be resolved again at every use, and a heading would get its own,
+ * taller line. */
+@property --yolo-whiteboard-card-line {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+/* The editor's half is content it renders rather than lines — a callout, a
+ * table — and spaces with the same variable, so it is given the same value. */
+.yolo-whiteboard-card-body .markdown-preview-view,
+.yolo-whiteboard-editor-host .cm-content {
+  --yolo-whiteboard-card-line: 1lh;
+  --p-spacing: var(--yolo-whiteboard-card-line);
+  /* Obsidian's `--table-drag-handle-size` (below), which it only defines on
+   * the editor's table. */
+  --yolo-whiteboard-table-handles: var(--size-4-4);
+}
+
+.is-mobile .yolo-whiteboard-card-body .markdown-preview-view {
+  --yolo-whiteboard-table-handles: var(--size-4-6);
+}
+
+/* Top-level blocks only — a one-pass render's, or a windowed section's. A list
+ * nested in an item, or a quote in a quote, is spaced as the editor renders
+ * it, which is Obsidian's own business. Specific enough to outrank Obsidian's
+ * heading rule (`… div:is(.el-p, …) + div:is(.el-h1, …) > h1`, 0,3,3); the
+ * kinds are a `:where` so that naming `.callout` among them does not also
+ * outrank the table and rule exceptions below. */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  :is(.markdown-preview-sizer, .markdown-preview-sizer > div)
+  > :where(
+    p,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    ul,
+    ol,
+    blockquote,
+    pre,
+    table,
+    .callout
+  ) {
+  margin-block: 0 var(--yolo-whiteboard-card-line);
+}
+
+/* A code block's fences are lines in the editor, at the code's size; the
+ * preview draws neither. A line's worth of padding above and below the code
+ * stands in for them, and the code's own lines (block, so they are measured
+ * at its line height rather than the paragraph's around it) do the rest.
+ * Inside a callout too, which the editor shows rendered just like this. */
+.yolo-whiteboard-card-body :is(.markdown-preview-view, .cm-embed-block) pre {
+  padding-block: 0;
+}
+
+.yolo-whiteboard-card-body
+  :is(.markdown-preview-view, .cm-embed-block)
+  pre
+  > code {
+  display: block;
+  padding-block: 1lh;
+}
+
+/* The editor shows a table with room around it for its drag handles and its
+ * add-row button (Obsidian's `--table-drag-handle-size` of padding, above and
+ * below) — room it needs, so the preview keeps the same. Above, that comes on
+ * top of the blank line in a one-pass render, where the previous block's
+ * margin collapses into this one; a windowed table's section keeps its
+ * margins to itself, so there the blank line is already outside it.
+ *
+ * The room is there for a table that opens the card too, so this outranks
+ * Obsidian's reset of the first mounted section's top margin
+ * (`… .markdown-preview-pusher + div:not(.mod-ui) > :first-child`, 0,5,1) by
+ * naming a section the way it does. */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:not(.mod-ui))
+  > table {
+  margin-block: var(--yolo-whiteboard-table-handles)
+    calc(
+      var(--yolo-whiteboard-card-line) + var(--yolo-whiteboard-table-handles)
+    );
+}
+
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  .markdown-preview-sizer.markdown-preview-section
+  > :not(.mod-ui)
+  + table {
+  margin-top: calc(
+    var(--yolo-whiteboard-card-line) + var(--yolo-whiteboard-table-handles)
+  );
+}
+
+/* A rule is a line of its own in the editor, drawn through its middle, with a
+ * blank line on either side: three lines from the block above to the one
+ * below, or half a line above it when it opens the card. Its thickness is
+ * Obsidian's, which is what the editor draws it with. */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:not(.mod-ui))
+  > hr {
+  margin-block: calc(
+    var(--yolo-whiteboard-card-line) * 1.5 - var(--hr-thickness) / 2
+  );
+  border-top-width: var(--hr-thickness);
+}
+
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  :is(
+    .markdown-preview-sizer.markdown-preview-section > hr:first-child,
+    .markdown-preview-pusher + div:not(.mod-ui) > hr
+  ) {
+  margin-top: calc(
+    (var(--yolo-whiteboard-card-line) - var(--hr-thickness)) / 2
+  );
+}
+
+/* Items of a loose list — written with a blank line between them — hold
+ * paragraphs, and Obsidian takes the margin off an item's last one, running
+ * the items together; the editor shows the blank line. Paragraphs within an
+ * item keep the spacing above, and the last item's line collapses into the
+ * list's own. */
+.yolo-whiteboard-card-body
+  :is(.markdown-preview-view, .cm-embed-block)
+  li
+  > p:last-of-type {
+  margin-bottom: var(--yolo-whiteboard-card-line);
+}
+
+/* A task's checkbox is centred on its line in the editor. Sat on the baseline
+ * as the preview has it, it is tall enough to push its line taller. */
+.yolo-whiteboard-card-body
+  :is(.markdown-preview-view, .cm-embed-block)
+  .task-list-item-checkbox {
+  vertical-align: middle;
+  top: -0.1em;
 }
 
 /* Only a body holding the whole document scrolls — in practice the focused

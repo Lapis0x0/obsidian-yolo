@@ -88,7 +88,13 @@
   padding: 2px 4px;
 }
 
-.yolo-whiteboard-text .markdown-preview-sizer > :last-child {
+/* Its box is its content's, so the line content.css leaves under each block
+ * is not left under the last one. As specific as that rule, and after it. */
+.yolo-whiteboard-text
+  .yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:last-child)
+  > :last-child {
   margin-bottom: 0;
 }
 
