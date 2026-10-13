@@ -1,17 +1,15 @@
-## 0.0.6 Passage-Level Connections 🔗
+## 0.0.7 Nested Boards 🪟
 
-- Added passage-level connections: any passage in any card can now connect to any other.
-- Introduced alignment for the whiteboard's zoomed-out view.
-- Improved the loading speed of spread-out PDF pages, and improved the whiteboard's performance.
-- Improved how long PDF titles are displayed.
-- Improved selecting and editing text cards when zoomed out.
+- Added nested boards: embed another board in a board and edit it in place.
+- Added export settings, with export to image, PDF and more.
+- Introduced a unified card cache, improving how cards look in the zoomed-out view.
+- Reworked preview layout, fixing text and board cards changing height between preview and editing.
 
 ---
 
-## 0.0.6 段落级连线 🔗
+## 0.0.7 子白板 🪟
 
-- 新增段落级连线，任意卡片的任意段落都能互相连接。
-- 为缩略态白板引入对齐机制。
-- 优化 PDF 分页的加载速度，优化白板的性能表现。
-- 优化 PDF 长标题的展示逻辑。
-- 优化缩放较小时文字卡片的选中与编辑手感。
+- 新增子白板，支持在白板中嵌入并直接编辑其他白板。
+- 添加导出设置，支持导出为图片、PDF 等。
+- 引入统一卡片缓存机制，优化缩略态下各卡片的视觉表现。
+- 重构预览排版机制，修复文字卡片和白板卡片预览态和编辑态的高度不同步的问题。
