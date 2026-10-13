@@ -10,11 +10,11 @@
  * selected, so a press inside it reaches what is behind it, or the canvas —
  * and whole once it is selected, which is when it is the thing being moved. */
 
+/* No fill of its own; its border is a card's (card.css), and what is behind
+ * it shows inside that border (ui/constants.ts's PORTAL_BORDER_WORLD_PX). */
 .yolo-whiteboard-card.yolo-whiteboard-portal {
   z-index: -1;
   background-color: transparent;
-  border-style: dashed;
-  border-color: var(--background-modifier-border-focus);
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-portal:not(

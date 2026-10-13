@@ -519,6 +519,11 @@ export async function fileCardSize(
   }
 }
 
+/** A portal's border, in world units — a card's (styles/cards/card.css).
+ * What is behind a portal shows inside it, so the frame is never covered by
+ * what it frames (canvas.ts's `portalClip`). */
+export const PORTAL_BORDER_WORLD_PX = 1
+
 /** A portal onto a board with nothing on it yet: room to start in. */
 export const NEW_PORTAL_SIZE = Object.freeze({
   w: GRID_WORLD_STEP_PX * 48,

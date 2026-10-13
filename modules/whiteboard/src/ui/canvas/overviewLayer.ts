@@ -400,7 +400,8 @@ export class OverviewLayer {
     ctx.globalAlpha = 1
   }
 
-  /** Edges, then cards — the board's own, then each portal's in its frame. */
+  /** Edges, then cards — the board's own, then each portal's in its frame
+   * — and the portals' frames over what they frame (`drawFrames`). */
   private drawBoard(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
@@ -414,6 +415,74 @@ export class OverviewLayer {
       this.drawCards(ctx, view, surface, live, undefined, layer.nodes)
       return true
     })
+    this.drawFrames(ctx, view, surface, live)
+    this.inPortals(ctx, view, (layer) =>
+      this.drawFrames(ctx, view, surface, live, undefined, layer.nodes),
+    )
+  }
+
+  /**
+   * A portal is its frame and nothing else (portal.css): what shows through
+   * it is drawn cut to it (`inPortals`), and its name is its title line. The
+   * frame goes over what it frames — drawn after it, as the DOM keeps what
+   * is behind a portal inside its border (canvas.ts's `portalClip`) — and
+   * the selection's ring with it. True if any was drawn.
+   */
+  private drawFrames(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    surface: Surface,
+    live: ReadonlyMap<NodeId, CardRect> | null,
+    skip?: (id: NodeId) => boolean,
+    nodes: readonly BoardNode[] = this.callbacks.getCardNodes(),
+  ): boolean {
+    const palette = this.palette
+    if (!palette) return false
+    const frames: {
+      node: BoardNode
+      x: number
+      y: number
+      w: number
+      h: number
+    }[] = []
+    for (const node of nodes) {
+      if (!isPortal(node) || skip?.(node.id)) continue
+      const rect = live?.get(node.id) ?? node
+      const x = rect.x * view.scale + view.tx
+      const y = rect.y * view.scale + view.ty
+      const w = rect.w * view.scale
+      const h = rect.h * view.scale
+      if (
+        x >= surface.width ||
+        y >= surface.height ||
+        x + w <= 0 ||
+        y + h <= 0
+      ) {
+        continue
+      }
+      frames.push({ node, x, y, w, h })
+    }
+    if (frames.length === 0) return false
+    const isSelected = (id: NodeId): boolean =>
+      surface.selection && this.callbacks.isSelected(id)
+    // A card's border, and a selected card's ring (`drawCards`).
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 1
+    ctx.strokeStyle = palette.border
+    ctx.beginPath()
+    for (const frame of frames) {
+      if (!isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
+    }
+    ctx.stroke()
+    ctx.strokeStyle = palette.accent
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    for (const frame of frames) {
+      if (isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
+    }
+    ctx.stroke()
+    ctx.lineWidth = 1
+    return true
   }
 
   /** Runs `draw` for each open portal, with the context cut to its frame;
@@ -557,7 +626,11 @@ export class OverviewLayer {
     const portalsDrew = this.inPortals(ctx, view, (layer) =>
       this.drawCards(ctx, view, surface, live, mounted, layer.nodes),
     )
-    const drew = ownDrew || portalsDrew
+    const ownFramesDrew = this.drawFrames(ctx, view, surface, live, mounted)
+    const portalFramesDrew = this.inPortals(ctx, view, (layer) =>
+      this.drawFrames(ctx, view, surface, live, mounted, layer.nodes),
+    )
+    const drew = ownDrew || portalsDrew || ownFramesDrew || portalFramesDrew
     ctx.globalAlpha = 1
     if (drew === this.underlay) return
     this.underlay = drew
@@ -832,7 +905,6 @@ export class OverviewLayer {
       h: number
     }[] = []
     const texts: typeof visible = []
-    const frames: typeof visible = []
     const titles: TitleLine[] = []
     for (const node of nodes) {
       if (skip?.(node.id)) continue
@@ -878,31 +950,7 @@ export class OverviewLayer {
           badge,
           maxW: this.callbacks.spreadTitleMaxWidth(node.id) * view.scale,
         })
-      } else if (isPortal(node)) frames.push(item)
-      else visible.push(item)
-    }
-    // A portal is its frame and nothing else (portal.css): what shows
-    // through it is drawn after, cut to it (`inPortals`), and its name is its
-    // title line. Behind every card, as it stands in the DOM.
-    if (frames.length > 0) {
-      ctx.globalAlpha = 1
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 3])
-      ctx.strokeStyle = palette.border
-      ctx.beginPath()
-      for (const frame of frames) {
-        if (!isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
-      }
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.strokeStyle = palette.accent
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      for (const frame of frames) {
-        if (isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
-      }
-      ctx.stroke()
-      ctx.lineWidth = 1
+      } else if (!isPortal(node)) visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is its picture of
     // itself (../pictures/cardPictures.ts) where it has one, and a block of
@@ -931,10 +979,7 @@ export class OverviewLayer {
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
-    const drew =
-      texts.length > 0 ||
-      frames.length > 0 ||
-      (surface.text && titles.length > 0)
+    const drew = texts.length > 0 || (surface.text && titles.length > 0)
     if (visible.length === 0) {
       if (surface.text) this.drawTitleLines(ctx, view, titles)
       return drew

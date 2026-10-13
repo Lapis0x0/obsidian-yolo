@@ -172,6 +172,7 @@ import {
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
+  PORTAL_BORDER_WORLD_PX,
   PORTAL_OPEN_MIN_PX,
   PORTAL_PAN_STEP_GAP_MS,
   RECOMPUTE_INTERVAL_MS,
@@ -985,15 +986,21 @@ export class WhiteboardCanvas {
     return this.portalClip(portal)
   }
 
-  /** Where what is behind `portal` shows now — with the frames a drag or a
-   * resize is holding where they are held. */
+  /** Where what is behind `portal` shows now: inside every frame on the way
+   * in — inside its border, which is drawn over what it frames, not under
+   * it — with the frames a drag or a resize is holding where they are held. */
   private portalClip(portal: ComposedPortal): Rect {
     const live = this.interaction.liveNodeRects
-    if (!live) return portal.clip
+    const inset = PORTAL_BORDER_WORLD_PX
     return clipThrough(portal, this.sources.composition.portals, (id) => {
-      const rect = live.get(id) ?? this.nodesById.get(id)
+      const rect = live?.get(id) ?? this.nodesById.get(id)
       return rect
-        ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
+        ? {
+            x: rect.x + inset,
+            y: rect.y + inset,
+            w: Math.max(0, rect.w - inset * 2),
+            h: Math.max(0, rect.h - inset * 2),
+          }
         : { x: 0, y: 0, w: 0, h: 0 }
     })
   }
