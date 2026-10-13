@@ -53,7 +53,7 @@ import {
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
 import { fileNodeKind, isMarkdownPath } from '../domain/naming'
-import { behindPortal } from '../domain/nodePath'
+import { behindPortal, joinNodePath, splitNodePath } from '../domain/nodePath'
 import {
   boardWithPageWindow,
   boardWithReadingWindow,
@@ -75,6 +75,8 @@ import {
   invertChanges,
   isPortal,
   mergeChanges,
+  moveToBoard,
+  portalAt,
   portalOf,
 } from '../domain/portals'
 import type { CardRect } from '../domain/resize'
@@ -667,11 +669,56 @@ export class WhiteboardCanvas {
         return { x: node.x - portal.dx, y: node.y - portal.dy }
       },
       cardAtPoint: (point, portals) => this.cardAtPoint(point, portals),
+      commitMove: (next, ids, point, historyKey) =>
+        this.commitMove(next, ids, point, historyKey),
       clipOf: (id) => this.clipOf(id),
       openPortal: (id, newTab) => this.openPortal(id, newTab),
       t: (key, fallback) => this.t(key, fallback),
       reportError: (stage, error) => this.reportError(stage, error),
     }
+  }
+
+  private commitMove(
+    next: Board,
+    ids: readonly NodeId[],
+    point: ScreenPoint,
+    historyKey?: string,
+  ): void {
+    const composition = this.sources.composition
+    if (composition.portals.size === 0) {
+      this.applyBoardChange(next, historyKey)
+      return
+    }
+    // What is behind a dragged portal goes where the portal goes.
+    const dragged = new Set(ids)
+    const rides = (id: NodeId) => {
+      const parts = splitNodePath(id)
+      for (let end = 1; end < parts.length; end += 1) {
+        if (dragged.has(joinNodePath(parts.slice(0, end)))) return true
+      }
+      return false
+    }
+    const to = portalAt(
+      point,
+      composition.portals,
+      (id) => dragged.has(id) || rides(id),
+    )
+    const { board, renamed } = moveToBoard(
+      next,
+      composition,
+      this.sourcePathForBoard(),
+      ids.filter((id) => !rides(id)),
+      to,
+    )
+    this.applyBoardChange(board, historyKey)
+    if (renamed.size === 0) return
+    // The same cards under new names: what was built for the old ones goes,
+    // and the new ones are not arriving.
+    for (const [from, name] of renamed) {
+      this.purgeNodeRuntime(from)
+      this.entering.delete(name)
+    }
+    this.setSelection([...this.selectedIds].map((id) => renamed.get(id) ?? id))
   }
 
   private cardAtPoint(point: ScreenPoint, portals: boolean): NodeId | null {
@@ -857,7 +904,12 @@ export class WhiteboardCanvas {
     const portals = this.sources.composition.portals
     if (portals.size === 0) return null
     const portal = portalOf(id, portals)
-    return portal ? this.portalClip(portal) : null
+    if (!portal) return null
+    // Picked up without its portal: in the hand, not behind the frame — so
+    // it can be carried out through it.
+    const live = this.interaction.liveNodeRects
+    if (live?.has(id) && !live.has(portal.id)) return null
+    return this.portalClip(portal)
   }
 
   /** Where what is behind `portal` shows now — with the frames a drag or a
@@ -1528,6 +1580,15 @@ export class WhiteboardCanvas {
       {
         getNode: this.core.getNode,
         clipPathOf: (edge) => this.edgeClipPath(edge),
+        endClipOf: (edge, end) => {
+          const portals = this.sources.composition.portals
+          if (portals.size === 0) return null
+          const id = end === 'from' ? edge.fromNode : edge.toNode
+          const portal = portalOf(id, portals)
+          if (!portal) return null
+          const home = commonPortal(edge.fromNode, edge.toNode, portals)
+          return portal === home ? null : this.portalClip(portal)
+        },
         clipOf: (edge) => {
           const portals = this.sources.composition.portals
           if (portals.size === 0) return null

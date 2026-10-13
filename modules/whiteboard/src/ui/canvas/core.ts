@@ -93,6 +93,18 @@ export type CanvasCore = Readonly<{
   /** Where a card behind a portal shows through it; null for the board's
    * own. */
   clipOf: (id: NodeId) => Rect | null
+  /**
+   * Commits a drag of `ids` that ended at `point`: `next` is the board with
+   * them moved there. A card put down inside an open portal goes to the board
+   * behind it, and one put down outside every portal to this board's own
+   * (domain/portals.ts's `moveToBoard`).
+   */
+  commitMove: (
+    next: Board,
+    ids: readonly NodeId[],
+    point: ScreenPoint,
+    historyKey?: string,
+  ) => void
   /** Opens the board behind a portal (canvas.ts's `openPortal`). */
   openPortal: (id: NodeId, newTab: boolean) => void
 

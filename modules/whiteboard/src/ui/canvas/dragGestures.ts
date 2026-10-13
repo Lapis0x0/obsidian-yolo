@@ -710,8 +710,10 @@ export class DragGestures {
 
     const { dx, dy } = this.draggedDelta(interaction, e)
     if (dx !== 0 || dy !== 0) {
-      this.core.applyBoardChange(
+      this.core.commitMove(
         moveNodes(this.core.getBoard(), interaction.ids, dx, dy),
+        interaction.ids,
+        this.core.worldPointFromEvent(e),
         interaction.historyKey,
       )
     }

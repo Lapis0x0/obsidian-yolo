@@ -5,7 +5,10 @@ import {
   changesBetween,
   clipThrough,
   composeBoard,
+  endThrough,
   invertChanges,
+  moveToBoard,
+  portalAt,
   shownPart,
 } from './portals'
 
@@ -321,5 +324,140 @@ describe('shownPart', () => {
       h: 50,
     })
     expect(shownPart(card, { x: 200, y: 0, w: 100, h: 100 })).toBeNull()
+  })
+})
+
+describe('moveToBoard', () => {
+  const sub = board(
+    [text('a', 10, 20), text('b', 300, 20)],
+    [edge('e', 'a', 'b')],
+  )
+  const own = board(
+    [
+      portal('p', 'Sub.yoloboard', 1000, 500, { x: 0, y: 0 }),
+      text('t', 0, 0),
+      text('a', 1100, 600),
+    ],
+    [edge('f', 't', 'a')],
+  )
+  const expand = files({ 'Sub.yoloboard': sub })
+  const composition = composeBoard(own, 'Own.yoloboard', expand)
+  const p = composition.portals.get('p') ?? null
+
+  it('moves a card in: it leaves this file and arrives in the one behind, where it was', () => {
+    const { board: moved, renamed } = moveToBoard(
+      composition.board,
+      composition,
+      'Own.yoloboard',
+      ['a'],
+      p,
+    )
+    // Behind the portal there is an `a` already.
+    expect(renamed).toEqual(new Map([['a', 'p/a-2']]))
+    expect(moved.nodes.map((node) => node.id)).toEqual([
+      'p',
+      'p/a',
+      'p/b',
+      'p/a-2',
+      't',
+    ])
+    // An edge from here to it now reaches through the portal, and stays
+    // here, where both its ends can be seen.
+    expect(moved.edges).toContainEqual(
+      expect.objectContaining({ id: 'f', fromNode: 't', toNode: 'p/a-2' }),
+    )
+    const changes = changesBetween(composition, moved, 'Own.yoloboard')
+    expect(changes.get('Own.yoloboard')?.nodes.get('a')?.after).toBeNull()
+    expect(changes.get('Sub.yoloboard')?.nodes.get('a-2')?.after).toMatchObject(
+      { id: 'a-2', x: 100, y: 100 },
+    )
+    expect(changes.get('Own.yoloboard')?.edges.get('f')?.after).toMatchObject({
+      toNode: 'p/a-2',
+    })
+    expect(changes.get('Sub.yoloboard')?.edges.size ?? 0).toBe(0)
+  })
+
+  it('moves a card out, and an edge whose ends now meet here comes with it', () => {
+    const { board: moved, renamed } = moveToBoard(
+      composition.board,
+      composition,
+      'Own.yoloboard',
+      ['p/b'],
+      null,
+    )
+    expect(renamed).toEqual(new Map([['p/b', 'b']]))
+    expect(moved.edges).toContainEqual(
+      expect.objectContaining({ id: 'e', fromNode: 'p/a', toNode: 'b' }),
+    )
+    const changes = changesBetween(composition, moved, 'Own.yoloboard')
+    expect(changes.get('Sub.yoloboard')?.nodes.get('b')?.after).toBeNull()
+    expect(changes.get('Sub.yoloboard')?.edges.get('e')?.after).toBeNull()
+    expect(changes.get('Own.yoloboard')?.nodes.get('b')?.after).toMatchObject({
+      x: 1300,
+      y: 520,
+    })
+    expect(changes.get('Own.yoloboard')?.edges.get('e')?.after).toMatchObject({
+      fromNode: 'p/a',
+      toNode: 'b',
+    })
+  })
+
+  it('leaves a card already on that board, and a portal that would show itself', () => {
+    const selfish = composeBoard(
+      board([
+        portal('p', 'Sub.yoloboard', 0, 0, { x: 0, y: 0 }),
+        portal('back', 'Own.yoloboard', 50, 50),
+      ]),
+      'Own.yoloboard',
+      expand,
+    )
+    const moved = moveToBoard(
+      selfish.board,
+      selfish,
+      'Own.yoloboard',
+      ['p/a', 'back'],
+      selfish.portals.get('p') ?? null,
+    )
+    expect(moved.renamed.size).toBe(0)
+    expect(moved.board).toBe(selfish.board)
+  })
+})
+
+describe('portalAt', () => {
+  const middle = board([portal('q', 'Inner.yoloboard', 50, 50, { x: 0, y: 0 })])
+  const { portals } = composeBoard(
+    board([portal('p', 'Middle.yoloboard', 0, 0, { x: 0, y: 0 })]),
+    'Own.yoloboard',
+    files({ 'Middle.yoloboard': middle, 'Inner.yoloboard': board([]) }),
+  )
+
+  it('is the innermost portal whose window the point is in', () => {
+    expect(portalAt({ x: 100, y: 100 }, portals, () => false)?.id).toBe('p/q')
+    expect(portalAt({ x: 10, y: 10 }, portals, () => false)?.id).toBe('p')
+    expect(portalAt({ x: 900, y: 10 }, portals, () => false)).toBeNull()
+  })
+
+  it('passes over the ones it is told to', () => {
+    expect(
+      portalAt({ x: 100, y: 100 }, portals, (id) => id === 'p/q')?.id,
+    ).toBe('p')
+  })
+})
+
+describe('endThrough', () => {
+  const frame = { x: 0, y: 0, w: 100, h: 100 }
+
+  it('is the card itself when all of it shows', () => {
+    const card = { id: 'p/a', x: 10, y: 10, w: 20, h: 20 }
+    expect(endThrough(card, frame)).toBe(card)
+  })
+
+  it('is what shows of it, or the nearest point of the frame', () => {
+    expect(
+      endThrough({ id: 'p/a', x: 80, y: 10, w: 40, h: 20 }, frame),
+    ).toEqual({ id: 'p/a', x: 80, y: 10, w: 20, h: 20 })
+    expect(
+      endThrough({ id: 'p/a', x: 300, y: 40, w: 40, h: 20 }, frame),
+    ).toEqual({ id: 'p/a', x: 100, y: 50, w: 0, h: 0 })
   })
 })

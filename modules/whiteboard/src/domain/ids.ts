@@ -19,7 +19,12 @@
 // board is right there to confirm that it does. It also keeps this file free
 // of a `window`, which a popout would otherwise make ambiguous.
 
-import type { Board, EdgeId, NodeId } from './fileFormat'
+import {
+  type Board,
+  type EdgeId,
+  NODE_PATH_SEPARATOR,
+  type NodeId,
+} from './fileFormat'
 
 const NODE_PREFIX = 'c-'
 const EDGE_PREFIX = 'e-'
@@ -28,11 +33,24 @@ const SUFFIX_LENGTH = 4
 const ATTEMPTS_PER_LENGTH = 8
 
 export function mintNodeId(board: Board): NodeId {
-  return mint(NODE_PREFIX, new Set(board.nodes.map((node) => node.id)))
+  return mint(NODE_PREFIX, names(board.nodes))
 }
 
 export function mintEdgeId(board: Board): EdgeId {
-  return mint(EDGE_PREFIX, new Set(board.edges.map((edge) => edge.id)))
+  return mint(EDGE_PREFIX, names(board.edges))
+}
+
+/** The ids taken: each one's name in the file it is in, too — a card or
+ * edge behind a portal (domain/nodePath.ts) is `portal/name` here and
+ * `name` there, and a new one may end up in either file. */
+function names(items: readonly Readonly<{ id: string }>[]): Set<string> {
+  const taken = new Set<string>()
+  for (const { id } of items) {
+    taken.add(id)
+    const at = id.lastIndexOf(NODE_PATH_SEPARATOR)
+    if (at >= 0) taken.add(id.slice(at + 1))
+  }
+  return taken
 }
 
 function mint(prefix: string, taken: ReadonlySet<string>): string {

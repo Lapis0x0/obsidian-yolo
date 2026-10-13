@@ -34,6 +34,7 @@ import type {
 } from './fileFormat'
 import { NODE_PATH_SEPARATOR } from './fileFormat'
 import { fileNodeKind } from './naming'
+import { isSpreadTitle } from './spread'
 
 export type Rect = Readonly<{ x: number; y: number; w: number; h: number }>
 
@@ -193,6 +194,29 @@ export function shownPart(
   return part.w > 0 && part.h > 0 ? { id: node.id, ...part } : null
 }
 
+/**
+ * What an edge reaching into a portal ends on: the part of the card that
+ * shows through it — or, when none does (the card has been looked away
+ * from), the point of the frame nearest it.
+ */
+export function endThrough<T extends Readonly<{ id: NodeId }> & Rect>(
+  card: T,
+  clip: Rect,
+): T {
+  const part = shownPart(card, clip)
+  if (part && part.w === card.w && part.h === card.h) return card
+  if (part) return { ...card, ...part }
+  const cx = card.x + card.w / 2
+  const cy = card.y + card.h / 2
+  return {
+    ...card,
+    x: Math.min(Math.max(cx, clip.x), clip.x + clip.w),
+    y: Math.min(Math.max(cy, clip.y), clip.y + clip.h),
+    w: 0,
+    h: 0,
+  }
+}
+
 /** Where the portal `id` and the other end of an edge meet: the innermost
  * portal both are behind, whose board the edge belongs to. */
 export function commonPortal(
@@ -207,6 +231,179 @@ export function commonPortal(
       portal.parent === null ? null : (portals.get(portal.parent) ?? null)
   }
   return null
+}
+
+// --- moving between boards ---------------------------------------------
+
+/**
+ * The open portal at a point: the innermost one whose window it is in —
+ * where a card put down there goes. `skip` leaves out portals that cannot
+ * take it (the ones being moved, and what is behind them).
+ */
+export function portalAt(
+  point: Readonly<{ x: number; y: number }>,
+  portals: ReadonlyMap<NodeId, ComposedPortal>,
+  skip: (id: NodeId) => boolean,
+): ComposedPortal | null {
+  let found: ComposedPortal | null = null
+  let depth = -1
+  for (const portal of portals.values()) {
+    const { clip } = portal
+    if (
+      point.x < clip.x ||
+      point.x > clip.x + clip.w ||
+      point.y < clip.y ||
+      point.y > clip.y + clip.h ||
+      skip(portal.id)
+    ) {
+      continue
+    }
+    const at = portal.id.split(NODE_PATH_SEPARATOR).length
+    if (at > depth) {
+      found = portal
+      depth = at
+    }
+  }
+  return found
+}
+
+/**
+ * `board` with the nodes `ids` moved to the board behind the portal `to`
+ * (null: the board's own) — the same cards, where they were, now in that
+ * board's file. A card is named for the way to it, so moving it is renaming
+ * it; `renamed` says what each one is called now. `changesBetween` then has
+ * each leave its old file and arrive in the new one.
+ *
+ * The edges reaching a moved card follow it. One whose two ends now first
+ * meet on another board belongs to that board, and is renamed for it too.
+ *
+ * Left where they are: a card already on that board, a PDF's spread (its
+ * pages belong to it), and a portal onto a board the destination is shown
+ * from — it would show itself.
+ */
+export function moveToBoard(
+  board: Board,
+  composition: Composition,
+  ownFile: string,
+  ids: readonly NodeId[],
+  to: ComposedPortal | null,
+): Readonly<{ board: Board; renamed: ReadonlyMap<NodeId, NodeId> }> {
+  const { portals } = composition
+  const homeOf = (id: NodeId) => portalOf(id, portals)?.id ?? null
+  const target = to?.id ?? null
+  const prefix = target === null ? '' : `${target}${NODE_PATH_SEPARATOR}`
+  // The files the destination is seen through: a portal onto one of them
+  // cannot go there.
+  const seenFrom = new Set([ownFile])
+  for (
+    let at = to;
+    at;
+    at = at.parent === null ? null : (portals.get(at.parent) ?? null)
+  ) {
+    seenFrom.add(at.file)
+  }
+  const byId = new Map(board.nodes.map((node) => [node.id, node]))
+  const taken = new Set(byId.keys())
+  const fresh = (want: string, used: Set<string>) => {
+    let id = want
+    for (let n = 2; used.has(id); n += 1) id = `${want}-${n}`
+    used.add(id)
+    return id
+  }
+  const renamed = new Map<NodeId, NodeId>()
+  for (const id of ids) {
+    const node = byId.get(id)
+    if (!node || homeOf(id) === target) continue
+    if (node.type === 'pdf-page' || isSpreadTitle(node)) continue
+    if (isPortal(node) && seenFrom.has(node.file)) continue
+    const home = homeOf(id)
+    const inner = home === null ? id : id.slice(home.length + 1)
+    renamed.set(id, fresh(`${prefix}${inner}`, taken))
+  }
+  if (renamed.size === 0) return { board, renamed }
+
+  // Topmost on the board they go to: after the last of its cards, or the
+  // portal itself when it has none.
+  const moved: BoardNode[] = []
+  const nodes: BoardNode[] = []
+  let insertAt = -1
+  for (const node of board.nodes) {
+    const name = renamed.get(node.id)
+    if (name) {
+      moved.push({ ...node, id: name })
+      continue
+    }
+    nodes.push(node)
+    if (node.id === target || homeOf(node.id) === target) {
+      insertAt = nodes.length
+    }
+  }
+  nodes.splice(insertAt < 0 ? nodes.length : insertAt, 0, ...moved)
+
+  // A moved portal takes what is behind it along: an edge reaching in
+  // reaches in through its new name.
+  const rename = (end: NodeId) => {
+    const direct = renamed.get(end)
+    if (direct) return direct
+    for (const [from, name] of renamed) {
+      if (end.startsWith(`${from}${NODE_PATH_SEPARATOR}`)) {
+        return `${name}${end.slice(from.length)}`
+      }
+    }
+    return end
+  }
+  const edgeIds = new Set(board.edges.map((edge) => edge.id))
+  let edgesChanged = false
+  const edges = board.edges.map((edge) => {
+    const fromNode = rename(edge.fromNode)
+    const toNode = rename(edge.toNode)
+    if (fromNode === edge.fromNode && toNode === edge.toNode) return edge
+    const was = commonPortal(edge.fromNode, edge.toNode, portals)
+    // On the board behind a moved portal: it goes with that board.
+    for (
+      let at = was;
+      at;
+      at = at.parent === null ? null : (portals.get(at.parent) ?? null)
+    ) {
+      if (renamed.has(at.id)) return edge
+    }
+    edgesChanged = true
+    const home = commonPortalIn(fromNode, toNode, portals, renamed)
+    const wasHome = was?.id ?? null
+    if (home === wasHome) return { ...edge, fromNode, toNode }
+    const inner = wasHome === null ? edge.id : edge.id.slice(wasHome.length + 1)
+    const id = fresh(
+      home === null ? inner : `${home}${NODE_PATH_SEPARATOR}${inner}`,
+      edgeIds,
+    )
+    return { ...edge, id, fromNode, toNode }
+  })
+  return {
+    board: { ...board, nodes, edges: edgesChanged ? edges : board.edges },
+    renamed,
+  }
+}
+
+/** Where two ends, some of them renamed by a move, first meet: the
+ * innermost portal both are behind — of the ones open before the move,
+ * which are the ones a card can have been moved into. */
+function commonPortalIn(
+  a: NodeId,
+  b: NodeId,
+  portals: ReadonlyMap<NodeId, ComposedPortal>,
+  renamed: ReadonlyMap<NodeId, NodeId>,
+): NodeId | null {
+  const moved = new Set(renamed.values())
+  const parts = (id: NodeId) => id.split(NODE_PATH_SEPARATOR)
+  const pa = parts(a)
+  const pb = parts(b)
+  let common: NodeId | null = null
+  for (let i = 0; i < Math.min(pa.length, pb.length) - 1; i += 1) {
+    if (pa[i] !== pb[i]) break
+    const id = pa.slice(0, i + 1).join(NODE_PATH_SEPARATOR)
+    if (portals.has(id) || moved.has(id)) common = id
+  }
+  return common
 }
 
 // --- projection ----------------------------------------------------------

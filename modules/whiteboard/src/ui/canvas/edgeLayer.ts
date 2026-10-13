@@ -30,6 +30,7 @@ import type {
   NodeColor,
   NodeId,
 } from '../../domain/fileFormat'
+import { endThrough } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import type { VirtualCardRect, WorldRect } from '../../domain/virtualization'
 import {
@@ -110,6 +111,13 @@ export type EdgeLayerCallbacks = Readonly<{
   /** The `clip-path` an edge behind a portal is cut to its frame with
    * (`url(#…)`); null for an edge of the board's own. */
   clipPathOf: (edge: Edge) => string | null
+  /** The frame an end of an edge reaches its card through — the clip of the
+   * innermost portal the card is behind, when the edge itself is not behind
+   * it; null for an end on the edge's own board. */
+  endClipOf: (
+    edge: Edge,
+    end: 'from' | 'to',
+  ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
   /** Where an edge behind a portal shows (its `clipPathOf`'s rectangle);
    * null for the board's own. */
   clipOf: (
@@ -600,12 +608,23 @@ export class EdgeLayer {
     edge: Edge,
     overrides?: ReadonlyMap<NodeId, CardRect>,
   ): EdgeGeometry | null {
-    const from = this.effectiveNodeRect(edge.fromNode, overrides)
-    const to = this.effectiveNodeRect(edge.toNode, overrides)
-    if (!from || !to) return null
+    const fromCard = this.effectiveNodeRect(edge.fromNode, overrides)
+    const toCard = this.effectiveNodeRect(edge.toNode, overrides)
+    if (!fromCard || !toCard) return null
+    // An end reaching into a portal ends on what shows of its card there.
+    const fromClip = this.callbacks.endClipOf(edge, 'from')
+    const toClip = this.callbacks.endClipOf(edge, 'to')
+    const from = fromClip ? endThrough(fromCard, fromClip) : fromCard
+    const to = toClip ? endThrough(toCard, toClip) : toCard
     const ends = resolveEdgeEnds(edge, from, to, {
-      from: this.endPlacement(from, edge.fromAnchor, edge.fromPage),
-      to: this.endPlacement(to, edge.toAnchor, edge.toPage),
+      from:
+        from === fromCard
+          ? this.endPlacement(from, edge.fromAnchor, edge.fromPage)
+          : null,
+      to:
+        to === toCard
+          ? this.endPlacement(to, edge.toAnchor, edge.toPage)
+          : null,
     })
     return computeEdgeGeometry(from, to, ends.fromSide, ends.toSide, ends)
   }
