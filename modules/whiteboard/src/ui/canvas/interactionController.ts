@@ -139,6 +139,20 @@ type PanInteraction = Readonly<{
  * `updatePinch`). Both pointers are the gesture's; their live positions are in
  * `touchPoints`, which every touch move keeps current, and the frame reads.
  */
+/** A pan begun inside an open portal: the board behind it moves under the
+ * hand, not the board around it (`startPortalPan`). */
+type PortalPanInteraction = Readonly<{
+  kind: 'portal-pan'
+  pointerId: number
+  portalId: NodeId
+  /** Where the portal was looking at the press, in its board's coordinates. */
+  origin: Readonly<{ x: number; y: number }>
+  startX: number
+  startY: number
+  /** The one step of history the whole drag is. */
+  historyKey: string
+}>
+
 type PinchInteraction = Readonly<{
   kind: 'pinch'
   pointerId: number
@@ -168,6 +182,7 @@ type MarqueeInteraction = Readonly<{
 
 export type Interaction =
   | PanInteraction
+  | PortalPanInteraction
   | PinchInteraction
   | MarqueeInteraction
   | NodeInteraction
@@ -536,9 +551,10 @@ export class InteractionController {
 
     if (e.button === 1 || (e.button === 0 && this.spacePanArmed)) {
       // Middle-click always pans, even starting from a card; so does a left
-      // press while Space is held.
+      // press while Space is held — the board the press is on: inside an
+      // open portal, the one behind it.
       e.preventDefault()
-      this.startPan(e)
+      if (!this.startPortalPan(e)) this.startPan(e)
       return
     }
     if (e.button !== 0) return
@@ -835,6 +851,9 @@ export class InteractionController {
       case 'pan':
         this.updatePan(interaction, e)
         break
+      case 'portal-pan':
+        this.updatePortalPan(interaction, e)
+        break
       case 'pinch':
         this.updatePinch(interaction)
         break
@@ -1094,6 +1113,9 @@ export class InteractionController {
       case 'pan':
         this.finishPan(interaction, e)
         break
+      case 'portal-pan':
+        this.updatePortalPan(interaction, e)
+        break
       case 'pinch':
         this.deps.camera.finishPinch()
         break
@@ -1140,6 +1162,48 @@ export class InteractionController {
       samples: [{ t: e.timeStamp, x: e.clientX, y: e.clientY }],
     }
     this.deps.camera.beginPan(e.pointerId)
+  }
+
+  /**
+   * A pan pressed inside an open portal moves what the portal shows — its
+   * `view` — with the hand, as the wheel over a selected one does
+   * (canvas.ts's `panPortalBy`): inside the frame the press is on the board
+   * behind it. False where no open portal is under the press, which leaves
+   * the pan to the board's own camera.
+   */
+  private startPortalPan(e: PointerEvent): boolean {
+    const portalId = this.core.portalAtPoint(this.core.worldPointFromEvent(e))
+    const origin = portalId === null ? null : this.core.portalViewOf(portalId)
+    if (portalId === null || !origin) return false
+    this.interaction = {
+      kind: 'portal-pan',
+      pointerId: e.pointerId,
+      portalId,
+      origin,
+      startX: e.clientX,
+      startY: e.clientY,
+      historyKey: `portal-drag:${portalId}:${e.timeStamp}`,
+    }
+    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    return true
+  }
+
+  private updatePortalPan(
+    interaction: PortalPanInteraction,
+    e: PointerEvent,
+  ): void {
+    const { scale } = this.core.getView()
+    const view = {
+      x: interaction.origin.x - (e.clientX - interaction.startX) / scale,
+      y: interaction.origin.y - (e.clientY - interaction.startY) / scale,
+    }
+    const now = this.core.portalViewOf(interaction.portalId)
+    if (now && now.x === view.x && now.y === view.y) return
+    this.core.lookThroughPortal(
+      interaction.portalId,
+      view,
+      interaction.historyKey,
+    )
   }
 
   private updatePan(interaction: PanInteraction, e: PointerEvent): void {
@@ -1252,6 +1316,7 @@ export class InteractionController {
       case 'create':
         return interaction.dragging
       case 'pan':
+      case 'portal-pan':
       case 'pinch':
         return false
     }

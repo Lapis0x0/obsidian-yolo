@@ -684,6 +684,11 @@ export class WhiteboardCanvas {
         if (!portal || !node) return null
         return { x: node.x - portal.dx, y: node.y - portal.dy }
       },
+      portalAtPoint: (point) =>
+        portalAt(point, this.sources.composition.portals, () => false)?.id ??
+        null,
+      lookThroughPortal: (id, view, historyKey) =>
+        this.lookThroughPortal(id, view, historyKey),
       cardAtPoint: (point, portals) => this.cardAtPoint(point, portals),
       commitMove: (next, ids, point, historyKey) =>
         this.commitMove(next, ids, point, historyKey),
@@ -1080,11 +1085,18 @@ export class WhiteboardCanvas {
       this.portalPanSerial += 1
     }
     this.portalPan = { id, at: now }
-    this.applyBoardChange(
-      updateNode(this.board, id, { view }),
-      `portal-pan:${id}:${this.portalPanSerial}`,
-    )
+    this.lookThroughPortal(id, view, `portal-pan:${id}:${this.portalPanSerial}`)
     return true
+  }
+
+  /** Points an open portal at `view`: what it shows moves, the cards
+   * behind it in place (`takeComposedBoard`'s `onlyMoved`). */
+  private lookThroughPortal(
+    id: NodeId,
+    view: Readonly<{ x: number; y: number }>,
+    historyKey: string,
+  ): void {
+    this.applyBoardChange(updateNode(this.board, id, { view }), historyKey)
   }
 
   /**
