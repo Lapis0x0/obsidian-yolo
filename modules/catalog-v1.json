@@ -65,8 +65,8 @@
       },
       "versions": [
         {
-          "version": "0.0.6",
-          "hostApi": "^1.10.0",
+          "version": "0.0.7",
+          "hostApi": "^1.11.0",
           "platforms": [
             "desktop",
             "mobile"
@@ -78,15 +78,15 @@
               "write": 1
             }
           },
-          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.6/module.json",
+          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.7/module.json",
           "manifest": {
             "byteSize": 1867,
-            "sha256": "3ef9cb5c6684e49265e69e6e2cc8cddf2ce922505ef5ddd1f1d738b69b924dea"
+            "sha256": "ca70dbb147ade02101e20d6573aff88ef00ff0e6ce83a8306ee9e70e2c2319e7"
           },
           "releaseNotes": {
-            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.6/release-note.md",
-            "byteSize": 721,
-            "sha256": "ccdfb5085aece2f11ad81c2a9ad50794783b70b92e46a3a49718accdc5323521"
+            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.7/release-note.md",
+            "byteSize": 709,
+            "sha256": "07990d30bd6405bfcb7b7fce17937cd375ed1ea21018069741726171e6689a65"
           }
         }
       ]
