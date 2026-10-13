@@ -130,7 +130,8 @@ describe('BoardDocuments', () => {
 
   it('leaves the writing to the view that owns it', async () => {
     const files = new Map([['sub.yoloboard', boardText([card('a', 'one')])]])
-    const documents = new BoardDocuments(fakeHost(files).host, jest.fn())
+    const { host, reads } = fakeHost(files)
+    const documents = new BoardDocuments(host, jest.fn())
     const document = documents.acquire('sub.yoloboard')
     const requestSave = jest.fn()
     document.own({ requestSave })
@@ -140,6 +141,8 @@ describe('BoardDocuments', () => {
     await settle()
     expect(requestSave).toHaveBeenCalledTimes(1)
     expect(textOf(files.get('sub.yoloboard'), 'a')).toBe('one')
+    // The view read the file: owned as it was acquired, it is not read again.
+    expect(reads).toEqual([])
   })
 
   it('is one document however many hold it, read once', async () => {

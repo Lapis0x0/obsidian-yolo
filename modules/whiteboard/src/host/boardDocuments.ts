@@ -275,13 +275,19 @@ export class BoardDocuments {
   }
 
   /** The document of the board at `path`, read if it is not yet; held until
-   * `release`. */
+   * `release`.
+   *
+   * Read once the caller has had the chance to `own` it: a view acquires its
+   * own file and owns it in the same step, and the file is then what the view
+   * read — reading it here as well would be a second read of the whole board,
+   * for nothing (and, for a view not yet given its file, a read of no path). */
   acquire(path: string): BoardDocument {
     let document = this.documents.get(path)
     if (!document) {
-      document = new BoardDocument(path, this.host, this.reportError)
-      this.documents.set(path, document)
-      void document.load()
+      const created = new BoardDocument(path, this.host, this.reportError)
+      document = created
+      this.documents.set(path, created)
+      void Promise.resolve().then(() => created.load())
     }
     document.refs += 1
     return document
