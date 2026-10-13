@@ -347,6 +347,39 @@ describe('Pictures', () => {
     expect(pictures.get(ref('far'))).toBeNull()
   })
 
+  it('treats a picture shown in several places as one, as near and as large as any of them', async () => {
+    const { pictures, state, drawn } = setup({ concurrency: 2 })
+    state.wanted = [want('1', 40, { width: 40 }), want('1', 0, { width: 100 })]
+    state.resolution = 0.3 // 30 device pixels where it is largest
+    await run(pictures)
+
+    expect(drawn).toEqual(['1'])
+    const held = pictures.get(ref('1'))
+    expect(held?.width).toBe(50)
+    await run(pictures)
+    expect(pictures.get(ref('1'))).toBe(held)
+  })
+
+  it('past its budget, keeps a picture shown both near and far for the near one', async () => {
+    // Room for two 100×100 pictures.
+    const { pictures, state } = setup({
+      stored: { shared: kept(), a: kept(), b: kept() },
+      budgetBytes: 2 * 100 * 100 * 4,
+    })
+    state.wanted = [want('shared', 0), want('a', 50), want('shared', 100)]
+    await run(pictures)
+    const held = pictures.get(ref('shared'))
+    expect(held).not.toBeNull()
+
+    // Nearer than where it is shown far, farther than where it is shown near.
+    state.wanted = [...state.wanted, want('b', 60)]
+    pictures.retain()
+    await run(pictures)
+    expect(pictures.get(ref('shared'))).toBe(held)
+    expect(pictures.get(ref('a'))).not.toBeNull()
+    expect(pictures.get(ref('b'))).toBeNull()
+  })
+
   it('past its budget, still makes what is far and keeps it unheld', async () => {
     const { pictures, state, drawn, writes } = setup({
       stored: { near: kept() },

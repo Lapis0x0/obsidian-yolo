@@ -273,18 +273,16 @@ export class Pictures {
     let farthestHeld: WantedPicture | null = null
     /** Some picture's group has not been answered for yet by its store. */
     let waiting = false
-    for (const wanted of this.deps.wanted()) {
-      const k = refKey(wanted)
-      const want = { ...wanted, screen: wanted.width * resolution }
+    for (const [k, want] of this.wants(resolution)) {
       let entry = this.entries.get(k)
       // Made from something else: not the picture any more.
-      if (entry && entry.stamp !== wanted.stamp) {
+      if (entry && entry.stamp !== want.stamp) {
         this.forget(k)
         entry = undefined
       }
       if (entry) {
-        if (!farthestHeld || wanted.distance > farthestHeld.distance) {
-          farthestHeld = wanted
+        if (!farthestHeld || want.distance > farthestHeld.distance) {
+          farthestHeld = want
         }
         const level = levelFor(want.screen, entry.fullWidth)
         if (entry.level > level) {
@@ -296,26 +294,26 @@ export class Pictures {
         // one stays up until it arrives.
       }
       if (
-        this.failed.get(k) === wanted.stamp ||
+        this.failed.get(k) === want.stamp ||
         this.reading.has(k) ||
         this.drawing.has(k)
       ) {
         continue
       }
-      const group = this.group(wanted)
+      const group = this.group(want)
       if (!group) continue
       if (!group.stored) {
         waiting = true
         continue
       }
-      const stored = group.stored.get(wanted.key)
-      if (stored?.stamp === wanted.stamp) {
+      const stored = group.stored.get(want.key)
+      if (stored?.stamp === want.stamp) {
         ;(entry ? toReadLarger : toReadMissing).push(want)
         continue
       }
-      if (entry || group.source.canDraw?.(wanted) === false) continue
-      const nearest = toDraw.get(wanted.source) ?? []
-      toDraw.set(wanted.source, nearest)
+      if (entry || group.source.canDraw?.(want) === false) continue
+      const nearest = toDraw.get(want.source) ?? []
+      toDraw.set(want.source, nearest)
       keepNearest(nearest, want, Math.max(1, this.slotsOf(group.source)))
     }
 
@@ -467,6 +465,32 @@ export class Pictures {
     for (const entry of this.entries.values()) this.close(entry)
     this.entries.clear()
     this.bytes = 0
+  }
+
+  /** Every picture wanted, once, with how many device pixels wide it is
+   * shown now. One picture can be shown in several places — an image file
+   * on two cards, a PDF page in a folded card and in its spread — and is as
+   * near as the nearest of them and as wide as the widest. Taken place by
+   * place, it was let go of as far for one and read back as near for the
+   * other, every frame. */
+  private wants(resolution: number): Map<string, Want> {
+    const wants = new Map<string, Want>()
+    for (const wanted of this.deps.wanted()) {
+      const k = refKey(wanted)
+      const known = wants.get(k)
+      if (!known) {
+        wants.set(k, { ...wanted, screen: wanted.width * resolution })
+        continue
+      }
+      const width = Math.max(known.width, wanted.width)
+      wants.set(k, {
+        ...known,
+        width,
+        distance: Math.min(known.distance, wanted.distance),
+        screen: width * resolution,
+      })
+    }
+    return wants
   }
 
   private setBusy(busy: boolean): void {
