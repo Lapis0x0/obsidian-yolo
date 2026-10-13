@@ -75,7 +75,7 @@ export function serializeFragment(fragment: BoardFragment): string {
       const { w, h, ...rest } = serializeNode(node)
       return { ...rest, width: w, height: h }
     }),
-    edges: fragment.edges.map(serializeEdge),
+    edges: fragment.edges.map((edge) => serializeEdge(edge)),
     center: boundsCenter(fragment.nodes),
   })
 }

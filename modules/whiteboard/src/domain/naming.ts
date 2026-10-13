@@ -42,6 +42,9 @@ export function isCanvasPath(path: string): boolean {
  * its own: a reader over the file (ui/pdf/pdfReader.ts). `unsupported` covers
  * everything left.
  *
+ * `board` is another whiteboard: a card that is a window onto it, the
+ * board's cards seen through it (ui/canvas/portals.ts) — a portal.
+ *
  * `html` is ours rather than Obsidian's: Obsidian registers no view for it at
  * all, so a `.html` file in a vault is inert. On a board it is a page, shown
  * in the same frame a web card uses — which is why it is a file kind and not
@@ -56,6 +59,7 @@ export type FileNodeKind =
   | 'audio'
   | 'video'
   | 'html'
+  | 'board'
   | 'unsupported'
 
 const IMAGE_EXTENSIONS = [
@@ -102,6 +106,7 @@ export function fileNodeKind(path: string): FileNodeKind {
   if ((VIDEO_EXTENSIONS as readonly string[]).includes(extension))
     return 'video'
   if ((HTML_EXTENSIONS as readonly string[]).includes(extension)) return 'html'
+  if (`.${extension}` === YOLOBOARD_EXTENSION) return 'board'
   return 'unsupported'
 }
 

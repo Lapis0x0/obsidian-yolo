@@ -1165,7 +1165,7 @@ export class CardRenderer {
         runtime.noteText = null
         if (kind === 'pdf') {
           this.renderPdfInto(id, runtime, node.file)
-        } else if (kind === 'unsupported') {
+        } else if (kind === 'unsupported' || kind === 'board') {
           this.renderUnsupportedFilePlaceholder(runtime, node.file)
         } else if (kind === 'html') {
           this.renderFileFrameInto(runtime, node.file)

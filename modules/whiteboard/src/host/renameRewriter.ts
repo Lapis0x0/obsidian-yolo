@@ -10,9 +10,8 @@
 // `doesPathAffectScope`). On every rename, every `.yoloboard` file in the
 // vault is scanned ("白板文件数量少，全量扫描 + 按需改写即可，不
 // 建常驻索引") and rewritten only if it actually references the moved path.
-// A `.yoloboard` file being renamed itself is a no-op here — the reference
-// direction is board -> card, never the reverse, so nothing points *at* a
-// board file to rewrite.
+// A `.yoloboard` file renamed is one of those moved paths: a portal
+// (domain/naming.ts's `board` kind) is a card onto one.
 
 import { parseBoard, serializeBoard } from '../domain/fileFormat'
 import { rewriteFileReferences } from '../domain/fileReferences'
@@ -31,7 +30,6 @@ export function registerWhiteboardRenameRewriter(
   return host.vault.subscribe('', (event) => {
     if (event.type !== 'rename') return
     if (event.entry.kind !== 'file') return
-    if (isYoloboardPath(event.entry.path)) return
     const oldPath = event.oldPath
     const newPath = event.entry.path
     void host.paths

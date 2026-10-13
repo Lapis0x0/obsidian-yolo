@@ -631,3 +631,125 @@ describe('edge anchors', () => {
     })
   })
 })
+
+describe('portals', () => {
+  const raw = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      version: 1,
+      nodes: [
+        {
+          id: 'p',
+          type: 'file',
+          x: 0,
+          y: 0,
+          w: 400,
+          h: 300,
+          file: 'Sub.yoloboard',
+          view: { x: 120, y: -40 },
+        },
+        { id: 't', type: 'text', x: 500, y: 0, w: 100, h: 60, text: 'hi' },
+      ],
+      edges: [
+        {
+          id: 'e',
+          fromNode: 't',
+          toNode: 'p',
+          toPath: ['inner', 'card'],
+        },
+      ],
+      ...extra,
+    })
+
+  it('reads where a portal looks, and an edge end behind it as one id', () => {
+    const result = parseBoard(raw())
+    if (!result.ok) throw new Error('parse failed')
+    const portal = result.board.nodes[0]
+    expect(portal.type === 'file' && portal.view).toEqual({ x: 120, y: -40 })
+    expect(result.board.edges[0].toNode).toBe('p/inner/card')
+    expect(result.issues).toEqual([])
+  })
+
+  it('writes an end behind a portal as the portal and the way in', () => {
+    const result = parseBoard(raw())
+    if (!result.ok) throw new Error('parse failed')
+    const written = JSON.parse(serializeBoard(result.board)) as {
+      nodes: { view?: unknown }[]
+      edges: { toNode: string; toPath?: string[]; fromPath?: unknown }[]
+    }
+    expect(written.nodes[0].view).toEqual({ x: 120, y: -40 })
+    expect(written.edges[0].toNode).toBe('p')
+    expect(written.edges[0].toPath).toEqual(['inner', 'card'])
+    expect(written.edges[0].fromPath).toBeUndefined()
+  })
+
+  it('writes a node id that holds the separator as it is', () => {
+    const board: Board = {
+      ...emptyBoard(),
+      nodes: [
+        {
+          id: 'a/b',
+          type: 'text',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          text: '',
+          extra: {},
+        },
+        {
+          id: 'c',
+          type: 'text',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          text: '',
+          extra: {},
+        },
+      ],
+      edges: [
+        {
+          id: 'e',
+          fromNode: 'a/b',
+          toNode: 'c',
+          fromEnd: 'none',
+          toEnd: 'arrow',
+          extra: {},
+        },
+      ],
+    }
+    const reread = parseBoard(serializeBoard(board))
+    if (!reread.ok) throw new Error('parse failed')
+    expect(reread.board.edges[0].fromNode).toBe('a/b')
+  })
+
+  it('drops a path that is not a list of plain ids, and an end behind nothing', () => {
+    const result = parseBoard(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 'p',
+            type: 'file',
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            file: 'S.yoloboard',
+            view: { x: 'no' },
+          },
+        ],
+        edges: [
+          { id: 'e1', fromNode: 'p', toNode: 'p', toPath: ['a/b'] },
+          { id: 'e2', fromNode: 'p', toNode: 'gone', toPath: ['x'] },
+        ],
+      }),
+    )
+    if (!result.ok) throw new Error('parse failed')
+    const portal = result.board.nodes[0]
+    expect(portal.type === 'file' && portal.view).toBeUndefined()
+    expect(result.board.edges.map((edge) => [edge.id, edge.toNode])).toEqual([
+      ['e1', 'p'],
+    ])
+  })
+})

@@ -34,6 +34,9 @@
 export const YOLOBOARD_SCHEMA_VERSION = 1
 
 export type NodeId = string
+/** What joins the ids on the way to a node behind a portal into the one id
+ * the board knows it by — `portal/card` (domain/nodePath.ts). */
+export const NODE_PATH_SEPARATOR = '/'
 export type EdgeId = string
 export type NodeSide = 'top' | 'right' | 'bottom' | 'left'
 /** JSON Canvas's `fromEnd`/`toEnd`: whether that end of an edge is an arrow. */
@@ -94,6 +97,16 @@ type ReadingWindow = Readonly<{ startLine?: number }>
  * to `.pdf` must not reinterpret a line number as a page.
  */
 type PageWindow = Readonly<{ startPage?: number }>
+
+/**
+ * Where a portal — a file card onto another board (domain/naming.ts's
+ * `board` kind) — is looking: the point of that board, in its own world
+ * units, at the card's top-left corner. The portal shows that board at this
+ * board's scale, so the card's size is how much of it shows. Absent means the
+ * top-left corner of everything on it. Not in JSON Canvas: there the card is
+ * a card onto a file.
+ */
+type BoardWindow = Readonly<{ view?: Readonly<{ x: number; y: number }> }>
 
 /** A rectangle in world units — what a spread remembers for its title and
  * each of its pages. Written to the file as an `[x, y, w, h]` tuple: a
@@ -180,6 +193,7 @@ export type FileNode = BoardNodeBase &
   ReadingWindow &
   PageWindow &
   SpreadDisplay &
+  BoardWindow &
   Readonly<{
     type: 'file'
     /** Vault-relative path to the backing file. */
@@ -465,11 +479,12 @@ export function parseBoardValue(json: unknown): BoardParseResult {
 
 /** Serializes a board with a stable field order and 2-space indent, so diffs reflect real changes. */
 export function serializeBoard(board: Board): string {
+  const nodeIds = new Set(board.nodes.map((node) => node.id))
   const out: Record<string, unknown> = {
     version: board.version,
     camera: { x: board.camera.x, y: board.camera.y, scale: board.camera.scale },
     nodes: board.nodes.map(serializeNode),
-    edges: board.edges.map(serializeEdge),
+    edges: board.edges.map((edge) => serializeEdge(edge, nodeIds)),
     ...board.extra,
   }
   return `${JSON.stringify(out, null, 2)}\n`
@@ -491,6 +506,7 @@ const FILE_NODE_KEYS = [
   'startLine',
   'startPage',
   'spread',
+  'view',
 ] as const
 const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
 const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
@@ -578,6 +594,7 @@ function parseNode(
         ...parseReadingWindow(entry),
         ...parsePageWindow(entry),
         ...parseSpread(entry),
+        ...parseBoardWindow(entry),
         extra: extractExtra(entry, FILE_NODE_KEYS),
       }
     }
@@ -652,6 +669,15 @@ function parsePageWindow(entry: Record<string, unknown>): {
   const value = entry.startPage
   if (!isFiniteNumber(value) || value <= 1) return {}
   return { startPage: value }
+}
+
+/** A portal's window is a finite point, or there is none. */
+function parseBoardWindow(entry: Record<string, unknown>): BoardWindow {
+  const view = entry.view
+  if (!isPlainObject(view)) return {}
+  const { x, y } = view
+  if (!isFiniteNumber(x) || !isFiniteNumber(y)) return {}
+  return { view: { x, y } }
 }
 
 /**
@@ -761,6 +787,7 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         startLine: node.startLine,
         startPage: node.startPage,
         spread: serializeSpread(node.spread),
+        view: node.view ? { x: node.view.x, y: node.view.y } : undefined,
         ...node.extra,
       }
     case 'link':
@@ -791,6 +818,8 @@ const EDGE_KNOWN_KEYS = [
   'toPage',
   'fromAnchor',
   'toAnchor',
+  'fromPath',
+  'toPath',
   'color',
   'label',
 ] as const
@@ -814,7 +843,11 @@ function parseEdges(
       })
       return
     }
-    if (!nodeIds.has(edge.fromNode) || !nodeIds.has(edge.toNode)) {
+    // An end behind a portal (`fromPath` / `toPath`) is the portal's to
+    // vouch for here: what is behind it is another file's.
+    const reaches = (id: NodeId) =>
+      nodeIds.has(id) || nodeIds.has(id.split(NODE_PATH_SEPARATOR)[0])
+    if (!reaches(edge.fromNode) || !reaches(edge.toNode)) {
       issues.push({
         type: 'dangling-edge',
         id: edge.id,
@@ -878,8 +911,8 @@ function parseEdge(
   const toAnchor = parseEdgeAnchor(entry.toAnchor)
   return {
     id,
-    fromNode,
-    toNode,
+    fromNode: withEdgePath(fromNode, entry.fromPath),
+    toNode: withEdgePath(toNode, entry.toPath),
     fromSide,
     toSide,
     ...(fromPage === undefined ? {} : { fromPage }),
@@ -892,6 +925,25 @@ function parseEdge(
     label,
     extra: extractExtra(entry, EDGE_KNOWN_KEYS),
   }
+}
+
+/** An end behind a portal names the portal as its node, and the way in as
+ * its path: on the board, one id (domain/nodePath.ts). A path that is not a
+ * list of plain ids is no path, and the end reaches the portal. */
+function withEdgePath(node: NodeId, path: unknown): NodeId {
+  if (
+    !Array.isArray(path) ||
+    path.length === 0 ||
+    !path.every(
+      (id) =>
+        typeof id === 'string' &&
+        id.length > 0 &&
+        !id.includes(NODE_PATH_SEPARATOR),
+    )
+  ) {
+    return node
+  }
+  return [node, ...(path as string[])].join(NODE_PATH_SEPARATOR)
 }
 
 /** A page an edge end names is a whole page number, from 1; anything else
@@ -955,11 +1007,23 @@ function parseAnchorQuote(value: unknown): EdgeAnchorQuote | undefined {
   }
 }
 
-export function serializeEdge(edge: Edge): Record<string, unknown> {
+/**
+ * `nodeIds` are the ids of the nodes the edge is written beside: an end whose
+ * node is not one of them is behind a portal, and is written as the portal
+ * and the way in. Without them, every end is written as it is.
+ */
+export function serializeEdge(
+  edge: Edge,
+  nodeIds?: ReadonlySet<NodeId>,
+): Record<string, unknown> {
+  const from = edgeEndPath(edge.fromNode, nodeIds)
+  const to = edgeEndPath(edge.toNode, nodeIds)
   return {
     id: edge.id,
-    fromNode: edge.fromNode,
-    toNode: edge.toNode,
+    fromNode: from[0],
+    toNode: to[0],
+    fromPath: from.length > 1 ? from.slice(1) : undefined,
+    toPath: to.length > 1 ? to.slice(1) : undefined,
     fromSide: edge.fromSide,
     toSide: edge.toSide,
     fromPage: edge.fromPage,
@@ -972,6 +1036,14 @@ export function serializeEdge(edge: Edge): Record<string, unknown> {
     label: edge.label,
     ...edge.extra,
   }
+}
+
+function edgeEndPath(
+  id: NodeId,
+  nodeIds: ReadonlySet<NodeId> | undefined,
+): readonly NodeId[] {
+  if (!nodeIds || nodeIds.has(id)) return [id]
+  return id.split(NODE_PATH_SEPARATOR)
 }
 
 // --- camera ------------------------------------------------------------

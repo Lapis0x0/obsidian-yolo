@@ -170,6 +170,10 @@ function cardKind(card: BoardNode): string {
           return 'video'
         case 'html':
           return 'page'
+        // A portal: another board, seen through this card. What is behind
+        // it is that board's own, read through its path.
+        case 'board':
+          return 'board'
         default:
           return 'file'
       }
