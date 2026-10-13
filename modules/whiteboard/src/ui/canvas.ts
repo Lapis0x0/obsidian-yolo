@@ -312,7 +312,12 @@ export class WhiteboardCanvas {
    * open portal, for the canvas tiers that draw them separately. */
   private ownCardNodes: readonly BoardNode[] = []
   private ownEdges: readonly Edge[] = []
-  private portalLayers: readonly PortalLayer[] = []
+  private portalLayers: readonly (PortalLayer & {
+    portal: ComposedPortal
+    /** Behind it but outside its frame: not drawn until a gesture moves
+     * the frame over them (`livePortalLayers`). */
+    hidden: readonly BoardNode[]
+  })[] = []
   /** The edges' SVG definitions, and in them the frame each open portal
    * cuts its edges to (`edgeClipPath`), by portal. */
   private edgeDefsEl: SVGDefsElement | null = null
@@ -844,12 +849,18 @@ export class WhiteboardCanvas {
     const own: BoardNode[] = []
     const layers = new Map<
       NodeId,
-      { clip: Rect; nodes: BoardNode[]; edges: Edge[] }
+      {
+        portal: ComposedPortal
+        clip: Rect
+        nodes: BoardNode[]
+        hidden: BoardNode[]
+        edges: Edge[]
+      }
     >()
     const layerOf = (portal: ComposedPortal) => {
       let layer = layers.get(portal.id)
       if (!layer) {
-        layer = { clip: portal.clip, nodes: [], edges: [] }
+        layer = { portal, clip: portal.clip, nodes: [], hidden: [], edges: [] }
         layers.set(portal.id, layer)
       }
       return layer
@@ -859,6 +870,7 @@ export class WhiteboardCanvas {
       if (!portal) own.push(node)
       // What its frame hides is not drawn at all.
       else if (overlaps(node, portal.clip)) layerOf(portal).nodes.push(node)
+      else layerOf(portal).hidden.push(node)
     }
     const ownEdges: Edge[] = []
     for (const edge of this.board.edges) {
@@ -870,6 +882,46 @@ export class WhiteboardCanvas {
     this.ownEdges = ownEdges
     this.portalLayers = [...layers.values()]
     this.syncPortalClipPaths(portals)
+  }
+
+  /** The board's own cards as a gesture has them: with any card picked up
+   * from behind a portal without it, which is in the hand rather than behind
+   * the frame (`clipOf`). */
+  private liveOwnCardNodes(): readonly BoardNode[] {
+    const live = this.interaction.liveNodeRects
+    if (!live || this.portalLayers.length === 0) return this.ownCardNodes
+    const lifted = this.portalLayers.flatMap((layer) =>
+      layer.nodes.filter(
+        (node) => live.has(node.id) && !live.has(layer.portal.id),
+      ),
+    )
+    return lifted.length === 0
+      ? this.ownCardNodes
+      : [...this.ownCardNodes, ...lifted]
+  }
+
+  /** What is behind each open portal as a gesture has it: cut to the frame
+   * where the gesture holds it (`portalClip`), as the DOM tiers cut it — so
+   * what a frame being made larger comes over shows as it does — and
+   * without the cards picked up out of it. */
+  private livePortalLayers(): readonly PortalLayer[] {
+    const live = this.interaction.liveNodeRects
+    if (!live) return this.portalLayers
+    return this.portalLayers.map((layer) => {
+      const clip = this.portalClip(layer.portal)
+      const carried = live.has(layer.portal.id)
+      const nodes = carried
+        ? layer.nodes
+        : layer.nodes.filter((node) => !live.has(node.id))
+      const shown = layer.hidden.filter((node) =>
+        overlaps(live.get(node.id) ?? node, clip),
+      )
+      return {
+        clip,
+        nodes: shown.length > 0 ? [...nodes, ...shown] : nodes,
+        edges: layer.edges,
+      }
+    })
   }
 
   /** One `<clipPath>` per open portal, its frame on the board. */
@@ -1473,12 +1525,12 @@ export class WhiteboardCanvas {
     // in-flight connection's curve. See ./canvas/overviewLayer.ts.
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
-      getCardNodes: () => this.ownCardNodes,
+      getCardNodes: () => this.liveOwnCardNodes(),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       titleBadge: (node) => titleBadgeOf(node, this.core.t),
       getGroupNodes: () => this.groupNodes,
       getEdges: () => this.ownEdges,
-      getPortalLayers: () => this.portalLayers,
+      getPortalLayers: () => this.livePortalLayers(),
       getNode: this.core.getNode,
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
