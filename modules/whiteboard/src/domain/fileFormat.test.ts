@@ -669,6 +669,35 @@ describe('portals', () => {
     expect(result.issues).toEqual([])
   })
 
+  it('reads and writes the scale a portal shows its board at, and leaves 1 unwritten', () => {
+    const read = (view: unknown) => {
+      const json = JSON.parse(raw()) as { nodes: { view?: unknown }[] }
+      json.nodes[0].view = view
+      const result = parseBoard(JSON.stringify(json))
+      if (!result.ok) throw new Error('parse failed')
+      return result.board
+    }
+    const scaled = read({ x: 120, y: -40, scale: 0.5 })
+    const portal = scaled.nodes[0]
+    expect(portal.type === 'file' && portal.view).toEqual({
+      x: 120,
+      y: -40,
+      scale: 0.5,
+    })
+    const written = (board: Board) =>
+      (JSON.parse(serializeBoard(board)) as { nodes: { view?: unknown }[] })
+        .nodes[0].view
+    expect(written(scaled)).toEqual({ x: 120, y: -40, scale: 0.5 })
+    expect(written(read({ x: 120, y: -40, scale: 1 }))).toEqual({
+      x: 120,
+      y: -40,
+    })
+    expect(written(read({ x: 120, y: -40, scale: -2 }))).toEqual({
+      x: 120,
+      y: -40,
+    })
+  })
+
   it('writes an end behind a portal as the portal and the way in', () => {
     const result = parseBoard(raw())
     if (!result.ok) throw new Error('parse failed')

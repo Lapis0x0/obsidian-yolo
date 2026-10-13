@@ -23,7 +23,13 @@ import {
   emptyBoard,
 } from './fileFormat'
 import { groupRectForNodes } from './groups'
-import { type Composition, commonPortal, isPortal, portalOf } from './portals'
+import {
+  type Composition,
+  commonPortal,
+  isPortal,
+  portalOf,
+  tidy,
+} from './portals'
 import { isSpreadTitle } from './spread'
 
 /** Where the part stands from the corner of its own board's screen when
@@ -62,6 +68,11 @@ export function splitOff(
   const prefix = homeId === null ? '' : `${homeId}${NODE_PATH_SEPARATOR}`
   const dx = home?.dx ?? 0
   const dy = home?.dy ?? 0
+  const scale = home?.scale ?? 1
+  // Into the terms of the board it was on (domain/portals.ts's
+  // `ComposedPortal`).
+  const local = (value: number, offset: number) =>
+    scale === 1 ? value - offset : tidy((value - offset) / scale)
   const seenFrom = new Set([ownFile, file])
   for (
     let at = home;
@@ -93,7 +104,10 @@ export function splitOff(
   if (!frame) return null
 
   const portalId = `${prefix}${portalName}`
-  const view = { x: Math.round(frame.x) - dx, y: Math.round(frame.y) - dy }
+  const view = {
+    x: local(Math.round(frame.x), dx),
+    y: local(Math.round(frame.y), dy),
+  }
   const portal: FileNode = {
     id: portalId,
     type: 'file',
@@ -109,18 +123,20 @@ export function splitOff(
   }
 
   // In the file: as they were on the board they were on.
-  const local = (id: NodeId) => id.slice(prefix.length)
+  const localId = (id: NodeId) => id.slice(prefix.length)
   const contentNodes: BoardNode[] = part.map((node) => ({
     ...node,
-    id: local(node.id),
-    x: node.x - dx,
-    y: node.y - dy,
+    id: localId(node.id),
+    x: local(node.x, dx),
+    y: local(node.y, dy),
+    w: local(node.w, 0),
+    h: local(node.h, 0),
   }))
 
   const inPart = (id: NodeId) => moved.has(id) || rides(id)
   // An end in the part is reached through the portal now.
   const through = (id: NodeId) =>
-    inPart(id) ? `${portalId}${NODE_PATH_SEPARATOR}${local(id)}` : id
+    inPart(id) ? `${portalId}${NODE_PATH_SEPARATOR}${localId(id)}` : id
   const contentEdges: Edge[] = []
   const edges: Edge[] = []
   for (const edge of board.edges) {
@@ -137,9 +153,9 @@ export function splitOff(
     if (from && to && edgeHome === homeId) {
       contentEdges.push({
         ...edge,
-        id: local(edge.id),
-        fromNode: local(edge.fromNode),
-        toNode: local(edge.toNode),
+        id: localId(edge.id),
+        fromNode: localId(edge.fromNode),
+        toNode: localId(edge.toNode),
       })
       continue
     }

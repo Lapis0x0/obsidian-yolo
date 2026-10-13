@@ -20,6 +20,7 @@ import type {
   Edge,
   EdgeId,
   NodeId,
+  PortalView,
 } from '../../domain/fileFormat'
 import type { Rect } from '../../domain/portals'
 import type { CanvasView, WorldRect } from '../../domain/virtualization'
@@ -82,19 +83,19 @@ export type CanvasCore = Readonly<{
   /** Mounts/unmounts what the last recompute queued, now. */
   drainQueues: () => void
 
-  /** Where an open portal is looking (domain/portals.ts's `view`, or the
-   * default it stands for); null for anything else. */
-  portalViewOf: (id: NodeId) => Readonly<{ x: number; y: number }> | null
+  /** Where an open portal is looking and at what scale (domain/portals.ts's
+   * `view`, or the default it stands for), and `unit`: what one world unit
+   * behind it measures on this board — its scale times every portal's it is
+   * behind. Null for anything else. */
+  portalViewOf: (
+    id: NodeId,
+  ) => Readonly<{ x: number; y: number; scale: number; unit: number }> | null
   /** The open portal a world point is seen through — the innermost one —
    * or null where it is on the board's own. */
   portalAtPoint: (point: ScreenPoint) => NodeId | null
   /** Points an open portal at `view` (its board's own coordinates), as one
    * step of the history `historyKey` names. */
-  lookThroughPortal: (
-    id: NodeId,
-    view: Readonly<{ x: number; y: number }>,
-    historyKey: string,
-  ) => void
+  lookThroughPortal: (id: NodeId, view: PortalView, historyKey: string) => void
   /** The topmost card at a world point, for a question the DOM cannot
    * answer — the cards behind a portal only where they show through it. A
    * portal is the board under its inside, not a thing there: it answers only

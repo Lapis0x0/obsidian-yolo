@@ -28,7 +28,7 @@ const portal = (
   file: string,
   x: number,
   y: number,
-  view?: { x: number; y: number },
+  view?: { x: number; y: number; scale?: number },
 ): BoardNode => ({
   id,
   type: 'file',
@@ -352,6 +352,7 @@ describe('moveToBoard', () => {
       'Own.yoloboard',
       ['a'],
       p,
+      { x: 0, y: 0 },
     )
     // Behind the portal there is an `a` already.
     expect(renamed).toEqual(new Map([['a', 'p/a-2']]))
@@ -385,6 +386,7 @@ describe('moveToBoard', () => {
       'Own.yoloboard',
       ['p/b'],
       null,
+      { x: 0, y: 0 },
     )
     expect(renamed).toEqual(new Map([['p/b', 'b']]))
     expect(moved.edges).toContainEqual(
@@ -418,6 +420,7 @@ describe('moveToBoard', () => {
       'Own.yoloboard',
       ['p/a', 'back'],
       selfish.portals.get('p') ?? null,
+      { x: 0, y: 0 },
     )
     expect(moved.renamed.size).toBe(0)
     expect(moved.board).toBe(selfish.board)
@@ -460,5 +463,113 @@ describe('endThrough', () => {
     expect(
       endThrough({ id: 'p/a', x: 300, y: 40, w: 40, h: 20 }, frame),
     ).toEqual({ id: 'p/a', x: 100, y: 50, w: 0, h: 0 })
+  })
+})
+
+describe('a portal at another scale', () => {
+  const sub = board([text('a', 10, 20), text('b', 300, 20)])
+  const own = board([
+    portal('p', 'Sub.yoloboard', 1000, 500, { x: 0, y: 0, scale: 0.5 }),
+  ])
+  const expand = files({ 'Sub.yoloboard': sub })
+  const composition = composeBoard(own, 'Own.yoloboard', expand)
+
+  it('shows what is behind it scaled about where it looks', () => {
+    expect(
+      composition.board.nodes.map((node) => [
+        node.id,
+        node.x,
+        node.y,
+        node.w,
+        node.h,
+      ]),
+    ).toEqual([
+      ['p', 1000, 500, 400, 300],
+      ['p/a', 1005, 510, 50, 25],
+      ['p/b', 1150, 510, 50, 25],
+    ])
+    expect(composition.portals.get('p')).toMatchObject({
+      dx: 1000,
+      dy: 500,
+      scale: 0.5,
+    })
+  })
+
+  it('writes back what was done there in the file’s own sizes', () => {
+    const moved = composition.board.nodes.map((node) =>
+      node.id === 'p/a' ? { ...node, x: node.x + 10, w: 60 } : node,
+    )
+    const changes = changesBetween(
+      composition,
+      { ...composition.board, nodes: moved },
+      'Own.yoloboard',
+    )
+    expect(changes.get('Sub.yoloboard')?.nodes.get('a')?.after).toMatchObject({
+      x: 30,
+      y: 20,
+      w: 120,
+      h: 50,
+    })
+  })
+
+  it('multiplies the scales of portals behind portals', () => {
+    const deeper = composeBoard(
+      own,
+      'Own.yoloboard',
+      files({
+        'Sub.yoloboard': board([
+          portal('q', 'Deep.yoloboard', 100, 100, { x: 0, y: 0, scale: 0.5 }),
+        ]),
+        'Deep.yoloboard': board([text('d', 40, 0)]),
+      }),
+    )
+    expect(deeper.portals.get('p/q')?.scale).toBe(0.25)
+    expect(
+      deeper.board.nodes.find((node) => node.id === 'p/q/d'),
+    ).toMatchObject({ x: 1060, y: 550, w: 25, h: 12.5 })
+  })
+
+  it('keeps a card’s size in its file as it crosses: it is seen at the new board’s scale, about where it was put down', () => {
+    const withCard = composeBoard(
+      board([...own.nodes, text('t', 1100, 600)]),
+      'Own.yoloboard',
+      expand,
+    )
+    const { board: movedIn } = moveToBoard(
+      withCard.board,
+      withCard,
+      'Own.yoloboard',
+      ['t'],
+      withCard.portals.get('p') ?? null,
+      { x: 1100, y: 600 },
+    )
+    expect(movedIn.nodes.find((node) => node.id === 'p/t')).toMatchObject({
+      x: 1100,
+      y: 600,
+      w: 50,
+      h: 25,
+    })
+    const changes = changesBetween(withCard, movedIn, 'Own.yoloboard')
+    expect(changes.get('Sub.yoloboard')?.nodes.get('t')?.after).toMatchObject({
+      x: 200,
+      y: 200,
+      w: 100,
+      h: 50,
+    })
+
+    const { board: movedOut } = moveToBoard(
+      composition.board,
+      composition,
+      'Own.yoloboard',
+      ['p/b'],
+      null,
+      { x: 1160, y: 520 },
+    )
+    expect(movedOut.nodes.find((node) => node.id === 'b')).toMatchObject({
+      x: 1140,
+      y: 500,
+      w: 100,
+      h: 50,
+    })
   })
 })

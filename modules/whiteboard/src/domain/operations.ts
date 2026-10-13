@@ -23,6 +23,7 @@ import type {
   NodeColor,
   NodeId,
   NodeSide,
+  PortalView,
 } from './fileFormat'
 import { behindPortal } from './nodePath'
 
@@ -40,9 +41,9 @@ export type NodePatch = Readonly<{
    * clears the field. */
   plain?: boolean
   autoWidth?: boolean
-  /** Where a portal looks into the board behind it (fileFormat.ts's
-   * `BoardWindow`). */
-  view?: Readonly<{ x: number; y: number }>
+  /** Where a portal looks into the board behind it, and at what scale
+   * (fileFormat.ts's `BoardWindow`). Replaces the whole view. */
+  view?: PortalView
 }>
 
 /** Fields `updateEdge` may patch: where an edge is attached, and everything

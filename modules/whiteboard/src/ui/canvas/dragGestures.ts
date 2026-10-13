@@ -418,7 +418,13 @@ export class DragGestures {
     const view = node ? this.core.portalViewOf(node.id) : null
     const portalPatch =
       node && view && (rect.x !== node.x || rect.y !== node.y)
-        ? { view: { x: view.x + rect.x - node.x, y: view.y + rect.y - node.y } }
+        ? {
+            view: {
+              x: view.x + (rect.x - node.x) / view.unit,
+              y: view.y + (rect.y - node.y) / view.unit,
+              scale: view.scale,
+            },
+          }
         : {}
     this.core.applyBoardChange(
       updateNode(

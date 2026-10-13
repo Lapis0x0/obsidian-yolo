@@ -1,14 +1,18 @@
 // Portals: a card onto another board, through which that board's cards are
-// seen — and worked on — at this board's scale.
+// seen — and worked on.
 //
 // A portal is a file node whose file is a `.yoloboard` (domain/naming.ts's
 // `board` kind). Its `view` is the point of the other board at its top-left
-// corner, so the card's size is how much of that board it shows.
+// corner and how large that board is shown against this one, so the card's
+// size is how much of that board it shows.
 //
 // On the board, what is behind a portal is nodes like any other: each of the
-// other board's nodes is put on this board — moved by where the portal is,
-// and named by the way in (`portal/card`, domain/nodePath.ts) — right after
-// the portal, so it is drawn over it. Selecting, dragging, editing, colouring,
+// other board's nodes is put on this board — placed by where the portal is
+// and sized by its scale, and named by the way in (`portal/card`,
+// domain/nodePath.ts) — right after the portal, so it is drawn over it. A
+// card's rectangle on the board is where it is seen; what it holds is laid
+// out at its own size and drawn at the portal's scale (ui/canvas/
+// cardRenderer.ts). Selecting, dragging, editing, colouring,
 // deleting and connecting a card behind a portal is then what doing it to any
 // card is. That is `composeBoard`: the board the canvas works on, made from
 // this board's own file and the files behind its portals.
@@ -63,9 +67,12 @@ export type ComposedPortal = Readonly<{
   file: string
   /** That board, as it was put on this one. */
   source: Board
-  /** Where its world is, on this board's: add to a position behind it. */
+  /** How its world sits on this board's: a position behind it is
+   * `local × scale + (dx, dy)` here, a length `local × scale` — `scale`
+   * being every portal's on the way in, multiplied. */
   dx: number
   dy: number
+  scale: number
   /** What of this board it can be seen through: its card, inside every
    * portal it is itself behind. */
   clip: Rect
@@ -79,13 +86,18 @@ export type Composition = Readonly<{
   portals: ReadonlyMap<NodeId, ComposedPortal>
 }>
 
+/** How large a portal shows the board behind it, against its own board. */
+export function portalScale(portal: FileNode): number {
+  return portal.view?.scale ?? 1
+}
+
 /** The point of the board behind `portal` at its top-left corner: its
  * `view`, or the top-left of everything on that board. */
 export function portalView(
   portal: FileNode,
   behind: Board,
 ): Readonly<{ x: number; y: number }> {
-  if (portal.view) return portal.view
+  if (portal.view) return { x: portal.view.x, y: portal.view.y }
   const bounds = contentBounds(behind)
   return bounds
     ? {
@@ -150,39 +162,57 @@ export function composeBoard(
     prefix: string,
     dx: number,
     dy: number,
+    scale: number,
     clip: Rect | null,
     parent: NodeId | null,
     ancestors: readonly string[],
   ) => {
     for (const source of board.nodes) {
-      const node = prefix === '' ? source : project(source, prefix, dx, dy)
+      const node =
+        prefix === '' ? source : project(source, prefix, dx, dy, scale)
       nodes.push(node)
       if (!isPortal(node)) continue
       if (ancestors.includes(node.file)) continue
       const behind = expand(node, node.id, ancestors)
       if (!behind) continue
-      const view = portalView(node, behind)
       const frame = { x: node.x, y: node.y, w: node.w, h: node.h }
       const portal: ComposedPortal = {
         id: node.id,
         file: node.file,
         source: behind,
-        dx: node.x - view.x,
-        dy: node.y - view.y,
+        ...placeBehind(node, behind, scale),
         clip: clip ? intersect(clip, frame) : frame,
         parent,
       }
       portals.set(node.id, portal)
       const inner = `${node.id}${NODE_PATH_SEPARATOR}`
       for (const edge of behind.edges) edges.push(projectEdge(edge, inner))
-      visit(behind, inner, portal.dx, portal.dy, portal.clip, node.id, [
-        ...ancestors,
-        node.file,
-      ])
+      visit(
+        behind,
+        inner,
+        portal.dx,
+        portal.dy,
+        portal.scale,
+        portal.clip,
+        node.id,
+        [...ancestors, node.file],
+      )
     }
   }
-  visit(own, '', 0, 0, null, null, [ownFile])
+  visit(own, '', 0, 0, 1, null, null, [ownFile])
   return { board: { ...own, nodes, edges }, portals }
+}
+
+/** How the board behind `portal` — a portal as it is on the composed board,
+ * itself seen at `outer` — sits on the composed board (`ComposedPortal`). */
+function placeBehind(
+  portal: FileNode,
+  behind: Board,
+  outer: number,
+): Readonly<{ dx: number; dy: number; scale: number }> {
+  const view = portalView(portal, behind)
+  const scale = outer * portalScale(portal)
+  return { dx: portal.x - view.x * scale, dy: portal.y - view.y * scale, scale }
 }
 
 /** The portal `id` is behind on `composition`, the innermost one; null for
@@ -310,6 +340,10 @@ export function portalAt(
  * it; `renamed` says what each one is called now. `changesBetween` then has
  * each leave its old file and arrive in the new one.
  *
+ * A card keeps its size in its file, so on a board seen at another scale it
+ * is seen at another size: it grows or shrinks about `at`, where it was put
+ * down.
+ *
  * The edges reaching a moved card follow it. One whose two ends now first
  * meet on another board belongs to that board, and is renamed for it too.
  *
@@ -323,6 +357,7 @@ export function moveToBoard(
   ownFile: string,
   ids: readonly NodeId[],
   to: ComposedPortal | null,
+  at: Readonly<{ x: number; y: number }>,
 ): Readonly<{ board: Board; renamed: ReadonlyMap<NodeId, NodeId> }> {
   const { portals } = composition
   const homeOf = (id: NodeId) => portalOf(id, portals)?.id ?? null
@@ -363,10 +398,24 @@ export function moveToBoard(
   const moved: BoardNode[] = []
   const nodes: BoardNode[] = []
   let insertAt = -1
+  const toScale = to?.scale ?? 1
   for (const node of board.nodes) {
     const name = renamed.get(node.id)
     if (name) {
-      moved.push({ ...node, id: name })
+      const fromScale = portalOf(node.id, portals)?.scale ?? 1
+      const ratio = toScale / fromScale
+      moved.push(
+        ratio === 1
+          ? { ...node, id: name }
+          : {
+              ...node,
+              id: name,
+              x: at.x + (node.x - at.x) * ratio,
+              y: at.y + (node.y - at.y) * ratio,
+              w: tidy(node.w / fromScale) * toScale,
+              h: tidy(node.h / fromScale) * toScale,
+            },
+      )
       continue
     }
     nodes.push(node)
@@ -469,20 +518,33 @@ function recall<T extends object>(source: object, key: string): T | undefined {
   return projected.get(source)?.get(key) as T | undefined
 }
 
+/** What a projection is remembered by: where it was made for. */
+function projectionKey(
+  prefix: string,
+  dx: number,
+  dy: number,
+  scale: number,
+): string {
+  return `${prefix}\u0000${dx}\u0000${dy}\u0000${scale}`
+}
+
 function project(
   node: BoardNode,
   prefix: string,
   dx: number,
   dy: number,
+  scale: number,
 ): BoardNode {
-  const key = `${prefix}\u0000${dx}\u0000${dy}`
+  const key = projectionKey(prefix, dx, dy, scale)
   const known = recall<BoardNode>(node, key)
   if (known) return known
   const moved = {
     ...node,
     id: `${prefix}${node.id}`,
-    x: node.x + dx,
-    y: node.y + dy,
+    x: node.x * scale + dx,
+    y: node.y * scale + dy,
+    w: node.w * scale,
+    h: node.h * scale,
   }
   return remember(
     node,
@@ -502,6 +564,13 @@ function projectEdge(edge: Edge, prefix: string): Edge {
     fromNode: `${prefix}${edge.fromNode}`,
     toNode: `${prefix}${edge.toNode}`,
   })
+}
+
+/** A length or a position brought back through a scale: what the division
+ * leaves past a millionth of a world unit is its own rounding, not the
+ * board's. */
+export function tidy(value: number): number {
+  return Math.round(value * 1e6) / 1e6
 }
 
 function intersect(a: Rect, b: Rect): Rect {
@@ -562,7 +631,10 @@ export function changesBetween(
   }
   const afterById = new Map(after.nodes.map((node) => [node.id, node]))
   // The portals still on the board, where `after` has them.
-  const offsets = new Map<NodeId, Readonly<{ dx: number; dy: number }>>()
+  const offsets = new Map<
+    NodeId,
+    Readonly<{ dx: number; dy: number; scale: number }>
+  >()
   const live = (portal: ComposedPortal | null): boolean => {
     for (let at = portal; at; ) {
       if (!afterById.has(at.id)) return false
@@ -570,16 +642,26 @@ export function changesBetween(
     }
     return true
   }
-  const offsetOf = (portal: ComposedPortal) => {
+  // As `composeBoard` places it, from the portals on the way in as `after`
+  // has them — so the board made again from the files is `after`.
+  const offsetOf = (
+    portal: ComposedPortal,
+  ): Readonly<{ dx: number; dy: number; scale: number }> => {
     let known = offsets.get(portal.id)
     if (!known) {
       const node = afterById.get(portal.id)
-      if (node && isPortal(node)) {
-        const view = portalView(node, portal.source)
-        known = { dx: node.x - view.x, dy: node.y - view.y }
-      } else {
-        known = { dx: portal.dx, dy: portal.dy }
-      }
+      const parent =
+        portal.parent === null
+          ? null
+          : (before.portals.get(portal.parent) ?? null)
+      known =
+        node && isPortal(node)
+          ? placeBehind(
+              node,
+              portal.source,
+              parent ? offsetOf(parent).scale : 1,
+            )
+          : { dx: portal.dx, dy: portal.dy, scale: portal.scale }
       offsets.set(portal.id, known)
     }
     return known
@@ -613,16 +695,16 @@ export function changesBetween(
       })
       continue
     }
-    const { dx, dy } = offsetOf(portal)
+    const { dx, dy, scale } = offsetOf(portal)
     const id = node.id.slice(portal.id.length + 1)
     const source = portal.source.nodes.find((known) => known.id === id) ?? null
-    const own = unproject(node, portal.id, dx, dy)
+    const own = unproject(node, portal.id, dx, dy, scale, source)
     if (source && sameNode(source, own)) continue
     forFile(portal.file).nodes.set(id, { before: source, after: own, index })
     // The board made again from its files gives back what `after` has.
     remember(
       own,
-      `${portal.id}${NODE_PATH_SEPARATOR}\u0000${dx}\u0000${dy}`,
+      projectionKey(`${portal.id}${NODE_PATH_SEPARATOR}`, dx, dy, scale),
       node,
     )
   }
@@ -819,14 +901,35 @@ function applyTo<T, K>(
   return out
 }
 
+/**
+ * `node` in the terms of the file behind `portalId`: `project` backwards. A
+ * coordinate `source` (the node as the file has it) still projects to is
+ * taken from it as it is, so what was not moved or resized is written back
+ * unchanged rather than through a division.
+ */
 function unproject(
   node: BoardNode,
   portalId: NodeId,
   dx: number,
   dy: number,
+  scale: number,
+  source: BoardNode | null,
 ): BoardNode {
   const strip = (id: NodeId) => id.slice(portalId.length + 1)
-  const moved = { ...node, id: strip(node.id), x: node.x - dx, y: node.y - dy }
+  const back = (value: number, offset: number, was: number | undefined) =>
+    was !== undefined && was * scale + offset === value
+      ? was
+      : scale === 1
+        ? value - offset
+        : tidy((value - offset) / scale)
+  const moved = {
+    ...node,
+    id: strip(node.id),
+    x: back(node.x, dx, source?.x),
+    y: back(node.y, dy, source?.y),
+    w: back(node.w, 0, source?.w),
+    h: back(node.h, 0, source?.h),
+  }
   return moved.type === 'pdf-page' && moved.parent.startsWith(`${portalId}/`)
     ? { ...moved, parent: strip(moved.parent) }
     : moved

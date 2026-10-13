@@ -101,12 +101,15 @@ type PageWindow = Readonly<{ startPage?: number }>
 /**
  * Where a portal — a file card onto another board (domain/naming.ts's
  * `board` kind) — is looking: the point of that board, in its own world
- * units, at the card's top-left corner. The portal shows that board at this
- * board's scale, so the card's size is how much of it shows. Absent means the
- * top-left corner of everything on it. Not in JSON Canvas: there the card is
- * a card onto a file.
+ * units, at the card's top-left corner, and how large that board is shown
+ * there against this one (`scale`, 1 when absent). The card's size is how
+ * much of it shows. Absent means the top-left corner of everything on it, at
+ * this board's scale. Not in JSON Canvas: there the card is a card onto a
+ * file.
  */
-type BoardWindow = Readonly<{ view?: Readonly<{ x: number; y: number }> }>
+type BoardWindow = Readonly<{ view?: PortalView }>
+
+export type PortalView = Readonly<{ x: number; y: number; scale?: number }>
 
 /** A rectangle in world units — what a spread remembers for its title and
  * each of its pages. Written to the file as an `[x, y, w, h]` tuple: a
@@ -675,9 +678,11 @@ function parsePageWindow(entry: Record<string, unknown>): {
 function parseBoardWindow(entry: Record<string, unknown>): BoardWindow {
   const view = entry.view
   if (!isPlainObject(view)) return {}
-  const { x, y } = view
+  const { x, y, scale } = view
   if (!isFiniteNumber(x) || !isFiniteNumber(y)) return {}
-  return { view: { x, y } }
+  return isFiniteNumber(scale) && scale > 0 && scale !== 1
+    ? { view: { x, y, scale } }
+    : { view: { x, y } }
 }
 
 /**
@@ -787,7 +792,16 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         startLine: node.startLine,
         startPage: node.startPage,
         spread: serializeSpread(node.spread),
-        view: node.view ? { x: node.view.x, y: node.view.y } : undefined,
+        view: node.view
+          ? {
+              x: node.view.x,
+              y: node.view.y,
+              scale:
+                node.view.scale === undefined || node.view.scale === 1
+                  ? undefined
+                  : node.view.scale,
+            }
+          : undefined,
         ...node.extra,
       }
     case 'link':

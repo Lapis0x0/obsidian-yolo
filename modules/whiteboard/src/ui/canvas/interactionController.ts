@@ -145,8 +145,9 @@ type PortalPanInteraction = Readonly<{
   kind: 'portal-pan'
   pointerId: number
   portalId: NodeId
-  /** Where the portal was looking at the press, in its board's coordinates. */
-  origin: Readonly<{ x: number; y: number }>
+  /** Where the portal was looking at the press, in its board's coordinates,
+   * and what a unit there measures on this board. */
+  origin: Readonly<{ x: number; y: number; scale: number; unit: number }>
   startX: number
   startY: number
   /** The one step of history the whole drag is. */
@@ -1192,10 +1193,12 @@ export class InteractionController {
     interaction: PortalPanInteraction,
     e: PointerEvent,
   ): void {
-    const { scale } = this.core.getView()
+    const { origin } = interaction
+    const scale = this.core.getView().scale * origin.unit
     const view = {
-      x: interaction.origin.x - (e.clientX - interaction.startX) / scale,
-      y: interaction.origin.y - (e.clientY - interaction.startY) / scale,
+      x: origin.x - (e.clientX - interaction.startX) / scale,
+      y: origin.y - (e.clientY - interaction.startY) / scale,
+      scale: origin.scale,
     }
     const now = this.core.portalViewOf(interaction.portalId)
     if (now && now.x === view.x && now.y === view.y) return

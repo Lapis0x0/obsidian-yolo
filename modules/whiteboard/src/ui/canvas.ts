@@ -40,6 +40,7 @@ import {
   type GroupNode,
   type NodeColor,
   type NodeId,
+  type PortalView,
   emptyBoard,
   isPlainText,
   parseBoard,
@@ -84,6 +85,8 @@ import {
   moveToBoard,
   portalAt,
   portalOf,
+  portalScale,
+  tidy,
 } from '../domain/portals'
 import type { CardRect } from '../domain/resize'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
@@ -679,12 +682,7 @@ export class WhiteboardCanvas {
       drainQueues: () => this.drainQueues(),
       getSourcePath: () => this.sourcePathForBoard(),
       sourcePathOf: (id) => this.sourcePathOf(id),
-      portalViewOf: (id) => {
-        const portal = this.sources.composition.portals.get(id)
-        const node = this.nodesById.get(id)
-        if (!portal || !node) return null
-        return { x: node.x - portal.dx, y: node.y - portal.dy }
-      },
+      portalViewOf: (id) => this.portalViewOf(id),
       portalAtPoint: (point) =>
         portalAt(point, this.sources.composition.portals, () => false)?.id ??
         null,
@@ -731,6 +729,7 @@ export class WhiteboardCanvas {
       this.sourcePathForBoard(),
       ids.filter((id) => !rides(id)),
       to,
+      point,
     )
     this.applyBoardChange(board, historyKey)
     if (renamed.size === 0) return
@@ -1050,7 +1049,7 @@ export class WhiteboardCanvas {
       this.boardCameras.set(node.file, {
         x: view.tx + portal.dx * view.scale,
         y: view.ty + portal.dy * view.scale,
-        scale: view.scale,
+        scale: view.scale * portal.scale,
       })
     }
     void this.host.ui.openFileAt({ path: node.file, newLeaf: newTab })
@@ -1077,12 +1076,13 @@ export class WhiteboardCanvas {
       !(over === id || over.startsWith(behindPortal(id, '')))
     )
       return false
-    const portal = this.sources.composition.portals.get(id)
-    if (!portal) return false
-    const scale = this.cameraController.view.scale
+    const looking = this.portalViewOf(id)
+    if (!looking) return false
+    const scale = this.cameraController.view.scale * looking.unit
     const view = {
-      x: node.x - portal.dx + deltaX / scale,
-      y: node.y - portal.dy + deltaY / scale,
+      x: looking.x + deltaX / scale,
+      y: looking.y + deltaY / scale,
+      scale: looking.scale,
     }
     const now = this.context.getWindow().performance.now()
     if (
@@ -1100,10 +1100,26 @@ export class WhiteboardCanvas {
    * behind it in place (`takeComposedBoard`'s `onlyMoved`). */
   private lookThroughPortal(
     id: NodeId,
-    view: Readonly<{ x: number; y: number }>,
+    view: PortalView,
     historyKey: string,
   ): void {
     this.applyBoardChange(updateNode(this.board, id, { view }), historyKey)
+  }
+
+  /** Where an open portal looks, at what scale, and what a unit behind it
+   * measures here (core.ts's `portalViewOf`). */
+  private portalViewOf(
+    id: NodeId,
+  ): Readonly<{ x: number; y: number; scale: number; unit: number }> | null {
+    const portal = this.sources.composition.portals.get(id)
+    const node = this.nodesById.get(id)
+    if (!portal || !isPortal(node)) return null
+    return {
+      x: tidy((node.x - portal.dx) / portal.scale),
+      y: tidy((node.y - portal.dy) / portal.scale),
+      scale: portalScale(node),
+      unit: portal.scale,
+    }
   }
 
   /**
