@@ -88,6 +88,7 @@ import {
 } from '../domain/virtualization'
 import type { AnnotationPrefs } from '../host/annotationPrefs'
 import type { AnnotationStores } from '../host/annotationStore'
+import type { BoardCameras } from '../host/boardCameras'
 import type { MinimapPrefs } from '../host/minimapPrefs'
 import { takePendingFit } from '../host/pendingFit'
 import type { PictureStores } from '../host/pictureStore'
@@ -288,6 +289,12 @@ export class WhiteboardCanvas {
   private cardGeneration!: CardGeneration
   private readonly engine = new VirtualizationEngine()
   private readonly pinnedIds = new Set<NodeId>()
+  /** Bumped whenever `pinnedIds` changes: one of the visibility pass's
+   * inputs (`visibilityInputs`). */
+  private pinsRevision = 0
+  /** What the last visibility pass was asked about, to tell whether the
+   * next one would answer the same (`frame`). */
+  private visibilityInputs: readonly unknown[] = []
   /**
    * Nodes the user has just added to the board (created, pasted, dropped,
    * restored by an undo), with when they were added — what `drainQueues`
@@ -375,6 +382,9 @@ export class WhiteboardCanvas {
   /** Keeps this board's minimap switch in step with a change made from
    * another board (MinimapPrefs is shared by all of them). */
   private readonly unsubscribeMinimapPrefs: () => void
+  /** Waiting for this device's cameras to be read, to open the board where
+   * it was last looked at here (`setViewData`). */
+  private stopWaitingForCamera: () => void = () => undefined
   /** Card creation, drops and the right-click menus
    * (./canvas/dropImport.ts). Built in `ensureDom`. */
   private dropImport!: DropImport
@@ -560,6 +570,7 @@ export class WhiteboardCanvas {
     private readonly annotationPrefs: AnnotationPrefs,
     private readonly pictureStores: PictureStores,
     private readonly minimapPrefs: MinimapPrefs,
+    private readonly boardCameras: BoardCameras,
   ) {
     this.unsubscribeMinimapPrefs = minimapPrefs.subscribe(() =>
       this.canvasControls?.refresh(),
@@ -649,6 +660,7 @@ export class WhiteboardCanvas {
     this.history.reset(this.board)
     this.rebuildEdgesSvg()
     this.cameraController.loadCamera(this.board.camera)
+    this.openWhereLastLooked()
     // Cards were all torn down above: whatever the layer was parked on is
     // either gone or somewhere else now.
     this.interaction.refreshInteractionLayer()
@@ -664,6 +676,26 @@ export class WhiteboardCanvas {
     }
     this.recomputeVisibility()
     this.drainQueues()
+  }
+
+  /**
+   * Moves the camera to where this board was last looked at on this device
+   * (host/boardCameras.ts), over the file's own camera. Once what the device
+   * keeps has been read: until then the board shows the file's, and moves
+   * when it arrives only if nobody has moved it since.
+   */
+  private openWhereLastLooked(): void {
+    this.stopWaitingForCamera()
+    const path = this.sourcePathForBoard()
+    if (path === '') return
+    const opened = this.cameraController.view
+    this.stopWaitingForCamera = this.boardCameras.whenLoaded(() => {
+      this.stopWaitingForCamera = () => undefined
+      const kept = this.boardCameras.get(path)
+      if (!kept || this.cameraController.view !== opened) return
+      this.cameraController.loadCamera(kept)
+      this.recomputeVisibility()
+    })
   }
 
   /**
@@ -776,6 +808,7 @@ export class WhiteboardCanvas {
     this.minimap?.destroy()
     this.minimap = null
     this.unsubscribeMinimapPrefs()
+    this.stopWaitingForCamera()
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
@@ -1146,8 +1179,15 @@ export class WhiteboardCanvas {
           ) {
             return
           }
+          // Kept, not saved: where the board is looked at goes to the file
+          // with the next save that something written asks for, and when the
+          // board closes (`getViewData` reads the live camera either way).
+          // Saving for it rewrote the whole file at the end of every pan — on
+          // a board of thousands of cards, a megabyte and a vault-wide modify
+          // event each time, for nothing anyone wrote.
           this.board = { ...this.board, camera }
-          this.context.requestSave()
+          const path = this.sourcePathForBoard()
+          if (path !== '') this.boardCameras.set(path, camera)
         },
         afterCameraReset: () => {
           this.recomputeVisibility()
@@ -1298,9 +1338,11 @@ export class WhiteboardCanvas {
       worldEl: world,
       pin: (id) => {
         this.pinnedIds.add(id)
+        this.pinsRevision += 1
       },
       unpin: (id) => {
         this.pinnedIds.delete(id)
+        this.pinsRevision += 1
       },
       syncChips: (id) => this.cardGeneration.syncChips(id),
       writeReadingWindow: (id, line, markdown) => {
@@ -1334,6 +1376,9 @@ export class WhiteboardCanvas {
     this.cameraController.subscribeViewChange(() => {
       this.cardRenderer.setViewScale(this.cameraController.view.scale)
       this.canvasControls?.refreshReadouts()
+      // Which pictures are nearest moved with it — the ones held past the
+      // budget are the nearest ones.
+      this.pictures?.invalidate()
     })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
@@ -1477,9 +1522,11 @@ export class WhiteboardCanvas {
       pdf: this.pdf,
       pin: (id) => {
         this.pinnedIds.add(id)
+        this.pinsRevision += 1
       },
       unpin: (id) => {
         this.pinnedIds.delete(id)
+        this.pinsRevision += 1
       },
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
@@ -2783,6 +2830,7 @@ export class WhiteboardCanvas {
     // reaches this same method back through the `purgeNode` callback).
     this.cardRenderer.destroyRuntime(id, options)
     this.pinnedIds.delete(id)
+    this.pinsRevision += 1
     this.contentSyncQueue.delete(id)
     this.engine.markUnmounted(id)
   }
@@ -2801,7 +2849,13 @@ export class WhiteboardCanvas {
     this.interaction.consumePointerMove()
     this.cameraController.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
-      this.recomputeVisibility()
+      // Asked again only if something it is asked about has changed: on a
+      // still board of thousands of cards, every card and every edge was
+      // tested against the viewport fourteen times a second, for the same
+      // answer.
+      if (!sameInputs(this.visibilityInputs, this.currentVisibilityInputs())) {
+        this.recomputeVisibility()
+      }
       this.lastRecomputeTime = now
     }
     // Whether this frame builds card content. While the camera moves, only
@@ -2827,7 +2881,26 @@ export class WhiteboardCanvas {
     this.rafId = this.context.getWindow().requestAnimationFrame(this.frame)
   }
 
+  /** Everything a visibility pass's answer depends on. A gesture's live
+   * geometry is never the same twice: a pass is always owed while one is
+   * under way. */
+  private currentVisibilityInputs(): readonly unknown[] {
+    const view = this.cameraController.view
+    return [
+      view.tx,
+      view.ty,
+      view.scale,
+      this.getViewportSize(),
+      this.board,
+      this.pinsRevision,
+      this.engine.revision,
+      // A new object each time: equal to nothing.
+      this.interaction.liveNodeRects ? {} : null,
+    ]
+  }
+
   private recomputeVisibility(): void {
+    this.visibilityInputs = this.currentVisibilityInputs()
     if (this.parseFailed || !this.viewportEl) return
     const { width, height } = this.getViewportSize()
     const rect = computeWorldViewportRect(
@@ -3255,6 +3328,7 @@ export class WhiteboardCanvas {
     this.editing.forgetEntered()
     this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
+    this.pinsRevision += 1
     this.entering.clear()
     this.contentSyncQueue.clear()
     this.engine.reset()
@@ -3832,4 +3906,9 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
+}
+
+/** Whether two lists hold the same things, one for one. */
+function sameInputs(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i])
 }

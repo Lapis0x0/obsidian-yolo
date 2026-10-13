@@ -85,9 +85,9 @@ export type CameraControllerCallbacks = Readonly<{
    * `zoomScaleBounds`). The array's identity is the cache key, which works
    * because every board mutation replaces it (domain/operations.ts). */
   getAllNodes: () => readonly BoardNode[]
-  /** Folds a settled/target camera into the board and persists it, iff it
-   * actually changed — the comparison and the write both touch `board`,
-   * which this class does not own. */
+  /** Folds a settled/target camera into the board, iff it actually changed
+   * — the comparison and the write both touch `board`, which this class does
+   * not own. It reaches the file with the board's next save. */
   commitCamera: (camera: Camera) => void
   /** `resetCamera` also needs the virtualization loop to catch up
    * immediately, the same as any other discrete camera jump. */

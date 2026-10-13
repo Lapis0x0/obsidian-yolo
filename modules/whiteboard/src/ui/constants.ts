@@ -192,8 +192,8 @@ export const FRAME_ON_TIME_MS = 20
 export const INTERACTING_TIMEOUT_MS = 250
 
 /** How long the camera must sit idle after the last pan/zoom input before
- * it's folded into the board and persisted ("手势结束（而非
- * 逐帧）把 camera 写回 board 并 requestSave"). */
+ * it's folded into the board ("手势结束（而非逐帧）把 camera 写回
+ * board"), which saves it with whatever is saved next. */
 export const CAMERA_SETTLE_MS = 300
 
 /** Pointer movement (screen px) beyond which a press-and-move gesture that

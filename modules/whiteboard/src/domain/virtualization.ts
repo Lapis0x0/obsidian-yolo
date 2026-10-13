@@ -112,6 +112,15 @@ export class VirtualizationEngine {
   private readonly unmountQueue: string[] = []
   private readonly mountQueueSet = new Set<string>()
   private readonly unmountQueueSet = new Set<string>()
+  private changes = 0
+
+  /** Counts the changes made to what is mounted outside `recompute` — the
+   * ones a `recompute` with the same inputs would answer differently: a
+   * caller that skips a `recompute` whose inputs are unchanged also asks this
+   * has not moved. */
+  get revision(): number {
+    return this.changes
+  }
 
   get mounted(): ReadonlySet<string> {
     return this.mountedIds
@@ -140,6 +149,7 @@ export class VirtualizationEngine {
    * was rebuilt.
    */
   reset(): void {
+    this.changes += 1
     this.mountedIds.clear()
     this.mountQueue.length = 0
     this.unmountQueue.length = 0
@@ -244,10 +254,12 @@ export class VirtualizationEngine {
 
   /** Escape hatch for callers that mount/unmount outside the normal diff. */
   markMounted(id: string): void {
+    this.changes += 1
     this.mountedIds.add(id)
   }
 
   markUnmounted(id: string): void {
+    this.changes += 1
     this.mountedIds.delete(id)
     const mIdx = this.mountQueue.indexOf(id)
     if (mIdx !== -1) {

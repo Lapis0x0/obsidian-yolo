@@ -275,7 +275,9 @@ describe('Pictures', () => {
     pictures.retain()
     pictures.pump()
     expect(pictures.get(ref('card'))).toBeNull()
+    // The turn opens, and says so.
     state.turnOpen = true
+    state.wake?.()
     await run(pictures)
     expect(drawn).toEqual(['card', 'card'])
     expect(writes.at(-1)?.picture.stamp).toBe('newer')
@@ -378,6 +380,39 @@ describe('Pictures', () => {
     expect(pictures.get(ref('shared'))).toBe(held)
     expect(pictures.get(ref('a'))).not.toBeNull()
     expect(pictures.get(ref('b'))).toBeNull()
+  })
+
+  it('past its budget, stops looking once it has done what it can', async () => {
+    // Eight kept, and room for two: the first reads fill it past the budget,
+    // and the rest wait to be nearer than something held.
+    const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    const { pictures, state } = setup({
+      stored: Object.fromEntries(keys.map((key) => [key, kept()])),
+      budgetBytes: 2 * 100 * 100 * 4,
+    })
+    const all = keys.map((key, i) => want(key, i * 10))
+    let looks = 0
+    state.wanted = {
+      [Symbol.iterator]: () => {
+        looks += 1
+        return all[Symbol.iterator]()
+      },
+    } as unknown as WantedPicture[]
+    await run(pictures)
+    expect(pictures.get(ref('a'))).not.toBeNull()
+    expect(pictures.get(ref('h'))).toBeNull()
+
+    // A still board: nothing to look for, frame after frame.
+    looks = 0
+    await run(pictures)
+    expect(looks).toBe(0)
+
+    // The camera moves: what is nearest is asked again.
+    all[7] = want('h', -5)
+    pictures.invalidate()
+    await run(pictures)
+    expect(looks).toBeGreaterThan(0)
+    expect(pictures.get(ref('h'))).not.toBeNull()
   })
 
   it('past its budget, still makes what is far and keeps it unheld', async () => {

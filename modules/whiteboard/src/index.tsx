@@ -13,6 +13,7 @@
 
 import { AnnotationPrefs } from './host/annotationPrefs'
 import { AnnotationStores } from './host/annotationStore'
+import { BoardCameras } from './host/boardCameras'
 import { registerWhiteboardAgentTools } from './host/boardTools'
 import { createWhiteboard } from './host/createWhiteboard'
 import { exportAnnotatedPdf } from './host/exportAnnotatedPdf'
@@ -63,6 +64,10 @@ yolo.registerModule({
       host.privateStorage.deviceLocal,
       reportError,
     )
+    const boardCameras = new BoardCameras(
+      host.privateStorage.deviceLocal,
+      reportError,
+    )
     const annotationPrefs = new AnnotationPrefs(
       host.privateStorage.synchronized,
       reportError,
@@ -105,6 +110,7 @@ yolo.registerModule({
         readerPanelPrefs.load()
         annotationPrefs.load()
         minimapPrefs.load()
+        boardCameras.load()
         const canvas = new WhiteboardCanvas(
           context,
           host,
@@ -113,6 +119,7 @@ yolo.registerModule({
           annotationPrefs,
           pictureStores,
           minimapPrefs,
+          boardCameras,
         )
         const forgetOpenBoard = openBoards.add(canvas)
         // "The current board", for the commands that act on one.

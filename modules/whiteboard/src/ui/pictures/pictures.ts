@@ -206,16 +206,28 @@ export class Pictures {
   private readonly drawing = new Map<string, PictureSourceId>()
   private bytes = 0
   private destroyed = false
-  /** Every wanted picture was held at its level (or had failed) when last
-   * looked, at `completeAt`'s resolution: nothing to look for until the
-   * board changes (`retain`) or the zoom does. */
+  /** Nothing has happened since the last look that could change what it
+   * found — at `completeAt`'s resolution, with the board as still as
+   * `completeIdle` says: no look is needed until something does. What can
+   * change it is the board (`retain`, `invalidate`), the zoom, the board
+   * coming to rest, and a read, a draw, a shrink or a store's answer landing
+   * — each of which says so. A look finds either that every picture is held,
+   * or the most that can be started now; the rest waits on those.
+   *
+   * Not "every picture is held": past the budget that is never true, and a
+   * still board with more pictures than it can hold was looked over in full
+   * every frame — three thousand cards' worth, for nothing. */
   private complete = false
   private completeAt = 0
+  private completeIdle = false
   private lastScanAt = Number.NEGATIVE_INFINITY
   /** What was last told `onBusy`. */
   private busy = false
   private readonly budget: number
-  private readonly wake = (): void => this.pump()
+  private readonly wake = (): void => {
+    this.complete = false
+    this.pump()
+  }
 
   constructor(private readonly deps: PicturesDeps) {
     for (const source of deps.sources) this.sources.set(source.id, source)
@@ -231,7 +243,11 @@ export class Pictures {
     if (!dark || !filter) return entry.bitmap
     if (!entry.dark) {
       entry.dark = this.filtered(entry.bitmap, filter)
-      if (entry.dark) this.bytes += bitmapBytes(entry.dark)
+      if (entry.dark) {
+        this.bytes += bitmapBytes(entry.dark)
+        // Past the budget now, maybe: the farthest goes on the next look.
+        this.complete = false
+      }
     }
     return entry.dark ?? entry.bitmap
   }
@@ -253,13 +269,21 @@ export class Pictures {
   pump(): void {
     if (this.destroyed) return
     const resolution = this.deps.resolution()
-    if (this.complete && resolution === this.completeAt) return
-    const now = this.deps.doc.defaultView?.performance.now() ?? 0
-    if (!this.deps.idle() && now - this.lastScanAt < SCAN_INTERVAL_MOVING_MS) {
+    const idle = this.deps.idle()
+    if (
+      this.complete &&
+      resolution === this.completeAt &&
+      idle === this.completeIdle
+    ) {
       return
     }
+    const now = this.deps.doc.defaultView?.performance.now() ?? 0
+    if (!idle && now - this.lastScanAt < SCAN_INTERVAL_MOVING_MS) return
     this.lastScanAt = now
-    this.complete = false
+    // Settled as of this look: whatever it starts says when it lands.
+    this.complete = true
+    this.completeAt = resolution
+    this.completeIdle = idle
     // A picture with nothing before one that is merely too small, each
     // nearest first. Kept apart as they are found rather than sorted on
     // whether a picture is held: asking the entries inside the comparator
@@ -271,8 +295,6 @@ export class Pictures {
     const toDraw = new Map<PictureSourceId, Want[]>()
     const toShrink: Want[] = []
     let farthestHeld: WantedPicture | null = null
-    /** Some picture's group has not been answered for yet by its store. */
-    let waiting = false
     for (const [k, want] of this.wants(resolution)) {
       let entry = this.entries.get(k)
       // Made from something else: not the picture any more.
@@ -302,10 +324,8 @@ export class Pictures {
       }
       const group = this.group(want)
       if (!group) continue
-      if (!group.stored) {
-        waiting = true
-        continue
-      }
+      // Its store has not answered yet; it says when it does.
+      if (!group.stored) continue
       const stored = group.stored.get(want.key)
       if (stored?.stamp === want.stamp) {
         ;(entry ? toReadLarger : toReadMissing).push(want)
@@ -320,7 +340,7 @@ export class Pictures {
     // Down a level: only once the board is still — a zoom passing through
     // would have them scaled down and read back up again — or to make room.
     const full = this.bytes >= this.budget
-    if (toShrink.length > 0 && (full || this.deps.idle())) {
+    if (toShrink.length > 0 && (full || idle)) {
       for (const want of toShrink) {
         if (this.shrinking.size >= SHRINKS_AT_ONCE) break
         this.shrink(want)
@@ -335,7 +355,7 @@ export class Pictures {
     // smaller one shows it meanwhile, a little soft.
     const toRead = [
       ...toReadMissing.sort(byDistance),
-      ...(this.deps.idle() ? toReadLarger.sort(byDistance) : []),
+      ...(idle ? toReadLarger.sort(byDistance) : []),
     ]
     let nearestDraw: Want | null = null
     for (const [want] of toDraw.values()) {
@@ -349,17 +369,6 @@ export class Pictures {
         : (toRead[0] ?? null)
     this.setBusy(toDraw.size > 0 || this.drawing.size > 0)
     if (!nearest) {
-      if (
-        !waiting &&
-        toShrink.length === 0 &&
-        toReadLarger.length === 0 &&
-        this.reading.size === 0 &&
-        this.shrinking.size === 0 &&
-        this.drawing.size === 0
-      ) {
-        this.complete = true
-        this.completeAt = resolution
-      }
       this.withdrawAll()
       return
     }
@@ -412,6 +421,7 @@ export class Pictures {
         this.drawing.set(k, source.id)
         void this.draw(source, want).finally(() => {
           this.drawing.delete(k)
+          this.complete = false
           source.turn.end()
         })
       }
@@ -536,6 +546,7 @@ export class Pictures {
     void source.store.entries(ref.group, version).then(
       (entries) => {
         if (this.groups.get(k) !== state) return
+        this.complete = false
         state.stored = new Map(entries)
         for (const [key, stored] of entries) {
           if (stored.meta !== null) state.metas.set(key, stored.meta)
@@ -543,7 +554,9 @@ export class Pictures {
       },
       (error: unknown) => {
         this.deps.reportError(`${source.label} entries`, error)
-        if (this.groups.get(k) === state) state.stored = new Map()
+        if (this.groups.get(k) !== state) return
+        this.complete = false
+        state.stored = new Map()
       },
     )
     return state
@@ -595,6 +608,7 @@ export class Pictures {
       })
       .finally(() => {
         this.reading.delete(k)
+        this.complete = false
       })
   }
 
@@ -700,6 +714,7 @@ export class Pictures {
       )
       .finally(() => {
         this.shrinking.delete(k)
+        this.complete = false
       })
   }
 
@@ -729,6 +744,8 @@ export class Pictures {
   private forget(k: string): void {
     const entry = this.entries.get(k)
     if (!entry) return
+    // Room made, or a picture to have again: worth another look.
+    this.complete = false
     this.entries.delete(k)
     this.bytes -= bitmapBytes(entry.bitmap)
     if (entry.dark) this.bytes -= bitmapBytes(entry.dark)
