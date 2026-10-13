@@ -1327,12 +1327,14 @@ export class CardRenderer {
       runtime.contentView.setValue(wanted)
       return
     }
-    // A card opening part-way down keeps what it is already showing until the
-    // preview arriving under it has found that place (`beginContentHandoff`).
-    // Everything else swaps outright: with nothing to find, the incoming
-    // surface is right from its first frame.
-    const endHandoff =
-      scrollable && startLine > 0 ? this.beginContentHandoff(runtime) : null
+    // A card becoming scrollable keeps what it is already showing until the
+    // preview arriving under it has rendered and found its place
+    // (`beginContentHandoff`) — at the top as much as part-way down: the
+    // preview renders a task after it is placed, so swapped outright the
+    // card is empty for a frame (measured), which reads as it flashing white
+    // the first time it is selected. A clipped render has no wait to cover,
+    // and swaps outright.
+    const endHandoff = scrollable ? this.beginContentHandoff(runtime) : null
     if (!endHandoff) {
       if (runtime.el) this.holdTextSize(runtime.el, node)
       // The card's picture stays over the render arriving under it, and
@@ -1363,7 +1365,9 @@ export class CardRenderer {
         // — and the window the card was showing has to be found again by
         // scrolling to it.
         bodyEl.classList.add(CARD_BODY_SCROLLS_CLASS)
-        if (startLine) view.scrollToLine(startLine, endHandoff ?? undefined)
+        if (startLine || endHandoff) {
+          view.scrollToLine(startLine, endHandoff ?? undefined)
+        }
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
         // Nothing is arriving to settle, so the outgoing render is not being
