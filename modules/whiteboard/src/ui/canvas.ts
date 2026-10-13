@@ -957,30 +957,17 @@ export class WhiteboardCanvas {
     this.syncPortalClipPaths(portals)
   }
 
-  /** The board's own cards as a gesture has them: with any card picked up
-   * from behind a portal without it, which is in the hand rather than behind
-   * the frame (`clipOf`). */
-  private liveOwnCardNodes(): readonly BoardNode[] {
-    const live = this.interaction.liveNodeRects
-    if (!live || this.portalLayers.length === 0) return this.ownCardNodes
-    const lifted = this.portalLayers.flatMap((layer) =>
-      layer.nodes.filter(
-        (node) => live.has(node.id) && !live.has(layer.portal.id),
-      ),
-    )
-    return lifted.length === 0
-      ? this.ownCardNodes
-      : [...this.ownCardNodes, ...lifted]
-  }
-
   /** What is behind each open portal as a gesture has it: cut to the frame
    * where the gesture holds it (`portalClip`), as the DOM tiers cut it — so
-   * what a frame being made larger comes over shows as it does — and
-   * without the cards picked up out of it. */
+   * what a frame being made larger comes over shows as it does — and with
+   * the cards picked up out of it on their own, uncut and over everything:
+   * in the hand rather than behind the frame (`clipOf`), and still the size
+   * they were picked up at, so drawn at its scale. */
   private livePortalLayers(): readonly PortalLayer[] {
     const live = this.interaction.liveNodeRects
     if (!live) return this.portalLayers
-    return this.portalLayers.map((layer) => {
+    const lifted: PortalLayer[] = []
+    const layers = this.portalLayers.map((layer) => {
       const clip = this.portalClip(layer.portal)
       const carried = live.has(layer.portal.id)
       const nodes = carried
@@ -989,6 +976,17 @@ export class WhiteboardCanvas {
       const shown = layer.hidden.filter((node) =>
         overlaps(live.get(node.id) ?? node, clip),
       )
+      if (!carried) {
+        const inHand = layer.nodes.filter((node) => live.has(node.id))
+        if (inHand.length > 0) {
+          lifted.push({
+            clip: null,
+            scale: layer.scale,
+            nodes: inHand,
+            edges: [],
+          })
+        }
+      }
       return {
         clip,
         scale: layer.scale,
@@ -996,6 +994,7 @@ export class WhiteboardCanvas {
         edges: layer.edges,
       }
     })
+    return lifted.length === 0 ? layers : [...layers, ...lifted]
   }
 
   /** One `<clipPath>` per open portal, its frame on the board. */
@@ -1872,7 +1871,7 @@ export class WhiteboardCanvas {
     // in-flight connection's curve. See ./canvas/overviewLayer.ts.
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
-      getCardNodes: () => this.liveOwnCardNodes(),
+      getCardNodes: () => this.ownCardNodes,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       titleBadge: (node) => titleBadgeOf(node, this.core.t),
       getGroupNodes: () => this.groupNodes,

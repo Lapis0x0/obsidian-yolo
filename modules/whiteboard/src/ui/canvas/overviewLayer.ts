@@ -171,7 +171,9 @@ type Palette = Readonly<{
  * `ComposedPortal`): what is sized in world units inside a card, its type,
  * is drawn that much larger or smaller. */
 export type PortalLayer = Readonly<{
-  clip: Readonly<{ x: number; y: number; w: number; h: number }>
+  /** The frame it is cut to; null for cards picked up out of it, which are
+   * in the hand rather than behind the frame, and drawn at its scale still. */
+  clip: Readonly<{ x: number; y: number; w: number; h: number }> | null
   scale: number
   nodes: readonly BoardNode[]
   edges: readonly Edge[]
@@ -511,6 +513,10 @@ export class OverviewLayer {
     let drew = false
     for (const layer of this.callbacks.getPortalLayers()) {
       const { clip } = layer
+      if (!clip) {
+        if (draw(layer)) drew = true
+        continue
+      }
       const x = clip.x * view.scale + view.tx
       const y = clip.y * view.scale + view.ty
       const w = clip.w * view.scale
