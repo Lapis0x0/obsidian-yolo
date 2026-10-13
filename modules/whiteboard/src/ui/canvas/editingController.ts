@@ -16,7 +16,6 @@
 // commit path. Never write back from anywhere else — this is what keeps blur
 // and Escape from double-committing.
 
-import { collapseBlankLines } from '../../domain/blankLines'
 import { planNodeCommit } from '../../domain/commit'
 import {
   type Board,
@@ -97,7 +96,7 @@ export type EditingControllerDeps = Readonly<{
    * to the board without a history step or a save of its own (the commit
    * that follows saves it). `line` is in `markdown`, the text about to be
    * committed — not the board's copy, which the throttled writes may have
-   * left behind, and which blank-line folding has renumbered. */
+   * left behind. */
   writeReadingWindow: (id: NodeId, line: number, markdown: string) => void
   /** Bare text left empty is taken off the board: it has nothing to show,
    * so it would be an invisible box. `historyKey` is the session's, for the
@@ -547,15 +546,8 @@ export class EditingController {
     // `enterEditMode`, and the same shape as Obsidian's own embed leaving edit
     // mode: read once, carried across once, unconditionally. Read before
     // `destroy()`, which is what makes the editor unable to answer.
-    const scrollLine = editing.editor.getScrollLine()
-    // A text card's blank lines are folded on the way out, so it reads the
-    // same height clicked into as not (domain/blankLines.ts). A note card's
-    // text is a file in the user's vault, and is written back as typed.
-    const folded =
-      this.core.getNode(id)?.type === 'text' ? collapseBlankLines(text) : null
-    const committed = folded ? folded.markdown : text
-    const line = folded ? folded.mapLine(scrollLine) : scrollLine
-    this.deps.writeReadingWindow(id, line, committed)
+    const line = editing.editor.getScrollLine()
+    this.deps.writeReadingWindow(id, line, text)
     const runtime = this.deps.cards.getRuntime(id)
     if (runtime?.el) {
       this.deps.cards.holdTextSize(runtime.el, this.core.getNode(id))
@@ -566,7 +558,7 @@ export class EditingController {
     runtime?.el?.classList.remove(CARD_EDITING_CLASS)
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
 
-    if (isPlainText(this.core.getNode(id)) && committed === '') {
+    if (isPlainText(this.core.getNode(id)) && text.trim() === '') {
       this.deps.discardText(id, editing.historyKey)
       this.deps.onEditingChange()
       return
@@ -575,7 +567,7 @@ export class EditingController {
     // Final flush: the throttled writes may have left the last keystrokes
     // unpersisted, and a no-op commit costs nothing. Still under the
     // session's history key — the whole session is one step to undo.
-    this.commitCardText(id, committed, editing.historyKey)
+    this.commitCardText(id, text, editing.historyKey)
     void this.deps.cards.renderCardPreview(id)
     // The reading surface comes out of hiding where the editor left off.
     runtime?.contentView?.scrollToLine(line)

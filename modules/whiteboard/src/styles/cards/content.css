@@ -23,20 +23,21 @@
 
 /* ---- Block spacing: the preview laid out on the editor's lines ----
  *
- * The editor lays a card out line by line, and a blank source line is all
- * that separates two blocks: one body line tall, whatever the blocks are. The
- * preview spaces blocks by kind instead — the theme's `--p-spacing` (a rem,
- * blind to the card's type size), a heading's own spacing, a quote's em — so
- * every block below the first one that differs sat a little further down than
- * the line the editor puts it on, and clicking into a card moved it.
+ * The editor lays a card out line by line: a block takes the lines it is
+ * written on, and what lies between two blocks is the blank lines the source
+ * has there — one, a run pasted in, or none at all under a heading. The
+ * preview spaces blocks by kind instead (the theme's `--p-spacing`, a
+ * heading's own spacing, a quote's em), and has no way to do otherwise from
+ * the HTML: Markdown renders any number of blank lines, none included, as the
+ * same break. So clicking into a card moved what was written in it.
  *
- * So here a block is followed by exactly one body line and preceded by
- * nothing. Bottom-only, because two kinds of wrapper disagree about
- * collapsing: a one-pass render's blocks are siblings, while the windowed
- * preview puts each in a section `div` — and a table's section scrolls, so
- * margins inside it stay inside. A top margin would be counted once in the
- * first and twice in the second; a bottom margin with nothing above the next
- * block is one line in both. */
+ * Both of a card's previews are rendered in sections — the one-pass render
+ * asks for them (cardContent.ts), the windowed preview has them anyway — and
+ * the host marks each with the blank lines that follow its block
+ * (`--yolo-markdown-blank-lines-after`). Here a block takes no margin of its
+ * own and its section is followed by that many body lines: the editor's
+ * layout, block for block. On the section rather than the block, because a
+ * table's section scrolls sideways, and margins inside it stay inside. */
 
 /* The card's body line, as a length. Registered so `1lh` is resolved where it
  * is declared — on the preview and on the editor's content, both at the
@@ -49,8 +50,10 @@
   initial-value: 0px;
 }
 
-/* The editor's half is content it renders rather than lines — a callout, a
- * table — and spaces with the same variable, so it is given the same value. */
+/* `--p-spacing` still spaces paragraphs inside a block — a quote's, a list
+ * item's, a callout's — where the editor has a line for each blank one too.
+ * The editor's half is content it renders rather than lines (a callout, a
+ * table), spaced by the same variable, so it gets the same value. */
 .yolo-whiteboard-card-body .markdown-preview-view,
 .yolo-whiteboard-editor-host .cm-content {
   --yolo-whiteboard-card-line: 1lh;
@@ -64,31 +67,54 @@
   --yolo-whiteboard-table-handles: var(--size-4-6);
 }
 
-/* Top-level blocks only — a one-pass render's, or a windowed section's. A list
- * nested in an item, or a quote in a quote, is spaced as the editor renders
- * it, which is Obsidian's own business. Specific enough to outrank Obsidian's
- * heading rule (`… div:is(.el-p, …) + div:is(.el-h1, …) > h1`, 0,3,3); the
- * kinds are a `:where` so that naming `.callout` among them does not also
- * outrank the table and rule exceptions below. */
+/* A section, not the windowed preview's spacer or its header and footer. Its
+ * own formatting context, so that it is as tall as its block, margins and
+ * all — a rule's, a table's — and the blank lines after it are all that
+ * separates it from the next. The fallback is the one blank line blocks are
+ * normally written apart by. */
 .yolo-whiteboard-card-body
   .markdown-preview-view.markdown-rendered
-  :is(.markdown-preview-sizer, .markdown-preview-sizer > div)
-  > :where(
-    p,
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6,
-    ul,
-    ol,
-    blockquote,
-    pre,
-    table,
-    .callout
-  ) {
-  margin-block: 0 var(--yolo-whiteboard-card-line);
+  .markdown-preview-sizer
+  > div:not(.mod-ui, .markdown-preview-pusher) {
+  display: flow-root;
+  margin-bottom: calc(
+    var(--yolo-markdown-blank-lines-after, 1) * var(--yolo-whiteboard-card-line)
+  );
+}
+
+/* As specific as Obsidian's reset of the first section's block
+ * (`… .markdown-preview-pusher + div:not(.mod-ui) > :first-child`, 0,5,1), and
+ * well past its heading rule (0,3,3). */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  .markdown-preview-sizer
+  > div:not(.mod-ui)
+  > * {
+  margin-block: 0;
+}
+
+/* The editor shows a table with room around it for its drag handles and its
+ * add-row button (Obsidian's `--table-drag-handle-size` of padding, above and
+ * below) — room it needs, so the preview keeps the same. */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  .markdown-preview-sizer
+  > div:not(.mod-ui)
+  > table {
+  margin-block: var(--yolo-whiteboard-table-handles);
+}
+
+/* A rule is a line of its own in the editor, drawn through its middle. Its
+ * thickness is Obsidian's, which is what the editor draws it with. */
+.yolo-whiteboard-card-body
+  .markdown-preview-view.markdown-rendered
+  .markdown-preview-sizer
+  > div:not(.mod-ui)
+  > hr {
+  margin-block: calc(
+    (var(--yolo-whiteboard-card-line) - var(--hr-thickness)) / 2
+  );
+  border-top-width: var(--hr-thickness);
 }
 
 /* A code block's fences are lines in the editor, at the code's size; the
@@ -108,70 +134,13 @@
   padding-block: 1lh;
 }
 
-/* The editor shows a table with room around it for its drag handles and its
- * add-row button (Obsidian's `--table-drag-handle-size` of padding, above and
- * below) — room it needs, so the preview keeps the same. Above, that comes on
- * top of the blank line in a one-pass render, where the previous block's
- * margin collapses into this one; a windowed table's section keeps its
- * margins to itself, so there the blank line is already outside it.
- *
- * The room is there for a table that opens the card too, so this outranks
- * Obsidian's reset of the first mounted section's top margin
- * (`… .markdown-preview-pusher + div:not(.mod-ui) > :first-child`, 0,5,1) by
- * naming a section the way it does. */
-.yolo-whiteboard-card-body
-  .markdown-preview-view.markdown-rendered
-  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:not(.mod-ui))
-  > table {
-  margin-block: var(--yolo-whiteboard-table-handles)
-    calc(
-      var(--yolo-whiteboard-card-line) + var(--yolo-whiteboard-table-handles)
-    );
-}
-
-.yolo-whiteboard-card-body
-  .markdown-preview-view.markdown-rendered
-  .markdown-preview-sizer.markdown-preview-section
-  > :not(.mod-ui)
-  + table {
-  margin-top: calc(
-    var(--yolo-whiteboard-card-line) + var(--yolo-whiteboard-table-handles)
-  );
-}
-
-/* A rule is a line of its own in the editor, drawn through its middle, with a
- * blank line on either side: three lines from the block above to the one
- * below, or half a line above it when it opens the card. Its thickness is
- * Obsidian's, which is what the editor draws it with. */
-.yolo-whiteboard-card-body
-  .markdown-preview-view.markdown-rendered
-  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:not(.mod-ui))
-  > hr {
-  margin-block: calc(
-    var(--yolo-whiteboard-card-line) * 1.5 - var(--hr-thickness) / 2
-  );
-  border-top-width: var(--hr-thickness);
-}
-
-.yolo-whiteboard-card-body
-  .markdown-preview-view.markdown-rendered
-  :is(
-    .markdown-preview-sizer.markdown-preview-section > hr:first-child,
-    .markdown-preview-pusher + div:not(.mod-ui) > hr
-  ) {
-  margin-top: calc(
-    (var(--yolo-whiteboard-card-line) - var(--hr-thickness)) / 2
-  );
-}
-
 /* Items of a loose list — written with a blank line between them — hold
  * paragraphs, and Obsidian takes the margin off an item's last one, running
- * the items together; the editor shows the blank line. Paragraphs within an
- * item keep the spacing above, and the last item's line collapses into the
- * list's own. */
+ * the items together; the editor shows the blank line. Not after the last
+ * item, where it would add to what the list's section is followed by. */
 .yolo-whiteboard-card-body
   :is(.markdown-preview-view, .cm-embed-block)
-  li
+  li:not(:last-child)
   > p:last-of-type {
   margin-bottom: var(--yolo-whiteboard-card-line);
 }
@@ -227,15 +196,6 @@
     #000 calc(100% - 24px),
     transparent 100%
   );
-}
-
-/* A card's content starts at the card's inset. Obsidian's preview absorbs the
- * first block's top margin because a document opens under a header; a card has
- * no header, so the margin would push its one visible screenful down by a line
- * it cannot afford. Only the leading edge: spacing *between* blocks is what
- * makes the content read as the note it came from. */
-.yolo-whiteboard-card-body .markdown-preview-sizer > :first-child {
-  margin-top: 0;
 }
 
 /* Same inset, on CodeMirror's scroll container rather than on its content:

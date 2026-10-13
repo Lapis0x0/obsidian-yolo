@@ -88,16 +88,6 @@
   padding: 2px 4px;
 }
 
-/* Its box is its content's, so the line content.css leaves under each block
- * is not left under the last one. As specific as that rule, and after it. */
-.yolo-whiteboard-text
-  .yolo-whiteboard-card-body
-  .markdown-preview-view.markdown-rendered
-  :is(.markdown-preview-sizer, .markdown-preview-sizer > div:last-child)
-  > :last-child {
-  margin-bottom: 0;
-}
-
 /* A coloured text is written in its colour, and so is the bar of a quote in
  * it. */
 .yolo-whiteboard-text.yolo-whiteboard-themed .yolo-whiteboard-card-body {
@@ -105,15 +95,15 @@
   color: var(--yolo-whiteboard-color);
 }
 
-/* An excerpt's citation (domain/excerpt.ts): its last line, a link to a
- * place in a PDF and nothing else, set small under what it cites — a quote,
- * a picture, or a comment — and in the link's colour, since a click on it
- * reads the passage (pdfIntegration.ts's `followPdfLinkAt`). */
+/* An excerpt's citation (domain/excerpt.ts): its last block, a paragraph
+ * holding a link to a place in a PDF and nothing else, set small under what
+ * it cites — a quote, a picture, or a comment — and in the link's colour,
+ * since a click on it reads the passage (pdfIntegration.ts's
+ * `followPdfLinkAt`). Each block is in a section of its own (content.css). */
 .yolo-whiteboard-text
   .markdown-preview-sizer
-  > p:last-child:not(:first-child):has(
-    > a.internal-link[data-href*='.pdf#page=']:only-child
-  ) {
+  > div:last-child:not(:first-child)
+  > p:only-child:has(> a.internal-link[data-href*='.pdf#page=']:only-child) {
   font-size: 12px;
   color: var(--text-muted);
 }

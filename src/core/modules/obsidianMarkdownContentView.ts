@@ -54,6 +54,27 @@ type ObsidianMarkdownPreviewRenderer = {
   onResize(): void
   getScroll(): number
   applyScrollDelayed(line: number, options?: unknown, onDone?: () => void): void
+  /**
+   * The document split into its top-level blocks, in order, each with the
+   * source lines its content spans. Rebuilt by `parseFinish`, which every
+   * parse — synchronous or from the worker — ends in, before any section is
+   * rendered or measured. The header and footer Obsidian adds around a
+   * document are sections too, without positions.
+   */
+  sections: ObsidianPreviewSection[]
+  frontmatter: unknown
+  text: string
+  parseSync(): void
+  parseFinish(text: string, parsed: unknown): void
+}
+
+/** One top-level block of a parsed document. */
+type ObsidianPreviewSection = {
+  el: HTMLElement
+  start?: Readonly<{ line: number }>
+  end?: Readonly<{ line: number }>
+  /** Fills `el` from the block's HTML, once. */
+  render(): void
 }
 
 /**
@@ -64,6 +85,15 @@ type ObsidianMarkdownPreviewRenderer = {
  */
 type ObsidianMarkdownRendererInstance = Component & {
   renderer: ObsidianMarkdownPreviewRenderer
+  /**
+   * Runs the post-processors over a rendered section — links, embeds, every
+   * plugin's own — exactly as the preview does for each section it mounts.
+   */
+  postProcess(
+    section: ObsidianPreviewSection,
+    promises: Promise<unknown>[],
+    frontmatter: unknown,
+  ): void
 }
 
 type ObsidianMarkdownRendererClass = new (
@@ -132,6 +162,11 @@ export function assertMarkdownRendererInstance(
       )
     }
   }
+  if (typeof value.postProcess !== 'function') {
+    throw new ObsidianMarkdownContentViewUnavailableError(
+      'the Markdown renderer has no postProcess()',
+    )
+  }
   const renderer = value.renderer
   if (!renderer || typeof renderer !== 'object') {
     throw new ObsidianMarkdownContentViewUnavailableError(
@@ -143,6 +178,8 @@ export function assertMarkdownRendererInstance(
     'onResize',
     'getScroll',
     'applyScrollDelayed',
+    'parseSync',
+    'parseFinish',
   ] as const) {
     if (typeof renderer[method] !== 'function') {
       throw new ObsidianMarkdownContentViewUnavailableError(
@@ -150,6 +187,45 @@ export function assertMarkdownRendererInstance(
       )
     }
   }
+  if (!Array.isArray(renderer.sections)) {
+    throw new ObsidianMarkdownContentViewUnavailableError(
+      'the preview renderer keeps no sections',
+    )
+  }
+}
+
+/**
+ * The custom property each rendered block's section element carries: how many
+ * blank source lines follow the block before the next one starts.
+ *
+ * Markdown renders any number of blank lines between two blocks — none
+ * included — as the same break, so the HTML cannot say how far apart the
+ * source put them; an editor shows every one of those lines. A surface that
+ * has to sit line for line on an editor's layout (a card clicked into)
+ * spaces its blocks from this instead of from the theme's margins. The last
+ * block's is 0: what follows it is nothing to keep apart from.
+ */
+export const BLANK_LINES_AFTER_PROPERTY = '--yolo-markdown-blank-lines-after'
+
+function markBlankLinesAfter(
+  sections: readonly ObsidianPreviewSection[],
+): void {
+  let previous: ObsidianPreviewSection | null = null
+  for (const section of sections) {
+    // The header and footer have no place in the source.
+    if (!section.start || !section.end) continue
+    if (previous?.end) {
+      markSection(previous, section.start.line - previous.end.line - 1)
+    }
+    previous = section
+  }
+  if (previous) markSection(previous, 0)
+}
+
+function markSection(section: ObsidianPreviewSection, lines: number): void {
+  section.el.setCssProps({
+    [BLANK_LINES_AFTER_PROPERTY]: String(Math.max(lines, 0)),
+  })
 }
 
 type ContentViewContext = {
@@ -257,6 +333,15 @@ export function createObsidianMarkdownContentView(
     )
   }
   assertMarkdownRendererInstance(instance)
+  // Every parse ends here, and nothing has been rendered or measured from it
+  // yet: marked now, a section is measured with the spacing it will keep,
+  // so the heights the window is faked from stay true.
+  const renderer = instance.renderer
+  const parseFinish = renderer.parseFinish.bind(renderer)
+  renderer.parseFinish = (text, parsed) => {
+    parseFinish(text, parsed)
+    markBlankLinesAfter(renderer.sections)
+  }
   instance.load()
   instance.renderer.set(options.value)
   options.container.appendChild(hostEl)
@@ -303,4 +388,118 @@ export function createObsidianMarkdownContentView(
       hostEl.remove()
     },
   }
+}
+
+/**
+ * The context `MarkdownRenderer.render()` hands its post-processors, and the
+ * static entry point that runs them over it: every registered
+ * post-processor, then the embeds. Undeclared, like the rest of this file.
+ */
+type ObsidianPostProcessContext = {
+  docId: string
+  sourcePath: string
+  frontmatter: unknown
+  promises: Promise<unknown>[]
+  addChild(child: Component): void
+  getSectionInfo(): null
+  replace(): null
+  containerEl: HTMLElement
+  el: HTMLElement
+  displayMode: boolean
+}
+
+type ObsidianStaticPostProcess = (
+  app: App,
+  context: ObsidianPostProcessContext,
+) => void
+
+/**
+ * One instance per process, used for nothing but its parser: never loaded,
+ * never placed, never given a file. Building one per render cost a fifth more
+ * than the whole flat render did (230 bench cards, measured 2026-10-14).
+ */
+let sectionParser: ObsidianMarkdownPreviewRenderer | null = null
+
+function getSectionParser(
+  app: App,
+  doc: Document,
+): ObsidianMarkdownPreviewRenderer {
+  if (sectionParser) return sectionParser
+  const ViewClass = resolveContentViewClass()
+  let instance: ObsidianMarkdownRendererInstance
+  try {
+    instance = new ViewClass(app, doc.createElement('div'), {
+      app,
+      sourcePath: '',
+    })
+  } catch (error) {
+    throw new ObsidianMarkdownContentViewUnavailableError(
+      'constructing the Markdown renderer threw',
+      error,
+    )
+  }
+  assertMarkdownRendererInstance(instance)
+  sectionParser = instance.renderer
+  return sectionParser
+}
+
+let renderedDocuments = 0
+
+/**
+ * Renders `markdown` once into `container`, one element per top-level block,
+ * each marked with the blank lines that follow it in the source
+ * (`BLANK_LINES_AFTER_PROPERTY`).
+ *
+ * `MarkdownRenderer.render()` hands back one flat tree, with nothing left of
+ * where the source put its blocks. Here the document is split the way the
+ * windowed preview splits it — by Obsidian's own parser, into sections whose
+ * elements carry the block's kind (`el-p`, `el-h2`, …) — and every section is
+ * rendered, so the result is the preview's markup. What runs over it after is
+ * exactly what `render()` runs, once, over the whole of it: the same
+ * post-processors with the same context, embeds owned by `component`.
+ * Resolves once those post-processors have finished.
+ */
+export function renderObsidianMarkdownSections(
+  app: App,
+  markdown: string,
+  container: HTMLElement,
+  sourcePath: string,
+  component: Component,
+): Promise<void> {
+  const postProcess = (
+    MarkdownRenderer as unknown as {
+      postProcess?: unknown
+    }
+  ).postProcess
+  if (typeof postProcess !== 'function') {
+    throw new ObsidianMarkdownContentViewUnavailableError(
+      'MarkdownRenderer has no static postProcess()',
+    )
+  }
+  const parser = getSectionParser(app, container.ownerDocument)
+  parser.text = markdown
+  parser.parseSync()
+  const sections = parser.sections.filter((section) => section.start)
+  // Not kept: the next parse would reuse any section whose HTML matched —
+  // element and all, by then inside some other container.
+  parser.sections = []
+  for (const section of sections) {
+    section.render()
+    container.appendChild(section.el)
+  }
+  markBlankLinesAfter(sections)
+  const promises: Promise<unknown>[] = []
+  ;(postProcess as ObsidianStaticPostProcess)(app, {
+    docId: `yolo-sections-${(renderedDocuments += 1)}`,
+    sourcePath,
+    frontmatter: parser.frontmatter,
+    promises,
+    addChild: (child) => component.addChild(child),
+    getSectionInfo: () => null,
+    replace: () => null,
+    containerEl: container,
+    el: container,
+    displayMode: true,
+  })
+  return Promise.all(promises).then(() => undefined)
 }

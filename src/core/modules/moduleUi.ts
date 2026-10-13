@@ -21,6 +21,7 @@ import { describeEntry, normalizeModuleVaultPath } from './moduleVault'
 import {
   type ObsidianMarkdownContentViewHandle,
   createObsidianMarkdownContentView,
+  renderObsidianMarkdownSections,
 } from './obsidianMarkdownContentView'
 import {
   type ObsidianMarkdownEditorHandle,
@@ -37,6 +38,7 @@ import type {
   YoloModuleMarkdownContentViewV1,
   YoloModuleMarkdownEditorOptionsV1,
   YoloModuleMarkdownEditorV1,
+  YoloModuleMarkdownRendererOptionsV1,
   YoloModuleMarkdownRendererV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
@@ -327,8 +329,15 @@ export class ObsidianModuleUiCapabilityProvider
           }
         })
       },
-      createMarkdownRenderer: () => {
+      createMarkdownRenderer: (
+        options?: YoloModuleMarkdownRendererOptionsV1,
+      ) => {
         assertActive()
+        requireOptionalBoolean(
+          options?.sections,
+          'Markdown renderer sections option',
+        )
+        const sections = options?.sections === true
         const component = new Component()
         let loaded = true
         const pendingRenders = new Set<() => void>()
@@ -346,13 +355,21 @@ export class ObsidianModuleUiCapabilityProvider
             requireString(sourcePath, 'Markdown source path')
             requireElement(container, 'Markdown container')
             const staging = container.ownerDocument.createElement('div')
-            const render = MarkdownRenderer.render(
-              this.app,
-              markdown,
-              staging,
-              sourcePath,
-              component,
-            )
+            const render = sections
+              ? renderObsidianMarkdownSections(
+                  this.app,
+                  markdown,
+                  staging,
+                  sourcePath,
+                  component,
+                )
+              : MarkdownRenderer.render(
+                  this.app,
+                  markdown,
+                  staging,
+                  sourcePath,
+                  component,
+                )
             let cancelRender!: () => void
             const cancelled = new Promise<void>((resolve) => {
               cancelRender = resolve
@@ -833,6 +850,11 @@ function snapshotMenuItems(
 
 function requireOptionalString(value: unknown, label: string): void {
   if (value !== undefined) requireString(value, label)
+}
+
+function requireOptionalBoolean(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'boolean')
+    throw new TypeError(`${label} must be a boolean`)
 }
 
 function requireOptionalFunction(value: unknown, label: string): void {

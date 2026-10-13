@@ -90,7 +90,10 @@ export function renderClippedMarkdown(
   sizer.className = PREVIEW_SIZER_CLASS
   view.appendChild(sizer)
   bodyEl.appendChild(view)
-  const renderer = host.ui.createMarkdownRenderer()
+  // In sections, as the scrollable preview mounts them: each block's element
+  // says how many blank lines follow it in the source, which is what a card
+  // spaces its blocks by (styles/cards/content.css).
+  const renderer = host.ui.createMarkdownRenderer({ sections: true })
   const rendered = renderer
     .render(markdown, sizer, sourcePath)
     .then(() => markUnresolvedLinks(host, sizer, sourcePath))

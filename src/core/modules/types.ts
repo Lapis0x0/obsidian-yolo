@@ -463,6 +463,19 @@ export type YoloModuleOpenFileLocationV1 = Readonly<{
   newLeaf?: boolean
 }>
 
+export type YoloModuleMarkdownRendererOptionsV1 = Readonly<{
+  /**
+   * Render as the windowed preview does: each top-level block in a section
+   * element of its own (`div.el-p`, `div.el-h2`, …), carrying the number of
+   * blank source lines that follow it as `--yolo-markdown-blank-lines-after`.
+   * For content that has to be laid out on the same lines as an editor
+   * showing its source — the HTML alone cannot tell `# Title\ntext` from
+   * `# Title\n\ntext`. Off by default: the flat tree a fragment renders to
+   * otherwise.
+   */
+  sections?: boolean
+}>
+
 export type YoloModuleMarkdownRendererV1 = {
   render(
     markdown: string,
@@ -493,6 +506,9 @@ export type YoloModuleMarkdownContentViewOptionsV1 = Readonly<{
  * five-thousand-line note costs what one screenful of it costs. That is the
  * whole reason it exists next to `createMarkdownRenderer`, which renders a
  * fragment in one pass and is the right tool for a fragment.
+ *
+ * Its section elements carry `--yolo-markdown-blank-lines-after`, as
+ * `createMarkdownRenderer({ sections: true })`'s do.
  *
  * Nothing about the windowing reaches the module — no resize hook, no scroll
  * hook. The view watches its own container and re-picks its window when the
@@ -662,7 +678,9 @@ export type YoloModuleUiV1 = {
    * `createMarkdownContentView` instead: this one keeps everything it renders
    * in the DOM.
    */
-  createMarkdownRenderer(): YoloModuleMarkdownRendererV1
+  createMarkdownRenderer(
+    options?: YoloModuleMarkdownRendererOptionsV1,
+  ): YoloModuleMarkdownRendererV1
   /**
    * Mounts a windowed, read-only Markdown preview into `options.container` —
    * see `YoloModuleMarkdownContentViewV1`.

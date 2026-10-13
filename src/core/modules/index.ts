@@ -335,6 +335,7 @@ export type {
   YoloModulePathsV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,
+  YoloModuleMarkdownRendererOptionsV1,
   YoloModuleMarkdownRendererV1,
   YoloModuleUiV1,
   YoloModuleRibbonActionV1,

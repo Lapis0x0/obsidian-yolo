@@ -406,6 +406,15 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     )
   })
 
+  it('rejects a sections option that is not a boolean', () => {
+    const { lifecycle, ui } = create()
+
+    expect(() =>
+      ui.createMarkdownRenderer({ sections: 'yes' as unknown as boolean }),
+    ).toThrow('Markdown renderer sections option must be a boolean')
+    lifecycle.dispose()
+  })
+
   it('cancels a pending render when its lifecycle is disposed', async () => {
     let finishRender!: () => void
     markdownRender.mockImplementationOnce(

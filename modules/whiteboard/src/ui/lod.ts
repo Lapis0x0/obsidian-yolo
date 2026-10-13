@@ -6,7 +6,6 @@
 // `.yoloboard` representation and has no reason to move if the file format
 // ever changes.
 
-import { fenceMarker } from '../domain/blankLines'
 import type { BoardNode } from '../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../domain/naming'
 
@@ -285,7 +284,11 @@ export function blockStartLine(
   const last = Math.min(target, lines.length - 1)
   for (let i = 0; i <= last; i += 1) {
     const text = lines[i].trim()
-    const fence = fenceMarker(text)
+    const fence = text.startsWith('```')
+      ? '```'
+      : text.startsWith('~~~')
+        ? '~~~'
+        : null
     if (openFence !== null) {
       // Only the marker that opened this block can close it: a `~~~` inside a
       // ``` block is content, not a fence.
