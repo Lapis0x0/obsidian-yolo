@@ -180,6 +180,7 @@ export const en = {
     unsupportedFile: 'Not shown yet',
     unsupportedFileHint: '"{path}" has no card of its own yet.',
     portalOpen: 'Open board',
+    boardBadge: 'Board',
     portalLoading: 'Opening…',
     portalMissing: 'Board missing',
     portalMissingHint:

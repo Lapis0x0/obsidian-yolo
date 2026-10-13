@@ -50,6 +50,8 @@ import {
   type ToolbarModel,
 } from '../selectionToolbar'
 
+import { wearsTitleLine } from './titleLine'
+
 /** i18n key and icon per arrowhead direction (domain/edges.ts's
  * `ArrowDirection`). The icon is the arrangement it writes, drawn the way the
  * edge will look. */
@@ -307,11 +309,7 @@ export class ToolbarController {
       if (!node) continue
       const rect = live?.get(id) ?? node
       const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
-      rects.push(
-        this.callbacks.isPdfNode(node) && !isSpreadTitle(node)
-          ? withTitleAbove(bounds)
-          : bounds,
-      )
+      rects.push(wearsTitleLine(node) ? withTitleAbove(bounds) : bounds)
       const drawn = this.callbacks.getDrawnTitleRect(id)
       if (drawn) rects.push(drawn)
     }

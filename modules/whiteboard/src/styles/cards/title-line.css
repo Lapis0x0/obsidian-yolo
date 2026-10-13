@@ -1,0 +1,114 @@
+/* --- a card's title line ---------------------------------------------------
+ * One line above a card that stands for a whole document of its own — a
+ * PDF, a portal onto another board — saying what kind of thing it is and
+ * what it is called: a badge, then the name (ui/canvas/titleLine.ts). Where
+ * an open PDF spread's title stands, a node of its own (spread.css), and
+ * worn as a label by a folded PDF card and by a portal, so all of them are
+ * titled alike and a PDF's title does not move as its pages come out or go
+ * back. The overview canvas draws the same line at the same sizes
+ * (ui/constants.ts's SPREAD_TITLE_WORLD).
+ *
+ * The line is at least its box's width and as much wider as the name
+ * needs, spilling past it, up to a limit (`--yolo-whiteboard-title-line-
+ * max-width`, an open spread's being as wide as the document): a card's own
+ * width, but never under a PDF page's default width (domain/spread.ts's
+ * SPREAD_METRICS.pageWidth), so a narrow card's name does not stand in a
+ * column a word wide. */
+.yolo-whiteboard-title-line {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  max-width: var(--yolo-whiteboard-title-line-max-width, max(100%, 390px));
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+}
+
+/* As a card's title (drag.css's `.yolo-whiteboard-card-title`): on the
+ * line an open spread's title stands on — the card is where the first row
+ * of sheets is (domain/spread.ts's `foldedCardOrigin`), and the title's node
+ * is SPREAD_METRICS.titleHeight tall, titleGap above it, inside a 1px
+ * border. So 8px — this card's border, the gap, the title's border — under
+ * a line 37px tall. A name too long for one line wraps upwards, within the
+ * card's width, and nothing under it moves. */
+.yolo-whiteboard-card-title.yolo-whiteboard-card-title-badged {
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 37px;
+  max-width: none;
+  overflow: visible;
+  /* The card's, for the line's borders. */
+  border-radius: inherit;
+}
+
+/* Over every other card: a label hidden under the sheets of a neighbouring
+ * spread, or a card set down near it, no longer names anything. Cards
+ * otherwise stack in mount order (drag.css), and each is its own stacking
+ * context (card.css's `contain`), so the lift is the node's. A dragged card
+ * still goes over it, and a portal stays behind everything (portal.css): what
+ * shows through it are cards of their own, which it must not cover. The
+ * overview canvas draws these titles last for the same reason
+ * (overviewLayer.ts's `drawCards`). */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title,
+.yolo-whiteboard-card:not(.yolo-whiteboard-portal):has(
+    > .yolo-whiteboard-card-title-badged
+  ) {
+  z-index: 1;
+}
+
+/* Pointed at or selected, a spread's title is a node of its own, and the
+ * line wears that card's border. A card's title line is a label on the
+ * card: the card wears its own hover and selection ring, and a second one
+ * round the label would read as a second thing selected — the line lights
+ * only under the pointer. */
+.yolo-whiteboard-card-hovered > .yolo-whiteboard-title-line,
+.yolo-whiteboard-card-hovered
+  > .yolo-whiteboard-card-title-badged:hover
+  > .yolo-whiteboard-title-line {
+  border-color: var(--background-modifier-border-focus);
+}
+
+.yolo-whiteboard-card-selected > .yolo-whiteboard-title-line {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.yolo-whiteboard-title-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+}
+
+.yolo-whiteboard-title-badge-red {
+  color: var(--color-red);
+  background-color: rgba(var(--color-red-rgb), 0.12);
+}
+
+.yolo-whiteboard-title-badge-blue {
+  color: var(--color-blue);
+  background-color: rgba(var(--color-blue-rgb), 0.12);
+}
+
+.yolo-whiteboard-title-text {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-normal);
+  white-space: normal;
+  /* A file name is often one long word: it breaks inside rather than running
+   * past the card, as a card's title block does (title.css). */
+  overflow-wrap: anywhere;
+}

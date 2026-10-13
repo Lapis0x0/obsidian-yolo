@@ -35,91 +35,19 @@
   border-color: transparent;
 }
 
-/* Over every other card: the title is a label, and a label hidden under the
- * sheets of a neighbouring spread or a card set down near it no longer names
- * anything. Cards otherwise stack in mount order (drag.css), and each is its
- * own stacking context (card.css's `contain`), so the lift is the node's — a
- * folded card's too, whose title hangs above it on the same line and so
- * reaches into the same space. A dragged card still goes over it. The
- * overview canvas draws these titles last for the same reason
- * (overviewLayer.ts's `drawCards`). */
-.yolo-whiteboard-card.yolo-whiteboard-spread-title,
-.yolo-whiteboard-card:has(> .yolo-whiteboard-card-title-pdf) {
-  z-index: 1;
-}
-
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::after {
   content: none;
 }
 
 /* The node is one line tall, and the first row of sheets is right under it,
- * so a name too long for its line wraps upwards: the line keeps its bottom
- * edge and grows from the top (`flex-end`, which overflows at the start), and
- * nothing it covers is moved. Its width is the name's, up to as wide as the
- * document is (cardRenderer.ts's `applySpreadTitleMaxWidth`) — a folded
- * card's being the card. */
+ * so a name too long for its line (title-line.css) wraps upwards: the line
+ * keeps its bottom edge and grows from the top (`flex-end`, which overflows
+ * at the start), and nothing it covers is moved. Its width is the name's, up
+ * to as wide as the document is (cardRenderer.ts's
+ * `applySpreadTitleMaxWidth`). */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
   justify-content: flex-end;
-}
-
-.yolo-whiteboard-spread-title-line {
-  display: flex;
-  flex: 1 0 auto;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  width: max-content;
-  min-width: 100%;
-  /* A folded card's: its own width, but never under a page's default width
-   * (domain/spread.ts's SPREAD_METRICS.pageWidth), as a spread's is. */
-  max-width: var(--yolo-whiteboard-spread-title-max-width, max(100%, 390px));
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: inherit;
-}
-
-/* A folded PDF card wears its title on the same line (drag.css's
- * `.yolo-whiteboard-card-title-pdf`), and so the same look: the title does
- * not change as the pages come out or go back. Its borders, though, answer
- * only for the line itself. A spread's title is a node of its own — pointed
- * at or selected, it is the title that is — while a folded card's title is
- * a label on the card: the card wears its own hover and selection ring, and
- * a second one round the label would read as a second thing selected. */
-.yolo-whiteboard-card-hovered > .yolo-whiteboard-spread-title-line,
-.yolo-whiteboard-card-hovered
-  > .yolo-whiteboard-card-title-pdf:hover
-  > .yolo-whiteboard-spread-title-line {
-  border-color: var(--background-modifier-border-focus);
-}
-
-.yolo-whiteboard-card-selected > .yolo-whiteboard-spread-title-line {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
-}
-
-.yolo-whiteboard-spread-title-badge {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  letter-spacing: 0.02em;
-  color: var(--color-red);
-  background-color: rgba(var(--color-red-rgb), 0.12);
-}
-
-.yolo-whiteboard-spread-title-text {
-  min-width: 0;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--text-normal);
-  white-space: normal;
-  /* A file name is often one long word: it breaks inside rather than running
-   * past the document, as a card's title block does (title.css). */
-  overflow-wrap: anywhere;
 }
 
 /* The sheets of the document whose title is under the pointer (the canvas's

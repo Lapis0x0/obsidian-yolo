@@ -154,6 +154,7 @@ import {
   selectionAnchor,
   textPassageEnds,
 } from './canvas/textPassages'
+import { titleBadgeOf } from './canvas/titleLine'
 import { ToolbarController } from './canvas/toolbarController'
 import { CanvasControls } from './canvasControls'
 import {
@@ -1474,6 +1475,7 @@ export class WhiteboardCanvas {
       getView: this.core.getView,
       getCardNodes: () => this.ownCardNodes,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
+      titleBadge: (node) => titleBadgeOf(node, this.core.t),
       getGroupNodes: () => this.groupNodes,
       getEdges: () => this.ownEdges,
       getPortalLayers: () => this.portalLayers,
@@ -1952,8 +1954,8 @@ export class WhiteboardCanvas {
         }
       },
       onHoverChange: (id) => this.syncSpreadHover(id),
-      overviewSpreadTitleAt: (point) =>
-        this.overviewLayer?.spreadTitleAt(point) ?? null,
+      overviewTitleLineAt: (point) =>
+        this.overviewLayer?.titleLineAt(point) ?? null,
       rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
     })
     this.emptyHintEl = this.buildEmptyHint(doc, this.toolbarController.overlay)

@@ -11,6 +11,7 @@
 
 import {
   type BoardNode,
+  type FileNode,
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
@@ -58,13 +59,11 @@ import {
   createNodeElement,
   renderClippedMarkdown,
 } from './cardContent'
+import { createTitleLine, titleBadgeOf } from './titleLine'
 
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
  * standing on the board for the whole of it — no frame, no body. */
 const SPREAD_TITLE_CLASS = 'yolo-whiteboard-spread-title'
-const SPREAD_TITLE_TEXT_CLASS = 'yolo-whiteboard-spread-title-text'
-const SPREAD_TITLE_LINE_CLASS = 'yolo-whiteboard-spread-title-line'
-const SPREAD_TITLE_BADGE_CLASS = 'yolo-whiteboard-spread-title-badge'
 /** One sheet of a spread: a card that is a page of paper, edge to edge. */
 const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
 /** The page number in a sheet's corner. */
@@ -78,9 +77,10 @@ const PORTAL_CLASS = 'yolo-whiteboard-portal'
 const PORTAL_EDGE_CLASS = 'yolo-whiteboard-portal-edge'
 const PORTAL_OPEN_CLASS = 'yolo-whiteboard-portal-open'
 const PORTAL_NOTICE_CLASS = 'yolo-whiteboard-portal-notice'
-/** A PDF card's title: its spread's title line (`pdfTitleParts`), in the
- * place the spread's title stands, so the two are one title. */
-const CARD_TITLE_PDF_CLASS = 'yolo-whiteboard-card-title-pdf'
+/** A card's title that is a title line (./titleLine.ts) — a PDF's, in the
+ * place its spread's title stands, so the two are one title, and a
+ * portal's. */
+const CARD_TITLE_BADGED_CLASS = 'yolo-whiteboard-card-title-badged'
 const CARD_TITLE_BLOCK_CLASS = 'yolo-whiteboard-card-title-block'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
@@ -665,7 +665,7 @@ export class CardRenderer {
     // now that a card has to be entered before its body is given away, but
     // the one that still works once the pointer is inside the page.
     if (isSpreadTitle(node)) {
-      this.mountSpreadTitle(id, el, node.file)
+      this.mountSpreadTitle(id, el, node)
       return
     }
 
@@ -678,17 +678,16 @@ export class CardRenderer {
     if (chromeTitle !== null) {
       const title = doc.createElement('div')
       title.className = CARD_TITLE_CLASS
-      if (node.type === 'file' && fileNodeKind(node.file) === 'pdf') {
-        title.classList.add(CARD_TITLE_PDF_CLASS)
-        const line = doc.createElement('div')
-        line.className = SPREAD_TITLE_LINE_CLASS
-        line.append(...pdfTitleParts(doc, node.file))
+      const badge = titleBadgeOf(node, this.callbacks.t)
+      const line = badge ? createTitleLine(doc, badge, chromeTitle) : null
+      if (line) {
+        title.classList.add(CARD_TITLE_BADGED_CLASS)
         title.appendChild(line)
       } else {
         title.textContent = chromeTitle
       }
       el.appendChild(title)
-      if (isPortal(node)) this.dressPortal(id, el, title)
+      if (isPortal(node) && line) this.dressPortal(id, el, line)
     }
 
     const body = createCardBody(doc)
@@ -762,14 +761,16 @@ export class CardRenderer {
    * needs, reaching past the node as far as the document is wide, and wraps
    * upwards from there (spread.css).
    */
-  private mountSpreadTitle(id: NodeId, el: HTMLElement, file: string): void {
+  private mountSpreadTitle(id: NodeId, el: HTMLElement, node: FileNode): void {
     const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
     this.applySpreadTitleMaxWidth(id, el)
-    const line = doc.createElement('div')
-    line.className = SPREAD_TITLE_LINE_CLASS
-    line.append(...pdfTitleParts(doc, file))
-    el.appendChild(line)
+    const badge = titleBadgeOf(node, this.callbacks.t)
+    if (badge) {
+      el.appendChild(
+        createTitleLine(doc, badge, basenameWithoutExtension(node.file)),
+      )
+    }
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
       el,
@@ -800,7 +801,7 @@ export class CardRenderer {
 
   private applySpreadTitleMaxWidth(id: NodeId, el: HTMLElement): void {
     el.style.setProperty(
-      '--yolo-whiteboard-spread-title-max-width',
+      '--yolo-whiteboard-title-line-max-width',
       `${this.callbacks.spreadTitleMaxWidth(id)}px`,
     )
   }
@@ -1596,10 +1597,10 @@ export class CardRenderer {
   /**
    * A portal's frame: transparent, so what is behind it — cards mounted on
    * their own over it — shows through, and held by its edges and its title
-   * only (styles/cards/portal.css). The title carries the button that opens
-   * the board.
+   * only (styles/cards/portal.css). Its title line carries the button that
+   * opens the board.
    */
-  private dressPortal(id: NodeId, el: HTMLElement, title: HTMLElement): void {
+  private dressPortal(id: NodeId, el: HTMLElement, line: HTMLElement): void {
     const doc = this.context.getDocument()
     el.classList.add(PORTAL_CLASS)
     for (const side of ['top', 'right', 'bottom', 'left'] as const) {
@@ -1618,7 +1619,7 @@ export class CardRenderer {
       event.stopPropagation()
       this.callbacks.openPortal(id, event.metaKey || event.ctrlKey)
     })
-    title.appendChild(open)
+    line.appendChild(open)
   }
 
   /** What a portal shows in its frame: nothing while the board behind it is
@@ -1968,18 +1969,6 @@ export class CardRenderer {
     placeholder.append(title, hint)
     runtime.bodyEl.replaceChildren(placeholder)
   }
-}
-
-/** The type and the name a PDF is titled by, open as a spread or folded
- * into its card alike. */
-function pdfTitleParts(doc: Document, file: string): HTMLElement[] {
-  const badge = doc.createElement('span')
-  badge.className = SPREAD_TITLE_BADGE_CLASS
-  badge.textContent = 'PDF'
-  const text = doc.createElement('span')
-  text.className = SPREAD_TITLE_TEXT_CLASS
-  text.textContent = basenameWithoutExtension(file)
-  return [badge, text]
 }
 
 /** Lucide's `arrow-up-right`, as Obsidian draws its icons. */

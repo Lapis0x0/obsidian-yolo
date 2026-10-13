@@ -47,6 +47,7 @@ import {
   type PdfAnnotation,
   displayColor,
 } from '../../domain/pdfAnnotations'
+import { isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import { SPREAD_METRICS, isSpreadTitle } from '../../domain/spread'
 import {
@@ -78,6 +79,12 @@ import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
 import type { PageBox, PageFrame } from '../pdf/annotationGeometry'
 import { boxesFor, outlinesFor } from '../pdf/annotationLayer'
 import { READER_METRICS } from '../pdf/readerLayout'
+
+import {
+  type TitleBadge,
+  type TitleBadgeTone,
+  wearsTitleLine,
+} from './titleLine'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
@@ -147,6 +154,9 @@ type Palette = Readonly<{
   /** What each PDF annotation colour paints with (styles/pdf/
    * annotations.css). */
   annotations: Readonly<Record<AnnotationColor, string>>
+  /** What each title line badge is tinted with (styles/cards/
+   * title-line.css). */
+  badges: Readonly<Record<TitleBadgeTone, string>>
   /** A dark theme, which shows PDF pages inverted (styles/pdf/card.css). */
   dark: boolean
 }>
@@ -170,6 +180,9 @@ export type OverviewLayerCallbacks = Readonly<{
   /** How wide an open spread's title may run before its name wraps, in
    * world units (domain/spread.ts's `spreadTitleMaxWidth`). */
   spreadTitleMaxWidth: (id: NodeId) => number
+  /** What a card's title line says it is (./titleLine.ts's
+   * `titleBadgeOf`), or null for a card without one. */
+  titleBadge: (node: BoardNode) => TitleBadge | null
   /** The groups, which only the minimap draws (`paintBoard`): in the tier
    * they keep their DOM. */
   getGroupNodes: () => readonly BoardNode[]
@@ -244,7 +257,7 @@ export class OverviewLayer {
       start: number
     }>
   >()
-  /** Where each spread title's line was last drawn, in world units. */
+  /** Where each title line was last drawn, in world units. */
   private readonly titleRects = new Map<
     NodeId,
     Readonly<{ x: number; y: number; w: number; h: number }>
@@ -495,6 +508,9 @@ export class OverviewLayer {
       text: true,
       selection: true,
     }
+    // Recorded as the frame draws them — the board's own and every
+    // portal's — so cleared once, before any.
+    this.titleRects.clear()
     this.drawBoard(ctx, view, surface, live)
     this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
@@ -528,6 +544,7 @@ export class OverviewLayer {
     this.palette ??= this.readPalette(ctx)
     this.resizeBackingStore(ctx)
     if (this.underlay) ctx.clearRect(0, 0, this.width, this.height)
+    this.titleRects.clear()
     const surface = {
       width: this.width,
       height: this.height,
@@ -730,6 +747,10 @@ export class OverviewLayer {
         pink: read('--color-pink', '#d53984'),
         purple: read('--color-purple', '#7852ee'),
       },
+      badges: {
+        red: read('--color-red', '#e93147'),
+        blue: read('--color-blue', '#086ddd'),
+      },
       dark: this.styleSourceEl.closest('.theme-dark') !== null,
     }
   }
@@ -811,7 +832,8 @@ export class OverviewLayer {
       h: number
     }[] = []
     const texts: typeof visible = []
-    const titles: PdfTitle[] = []
+    const frames: typeof visible = []
+    const titles: TitleLine[] = []
     for (const node of nodes) {
       if (skip?.(node.id)) continue
       const moving = this.motions.has(node.id)
@@ -829,18 +851,20 @@ export class OverviewLayer {
         continue
       }
       const item = { node, x, y, w, h }
-      // Its title stands where its spread's does (domain/spread.ts's
-      // `foldedCardOrigin`), and stays drawn here while the card fades in
-      // under it: a spread folding keeps its title in place throughout.
-      if (isFoldedPdf(node)) {
+      // Its title line stands where a spread's title does (title-line.css)
+      // — and a PDF's stays drawn here while the card fades in under it: a
+      // spread folding keeps its title in place throughout.
+      const badge = this.callbacks.titleBadge(node)
+      if (badge && wearsTitleLine(node)) {
         const th = SPREAD_METRICS.titleHeight * view.scale
         titles.push({
           node,
+          badge,
           x,
           y: y - SPREAD_METRICS.titleGap * view.scale - th,
           w,
           h: th,
-          // Its own width, never under a page's default (spread.css).
+          // Its own width, never under a page's default (title-line.css).
           maxW: Math.max(w, SPREAD_METRICS.pageWidth * view.scale),
         })
       }
@@ -848,12 +872,37 @@ export class OverviewLayer {
       // (`drawMotions`).
       if (moving) continue
       if (isPlainText(node)) texts.push(item)
-      else if (isSpreadTitle(node)) {
+      else if (badge && isSpreadTitle(node)) {
         titles.push({
           ...item,
+          badge,
           maxW: this.callbacks.spreadTitleMaxWidth(node.id) * view.scale,
         })
-      } else visible.push(item)
+      } else if (isPortal(node)) frames.push(item)
+      else visible.push(item)
+    }
+    // A portal is its frame and nothing else (portal.css): what shows
+    // through it is drawn after, cut to it (`inPortals`), and its name is its
+    // title line. Behind every card, as it stands in the DOM.
+    if (frames.length > 0) {
+      ctx.globalAlpha = 1
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 3])
+      ctx.strokeStyle = palette.border
+      ctx.beginPath()
+      for (const frame of frames) {
+        if (!isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
+      }
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.strokeStyle = palette.accent
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      for (const frame of frames) {
+        if (isSelected(frame.node.id)) this.strokeRectPath(ctx, frame)
+      }
+      ctx.stroke()
+      ctx.lineWidth = 1
     }
     // Bare text has no card to draw: at this distance it is its picture of
     // itself (../pictures/cardPictures.ts) where it has one, and a block of
@@ -882,9 +931,12 @@ export class OverviewLayer {
       if (anySelected) ctx.stroke()
       ctx.lineWidth = 1
     }
-    const drew = texts.length > 0 || (surface.text && titles.length > 0)
+    const drew =
+      texts.length > 0 ||
+      frames.length > 0 ||
+      (surface.text && titles.length > 0)
     if (visible.length === 0) {
-      if (surface.text) this.drawPdfTitles(ctx, view, titles)
+      if (surface.text) this.drawTitleLines(ctx, view, titles)
       return drew
     }
 
@@ -1033,22 +1085,21 @@ export class OverviewLayer {
         ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
       }
     }
-    // 6. PDF titles, over every card, as the stylesheet stacks them
-    //    (spread.css).
-    this.drawPdfTitles(ctx, view, titles)
+    // 6. Title lines, over every card, as the stylesheet stacks them
+    //    (title-line.css).
+    this.drawTitleLines(ctx, view, titles)
     return true
   }
 
-  /** A PDF's title as the DOM draws it (spread.css): one line with the
-   * type and the name, no box — and a card's ring when it is selected. An
-   * open spread's and its folded card's are the same line in the same
-   * place, so folding one changes nothing about it. */
-  private drawPdfTitles(
+  /** Title lines as the DOM draws them (title-line.css): the badge and the
+   * name, no box — and a card's ring when it is selected. An open spread's
+   * and its folded card's are the same line in the same place, so folding
+   * one changes nothing about it. */
+  private drawTitleLines(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
-    titles: readonly PdfTitle[],
+    titles: readonly TitleLine[],
   ): void {
-    this.titleRects.clear()
     const palette = this.palette
     if (!palette || titles.length === 0) return
     // Held at a floor on screen, as a group's label is (constants.ts's
@@ -1068,7 +1119,6 @@ export class OverviewLayer {
     )
     const u = view.scale * grow
     const gap = SPREAD_TITLE_WORLD.gap * u
-    const badgeText = 'PDF'
     const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
     const nameFont = `500 ${SPREAD_TITLE_WORLD.nameFont * u}px ${palette.fontFamily}`
     ctx.globalAlpha = 1
@@ -1076,6 +1126,7 @@ export class OverviewLayer {
     ctx.textAlign = 'left'
     for (const title of titles) {
       const name = nodeTitleText(title.node)
+      const badgeText = title.badge.text
       const pad = SPREAD_TITLE_WORLD.padding * u
       ctx.font = badgeFont
       const badgeW =
@@ -1104,7 +1155,7 @@ export class OverviewLayer {
       }
       // Where it was drawn is where it is pointed at: the line reaches past
       // the node's rectangle, and a press on any of it is a press on the
-      // title (`spreadTitleAt`).
+      // title (`titleLineAt`).
       this.titleRects.set(title.node.id, {
         x: (box.x - view.tx) / view.scale,
         y: (box.y - view.ty) / view.scale,
@@ -1122,7 +1173,7 @@ export class OverviewLayer {
       // The type, on its tint.
       const badgeH = SPREAD_TITLE_WORLD.badgeHeight * u
       ctx.globalAlpha = 0.12
-      ctx.fillStyle = palette.presets['1']
+      ctx.fillStyle = palette.badges[title.badge.tone]
       ctx.fillRect(box.x + pad, mid - badgeH / 2, badgeW, badgeH)
       ctx.globalAlpha = 1
       ctx.font = badgeFont
@@ -1141,7 +1192,7 @@ export class OverviewLayer {
     ctx.lineWidth = 1
   }
 
-  /** Where the canvas last drew a PDF's title line (world units), which at
+  /** Where the canvas last drew a card's title line (world units), which at
    * this tier grows past its node to stay readable; null when it drew none,
    * or the tier is not showing. */
   titleRect(id: NodeId): CardRect | null {
@@ -1149,9 +1200,9 @@ export class OverviewLayer {
     return this.titleRects.get(id) ?? null
   }
 
-  /** The PDF whose drawn title line is under `point` (world units), if any —
-   * the line reaches past its node's rectangle at this tier. */
-  spreadTitleAt(point: Readonly<{ x: number; y: number }>): NodeId | null {
+  /** The card whose drawn title line is under `point` (world units), if
+   * any — the line reaches past its node's rectangle at this tier. */
+  titleLineAt(point: Readonly<{ x: number; y: number }>): NodeId | null {
     if (!this.active) return null
     for (const [id, rect] of this.titleRects) {
       if (
@@ -1708,15 +1759,16 @@ export class OverviewLayer {
   }
 }
 
-/** A title line the canvas draws for a PDF: an open spread's title node, or
- * the strip over a folded card (`drawPdfTitles`). Screen pixels. */
-type PdfTitle = Readonly<{
+/** A title line the canvas draws: an open spread's title node, or the
+ * strip over a card that wears one (`drawTitleLines`). Screen pixels. */
+type TitleLine = Readonly<{
   node: BoardNode
+  badge: TitleBadge
   x: number
   y: number
   w: number
   h: number
-  /** How wide its line may run before the name wraps (spread.css): the
+  /** How wide its line may run before the name wraps (title-line.css): the
    * document's width, a folded card's being its own. Screen pixels. */
   maxW: number
 }>

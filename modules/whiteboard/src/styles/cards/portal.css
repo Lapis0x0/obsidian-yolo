@@ -81,13 +81,7 @@
   text-align: center;
 }
 
-/* The title says which board; its button opens it. */
-.yolo-whiteboard-portal > .yolo-whiteboard-card-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
+/* The title line says which board (title-line.css); its button opens it. */
 button.yolo-whiteboard-portal-open {
   display: inline-flex;
   width: auto;
