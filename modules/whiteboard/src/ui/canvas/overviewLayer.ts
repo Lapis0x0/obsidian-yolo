@@ -365,9 +365,10 @@ export class OverviewLayer {
   }
 
   /** Cards were mounted or unmounted: outside the tier that changes what the
-   * canvas has to draw, though not what the board shows (`revision`). */
+   * canvas has to draw, though not what the board shows (`revision`) — and
+   * inside it too, behind a portal that builds what is behind it. */
   markMountsChanged(): void {
-    if (!this.active) this.dirty = true
+    this.dirty = true
   }
 
   /**
@@ -405,12 +406,15 @@ export class OverviewLayer {
   }
 
   /** Edges, then cards — the board's own, then each portal's in its frame
-   * — and the portals' frames over what they frame (`drawFrames`). */
+   * — and the portals' frames over what they frame (`drawFrames`). Behind a
+   * portal, what `skipBehind` names is left out: in the tier, the cards a
+   * portal zoomed in on shows built (canvas.ts's `drawnPortals`). */
   private drawBoard(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
+    skipBehind?: (id: NodeId) => boolean,
   ): void {
     this.drawEdges(ctx, view, surface, live)
     this.drawCards(ctx, view, surface, live)
@@ -421,7 +425,7 @@ export class OverviewLayer {
         view,
         surface,
         live,
-        undefined,
+        skipBehind,
         layer.nodes,
         layer.scale,
       )
@@ -429,7 +433,7 @@ export class OverviewLayer {
     })
     this.drawFrames(ctx, view, surface, live)
     this.inPortals(ctx, view, (layer) =>
-      this.drawFrames(ctx, view, surface, live, undefined, layer.nodes),
+      this.drawFrames(ctx, view, surface, live, skipBehind, layer.nodes),
     )
   }
 
@@ -592,7 +596,9 @@ export class OverviewLayer {
     // Recorded as the frame draws them — the board's own and every
     // portal's — so cleared once, before any.
     this.titleRects.clear()
-    this.drawBoard(ctx, view, surface, live)
+    this.drawBoard(ctx, view, surface, live, (id) =>
+      this.callbacks.isMounted(id),
+    )
     this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
   }

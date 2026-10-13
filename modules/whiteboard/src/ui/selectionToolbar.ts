@@ -122,6 +122,8 @@ export type ToolbarIconName =
   | 'align-horizontal-distribute-center'
   | 'align-vertical-distribute-center'
   | 'book-open'
+  | 'external-link'
+  | 'locate-fixed'
   | 'maximize-2'
   | 'minimize-2'
   | 'highlighter'
@@ -367,6 +369,22 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
       kind: 'path',
       d: 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z',
     },
+  ],
+  'external-link': [
+    { kind: 'path', d: 'M15 3h6v6' },
+    { kind: 'path', d: 'M10 14 21 3' },
+    {
+      kind: 'path',
+      d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+    },
+  ],
+  'locate-fixed': [
+    { kind: 'path', d: 'M2 12h3' },
+    { kind: 'path', d: 'M19 12h3' },
+    { kind: 'path', d: 'M12 2v3' },
+    { kind: 'path', d: 'M12 19v3' },
+    { kind: 'ring', cx: 12, cy: 12, r: 7 },
+    { kind: 'ring', cx: 12, cy: 12, r: 3 },
   ],
   'maximize-2': [
     { kind: 'path', d: 'M15 3h6v6' },

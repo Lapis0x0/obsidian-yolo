@@ -50,7 +50,6 @@ const CHROME_SELECTORS = [
   '.yolo-whiteboard-pdf-area-toggle',
   '.yolo-whiteboard-pdf-area-draft',
   '.yolo-whiteboard-pdf-flash',
-  '.yolo-whiteboard-portal-open',
 ].join(',')
 
 /** Stripped from the copy: state the pointer or the selection put there. */

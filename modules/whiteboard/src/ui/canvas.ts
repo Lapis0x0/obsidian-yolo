@@ -28,10 +28,13 @@ import {
 import {
   approachScale,
   cameraFromView,
+  clampScale,
+  fitViewToBounds,
   scaleAfterWheel,
   screenToWorld,
+  unionRect,
 } from '../domain/camera'
-import type { ScreenPoint } from '../domain/camera'
+import type { ScaleBounds, ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
 import { type ArrowDirection, arrowEnds } from '../domain/edges'
 import {
@@ -176,9 +179,11 @@ import {
   CARD_SELECTED_CLASS,
   CONTENT_BUILD_START_CAP_PER_FRAME,
   EDGE_HIDDEN_CLASS,
+  FIT_CAMERA_PADDING_PX,
   FRAME_ON_TIME_MS,
   GRID_WORLD_STEP_PX,
   GROUP_LABEL_WORLD_FONT_PX,
+  MIN_SCALE_FIT_MARGIN,
   MOUNT_QUOTA_PER_FRAME,
   NODE_ENTER_WINDOW_MS,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
@@ -328,6 +333,15 @@ export class WhiteboardCanvas {
    * open portal, for the canvas tiers that draw them separately. */
   private ownCardNodes: readonly BoardNode[] = []
   private ownEdges: readonly Edge[] = []
+  /**
+   * The open portals that show what is behind them smaller than the overview
+   * tier's threshold — the camera's scale times theirs. The cards behind
+   * them are not built: the canvas draws them under the world layer as it
+   * draws any card with no element (overviewLayer.ts's `renderUnmounted`),
+   * which is the tier, inside one frame. Decided with the tier's two
+   * thresholds, at its throttle (`updateDrawnPortals`).
+   */
+  private drawnPortals: ReadonlySet<NodeId> = new Set()
   private portalLayers: readonly (PortalLayer & {
     portal: ComposedPortal
     /** Behind it but outside its frame: not drawn until a gesture moves
@@ -693,6 +707,12 @@ export class WhiteboardCanvas {
       isParseFailed: () => this.parseFailed,
       canEdit: () => this.canEdit,
       isOverview: () => this.overview,
+      portalTierOf: (id) => this.portalTierOf(id),
+      drawnCardAt: (point) => {
+        if (this.drawnPortals.size === 0) return null
+        const id = this.cardAtPoint(point, false)
+        return id !== null && this.portalTierOf(id) === 'drawn' ? id : null
+      },
       applyBoardChange: (next, historyKey) =>
         this.applyBoardChange(next, historyKey),
       commitWithoutHistory: (next) => this.commitWithoutHistory(next),
@@ -726,7 +746,6 @@ export class WhiteboardCanvas {
       commitMove: (next, ids, point, historyKey) =>
         this.commitMove(next, ids, point, historyKey),
       clipOf: (id) => this.clipOf(id),
-      openPortal: (id, newTab) => this.openPortal(id, newTab),
       t: (key, fallback) => this.t(key, fallback),
       reportError: (stage, error) => this.reportError(stage, error),
     }
@@ -1079,11 +1098,45 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Opens the board behind a portal — in this tab, where Obsidian's back
-   * comes back here, or in a new one — looking at what the portal showed of
-   * it, where the portal showed it.
+   * Opens the board behind a portal in a new tab, looking at what the portal
+   * showed of it, where the portal showed it — the selection toolbar's
+   * button for a portal.
    */
-  private openPortal(id: NodeId, newTab: boolean): void {
+  /**
+   * Points a portal at everything on the board behind it, centred in its
+   * frame, as the board's own fit frames a board: never larger than the
+   * board behind is drawn at by a portal of scale 1. A board with nothing on
+   * it is looked at from its origin. One step to undo.
+   */
+  private fitPortal(id: NodeId): void {
+    const node = this.nodesById.get(id)
+    const portal = this.sources.composition.portals.get(id)
+    const looking = this.portalViewOf(id)
+    if (!isPortal(node) || !portal || !looking) return
+    const bounds = unionRect(portal.source.nodes)
+    // The frame, measured in what one unit behind a portal of scale 1 is.
+    const outer = looking.unit / looking.scale
+    const fit = bounds
+      ? fitViewToBounds(
+          bounds,
+          { width: node.w / outer, height: node.h / outer },
+          FIT_CAMERA_PADDING_PX,
+          SCALE_BOUNDS,
+        )
+      : { tx: 0, ty: 0, scale: 1 }
+    this.portalZoomGlide = null
+    this.lookThroughPortal(
+      id,
+      {
+        x: tidy(-fit.tx / fit.scale),
+        y: tidy(-fit.ty / fit.scale),
+        scale: tidy(fit.scale),
+      },
+      `portal-fit:${id}:${this.context.getWindow().performance.now()}`,
+    )
+  }
+
+  private openPortal(id: NodeId): void {
     const node = this.nodesById.get(id)
     if (!isPortal(node)) return
     const portal = this.sources.composition.portals.get(id)
@@ -1095,7 +1148,7 @@ export class WhiteboardCanvas {
         scale: view.scale * portal.scale,
       })
     }
-    void this.host.ui.openFileAt({ path: node.file, newLeaf: newTab })
+    void this.host.ui.openFileAt({ path: node.file, newLeaf: true })
   }
 
   /**
@@ -1156,7 +1209,7 @@ export class WhiteboardCanvas {
         : this.cameraController.view.scale * looking.unit,
       step,
       WHEEL_DELTA_PER_ZOOM_DOUBLING,
-      SCALE_BOUNDS,
+      this.portalZoomBounds(id),
     )
     const historyKey = this.portalStepKey(id, 'zoom')
     if (this.prefersReducedMotion()) {
@@ -1208,6 +1261,31 @@ export class WhiteboardCanvas {
     if (view) this.lookThroughPortal(glide.id, view, glide.historyKey)
   }
 
+  /**
+   * The range a zoom inside portal `id` keeps what it shows to, as seen on
+   * screen: the board's own (CameraController's `zoomScaleBounds`), with the
+   * floor lowered for a board behind it too wide to fit in its frame above
+   * it — so it can always be zoomed out to be seen whole in the frame, as
+   * the board can be in the window.
+   */
+  private portalZoomBounds(id: NodeId): ScaleBounds {
+    const node = this.nodesById.get(id)
+    const portal = this.sources.composition.portals.get(id)
+    const bounds = portal ? unionRect(portal.source.nodes) : null
+    if (!node || !bounds) return SCALE_BOUNDS
+    const { scale } = this.cameraController.view
+    const fit = fitViewToBounds(
+      bounds,
+      { width: node.w * scale, height: node.h * scale },
+      FIT_CAMERA_PADDING_PX,
+      SCALE_BOUNDS,
+    )
+    const min = Math.min(SCALE_BOUNDS.min, fit.scale * MIN_SCALE_FIT_MARGIN)
+    return min < SCALE_BOUNDS.min
+      ? { min, max: SCALE_BOUNDS.max }
+      : SCALE_BOUNDS
+  }
+
   /** The portal a zoom at a world point zooms the inside of: the selected
    * one, when it shows its board and the point is in its frame (core.ts's
    * `zoomablePortalAt`). */
@@ -1241,7 +1319,7 @@ export class WhiteboardCanvas {
     const node = this.nodesById.get(id)
     if (!isPortal(node)) return null
     const seen = this.cameraController.view.scale * looking.unit
-    const factor = toScale(seen) / seen
+    const factor = clampScale(toScale(seen), this.portalZoomBounds(id)) / seen
     const unit = looking.unit * factor
     // `from`, in the board behind as the portal showed it: it is what ends
     // up under `to`.
@@ -1935,7 +2013,6 @@ export class WhiteboardCanvas {
       clipOf: (id) => this.clipOf(id),
       sourcePathOf: (id) => this.sourcePathOf(id),
       scaleOf: (id) => this.scaleOf(id),
-      openPortal: (id, newTab) => this.openPortal(id, newTab),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -2082,6 +2159,8 @@ export class WhiteboardCanvas {
       getEdge: this.core.getEdge,
       isPdfNode: (node) => isPdfNode(node),
       openReader: (id) => this.pdf.openReaderPanel(id),
+      openPortal: (id) => this.openPortal(id),
+      fitPortal: (id) => this.fitPortal(id),
       toggleSpread: (id) => void this.toggleSpread(id),
       edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
       getView: this.core.getView,
@@ -3795,14 +3874,33 @@ export class WhiteboardCanvas {
     this.overviewLayer?.setViewportSize(width, height)
     this.updateOverviewState()
     const moved = this.interaction.liveNodeRects
-    if (this.overview) {
-      // Two populations, one engine: groups keep their DOM at every tier
-      // and are asked the ordinary question, cards are asked one they
-      // cannot answer yes to.
-      this.engine.recompute(this.groupNodes, rect, this.pinnedIds, moved)
-      this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
+    this.updateDrawnPortals()
+    if (this.sources.composition.portals.size === 0) {
+      if (this.overview) {
+        // Two populations, one engine: groups keep their DOM at every tier
+        // and are asked the ordinary question, cards are asked one they
+        // cannot answer yes to.
+        this.engine.recompute(this.groupNodes, rect, this.pinnedIds, moved)
+        this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
+      } else {
+        this.engine.recompute(this.visibilityNodes, rect, this.pinnedIds, moved)
+      }
     } else {
-      this.engine.recompute(this.visibilityNodes, rect, this.pinnedIds, moved)
+      // The same two populations, sorted card by card: a card is drawn
+      // rather than built at the size it is seen at — the camera's for the
+      // board's own, times the portal's for one behind a portal — so a
+      // portal zoomed in on a board zoomed out shows what is behind it
+      // built, and one zoomed out on a board zoomed in, drawn.
+      const built: BoardNode[] = []
+      const drawn: BoardNode[] = []
+      for (const node of this.visibilityNodes) {
+        if (!this.isDrawn(node)) built.push(node)
+      }
+      for (const node of this.cardNodes) {
+        if (this.isDrawn(node)) drawn.push(node)
+      }
+      this.engine.recompute(built, rect, this.pinnedIds, moved)
+      this.engine.recompute(drawn, UNREACHABLE_RECT, NO_PINS)
     }
     // Edges answer to the same viewport, on the same tick — see
     // edgeLayer.ts's `updateVisibility`. Not in the overview tier: there the
@@ -3816,6 +3914,48 @@ export class WhiteboardCanvas {
       this.edgeLayer.updateVisibility(rect, this.edgePinnedIds(moved))
     }
     this.syncGroupLabelScale()
+  }
+
+  /** Which open portals show what is behind them at a size the overview
+   * tier would draw rather than build (`drawnPortals`). */
+  private updateDrawnPortals(): void {
+    const { scale } = this.cameraController.view
+    const next = new Set<NodeId>()
+    for (const [id, portal] of this.sources.composition.portals) {
+      const drawn = nextOverviewState(
+        scale * portal.scale,
+        this.drawnPortals.has(id),
+        { enter: OVERVIEW_SCALE_THRESHOLD, restore: OVERVIEW_RESTORE_SCALE },
+      )
+      if (drawn) next.add(id)
+    }
+    const same =
+      next.size === this.drawnPortals.size &&
+      [...next].every((id) => this.drawnPortals.has(id))
+    if (same) return
+    this.drawnPortals = next
+    this.overviewLayer?.markDirty()
+  }
+
+  /** Where a card is, as far as the tiers go: behind a portal that draws
+   * what is behind it (`drawnPortals`), behind one that builds it, or on the
+   * board's own (null) — the innermost portal it is behind, whose scale is
+   * the one it is seen at. */
+  private portalTierOf(id: NodeId): 'drawn' | 'built' | null {
+    const portals = this.sources.composition.portals
+    if (portals.size === 0) return null
+    const portal = portalOf(id, portals)
+    if (!portal) return null
+    return this.drawnPortals.has(portal.id) ? 'drawn' : 'built'
+  }
+
+  /** Whether a card is drawn by the canvas rather than built, at the size
+   * it is seen at (`recomputeVisibility`). Groups keep their DOM at every
+   * tier. */
+  private isDrawn(node: BoardNode): boolean {
+    if (node.type === 'group') return false
+    const tier = this.portalTierOf(node.id)
+    return tier === null ? this.overview : tier === 'drawn'
   }
 
   /** Every page of every open spread, the pages a folded PDF card shows

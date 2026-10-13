@@ -26,6 +26,7 @@ import {
 } from '../../domain/fileFormat'
 import { isMarkdownPath } from '../../domain/naming'
 import { updateEdge, updateNode } from '../../domain/operations'
+import { isPortal } from '../../domain/portals'
 import { resolveCardContext } from '../../host/cardContext'
 import {
   CARD_ENTERED_CLASS,
@@ -247,11 +248,19 @@ export class EditingController {
    */
   editCard(id: NodeId): boolean {
     const node = this.core.getNode(id)
-    if (!node) return false
+    // A portal has nothing of its own to open: what it shows is cards of
+    // their own, and the board behind it opens from the toolbar. Declined
+    // before the zoom below, which would fly the camera into its frame.
+    if (!node || isPortal(node)) return false
+    // Too small to read, behind a portal that shows it at the overview
+    // tier's size: opening it is zooming the portal in.
+    const tier = this.core.portalTierOf(id)
+    if (tier === 'drawn') return false
     // Zoomed out past the point cards have elements, "open this" still has an
     // answer: go to it, then open it. Declining, which is what this did, left
-    // a double-click or Enter doing nothing with no hint as to why.
-    if (this.core.isOverview() && !this.core.isParseFailed()) {
+    // a double-click or Enter doing nothing with no hint as to why. Not for
+    // a card behind a portal that builds it: it has its element.
+    if (tier === null && this.core.isOverview() && !this.core.isParseFailed()) {
       this.deps.zoomInToEdit(id)
       return true
     }
@@ -281,7 +290,11 @@ export class EditingController {
   private enterLiveContent(id: NodeId): boolean {
     // A degraded card has no body to enter, the same reason edit mode
     // declines there.
-    if (this.core.isParseFailed() || this.core.isOverview()) return false
+    if (
+      this.core.isParseFailed() ||
+      (this.core.isOverview() && this.core.portalTierOf(id) !== 'built')
+    )
+      return false
     if (!this.deps.cards.hasLiveContent(id)) return false
     if (this.enteredNodeId === id) return true
     this.exitLiveContent()
@@ -350,8 +363,9 @@ export class EditingController {
     if (!this.core.canEdit()) return
     // Zoomed out past the point cards have elements: go to the card, and
     // the editor opens once it has one — which is how a card made down here
-    // is typed into, the same as one opened there (`editCard`).
-    if (this.core.isOverview()) {
+    // is typed into, the same as one opened there (`editCard`). Not for a
+    // card behind a portal that builds it, which has its element.
+    if (this.core.isOverview() && this.core.portalTierOf(id) !== 'built') {
       this.deps.zoomInToEdit(id)
       return
     }
@@ -422,8 +436,7 @@ export class EditingController {
       // What `[[links]]` in this card resolve against, and where an attachment
       // pasted into it is filed. A note card is its own document; a text card
       // lives inside the board file, so "here" is the board.
-      sourcePath:
-        node.type === 'file' ? node.file : this.core.sourcePathOf(id),
+      sourcePath: node.type === 'file' ? node.file : this.core.sourcePathOf(id),
       onChange: () => {
         this.scheduleEditPersist(id)
         // An empty card keeps its chips while its editor is open, and loses

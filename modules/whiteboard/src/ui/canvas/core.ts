@@ -50,6 +50,15 @@ export type CanvasCore = Readonly<{
   canEdit: () => boolean
   /** Whether the camera is in the overview tier (no card DOM). */
   isOverview: () => boolean
+  /** Whether a card is behind a portal that shows it smaller than the
+   * overview tier's threshold ('drawn': by the canvas, not built — selected
+   * and moved, not opened), behind one that shows it larger ('built', at
+   * whatever tier the board is in), or the board's own (null) (canvas.ts's
+   * `drawnPortals`). */
+  portalTierOf: (id: NodeId) => 'drawn' | 'built' | null
+  /** The topmost such card at a world point — a press there is on it,
+   * though it has no element — or null. */
+  drawnCardAt: (point: ScreenPoint) => NodeId | null
 
   // -- committing -------------------------------------------------------
   /** A content change: one undo step, and a save. */
@@ -100,8 +109,9 @@ export type CanvasCore = Readonly<{
    * one, when the point is in its frame — or null, where the board zooms. */
   zoomablePortalAt: (point: ScreenPoint) => NodeId | null
   /** Where portal `id` looks once what it showed at `looking` (a
-   * `portalViewOf`) is seen at `toScale(seen)` screen pixels to a unit, with
-   * what was at world point `from` now at `to`. */
+   * `portalViewOf`) is seen at `toScale(seen)` screen pixels to a unit —
+   * kept to the range a zoom in it has — with what was at world point
+   * `from` now at `to`. */
   portalViewAnchored: (
     id: NodeId,
     looking: Readonly<{ x: number; y: number; scale: number; unit: number }>,
@@ -129,8 +139,6 @@ export type CanvasCore = Readonly<{
     point: ScreenPoint,
     historyKey?: string,
   ) => void
-  /** Opens the board behind a portal (canvas.ts's `openPortal`). */
-  openPortal: (id: NodeId, newTab: boolean) => void
 
   // -- environment ------------------------------------------------------
   /** The board file's vault path; empty before one is loaded. */

@@ -34,6 +34,7 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import { arrangeTargets } from '../../domain/groups'
+import { isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import { isSpreadTitle, withTitleAbove } from '../../domain/spread'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
@@ -121,6 +122,12 @@ export type ToolbarControllerCallbacks = Readonly<{
    * to. */
   isPdfNode: (node: BoardNode) => boolean
   openReader: (id: NodeId) => void
+  /** Opens the board behind a portal in a new tab (canvas.ts's
+   * `openPortal`). */
+  openPortal: (id: NodeId) => void
+  /** Brings everything behind a portal back into its frame (canvas.ts's
+   * `fitPortal`). */
+  fitPortal: (id: NodeId) => void
   /** Spreads a PDF's pages out on the board, or puts them away
    * (the canvas's `toggleSpread`). */
   toggleSpread: (id: NodeId) => void
@@ -403,6 +410,23 @@ export class ToolbarController {
         label: this.callbacks.t('toolbar.openReader'),
         icon: 'book-open',
         onSelect: () => this.callbacks.openReader(single.id),
+      })
+    }
+    // A portal's own buttons: everything behind it back in its frame — what
+    // the wheel and the pinch may have panned and zoomed away — and the board
+    // behind it, in a tab of its own.
+    if (single && isPortal(single)) {
+      if (canEdit) {
+        items.push({
+          label: this.callbacks.t('toolbar.fitBoard'),
+          icon: 'locate-fixed',
+          onSelect: () => this.callbacks.fitPortal(single.id),
+        })
+      }
+      items.push({
+        label: this.callbacks.t('toolbar.openBoard'),
+        icon: 'external-link',
+        onSelect: () => this.callbacks.openPortal(single.id),
       })
     }
     // Spread a PDF's pages out, or put a spread away — from the card or the

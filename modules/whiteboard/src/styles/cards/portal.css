@@ -81,29 +81,6 @@
   text-align: center;
 }
 
-/* The title line says which board (title-line.css); its button opens it. */
-button.yolo-whiteboard-portal-open {
-  display: inline-flex;
-  width: auto;
-  height: auto;
-  padding: 2px;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-faint);
-  cursor: pointer;
-}
-
-button.yolo-whiteboard-portal-open:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
-}
-
-button.yolo-whiteboard-portal-open .svg-icon {
-  width: 12px;
-  height: 12px;
-}
-
 /* What a card shows while its body is empty is its title; a portal's body is
  * empty because what it shows is behind it. */
 .yolo-whiteboard-portal > .yolo-whiteboard-card-title-block {

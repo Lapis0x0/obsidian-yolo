@@ -10,7 +10,7 @@
 // `CanvasCore`. `WhiteboardCanvas` is the only importer; this module must
 // never import it back.
 
-import { clampScale, screenToWorld } from '../../domain/camera'
+import { screenToWorld } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
 import { NODE_SIDES, edgeAtPoint } from '../../domain/edges'
 import {
@@ -46,7 +46,6 @@ import {
   PAN_FLING_MAX_IDLE_MS,
   PAN_FLING_MIN_SPEED,
   PAN_FLING_SAMPLE_MS,
-  SCALE_BOUNDS,
 } from '../constants'
 import { asElement } from '../eventTarget'
 
@@ -749,12 +748,9 @@ export class InteractionController {
     // about, so only the DOM resolves that.
     const nodeId =
       this.core.cardAtPoint(world, false) ?? nodeIdFromEventTarget(target)
-    // A portal's title or frame — what of a portal a press can reach — goes
-    // in: the board behind it opens.
-    if (isPortal(this.core.getNode(nodeId ?? ''))) {
-      this.core.openPortal(nodeId as NodeId, e.metaKey || e.ctrlKey)
-      return
-    }
+    // A portal's title or frame — what of a portal a press can reach — has
+    // nothing of its own to type into; its board opens from the toolbar.
+    if (isPortal(this.core.getNode(nodeId ?? ''))) return
     if (nodeId !== null) {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
@@ -972,8 +968,11 @@ export class InteractionController {
    */
   nodeIdAtPointer(e: MouseEvent): NodeId | null {
     const fromDom = nodeIdFromEventTarget(e.target)
-    if (fromDom !== null || !this.core.isOverview()) return fromDom
+    if (fromDom !== null) return fromDom
     const world = this.core.worldPointFromEvent(e)
+    // Behind a portal that shows its board at the tier's size, the cards
+    // are drawn the tier's way too, and are hit its way.
+    if (!this.core.isOverview()) return this.core.drawnCardAt(world)
     return (
       this.deps.overviewTitleLineAt(world) ?? this.core.cardAtPoint(world, true)
     )
@@ -1296,8 +1295,7 @@ export class InteractionController {
       portal.origin,
       screenToWorld(interaction.origin, interaction.startMid),
       screenToWorld(interaction.origin, mid),
-      (seen) =>
-        clampScale(seen * (distance / interaction.startDistance), SCALE_BOUNDS),
+      (seen) => seen * (distance / interaction.startDistance),
     )
     if (view) this.core.lookThroughPortal(portal.id, view, portal.historyKey)
   }

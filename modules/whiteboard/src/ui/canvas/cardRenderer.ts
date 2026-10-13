@@ -77,7 +77,6 @@ const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
  * opens its board, and what it says when it shows nothing. */
 const PORTAL_CLASS = 'yolo-whiteboard-portal'
 const PORTAL_EDGE_CLASS = 'yolo-whiteboard-portal-edge'
-const PORTAL_OPEN_CLASS = 'yolo-whiteboard-portal-open'
 const PORTAL_NOTICE_CLASS = 'yolo-whiteboard-portal-notice'
 /** A card's title that is a title line (./titleLine.ts) — a PDF's, in the
  * place its spread's title stands, so the two are one title, and a
@@ -273,8 +272,6 @@ export type CardRendererCallbacks = Readonly<{
   clipOf: (
     id: NodeId,
   ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
-  /** Opens the board behind a portal, here or in a new tab. */
-  openPortal: (id: NodeId, newTab: boolean) => void
   /** The camera's current zoom — what a PDF card's pages are drawn for. */
   getViewScale: () => number
   /** Where a PDF card's reader opens: the node's `startPage`. */
@@ -695,7 +692,7 @@ export class CardRenderer {
         title.textContent = chromeTitle
       }
       el.appendChild(title)
-      if (isPortal(node) && line) this.dressPortal(id, el, line)
+      if (isPortal(node)) this.dressPortal(el)
     }
 
     const body = createCardBody(doc)
@@ -939,7 +936,7 @@ export class CardRenderer {
     if (runtime.pdfReader) {
       // The camera kept moving while the card was away; its pages are redrawn
       // for where it is now once that zoom has settled.
-      runtime.pdfReader.setViewScale(this.callbacks.getViewScale())
+      runtime.pdfReader.setViewScale(this.pdfViewScale(id))
       runtime.pdfReader.setVisible(true)
     }
   }
@@ -1501,7 +1498,8 @@ export class CardRenderer {
   }
 
   /**
-   * Tells every PDF card how far the camera is zoomed. Called on every frame
+   * Tells every PDF card how far the camera is zoomed — times, behind a
+   * portal, the portal's scale (`pdfViewScale`). Called on every frame
    * the camera moves, so it touches only the cards holding a reader; one on
    * screen redraws for the new zoom once it holds still, one parked lets go
    * of what the new zoom no longer needs.
@@ -1516,8 +1514,14 @@ export class CardRenderer {
       // Parked readers hear it too: one that is hidden gives back the pages
       // this zoom has made too sharp to be worth keeping (see
       // PdfReader's releaseOversharp).
-      reader.setViewScale(scale)
+      reader.setViewScale(scale * this.callbacks.scaleOf(id))
     }
+  }
+
+  /** How large a PDF card's pages are on screen: the camera's zoom, times
+   * the portals' it is behind — what its reader draws them sharp for. */
+  private pdfViewScale(id: NodeId): number {
+    return this.callbacks.getViewScale() * this.callbacks.scaleOf(id)
   }
 
   /**
@@ -1570,7 +1574,7 @@ export class CardRenderer {
       container: bodyEl,
       sheet,
       position: this.callbacks.getPdfStartPosition(id),
-      viewScale: this.callbacks.getViewScale(),
+      viewScale: this.pdfViewScale(id),
       interactive: this.callbacks.isFocused(id),
       t: (key) => this.callbacks.t(key),
       canStartWork: () => this.callbacks.canBuildContent(),
@@ -1607,10 +1611,9 @@ export class CardRenderer {
   /**
    * A portal's frame: transparent, so what is behind it — cards mounted on
    * their own over it — shows through, and held by its edges and its title
-   * only (styles/cards/portal.css). Its title line carries the button that
-   * opens the board.
+   * only (styles/cards/portal.css).
    */
-  private dressPortal(id: NodeId, el: HTMLElement, line: HTMLElement): void {
+  private dressPortal(el: HTMLElement): void {
     const doc = this.context.getDocument()
     el.classList.add(PORTAL_CLASS)
     for (const side of ['top', 'right', 'bottom', 'left'] as const) {
@@ -1618,18 +1621,6 @@ export class CardRenderer {
       edge.className = `${PORTAL_EDGE_CLASS} ${PORTAL_EDGE_CLASS}-${side}`
       el.appendChild(edge)
     }
-    const open = doc.createElement('button')
-    open.className = PORTAL_OPEN_CLASS
-    open.type = 'button'
-    open.setAttribute('aria-label', this.callbacks.t('card.portalOpen'))
-    open.appendChild(arrowUpRightIcon(doc))
-    // Not a press on the card: the button opens, it does not select.
-    open.addEventListener('pointerdown', (event) => event.stopPropagation())
-    open.addEventListener('click', (event) => {
-      event.stopPropagation()
-      this.callbacks.openPortal(id, event.metaKey || event.ctrlKey)
-    })
-    line.appendChild(open)
   }
 
   /** What a portal shows in its frame: nothing while the board behind it is
@@ -1678,8 +1669,10 @@ export class CardRenderer {
     if (!runtime?.el || !node) return
     runtime.el.style.left = `${node.x}px`
     runtime.el.style.top = `${node.y}px`
-    // Its own size is what it was: only how large it is drawn changed.
+    // Its own size is what it was: only how large it is drawn changed —
+    // and with it how sharp its pages are drawn.
     scaleNodeElement(runtime.el, this.callbacks.scaleOf(id))
+    runtime.pdfReader?.setViewScale(this.pdfViewScale(id))
     this.applyClip(runtime.el, node)
   }
 
@@ -1984,23 +1977,4 @@ export class CardRenderer {
     placeholder.append(title, hint)
     runtime.bodyEl.replaceChildren(placeholder)
   }
-}
-
-/** Lucide's `arrow-up-right`, as Obsidian draws its icons. */
-function arrowUpRightIcon(doc: Document): SVGElement {
-  const ns = 'http://www.w3.org/2000/svg'
-  const svg = doc.createElementNS(ns, 'svg')
-  svg.setAttribute('class', 'svg-icon')
-  svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('fill', 'none')
-  svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '2')
-  svg.setAttribute('stroke-linecap', 'round')
-  svg.setAttribute('stroke-linejoin', 'round')
-  for (const d of ['M7 7h10v10', 'M7 17 17 7']) {
-    const path = doc.createElementNS(ns, 'path')
-    path.setAttribute('d', d)
-    svg.appendChild(path)
-  }
-  return svg
 }
