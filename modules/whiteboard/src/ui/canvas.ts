@@ -1303,10 +1303,15 @@ export class WhiteboardCanvas {
         this.pinnedIds.delete(id)
       },
       syncChips: (id) => this.cardGeneration.syncChips(id),
-      writeReadingWindow: (id, line) => {
+      writeReadingWindow: (id, line, markdown) => {
         // Bare text shows all of itself; it has no window to remember.
         if (isPlainText(this.nodesById.get(id))) return
-        const board = this.boardWithSnappedWindow(this.board, id, line)
+        const board = this.boardWithSnappedWindow(
+          this.board,
+          id,
+          line,
+          markdown,
+        )
         if (board === this.board) return
         this.board = board
         this.syncBoardIndex()
@@ -1784,9 +1789,9 @@ export class WhiteboardCanvas {
     board: Board,
     id: NodeId,
     line: number,
+    markdown = this.cardMarkdown(id),
   ): Board {
     if (!Number.isFinite(line)) return board
-    const markdown = this.cardMarkdown(id)
     return boardWithReadingWindow(
       board,
       id,

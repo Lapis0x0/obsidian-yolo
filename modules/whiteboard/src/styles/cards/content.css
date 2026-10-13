@@ -15,10 +15,18 @@
  *
  * `.markdown-preview-view` alone sets the padding and font size Obsidian uses
  * for a full document page (0,1,0), so a two-class selector is what it takes
- * to state the card's instead. */
+ * to state the card's instead.
+ *
+ * Paragraph spacing is one line: in the editor the gap between paragraphs is
+ * the blank source line itself, one line-height tall, while the preview spaces
+ * them by the theme's `--p-spacing` — a rem value that ignores both the card's
+ * type size and its line height. Restating it as `1lh` (resolved where it is
+ * used, on each block) makes the two the same height under any theme that sets
+ * line height through `--line-height-normal`. */
 .yolo-whiteboard-card-body .markdown-preview-view {
   padding: 6px 10px;
   font-size: 13px;
+  --p-spacing: 1lh;
 }
 
 /* Only a body holding the whole document scrolls — in practice the focused
