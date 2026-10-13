@@ -110,6 +110,16 @@ button.yolo-whiteboard-portal-open .svg-icon {
   display: none;
 }
 
+/* A card behind a portal that shows its board at another scale: laid out at
+ * its own size and drawn at the portal's scale, from its top-left corner
+ * (ui/canvas/cardContent.ts's `scaleNodeElement`). The scale is set inline,
+ * so a drag's lift (drag.css) does not touch it, and it follows a zoom at
+ * once rather than easing after it. */
+.yolo-whiteboard-node-scaled {
+  transform-origin: 0 0;
+  transition: none;
+}
+
 /* The handle layer parked on a portal: its top handles reach into the frame
  * only. Straddling the border, as on any card, they lay over the title — and
  * at low zoom, where they grow, over all of it — so the press that should

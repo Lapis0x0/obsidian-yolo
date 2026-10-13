@@ -77,10 +77,11 @@ const INLINED_IMAGES_KEPT = 48
 
 /** The picture's scaffolding, laid over the shared stylesheet. The card's
  * own box is kept — its size, its padding, its (now transparent) border —
- * and only what is drawn around the content is taken off, and the frame of
- * a portal it is seen through (ui/canvas/cardRenderer.ts's `applyClip`):
- * the picture is of the card, and is drawn cut to whatever frame it is seen
- * through then (overviewLayer.ts's `inPortals`). Its scrollbars
+ * and only what is drawn around the content is taken off, and how a portal
+ * it is seen through shows it — its frame (ui/canvas/cardRenderer.ts's
+ * `applyClip`) and its scale (ui/canvas/cardContent.ts's
+ * `scaleNodeElement`) — and a drag's offset: the picture is of the card at
+ * its own size, and is drawn wherever and at whatever size it is seen. Its scrollbars
  * are not drawn but keep their room: a card's content keeps a gutter for
  * one (`scrollbar-gutter`), and a picture without it would wrap its lines
  * wider than the card does. */
@@ -90,7 +91,7 @@ const PICTURE_CSS = `
 .${PICTURE_FRAME_CLASS} { position: relative; overflow: hidden; background: none; }
 .${FILL_CLASS} { position: absolute; inset: 0; background: none !important; overflow: visible; }
 .${WORLD_CLASS} { position: absolute !important; left: 0; top: 0; transform: none !important; }
-.${WORLD_CLASS} > .yolo-whiteboard-card { left: 0 !important; top: 0 !important; background: none !important; border-color: transparent !important; box-shadow: none !important; clip-path: none !important; }
+.${WORLD_CLASS} > .yolo-whiteboard-card { left: 0 !important; top: 0 !important; background: none !important; border-color: transparent !important; box-shadow: none !important; clip-path: none !important; scale: none !important; translate: none !important; }
 *::-webkit-scrollbar-thumb, *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner, *::-webkit-scrollbar-button { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
 ${COPY_CSS}`
 

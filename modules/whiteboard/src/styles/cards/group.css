@@ -56,13 +56,13 @@
  * does not match: it is not a `.yolo-whiteboard-card`, and it must not take
  * that block's `z-index: 2` either — a group is a frame and stays behind its
  * contents while it moves. What it does want is the same grabbing cursor and
- * the same compositor hint, since a drag rewrites its transform every frame.
+ * the same compositor hint, since a drag rewrites its translate every frame.
  *
  * The cursor carries the rule above's whole prefix: two classes would lose to
  * that rule's three, and the cursor would stay `grab` for the length of the
  * drag. */
 .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
-  will-change: transform;
+  will-change: translate;
 }
 
 .yolo-whiteboard-root .yolo-whiteboard-group.yolo-whiteboard-card-dragging {

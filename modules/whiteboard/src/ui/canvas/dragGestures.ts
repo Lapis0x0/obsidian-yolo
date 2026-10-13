@@ -41,6 +41,7 @@ import {
 } from '../constants'
 
 import type { CameraController } from './cameraController'
+import { nodeElementScale } from './cardContent'
 import type { CanvasCore } from './core'
 import type { EdgeLayer } from './edgeLayer'
 import type { SnapGuideLayer } from './snapGuideLayer'
@@ -175,7 +176,7 @@ export class DragGestures {
   /**
    * Uncommitted geometry for the nodes a drag or a resize is moving, or null.
    *
-   * In the DOM tiers the live feedback *is* the `transform` written on each
+   * In the DOM tiers the live feedback *is* the `translate` written on each
    * card's element, and this is only the map those writes were computed from.
    * In the overview tier there are no elements, so this is the feedback: the
    * canvas draws from it (`OverviewLayerCallbacks.getLiveRects`). Published
@@ -219,8 +220,10 @@ export class DragGestures {
   // A drag moves either just the pressed card, or the whole
   // current selection if the pressed card was already part of it (and
   // never enters edit mode). Position updates during drag write only
-  // `transform` on the affected card elements (compositor-friendly, no
-  // layout write) — `left`/`top` are reconciled to the final board values
+  // `translate` on the affected card elements (compositor-friendly, no
+  // layout write; the property rather than `transform`, which a card behind
+  // a portal at another scale is drawn larger or smaller under — cardContent.ts's
+  // `scaleNodeElement` — and which animations write) — `left`/`top` are reconciled to the final board values
   // once on drop, matching how a freshly-mounted card is positioned.
   // -----------------------------------------------------------------------
 
@@ -231,7 +234,7 @@ export class DragGestures {
   // overlaps the card, and a click there that never moves must still open
   // the editor rather than do nothing. Once it does move, every frame writes
   // `left`/`top`/`width`/`height` on the one card being resized: unlike a
-  // drag (which can ride on `transform`), a resize changes layout by
+  // drag (which can ride on `translate`), a resize changes layout by
   // definition, and one card's layout is a cost worth paying for the card
   // showing its real content the whole way. The board is written once, on
   // pointerup.
@@ -353,6 +356,9 @@ export class DragGestures {
   ): CardRect {
     const el = this.core.getRuntime(interaction.nodeId)?.el
     let rect = resized
+    // Its own size, which a portal at another scale draws larger or
+    // smaller (cardContent.ts's `scaleNodeElement`).
+    const scale = el ? nodeElementScale(el) : 1
     if (el && isPlainText(this.core.getNode(interaction.nodeId))) {
       // Bare text is given a width and wraps to it; how tall that makes it
       // is read back off the text, once, for the handles and the edges to
@@ -361,14 +367,14 @@ export class DragGestures {
       el.classList.remove(PLAIN_TEXT_AUTO_CLASS)
       el.style.left = `${rect.x}px`
       el.style.top = `${rect.y}px`
-      el.style.width = `${rect.w}px`
+      el.style.width = `${rect.w / scale}px`
       el.style.removeProperty('height')
-      rect = { ...rect, h: el.offsetHeight }
+      rect = { ...rect, h: el.offsetHeight * scale }
     } else if (el) {
       el.style.left = `${rect.x}px`
       el.style.top = `${rect.y}px`
-      el.style.width = `${rect.w}px`
-      el.style.height = `${rect.h}px`
+      el.style.width = `${rect.w / scale}px`
+      el.style.height = `${rect.h / scale}px`
     }
     const live = new Map([[interaction.nodeId, rect]])
     // As in a drag: with no element to write to, this is what the overview
@@ -502,7 +508,7 @@ export class DragGestures {
     const el = this.core.getRuntime(id)?.el
     if (!start || !live || !el) return
     el.classList.add(CARD_DRAGGING_CLASS)
-    el.style.transform = `translate(${live.x - start.x}px, ${live.y - start.y}px)`
+    el.style.translate = `${live.x - start.x}px ${live.y - start.y}px`
   }
 
   /**
@@ -682,7 +688,7 @@ export class DragGestures {
         h: card.h,
       })
       const el = this.core.getRuntime(id)?.el
-      if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
+      if (el) el.style.translate = `${dx}px ${dy}px`
     }
     // In the overview tier those elements do not exist and this map is the
     // drag's only feedback — see `liveNodeRects`.
@@ -733,7 +739,7 @@ export class DragGestures {
       // A literal-string style assignment is disallowed (obsidianmd/
       // no-static-styles-assignment) even for a reset; setCssProps is the
       // sanctioned escape hatch (Obsidian and Style Constraints, CLAUDE.md).
-      el.setCssProps({ transform: '' })
+      el.setCssProps({ translate: '' })
       const card = this.core.getNode(id)
       if (card) {
         el.style.left = `${card.x}px`

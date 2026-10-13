@@ -57,7 +57,9 @@ import {
   clippedCardMarkdown,
   createCardBody,
   createNodeElement,
+  nodeElementScale,
   renderClippedMarkdown,
+  scaleNodeElement,
 } from './cardContent'
 import { createTitleLine, titleBadgeOf } from './titleLine'
 
@@ -258,6 +260,9 @@ export type CardRendererCallbacks = Readonly<{
    * `destroyRuntime` for the half that moved here. */
   purgeNode: (id: NodeId) => void
   sourcePathOf: (id: NodeId) => string
+  /** What a card is drawn at: the scale of the portals it is behind
+   * (domain/portals.ts's `ComposedPortal`), 1 for the board's own. */
+  scaleOf: (id: NodeId) => number
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -540,17 +545,20 @@ export class CardRenderer {
     if (id === undefined || el.style.height !== '') return
     if (this.runtimeByNodeId.get(id)?.el !== el) return
     // Layout size, in world units: the element sits inside the camera's
-    // transform, which `offset*` ignores.
-    const w = el.offsetWidth
-    const h = el.offsetHeight
+    // transform, which `offset*` ignores — and its own size, which a portal
+    // at another scale draws larger or smaller on this board.
+    const scale = nodeElementScale(el)
+    const w = el.offsetWidth * scale
+    const h = el.offsetHeight * scale
     if (w > 0 && h > 0) this.callbacks.onTextMeasured(id, { w, h })
   }
 
   /** Pins bare text at its node's size (a card is left alone). */
   holdTextSize(el: HTMLElement, node: BoardNode | undefined): void {
     if (!isPlainText(node)) return
-    el.style.width = `${node.w}px`
-    el.style.height = `${node.h}px`
+    const scale = nodeElementScale(el)
+    el.style.width = `${node.w / scale}px`
+    el.style.height = `${node.h / scale}px`
   }
 
   /** Gives bare text's box back to its content: its height always, its
@@ -562,7 +570,7 @@ export class CardRenderer {
     if (this.parkedCards.has(id)) return
     el.classList.toggle(PLAIN_TEXT_AUTO_CLASS, node.autoWidth === true)
     if (node.autoWidth === true) el.style.removeProperty('width')
-    else el.style.width = `${node.w}px`
+    else el.style.width = `${node.w / nodeElementScale(el)}px`
     el.style.removeProperty('height')
   }
 
@@ -583,7 +591,7 @@ export class CardRenderer {
     if (!node || existing?.el) return
 
     const doc = this.context.getDocument()
-    const el = createNodeElement(doc, node)
+    const el = createNodeElement(doc, node, this.callbacks.scaleOf(id))
     const plain = isPlainText(node)
     el.style.left = `${node.x}px`
     el.style.top = `${node.y}px`
@@ -910,10 +918,12 @@ export class CardRenderer {
     // align, a colour change on a multi-selection. Its geometry and its
     // selection state are re-applied from the board rather than trusted.
     if (node) {
+      const scale = this.callbacks.scaleOf(id)
       runtime.el.style.left = `${node.x}px`
       runtime.el.style.top = `${node.y}px`
-      runtime.el.style.width = `${node.w}px`
-      runtime.el.style.height = `${node.h}px`
+      runtime.el.style.width = `${node.w / scale}px`
+      runtime.el.style.height = `${node.h / scale}px`
+      scaleNodeElement(runtime.el, scale)
       this.applyClip(runtime.el, node)
       applyColorToElement(runtime.el, node.color)
       if (runtime.contentRenderer !== null) this.releaseTextSize(id)
@@ -1668,6 +1678,8 @@ export class CardRenderer {
     if (!runtime?.el || !node) return
     runtime.el.style.left = `${node.x}px`
     runtime.el.style.top = `${node.y}px`
+    // Its own size is what it was: only how large it is drawn changed.
+    scaleNodeElement(runtime.el, this.callbacks.scaleOf(id))
     this.applyClip(runtime.el, node)
   }
 
@@ -1682,10 +1694,13 @@ export class CardRenderer {
     // Against where the card is drawn, which a gesture may be holding it
     // away from where the board has it.
     const at = this.callbacks.getLiveRects()?.get(node.id) ?? node
-    const top = clip.y - at.y
-    const left = clip.x - at.x
-    const right = at.x + at.w - (clip.x + clip.w)
-    const bottom = at.y + at.h - (clip.y + clip.h)
+    // In the element's own units, which a portal at another scale draws
+    // larger or smaller.
+    const scale = nodeElementScale(el)
+    const top = (clip.y - at.y) / scale
+    const left = (clip.x - at.x) / scale
+    const right = (at.x + at.w - (clip.x + clip.w)) / scale
+    const bottom = (at.y + at.h - (clip.y + clip.h)) / scale
     el.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`
   }
 

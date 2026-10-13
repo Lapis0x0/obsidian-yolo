@@ -2,15 +2,17 @@
 
 .yolo-whiteboard-card.yolo-whiteboard-card-dragging {
   cursor: grabbing;
-  will-change: transform;
+  will-change: translate;
   /* Bring the dragged card above its siblings while it's being moved —
    * cards otherwise stack in plain DOM/mount order (no general z-order
    * model) — and above the 1 a spread's title stands at (spread.css). */
   z-index: 2;
   /* Picked up: a hair larger and casting a shadow, so a drag reads as the
    * card being lifted off the board rather than slid across it — and set back
-   * down, not dropped, when it ends. `scale` rather than `transform`, which
-   * the drag itself writes every frame; the two compose. */
+   * down, not dropped, when it ends. `scale`, and the drag itself writes
+   * `translate` every frame; the two compose. A card behind a portal at
+   * another scale has its scale set inline (portal.css), so it is not lifted
+   * this way — the shadow below still lifts it. */
   scale: 1.015;
 }
 

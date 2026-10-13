@@ -10,6 +10,7 @@
 // `CanvasCore`. `WhiteboardCanvas` is the only importer; this module must
 // never import it back.
 
+import { clampScale, screenToWorld } from '../../domain/camera'
 import type { ScreenPoint } from '../../domain/camera'
 import { NODE_SIDES, edgeAtPoint } from '../../domain/edges'
 import {
@@ -45,6 +46,7 @@ import {
   PAN_FLING_MAX_IDLE_MS,
   PAN_FLING_MIN_SPEED,
   PAN_FLING_SAMPLE_MS,
+  SCALE_BOUNDS,
 } from '../constants'
 import { asElement } from '../eventTarget'
 
@@ -164,6 +166,15 @@ type PinchInteraction = Readonly<{
   viewportOrigin: ScreenPoint
   startMid: ScreenPoint
   startDistance: number
+  /** Set when the pinch began in the selected portal's frame: it zooms and
+   * pans what the portal shows rather than the board (core.ts's
+   * `zoomablePortalAt`) — from where the portal looked at the start, as
+   * the one step of history the whole pinch is. */
+  portal: Readonly<{
+    id: NodeId
+    origin: Readonly<{ x: number; y: number; scale: number; unit: number }>
+    historyKey: string
+  }> | null
 }>
 
 /** The band's origin is kept in world coordinates, not on screen: a marquee
@@ -673,14 +684,26 @@ export class InteractionController {
     const second = { x: e.clientX, y: e.clientY }
     const rect = this.deps.viewportEl.getBoundingClientRect()
     const viewportOrigin = { x: rect.left, y: rect.top }
+    const origin = { ...this.core.getView() }
+    const startMid = midpoint(first, second, viewportOrigin)
+    const portalId = this.core.zoomablePortalAt(screenToWorld(origin, startMid))
+    const looking = portalId === null ? null : this.core.portalViewOf(portalId)
     this.interaction = {
       kind: 'pinch',
       pointerId: current.pointerId,
       otherPointerId: e.pointerId,
-      origin: { ...this.core.getView() },
+      origin,
       viewportOrigin,
-      startMid: midpoint(first, second, viewportOrigin),
+      startMid,
       startDistance: Math.hypot(second.x - first.x, second.y - first.y),
+      portal:
+        portalId === null || !looking
+          ? null
+          : {
+              id: portalId,
+              origin: looking,
+              historyKey: `portal-pinch:${portalId}:${e.timeStamp}`,
+            },
     }
     this.autoPan = null
     this.deps.viewportEl.setPointerCapture(e.pointerId)
@@ -1102,7 +1125,7 @@ export class InteractionController {
     ) {
       this.interaction = null
       this.endGesture()
-      this.deps.camera.finishPinch()
+      if (!interaction.portal) this.deps.camera.finishPinch()
       return
     }
     // Another pointer lifting is not this gesture ending — the one that
@@ -1118,7 +1141,7 @@ export class InteractionController {
         this.updatePortalPan(interaction, e)
         break
       case 'pinch':
-        this.deps.camera.finishPinch()
+        if (!interaction.portal) this.deps.camera.finishPinch()
         break
       case 'marquee':
         this.finishMarquee(interaction, e)
@@ -1252,13 +1275,31 @@ export class InteractionController {
     const a = this.touchPoints.get(interaction.pointerId)
     const b = this.touchPoints.get(interaction.otherPointerId)
     if (!a || !b) return
-    this.deps.camera.updatePinch(
-      interaction.origin,
-      interaction.startMid,
-      interaction.startDistance,
-      midpoint(a, b, interaction.viewportOrigin),
-      Math.hypot(b.x - a.x, b.y - a.y),
+    const mid = midpoint(a, b, interaction.viewportOrigin)
+    const distance = Math.hypot(b.x - a.x, b.y - a.y)
+    const { portal } = interaction
+    if (!portal) {
+      this.deps.camera.updatePinch(
+        interaction.origin,
+        interaction.startMid,
+        interaction.startDistance,
+        mid,
+        distance,
+      )
+      return
+    }
+    if (interaction.startDistance <= 0) return
+    // The camera holds still under a pinch in a portal, so world points
+    // are read off the view it began with.
+    const view = this.core.portalViewAnchored(
+      portal.id,
+      portal.origin,
+      screenToWorld(interaction.origin, interaction.startMid),
+      screenToWorld(interaction.origin, mid),
+      (seen) =>
+        clampScale(seen * (distance / interaction.startDistance), SCALE_BOUNDS),
     )
+    if (view) this.core.lookThroughPortal(portal.id, view, portal.historyKey)
   }
 
   // -----------------------------------------------------------------------

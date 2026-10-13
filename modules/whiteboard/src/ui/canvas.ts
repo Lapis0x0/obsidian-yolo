@@ -25,7 +25,11 @@ import {
   alignRects,
   distributeRects,
 } from '../domain/arrange'
-import { cameraFromView, screenToWorld } from '../domain/camera'
+import {
+  cameraFromView,
+  scaleAfterWheel,
+  screenToWorld,
+} from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planNodeCommit } from '../domain/commit'
 import { type ArrowDirection, arrowEnds } from '../domain/edges'
@@ -79,6 +83,7 @@ import {
   clipThrough,
   commonPortal,
   composeBoard,
+  fileNodeOf,
   invertChanges,
   isPortal,
   mergeChanges,
@@ -125,6 +130,7 @@ import { createWhiteboardTranslation } from '../i18n'
 
 import { BoardSources } from './canvas/boardSources'
 import { CameraController } from './canvas/cameraController'
+import { nodeElementScale } from './canvas/cardContent'
 import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { ClipboardController } from './canvas/clipboardController'
@@ -180,6 +186,7 @@ import {
   PORTAL_PAN_STEP_GAP_MS,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
+  SCALE_BOUNDS,
   SPREAD_DEAL_MAX_DELAY_MS,
   SPREAD_DEAL_STAGGER_MS,
   SPREAD_DEAL_WINDOW_MS,
@@ -187,6 +194,8 @@ import {
   SVG_NS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
+  WHEEL_DELTA_PER_ZOOM_DOUBLING,
+  WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
@@ -430,9 +439,14 @@ export class WhiteboardCanvas {
   /** Whether the camera is where the board is being looked at — false while
    * a board is being loaded, before its camera is (`wantsPortalOpen`). */
   private cameraPlaced = true
-  /** The portal the wheel last panned, and when: a pause ends the step. */
-  private portalPan: Readonly<{ id: NodeId; at: number }> | null = null
-  private portalPanSerial = 0
+  /** The portal the wheel last panned or zoomed, how, and when: a pause, or
+   * the other gesture, ends the step (`portalStepKey`). */
+  private portalStep: Readonly<{
+    id: NodeId
+    kind: 'pan' | 'zoom'
+    at: number
+  }> | null = null
+  private portalStepSerial = 0
 
   // Selection toolbar: one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
@@ -688,6 +702,9 @@ export class WhiteboardCanvas {
         null,
       lookThroughPortal: (id, view, historyKey) =>
         this.lookThroughPortal(id, view, historyKey),
+      zoomablePortalAt: (point) => this.zoomablePortalAt(point),
+      portalViewAnchored: (id, looking, from, to, toScale) =>
+        this.portalViewAnchored(id, looking, from, to, toScale),
       cardAtPoint: (point, portals) => this.cardAtPoint(point, portals),
       commitMove: (next, ids, point, historyKey) =>
         this.commitMove(next, ids, point, historyKey),
@@ -857,6 +874,7 @@ export class WhiteboardCanvas {
       {
         portal: ComposedPortal
         clip: Rect
+        scale: number
         nodes: BoardNode[]
         hidden: BoardNode[]
         edges: Edge[]
@@ -865,7 +883,14 @@ export class WhiteboardCanvas {
     const layerOf = (portal: ComposedPortal) => {
       let layer = layers.get(portal.id)
       if (!layer) {
-        layer = { portal, clip: portal.clip, nodes: [], hidden: [], edges: [] }
+        layer = {
+          portal,
+          clip: portal.clip,
+          scale: portal.scale,
+          nodes: [],
+          hidden: [],
+          edges: [],
+        }
         layers.set(portal.id, layer)
       }
       return layer
@@ -923,6 +948,7 @@ export class WhiteboardCanvas {
       )
       return {
         clip,
+        scale: layer.scale,
         nodes: shown.length > 0 ? [...nodes, ...shown] : nodes,
         edges: layer.edges,
       }
@@ -1084,16 +1110,95 @@ export class WhiteboardCanvas {
       y: looking.y + deltaY / scale,
       scale: looking.scale,
     }
-    const now = this.context.getWindow().performance.now()
-    if (
-      this.portalPan?.id !== id ||
-      now - this.portalPan.at > PORTAL_PAN_STEP_GAP_MS
-    ) {
-      this.portalPanSerial += 1
-    }
-    this.portalPan = { id, at: now }
-    this.lookThroughPortal(id, view, `portal-pan:${id}:${this.portalPanSerial}`)
+    this.lookThroughPortal(id, view, this.portalStepKey(id, 'pan'))
     return true
+  }
+
+  /**
+   * Ctrl+wheel, or a trackpad pinch, over the selected portal's frame zooms
+   * what it shows about the cursor, as the same gesture zooms the board
+   * anywhere else — within the board's bounds, as seen on screen. A run of
+   * it is one step to undo. False when the focused card is not a portal
+   * showing its board, or the cursor is outside its frame.
+   */
+  private zoomPortalBy(deltaY: number, cursor: ScreenPoint): boolean {
+    const point = screenToWorld(this.cameraController.view, cursor)
+    const id = this.zoomablePortalAt(point)
+    const looking = id === null ? null : this.portalViewOf(id)
+    if (id === null || !looking) return false
+    const step = Math.max(
+      -WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
+      Math.min(WHEEL_ZOOM_MAX_DELTA_PER_EVENT, deltaY),
+    )
+    const view = this.portalViewAnchored(id, looking, point, point, (seen) =>
+      scaleAfterWheel(seen, step, WHEEL_DELTA_PER_ZOOM_DOUBLING, SCALE_BOUNDS),
+    )
+    if (!view) return false
+    this.lookThroughPortal(id, view, this.portalStepKey(id, 'zoom'))
+    return true
+  }
+
+  /** The portal a zoom at a world point zooms the inside of: the selected
+   * one, when it shows its board and the point is in its frame (core.ts's
+   * `zoomablePortalAt`). */
+  private zoomablePortalAt(point: ScreenPoint): NodeId | null {
+    const id = this.focusedNodeId
+    const portal =
+      id === null ? undefined : this.sources.composition.portals.get(id)
+    if (id === null || !portal) return null
+    const clip = this.portalClip(portal)
+    return point.x >= clip.x &&
+      point.y >= clip.y &&
+      point.x <= clip.x + clip.w &&
+      point.y <= clip.y + clip.h
+      ? id
+      : null
+  }
+
+  /**
+   * Where portal `id` looks once what it shows is seen at `toScale(seen)`
+   * screen pixels to a unit rather than the `seen` it had when it looked at
+   * `looking`, with what was at world point `from` then now at `to` (core.ts's
+   * `portalViewAnchored`). Null when it is not a portal on this board.
+   */
+  private portalViewAnchored(
+    id: NodeId,
+    looking: Readonly<{ x: number; y: number; scale: number; unit: number }>,
+    from: ScreenPoint,
+    to: ScreenPoint,
+    toScale: (seen: number) => number,
+  ): PortalView | null {
+    const node = this.nodesById.get(id)
+    if (!isPortal(node)) return null
+    const seen = this.cameraController.view.scale * looking.unit
+    const factor = toScale(seen) / seen
+    const unit = looking.unit * factor
+    // `from`, in the board behind as the portal showed it: it is what ends
+    // up under `to`.
+    const behindX = looking.x + (from.x - node.x) / looking.unit
+    const behindY = looking.y + (from.y - node.y) / looking.unit
+    return {
+      x: tidy(behindX - (to.x - node.x) / unit),
+      y: tidy(behindY - (to.y - node.y) / unit),
+      scale: tidy(looking.scale * factor),
+    }
+  }
+
+  /** The history key a wheel gesture on a portal records under: one per run
+   * of the same gesture on the same portal, a pause of
+   * PORTAL_PAN_STEP_GAP_MS starting the next. */
+  private portalStepKey(id: NodeId, kind: 'pan' | 'zoom'): string {
+    const now = this.context.getWindow().performance.now()
+    const last = this.portalStep
+    if (
+      last?.id !== id ||
+      last.kind !== kind ||
+      now - last.at > PORTAL_PAN_STEP_GAP_MS
+    ) {
+      this.portalStepSerial += 1
+    }
+    this.portalStep = { id, kind, at: now }
+    return `portal-${kind}:${id}:${this.portalStepSerial}`
   }
 
   /** Points an open portal at `view`: what it shows moves, the cards
@@ -1104,6 +1209,14 @@ export class WhiteboardCanvas {
     historyKey: string,
   ): void {
     this.applyBoardChange(updateNode(this.board, id, { view }), historyKey)
+  }
+
+  /** What a card is drawn at: the scale of the portals it is behind, 1 for
+   * the board's own (domain/portals.ts's `ComposedPortal`). */
+  private scaleOf(id: NodeId): number {
+    const portals = this.sources.composition.portals
+    if (portals.size === 0) return 1
+    return portalOf(id, portals)?.scale ?? 1
   }
 
   /** Where an open portal looks, at what scale, and what a unit behind it
@@ -1528,7 +1641,12 @@ export class WhiteboardCanvas {
             pictureReady() &&
             this.engine.pendingMountCount === 0 &&
             this.contentSyncQueue.size === 0,
-          getNode: (id) => this.nodesById.get(id),
+          // As its file has it: a picture is of the card, kept for its own
+          // board too, and taken at its own size.
+          getNode: (id) => {
+            const node = this.nodesById.get(id)
+            return node && fileNodeOf(node)
+          },
           idOf: (want) => this.pictureNodeId(want.group, want.key),
           mounted: (id) => this.cardRenderer.pictureSource(id),
           pending: (id) => this.cardRenderer.contentPending(id),
@@ -1641,6 +1759,8 @@ export class WhiteboardCanvas {
                 deltaX,
                 deltaY,
               ))),
+        zoomFocusedPortalBy: (deltaY, cursor) =>
+          this.zoomPortalBy(deltaY, cursor),
         setInteracting: (interacting) => {
           this.interacting = interacting
         },
@@ -1744,6 +1864,7 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.interaction.liveNodeRects,
       clipOf: (id) => this.clipOf(id),
       sourcePathOf: (id) => this.sourcePathOf(id),
+      scaleOf: (id) => this.scaleOf(id),
       openPortal: (id, newTab) => this.openPortal(id, newTab),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
@@ -3126,8 +3247,11 @@ export class WhiteboardCanvas {
     if (node?.type !== 'pdf-page' || node.parent !== deal.parent) return
     const el = this.cardRenderer.getRuntime(id)?.el
     if (!el) return
-    const dx = deal.origin.x - node.x
-    const dy = deal.origin.y - node.y
+    // In the sheet's own units (`nodeElementScale`), which its `transform`
+    // is in.
+    const scale = nodeElementScale(el)
+    const dx = (deal.origin.x - node.x) / scale
+    const dy = (deal.origin.y - node.y) / scale
     el.animate(
       [
         { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 },
@@ -3192,8 +3316,9 @@ export class WhiteboardCanvas {
       for (const sheet of spreadPages(this.board, id)) {
         const el = this.cardRenderer.getRuntime(sheet.id)?.el
         if (!el) continue
-        const dx = corner.x - sheet.x
-        const dy = corner.y - sheet.y
+        const scale = nodeElementScale(el)
+        const dx = (corner.x - sheet.x) / scale
+        const dy = (corner.y - sheet.y) / scale
         gathering.push(
           el.animate(
             [
@@ -3291,10 +3416,11 @@ export class WhiteboardCanvas {
       const el = this.cardRenderer.getRuntime(nodeId)?.el
       const node = this.nodesById.get(nodeId)
       if (!el || !node) continue
+      const scale = nodeElementScale(el)
       el.style.left = `${node.x}px`
       el.style.top = `${node.y}px`
-      el.style.width = `${node.w}px`
-      el.style.height = `${node.h}px`
+      el.style.width = `${node.w / scale}px`
+      el.style.height = `${node.h / scale}px`
     }
     this.edgeLayer.redrawEdgesForNodes(changed)
     this.interaction.refreshInteractionLayer()
@@ -3450,7 +3576,12 @@ export class WhiteboardCanvas {
   ): void {
     if (moved.length === 0) return
     if (this.prefersReducedMotion()) return
-    for (const { el, dx, dy } of moved) {
+    for (const { el, dx: worldX, dy: worldY } of moved) {
+      // In the card's own units (`nodeElementScale`), which its `transform`
+      // is in.
+      const scale = nodeElementScale(el)
+      const dx = worldX / scale
+      const dy = worldY / scale
       el.animate(
         [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
         { duration: ARRANGE_ANIMATION_MS, easing: ARRANGE_ANIMATION_EASING },
@@ -3640,7 +3771,7 @@ export class WhiteboardCanvas {
         if (this.editing.isEditing(node.id)) continue
         if (this.cardGeneration.isGenerating(node.id)) continue
         const signature = cardSignature(
-          node,
+          fileNodeOf(node),
           node.type === 'file' ? this.fileMtime(node.file) : null,
         )
         if (signature === null) continue
@@ -4645,6 +4776,10 @@ function overlaps(node: Rect, clip: Rect): boolean {
 
 /** Whether `after` is `before` somewhere else, and nothing more. */
 function onlyMoved(before: BoardNode, after: BoardNode): boolean {
+  // Made of the same node of its file: the same card, seen from where a
+  // portal moved or zoomed to.
+  const file = fileNodeOf(before)
+  if (file !== before && file === fileNodeOf(after)) return true
   const keys = new Set([...Object.keys(before), ...Object.keys(after)])
   for (const key of keys) {
     if (key === 'x' || key === 'y') continue

@@ -501,6 +501,19 @@ function commonPortalIn(
 const projected = new WeakMap<object, Map<string, object>>()
 const PROJECTIONS_PER_SOURCE = 4
 
+/** What each projection was made of. */
+const projectedFrom = new WeakMap<BoardNode, BoardNode>()
+
+/**
+ * A node of a composed board as its file has it: for one behind a portal,
+ * the node it was put there from — its own id, position and size — and for
+ * one of the board's own, itself. Two nodes made of the same one are the
+ * same card, only seen from somewhere else (a portal moved or zoomed).
+ */
+export function fileNodeOf(node: BoardNode): BoardNode {
+  return projectedFrom.get(node) ?? node
+}
+
 function remember<T extends object>(source: object, key: string, made: T): T {
   let known = projected.get(source)
   if (!known) {
@@ -546,13 +559,12 @@ function project(
     w: node.w * scale,
     h: node.h * scale,
   }
-  return remember(
-    node,
-    key,
+  const made: BoardNode =
     moved.type === 'pdf-page'
       ? { ...moved, parent: `${prefix}${moved.parent}` }
-      : moved,
-  )
+      : moved
+  projectedFrom.set(made, node)
+  return remember(node, key, made)
 }
 
 function projectEdge(edge: Edge, prefix: string): Edge {
@@ -702,6 +714,7 @@ export function changesBetween(
     if (source && sameNode(source, own)) continue
     forFile(portal.file).nodes.set(id, { before: source, after: own, index })
     // The board made again from its files gives back what `after` has.
+    projectedFrom.set(node, own)
     remember(
       own,
       projectionKey(`${portal.id}${NODE_PATH_SEPARATOR}`, dx, dy, scale),

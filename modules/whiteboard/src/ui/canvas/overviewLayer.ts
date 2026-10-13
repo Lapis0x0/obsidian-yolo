@@ -47,7 +47,7 @@ import {
   type PdfAnnotation,
   displayColor,
 } from '../../domain/pdfAnnotations'
-import { isPortal } from '../../domain/portals'
+import { fileNodeOf, isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import { SPREAD_METRICS, isSpreadTitle } from '../../domain/spread'
 import {
@@ -166,9 +166,13 @@ type Palette = Readonly<{
  * board, the camera and the selection it does not own — and, while a gesture
  * is in flight, the geometry that has not been committed to the board yet.
  */
-/** A portal's contents, and the frame they show through, in world units. */
+/** A portal's contents, and the frame they show through, in world units —
+ * and `scale`, what they are drawn at (domain/portals.ts's
+ * `ComposedPortal`): what is sized in world units inside a card, its type,
+ * is drawn that much larger or smaller. */
 export type PortalLayer = Readonly<{
   clip: Readonly<{ x: number; y: number; w: number; h: number }>
+  scale: number
   nodes: readonly BoardNode[]
   edges: readonly Edge[]
 }>
@@ -412,7 +416,15 @@ export class OverviewLayer {
     this.drawCards(ctx, view, surface, live)
     this.inPortals(ctx, view, (layer) => {
       this.drawEdges(ctx, view, surface, live, layer.edges)
-      this.drawCards(ctx, view, surface, live, undefined, layer.nodes)
+      this.drawCards(
+        ctx,
+        view,
+        surface,
+        live,
+        undefined,
+        layer.nodes,
+        layer.scale,
+      )
       return true
     })
     this.drawFrames(ctx, view, surface, live)
@@ -624,7 +636,15 @@ export class OverviewLayer {
     const mounted = (id: NodeId) => this.callbacks.isMounted(id)
     const ownDrew = this.drawCards(ctx, view, surface, live, mounted)
     const portalsDrew = this.inPortals(ctx, view, (layer) =>
-      this.drawCards(ctx, view, surface, live, mounted, layer.nodes),
+      this.drawCards(
+        ctx,
+        view,
+        surface,
+        live,
+        mounted,
+        layer.nodes,
+        layer.scale,
+      ),
     )
     const ownFramesDrew = this.drawFrames(ctx, view, surface, live, mounted)
     const portalFramesDrew = this.inPortals(ctx, view, (layer) =>
@@ -890,11 +910,16 @@ export class OverviewLayer {
     live: ReadonlyMap<NodeId, CardRect> | null,
     skip?: (id: NodeId) => boolean,
     nodes: readonly BoardNode[] = this.callbacks.getCardNodes(),
+    unit = 1,
   ): boolean {
     const isSelected = (id: NodeId): boolean =>
       surface.selection && this.callbacks.isSelected(id)
     const palette = this.palette
     if (!palette) return false
+    // What a world unit inside these cards measures on screen: behind a
+    // portal at another scale (`PortalLayer`), type is drawn that much
+    // larger or smaller.
+    const typeScale = view.scale * unit
     // Screen rects of everything on screen, kept once so the passes below
     // agree and the projection is done once per card rather than four times.
     const visible: {
@@ -928,16 +953,16 @@ export class OverviewLayer {
       // spread folding keeps its title in place throughout.
       const badge = this.callbacks.titleBadge(node)
       if (badge && wearsTitleLine(node)) {
-        const th = SPREAD_METRICS.titleHeight * view.scale
+        const th = SPREAD_METRICS.titleHeight * typeScale
         titles.push({
           node,
           badge,
           x,
-          y: y - SPREAD_METRICS.titleGap * view.scale - th,
+          y: y - SPREAD_METRICS.titleGap * typeScale - th,
           w,
           h: th,
           // Its own width, never under a page's default (title-line.css).
-          maxW: Math.max(w, SPREAD_METRICS.pageWidth * view.scale),
+          maxW: Math.max(w, SPREAD_METRICS.pageWidth * typeScale),
         })
       }
       // The rest of it is drawn on its own, at its own opacity
@@ -981,7 +1006,7 @@ export class OverviewLayer {
     }
     const drew = texts.length > 0 || (surface.text && titles.length > 0)
     if (visible.length === 0) {
-      if (surface.text) this.drawTitleLines(ctx, view, titles)
+      if (surface.text) this.drawTitleLines(ctx, view, titles, unit)
       return drew
     }
 
@@ -1113,7 +1138,7 @@ export class OverviewLayer {
     //    and the box it wraps in are the DOM card's title block — 32 world
     //    units, so it shrinks with the card — which is what makes the switch
     //    between tiers invisible.
-    const fontPx = TITLE_BLOCK_WORLD_FONT_PX * view.scale
+    const fontPx = TITLE_BLOCK_WORLD_FONT_PX * typeScale
     const lineHeight = fontPx * TITLE_BLOCK_LINE_HEIGHT
     ctx.font = `500 ${fontPx}px ${palette.fontFamily}`
     ctx.fillStyle = palette.text
@@ -1124,7 +1149,8 @@ export class OverviewLayer {
       if (pictured.has(card.node.id)) continue
       const title = nodeTitleText(card.node, this.callbacks.pdfPageLabels)
       if (title.length === 0) continue
-      const lines = this.wrapTitle(ctx, title, card.node, view.scale)
+      // Wrapped in its own size, as its title block lays it out.
+      const lines = this.wrapTitle(ctx, title, fileNodeOf(card.node), typeScale)
       const top = card.y + card.h / 2 - ((lines.length - 1) * lineHeight) / 2
       for (let i = 0; i < lines.length; i += 1) {
         ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
@@ -1132,7 +1158,7 @@ export class OverviewLayer {
     }
     // 6. Title lines, over every card, as the stylesheet stacks them
     //    (title-line.css).
-    this.drawTitleLines(ctx, view, titles)
+    this.drawTitleLines(ctx, view, titles, unit)
     return true
   }
 
@@ -1144,9 +1170,12 @@ export class OverviewLayer {
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
     titles: readonly TitleLine[],
+    unit = 1,
   ): void {
     const palette = this.palette
     if (!palette || titles.length === 0) return
+    // What a world unit inside these cards measures on screen (`drawCards`).
+    const typeScale = view.scale * unit
     // Held at a floor on screen, as a group's label is (constants.ts's
     // OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX): the name is what an overview is
     // for. Everything in the line grows by the same factor, upwards from the
@@ -1160,9 +1189,9 @@ export class OverviewLayer {
     const grow = Math.max(
       1,
       OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX /
-        (SPREAD_TITLE_WORLD.nameFont * view.scale),
+        (SPREAD_TITLE_WORLD.nameFont * typeScale),
     )
-    const u = view.scale * grow
+    const u = typeScale * grow
     const gap = SPREAD_TITLE_WORLD.gap * u
     const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
     const nameFont = `500 ${SPREAD_TITLE_WORLD.nameFont * u}px ${palette.fontFamily}`

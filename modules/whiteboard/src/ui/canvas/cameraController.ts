@@ -79,6 +79,10 @@ export type CameraControllerCallbacks = Readonly<{
     deltaX: number,
     deltaY: number,
   ) => boolean
+  /** Zooms what the selected portal shows by a wheel delta, about `cursor`
+   * (viewport coordinates), when the cursor is in its frame; reports
+   * whether it took the gesture — see canvas.ts's `zoomPortalBy`. */
+  zoomFocusedPortalBy: (deltaY: number, cursor: ScreenPoint) => boolean
   setInteracting: (interacting: boolean) => void
   getSelectedNodes: () => readonly BoardNode[]
   /** Every node on the board — what the zoom-out floor is derived from (see
@@ -243,7 +247,11 @@ export class CameraController {
     // cursor. (Obsidian Canvas zooms over a focused node too.)
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
-      this.zoomBy(rawY, this.viewportPointFromEvent(e))
+      const cursor = this.viewportPointFromEvent(e)
+      // Over the selected portal, what it shows zooms rather than the
+      // board — as the wheel moves what it shows (`scrollFocusedCardBy`).
+      if (this.callbacks.zoomFocusedPortalBy(rawY, cursor)) return
+      this.zoomBy(rawY, cursor)
       return
     }
     // Plain wheel inside the card being edited belongs to that card: its text

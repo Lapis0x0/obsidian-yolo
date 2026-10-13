@@ -30,22 +30,52 @@ export const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const PREVIEW_VIEW_CLASS = 'markdown-preview-view markdown-rendered'
 const PREVIEW_SIZER_CLASS = 'markdown-preview-sizer markdown-preview-section'
 
+/** On a node behind a portal that shows its board at another scale
+ * (domain/portals.ts): styles/cards/portal.css. */
+const SCALED_CLASS = 'yolo-whiteboard-node-scaled'
+
 /** A node's element as every one starts: what it is — a group, a card, bare
  * text — its size and its colour. Where it stands, what it is titled and
- * what state it is in are the board's to add. */
-export function createNodeElement(doc: Document, node: BoardNode): HTMLElement {
+ * what state it is in are the board's to add. `scale` is what it is drawn
+ * at (`scaleNodeElement`): `node` is where it is seen, so its own size is
+ * that over the scale. */
+export function createNodeElement(
+  doc: Document,
+  node: BoardNode,
+  scale = 1,
+): HTMLElement {
   const el = doc.createElement('div')
   el.className = node.type === 'group' ? GROUP_CLASS : CARD_CLASS
   if (isPlainText(node)) {
     el.classList.add(PLAIN_TEXT_CLASS)
     el.classList.toggle(PLAIN_TEXT_AUTO_CLASS, node.autoWidth === true)
   }
-  el.style.width = `${node.w}px`
-  el.style.height = `${node.h}px`
+  el.style.width = `${node.w / scale}px`
+  el.style.height = `${node.h / scale}px`
+  scaleNodeElement(el, scale)
   // JSON Canvas's `color`: a preset or a hex, both resolved to the one
   // custom property style.css paints from.
   applyColorToElement(el, node.color)
   return el
+}
+
+/**
+ * Draws a node's element at `scale` from its top-left corner: a card behind
+ * a portal at another scale is laid out at its own size — what it holds
+ * wraps and measures as on its own board — and drawn at the portal's. The
+ * CSS `scale` property, not `transform`, which animations and the arrange
+ * motion write; a drag moves the card with `translate` (dragGestures.ts).
+ */
+export function scaleNodeElement(el: HTMLElement, scale: number): void {
+  el.classList.toggle(SCALED_CLASS, scale !== 1)
+  if (scale === 1) el.style.removeProperty('scale')
+  else el.style.setProperty('scale', String(scale))
+}
+
+/** The scale a node's element is drawn at (`scaleNodeElement`). */
+export function nodeElementScale(el: HTMLElement): number {
+  const scale = Number.parseFloat(el.style.getPropertyValue('scale'))
+  return scale > 0 ? scale : 1
 }
 
 /** What a card holds its content in. */

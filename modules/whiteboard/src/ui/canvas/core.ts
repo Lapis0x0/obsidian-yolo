@@ -96,6 +96,19 @@ export type CanvasCore = Readonly<{
   /** Points an open portal at `view` (its board's own coordinates), as one
    * step of the history `historyKey` names. */
   lookThroughPortal: (id: NodeId, view: PortalView, historyKey: string) => void
+  /** The portal a zoom at a world point zooms the inside of — the selected
+   * one, when the point is in its frame — or null, where the board zooms. */
+  zoomablePortalAt: (point: ScreenPoint) => NodeId | null
+  /** Where portal `id` looks once what it showed at `looking` (a
+   * `portalViewOf`) is seen at `toScale(seen)` screen pixels to a unit, with
+   * what was at world point `from` now at `to`. */
+  portalViewAnchored: (
+    id: NodeId,
+    looking: Readonly<{ x: number; y: number; scale: number; unit: number }>,
+    from: ScreenPoint,
+    to: ScreenPoint,
+    toScale: (seen: number) => number,
+  ) => PortalView | null
   /** The topmost card at a world point, for a question the DOM cannot
    * answer — the cards behind a portal only where they show through it. A
    * portal is the board under its inside, not a thing there: it answers only
