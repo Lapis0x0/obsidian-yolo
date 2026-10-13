@@ -4762,7 +4762,10 @@ export class WhiteboardCanvas {
       const runtime = this.cardRenderer.getRuntime(id)
       const source = this.passageSource(id)
       if (!runtime?.el || !runtime.bodyEl || source === null) return null
-      return placeTextPassage(runtime.el, runtime.bodyEl, source, anchor)
+      return inBoardUnits(
+        placeTextPassage(runtime.el, runtime.bodyEl, source, anchor),
+        runtime.el,
+      )
     }
     return this.placeInReader(id, (reader) =>
       reader.placePassage(anchor.page, anchor.quadPoints),
@@ -4798,13 +4801,16 @@ export class WhiteboardCanvas {
       el = el.offsetParent as HTMLElement | null
     }
     if (el !== runtime.el) return null
-    return {
-      state: 'visible',
-      top: placement.top + offsetTop,
-      bottom: placement.bottom + offsetTop,
-      left: placement.left + offsetLeft,
-      right: placement.right + offsetLeft,
-    }
+    return inBoardUnits(
+      {
+        state: 'visible',
+        top: placement.top + offsetTop,
+        bottom: placement.bottom + offsetTop,
+        left: placement.left + offsetLeft,
+        right: placement.right + offsetLeft,
+      },
+      runtime.el,
+    )
   }
 
   /** How wide an open spread's title may run (domain/spread.ts's
@@ -5044,6 +5050,26 @@ function overlaps(node: Rect, clip: Rect): boolean {
 }
 
 /** Whether `after` is `before` somewhere else, and nothing more. */
+/** A placement measured in a card's element (`placePassage`) as the board
+ * has it: behind a portal at another scale, the element is drawn larger or
+ * smaller than it measures. */
+function inBoardUnits(
+  placement: CardPassagePlacement | null,
+  el: HTMLElement,
+): CardPassagePlacement | null {
+  const scale = nodeElementScale(el)
+  if (!placement || placement.state !== 'visible' || scale === 1) {
+    return placement
+  }
+  return {
+    state: 'visible',
+    top: placement.top * scale,
+    bottom: placement.bottom * scale,
+    left: placement.left * scale,
+    right: placement.right * scale,
+  }
+}
+
 function onlyMoved(before: BoardNode, after: BoardNode): boolean {
   // Made of the same node of its file: the same card, seen from where a
   // portal moved or zoomed to.
