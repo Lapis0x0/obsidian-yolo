@@ -2047,7 +2047,10 @@ export class WhiteboardCanvas {
         !this.overview &&
         this.lastRecomputeTime >= this.exportCameraMovedAt &&
         this.engine.pendingMountCount === 0 &&
-        this.contentSyncQueue.size === 0,
+        this.contentSyncQueue.size === 0 &&
+        // A portal still reading its board has nothing to show yet.
+        !this.sources.loading &&
+        !this.sourceRefreshPending,
       cameraMoved: () => {
         this.exportCameraMovedAt = this.context.getWindow().performance.now()
       },

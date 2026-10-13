@@ -22,6 +22,7 @@ import {
 import type { Camera, NodeId } from '../../domain/fileFormat'
 import { nodesToDragWith } from '../../domain/groups'
 import { basenameWithoutExtension } from '../../domain/naming'
+import { shownPart } from '../../domain/portals'
 import {
   type BoardExportDeps,
   ExportCancelled,
@@ -170,7 +171,13 @@ export class ExportController {
         ? new Set(nodesToDragWith(selected, board.nodes))
         : null
     const nodes = ids ? board.nodes.filter((n) => ids.has(n.id)) : board.nodes
-    const region = exportRegion(nodes)
+    // A card behind a portal is in the picture as far as it shows through it.
+    const shown = []
+    for (const node of nodes) {
+      const part = shownPart(node, this.deps.core.clipOf(node.id))
+      if (part) shown.push(part)
+    }
+    const region = exportRegion(shown)
     return region ? { region, ids } : null
   }
 

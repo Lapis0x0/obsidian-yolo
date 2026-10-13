@@ -149,3 +149,47 @@ describe('previewablePaths', () => {
     expect(previewablePaths(board)).toEqual(['a.md'])
   })
 })
+
+describe('summarizeBoard with portals', () => {
+  it('says once what an end through a portal names', () => {
+    const board: Board = {
+      ...emptyBoard(),
+      nodes: [
+        {
+          id: 't',
+          type: 'text',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          text: 't',
+          extra: {},
+        },
+        {
+          id: 'p',
+          type: 'file',
+          x: 20,
+          y: 0,
+          w: 10,
+          h: 10,
+          file: 'Sub.yoloboard',
+          extra: {},
+        },
+      ],
+      edges: [
+        {
+          id: 'e',
+          fromNode: 't',
+          toNode: 'p/a',
+          fromEnd: 'none',
+          toEnd: 'arrow',
+          extra: {},
+        },
+      ],
+    }
+    const text = summarizeBoard(board, { path: 'Own.yoloboard' })
+    expect(text).toContain('p  board  20,0 10×10  Sub.yoloboard')
+    expect(text).toContain('a card on the board behind that board card')
+    expect(text).toContain('e: t -> p/a')
+  })
+})

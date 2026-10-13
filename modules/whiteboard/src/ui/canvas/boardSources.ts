@@ -85,6 +85,14 @@ export class BoardSources {
     return this.own
   }
 
+  /** Whether a portal on the board is waiting for its board to be read. */
+  get loading(): boolean {
+    for (const state of this.states.values()) {
+      if (state === 'loading') return true
+    }
+    return false
+  }
+
   portalState(id: NodeId): PortalState {
     return this.states.get(id) ?? 'closed'
   }

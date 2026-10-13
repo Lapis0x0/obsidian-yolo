@@ -32,7 +32,12 @@
 // lives in another vault file, so the caller resolves those and passes them
 // in. `host/boardSummary.ts` is what does that reading.
 
-import type { Board, BoardNode, NodeId } from './fileFormat'
+import {
+  type Board,
+  type BoardNode,
+  NODE_PATH_SEPARATOR,
+  type NodeId,
+} from './fileFormat'
 import { nodesInsideGroup } from './groups'
 import { fileNodeKind } from './naming'
 
@@ -86,6 +91,19 @@ export function summarizeBoard(
 
   if (board.edges.length > 0) {
     lines.push('', 'edges')
+    // An end through a portal (domain/nodePath.ts) names a card that is not
+    // on this board: said once, so the model does not look for it here.
+    if (
+      board.edges.some(
+        (edge) =>
+          edge.fromNode.includes(NODE_PATH_SEPARATOR) ||
+          edge.toNode.includes(NODE_PATH_SEPARATOR),
+      )
+    ) {
+      lines.push(
+        `  (an end written portal${NODE_PATH_SEPARATOR}card is a card on the board behind that board card)`,
+      )
+    }
     for (const edge of board.edges) {
       const label = edge.label ? ` "${edge.label}"` : ''
       lines.push(`  ${edge.id}: ${edge.fromNode} -> ${edge.toNode}${label}`)
