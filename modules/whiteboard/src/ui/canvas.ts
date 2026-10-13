@@ -417,6 +417,9 @@ export class WhiteboardCanvas {
    * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
+  /** Whether the camera is where the board is being looked at — false while
+   * a board is being loaded, before its camera is (`wantsPortalOpen`). */
+  private cameraPlaced = true
   /** The portal the wheel last panned, and when: a pause ends the step. */
   private portalPan: Readonly<{ id: NodeId; at: number }> | null = null
   private portalPanSerial = 0
@@ -782,6 +785,9 @@ export class WhiteboardCanvas {
     }
 
     this.parseFailed = false
+    // Shut until the camera is where the board opens: what is behind a portal
+    // is read when it is on screen, and nothing is yet.
+    this.cameraPlaced = false
     this.board = this.sources.compose()
     this.syncBoardIndex()
     this.selfHealMissingFileNodes()
@@ -817,6 +823,7 @@ export class WhiteboardCanvas {
         immediate: true,
       })
     }
+    this.cameraPlaced = true
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -848,8 +855,9 @@ export class WhiteboardCanvas {
     }
     for (const node of cards) {
       const portal = portalOf(node.id, portals)
-      if (portal) layerOf(portal).nodes.push(node)
-      else own.push(node)
+      if (!portal) own.push(node)
+      // What its frame hides is not drawn at all.
+      else if (overlaps(node, portal.clip)) layerOf(portal).nodes.push(node)
     }
     const ownEdges: Edge[] = []
     for (const edge of this.board.edges) {
@@ -1033,6 +1041,7 @@ export class WhiteboardCanvas {
    * resting on the line does not open and shut it on alternate passes.
    */
   private wantsPortalOpen(portal: FileNode, open: boolean): boolean {
+    if (!this.cameraPlaced) return false
     const scale = this.cameraController.view.scale
     const width = Math.min(portal.w, portal.h) * scale
     if (width < (open ? PORTAL_OPEN_MIN_PX / 2 : PORTAL_OPEN_MIN_PX)) {
@@ -1432,6 +1441,7 @@ export class WhiteboardCanvas {
             this.engine.pendingMountCount === 0 &&
             this.contentSyncQueue.size === 0,
           getNode: (id) => this.nodesById.get(id),
+          idOf: (want) => this.pictureNodeId(want.group, want.key),
           mounted: (id) => this.cardRenderer.pictureSource(id),
           pending: (id) => this.cardRenderer.contentPending(id),
           stage: cardStage,
@@ -3527,7 +3537,9 @@ export class WhiteboardCanvas {
     const cy = (view.top + view.bottom) / 2
     const boardPath = this.sourcePathForBoard()
     const environment = this.pictureStyles?.environment ?? null
-    for (const node of this.cardNodes) {
+    // What can show: a card behind a portal that its frame hides has nothing
+    // to picture.
+    for (const node of this.visibilityNodes) {
       const distance = Math.hypot(
         node.x + node.w / 2 - cx,
         node.y + node.h / 2 - cy,
@@ -3544,7 +3556,7 @@ export class WhiteboardCanvas {
         )
         if (signature === null) continue
         yield {
-          ...cardRef(boardPath, node.id),
+          ...this.pictureKeyOf(node.id),
           width: node.w,
           distance,
           stamp: cardStamp(signature, environment),
@@ -3602,10 +3614,33 @@ export class WhiteboardCanvas {
     return ref ? (this.pictures?.get(ref, dark) ?? null) : null
   }
 
-  private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {
-    if (isCardPictured(node)) {
-      return cardRef(this.sourcePathForBoard(), node.id)
+  /**
+   * Where a card's picture is kept: under the board file it is in, by its id
+   * there. A card behind a portal is that board's — so its picture is the
+   * one its own board takes and keeps, and this board letting go of its own
+   * cards' pictures does not touch it.
+   */
+  private pictureKeyOf(id: NodeId): PictureRef {
+    const portals = this.sources.composition.portals
+    const portal = portals.size === 0 ? null : portalOf(id, portals)
+    return portal
+      ? cardRef(portal.file, id.slice(portal.id.length + 1))
+      : cardRef(this.sourcePathForBoard(), id)
+  }
+
+  /** The card on the board a picture kept under `group` is of. */
+  private pictureNodeId(group: string, key: string): NodeId | null {
+    if (group === this.sourcePathForBoard()) return key
+    for (const portal of this.sources.composition.portals.values()) {
+      if (portal.file !== group) continue
+      const id = behindPortal(portal.id, key)
+      if (this.nodesById.has(id)) return id
     }
+    return null
+  }
+
+  private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {
+    if (isCardPictured(node)) return this.pictureKeyOf(node.id)
     if (node.type === 'pdf-page') return pdfPageRef(node.file, node.page)
     if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
       return imageRef(node.file)

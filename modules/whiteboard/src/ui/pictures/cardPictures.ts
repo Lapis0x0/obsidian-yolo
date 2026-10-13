@@ -135,6 +135,10 @@ export type CardPicturesDeps = Readonly<{
   /** Whether a picture may be started now (./idle.ts's `ready`). */
   ready: () => boolean
   getNode: (id: string) => BoardNode | undefined
+  /** The card on the board a picture is of — the one behind a portal, for a
+   * picture kept under the board it is on (canvas.ts's `pictureKeyOf`);
+   * null when no card on the board is it. */
+  idOf: (want: PictureRef) => string | null
   /** A card's element, when it is mounted with its content built and
    * nothing — an editor, a generation — owns it; null otherwise. */
   mounted: (id: string) => HTMLElement | null
@@ -176,7 +180,8 @@ export class CardPictures implements PictureSource {
 
   /** Any card but one whose content is on its way to the board. */
   canDraw(want: WantedPicture): boolean {
-    return !this.deps.pending(want.key)
+    const id = this.deps.idOf(want)
+    return id !== null && !this.deps.pending(id)
   }
 
   /** What is drawn is kept in an idle slice of its own. */
@@ -188,16 +193,18 @@ export class CardPictures implements PictureSource {
     want: WantedPicture,
     _version: number,
   ): Promise<DrawnPicture | 'unavailable' | null> {
-    const el = this.deps.mounted(want.key)
-    if (!el) return this.drawStaged(want)
+    const id = this.deps.idOf(want)
+    if (id === null) return null
+    const el = this.deps.mounted(id)
+    if (!el) return this.drawStaged(want, id)
     const quiet = await waitQuiet(el, this.deps.doc)
     if (!quiet) return 'unavailable'
     // Taken off the board, or opened for editing, while it settled.
-    if (this.deps.mounted(want.key) !== el) return null
-    const node = this.deps.getNode(want.key)
+    if (this.deps.mounted(id) !== el) return null
+    const node = this.deps.getNode(id)
     if (!node) return null
     const canvas = await this.capture(el, node.w, node.h, want.stamp)
-    if (canvas && this.deps.mounted(want.key) !== el) {
+    if (canvas && this.deps.mounted(id) !== el) {
       canvas.width = 0
       canvas.height = 0
       return null
@@ -208,9 +215,9 @@ export class CardPictures implements PictureSource {
   /** A picture of the card `want` is of, built off the board for it. */
   private async drawStaged(
     want: WantedPicture,
+    id: string,
   ): Promise<DrawnPicture | 'unavailable' | null> {
     const { doc, slices, stage, getNode, reportError } = this.deps
-    const id = want.key
     const node = getNode(id)
     if (!node) return null
     const source = await stage.source(node)
