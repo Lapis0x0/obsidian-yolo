@@ -26,6 +26,7 @@ import {
   distributeRects,
 } from '../domain/arrange'
 import {
+  approachScale,
   cameraFromView,
   scaleAfterWheel,
   screenToWorld,
@@ -169,6 +170,8 @@ import { CanvasControls } from './canvasControls'
 import {
   ARRANGE_ANIMATION_EASING,
   ARRANGE_ANIMATION_MS,
+  CAMERA_GLIDE_EPSILON_DOUBLINGS,
+  CAMERA_GLIDE_TAU_MS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   CONTENT_BUILD_START_CAP_PER_FRAME,
@@ -447,6 +450,17 @@ export class WhiteboardCanvas {
     at: number
   }> | null = null
   private portalStepSerial = 0
+  /** Where a wheel zoom in a portal is heading: what it shows eases toward
+   * `targetScale` screen pixels to a unit, about `cursor`, frame by frame —
+   * the board's own wheel zoom's glide (CameraController's `cameraGlide`),
+   * applied to the portal's view. Null at rest. */
+  private portalZoomGlide: Readonly<{
+    id: NodeId
+    targetScale: number
+    cursor: ScreenPoint
+    historyKey: string
+  }> | null = null
+  private lastPortalZoomAt: number | null = null
 
   // Selection toolbar: one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
@@ -700,8 +714,11 @@ export class WhiteboardCanvas {
       portalAtPoint: (point) =>
         portalAt(point, this.sources.composition.portals, () => false)?.id ??
         null,
-      lookThroughPortal: (id, view, historyKey) =>
-        this.lookThroughPortal(id, view, historyKey),
+      lookThroughPortal: (id, view, historyKey) => {
+        // A drag or a pinch takes the portal from a wheel zoom still easing.
+        this.portalZoomGlide = null
+        this.lookThroughPortal(id, view, historyKey)
+      },
       zoomablePortalAt: (point) => this.zoomablePortalAt(point),
       portalViewAnchored: (id, looking, from, to, toScale) =>
         this.portalViewAnchored(id, looking, from, to, toScale),
@@ -1130,12 +1147,65 @@ export class WhiteboardCanvas {
       -WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
       Math.min(WHEEL_ZOOM_MAX_DELTA_PER_EVENT, deltaY),
     )
-    const view = this.portalViewAnchored(id, looking, point, point, (seen) =>
-      scaleAfterWheel(seen, step, WHEEL_DELTA_PER_ZOOM_DOUBLING, SCALE_BOUNDS),
+    // Aimed from where the glide is heading, not from where it has got to,
+    // as the board's own zoom is (CameraController's `zoomBy`).
+    const glide = this.portalZoomGlide
+    const targetScale = scaleAfterWheel(
+      glide?.id === id
+        ? glide.targetScale
+        : this.cameraController.view.scale * looking.unit,
+      step,
+      WHEEL_DELTA_PER_ZOOM_DOUBLING,
+      SCALE_BOUNDS,
     )
-    if (!view) return false
-    this.lookThroughPortal(id, view, this.portalStepKey(id, 'zoom'))
+    const historyKey = this.portalStepKey(id, 'zoom')
+    if (this.prefersReducedMotion()) {
+      const view = this.portalViewAnchored(
+        id,
+        looking,
+        point,
+        point,
+        () => targetScale,
+      )
+      if (view) this.lookThroughPortal(id, view, historyKey)
+      return true
+    }
+    if (glide?.id !== id) this.lastPortalZoomAt = null
+    this.portalZoomGlide = { id, targetScale, cursor, historyKey }
     return true
+  }
+
+  /** Moves a portal's wheel zoom one frame closer to where it was aimed, on
+   * the board's own glide law (domain/camera.ts's `approachScale`). */
+  private advancePortalZoom(now: number): void {
+    const glide = this.portalZoomGlide
+    if (!glide) return
+    const elapsed =
+      this.lastPortalZoomAt === null
+        ? 16.7
+        : Math.min(now - this.lastPortalZoomAt, 100)
+    this.lastPortalZoomAt = now
+    const looking = this.portalViewOf(glide.id)
+    if (!looking) {
+      this.portalZoomGlide = null
+      return
+    }
+    const seen = this.cameraController.view.scale * looking.unit
+    const next = approachScale(
+      seen,
+      glide.targetScale,
+      elapsed,
+      CAMERA_GLIDE_TAU_MS,
+    )
+    const settled =
+      Math.abs(Math.log2(next / glide.targetScale)) <
+      CAMERA_GLIDE_EPSILON_DOUBLINGS
+    const point = screenToWorld(this.cameraController.view, glide.cursor)
+    const view = this.portalViewAnchored(glide.id, looking, point, point, () =>
+      settled ? glide.targetScale : next,
+    )
+    if (settled) this.portalZoomGlide = null
+    if (view) this.lookThroughPortal(glide.id, view, glide.historyKey)
   }
 
   /** The portal a zoom at a world point zooms the inside of: the selected
@@ -3651,6 +3721,7 @@ export class WhiteboardCanvas {
     this.interaction.advanceAutoPan(now)
     this.interaction.consumePointerMove()
     this.cameraController.advanceCameraGlide(now)
+    this.advancePortalZoom(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       // Asked again only if something it is asked about has changed: on a
       // still board of thousands of cards, every card and every edge was
