@@ -27,8 +27,13 @@ function fakeStorage() {
     writeBinary: async (key: string, value: ArrayBuffer) => {
       blobs.set(key, value)
     },
+    // As the host's: a document of more than ten thousand values is refused.
     writeJson: async (key: string, value: unknown) => {
-      blobs.set(key, JSON.stringify(value))
+      const text = JSON.stringify(value)
+      if ((text.match(/[,{[]/g) ?? []).length > 10_000) {
+        throw new Error('Module private storage JSON exceeds the node limit')
+      }
+      blobs.set(key, text)
     },
     listEntries: async (prefix: string) => {
       const depth = prefix.split('/').length + 1
@@ -88,6 +93,20 @@ describe('PictureStore', () => {
     expect([...entries.keys()].sort()).toEqual(['3', '7'])
     expect(entries.get('7')).toEqual(page())
     expect((await later.read('a.pdf', 1, '7'))?.byteLength).toBe(10)
+    expect(reportError).not.toHaveBeenCalled()
+  })
+
+  it('lists a group of thousands of pictures', async () => {
+    const { storage } = fakeStorage()
+    const store = new PictureStore(storage, 'cards', 'card', reportError)
+    // Past what ten thousand values list: five each, and the object.
+    for (let i = 0; i < 2000; i++) {
+      store.write('big.yoloboard', 0, `n${i}`, bytes(1), page('s', null))
+    }
+    for (let i = 0; i < 400; i++) await settle()
+
+    const later = new PictureStore(storage, 'cards', 'card', reportError)
+    expect((await later.entries('big.yoloboard', 0)).size).toBe(2000)
     expect(reportError).not.toHaveBeenCalled()
   })
 

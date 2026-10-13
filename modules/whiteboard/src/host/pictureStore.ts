@@ -220,8 +220,7 @@ export class PictureStore {
   private entryList(stored: StoredGroup): Promise<EntryList> {
     const entries =
       stored.entries ??
-      this.storage
-        .readJson(`${this.root}/${stored.dir}/${ENTRIES_FILE}`)
+      this.readList(`${this.root}/${stored.dir}/${ENTRIES_FILE}`)
         .then(parseEntries)
         .catch((error: unknown) => {
           this.reportError(`${this.label} entries`, error)
@@ -269,7 +268,7 @@ export class PictureStore {
     const groups = new Map<string, StoredGroup>()
     let stored: unknown
     try {
-      stored = await this.storage.readJson(`${this.root}/${INDEX_FILE}`)
+      stored = await this.readList(`${this.root}/${INDEX_FILE}`)
     } catch (error) {
       // Unreadable: start over without it, and leave its folders alone —
       // the next index written makes them strays, removed on a later load.
@@ -311,7 +310,7 @@ export class PictureStore {
       this.dirty.delete(stored)
       if (groups.get(stored.group) !== stored) continue
       const entries = await this.entryList(stored)
-      await this.storage.writeJson(
+      await this.writeList(
         `${this.root}/${stored.dir}/${ENTRIES_FILE}`,
         Object.fromEntries(entries),
       )
@@ -327,10 +326,27 @@ export class PictureStore {
         usedAt: stored.usedAt,
       }
     }
-    await this.storage.writeJson(`${this.root}/${INDEX_FILE}`, {
+    await this.writeList(`${this.root}/${INDEX_FILE}`, {
       version: INDEX_VERSION,
       groups: records,
     })
+  }
+
+  /**
+   * The store's own lists, kept as text it serializes itself. Private
+   * storage's JSON calls refuse a document of more than ten thousand values,
+   * and a list of pictures is not a document someone wrote: a board of 1,700
+   * cards is past it, and every picture after that was made, kept and never
+   * listed — made again on each open. What that limit guards against is not
+   * here; the size limit on what is written still is.
+   */
+  private async readList(key: string): Promise<unknown> {
+    const text = await this.storage.readText(key)
+    return text === null ? null : (JSON.parse(text) as unknown)
+  }
+
+  private writeList(key: string, value: unknown): Promise<void> {
+    return this.storage.writeText(key, JSON.stringify(value))
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
