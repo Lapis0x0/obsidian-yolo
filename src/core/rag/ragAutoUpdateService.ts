@@ -27,7 +27,6 @@ type RagAutoUpdateWorkerDeps = {
   kbId: string
   getKnowledgeBase: () => KnowledgeBase | undefined
   getSettings: () => YoloSettings
-  setSettings: (settings: YoloSettings) => Promise<boolean>
   runIndex: (request: AutoUpdateRunRequest) => Promise<void>
   getRetryCount: () => number
   markRetryScheduled: (input: {
@@ -277,14 +276,6 @@ class RagAutoUpdateWorker {
           ? { kind: 'all' }
           : { kind: 'paths', paths: [...pendingSnapshot] }
       await this.deps.runIndex(request)
-      const settings = this.deps.getSettings()
-      await this.deps.setSettings({
-        ...settings,
-        ragOptions: {
-          ...settings.ragOptions,
-          lastAutoUpdateAt: Date.now(),
-        },
-      })
       this.lastRunFinishedAt = Date.now()
       this.lastRunError = null
     } catch (e) {
@@ -356,7 +347,6 @@ class RagAutoUpdateWorker {
 
 type RagAutoUpdateServiceDeps = {
   getSettings: () => YoloSettings
-  setSettings: (settings: YoloSettings) => Promise<boolean>
   runIndex: (kbId: string, request: AutoUpdateRunRequest) => Promise<void>
   getRetryCount: (kbId: string) => number
   markRetryScheduled: (
@@ -390,7 +380,6 @@ export class RagAutoUpdateService {
       getKnowledgeBase: () =>
         this.deps.getSettings().knowledgeBases.find((kb) => kb.id === kbId),
       getSettings: this.deps.getSettings,
-      setSettings: this.deps.setSettings,
       runIndex: (request) => this.deps.runIndex(kbId, request),
       getRetryCount: () => this.deps.getRetryCount(kbId),
       markRetryScheduled: (input) => this.deps.markRetryScheduled(kbId, input),

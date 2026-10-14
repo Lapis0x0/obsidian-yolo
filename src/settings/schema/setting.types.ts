@@ -49,7 +49,6 @@ const ragOptionsSchema = z.object({
   // auto update options
   autoUpdateEnabled: z.boolean().catch(true),
   autoUpdateIntervalHours: z.number().catch(0),
-  lastAutoUpdateAt: z.number().catch(0),
 })
 
 /**
@@ -456,7 +455,6 @@ export const yoloSettingsSchema = z.object({
     indexPdf: true,
     autoUpdateEnabled: true,
     autoUpdateIntervalHours: 0,
-    lastAutoUpdateAt: 0,
   }),
 
   /**

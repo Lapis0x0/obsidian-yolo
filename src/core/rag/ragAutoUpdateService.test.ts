@@ -30,7 +30,6 @@ describe('RagAutoUpdateService', () => {
       ragOptions: {
         enabled: true,
         autoUpdateEnabled: true,
-        lastAutoUpdateAt: 0,
         indexPdf: true,
       },
       knowledgeBases: [
@@ -41,7 +40,6 @@ describe('RagAutoUpdateService', () => {
     const runIndex = jest.fn().mockImplementation(async () => {
       retryCount = 0
     })
-    const setSettings = jest.fn().mockResolvedValue(undefined)
     const markRetryScheduled = jest
       .fn()
       .mockImplementation(
@@ -53,7 +51,6 @@ describe('RagAutoUpdateService', () => {
 
     const service = new RagAutoUpdateService({
       getSettings: () => settings,
-      setSettings,
       runIndex,
       getRetryCount: () => retryCount,
       markRetryScheduled,
@@ -64,7 +61,6 @@ describe('RagAutoUpdateService', () => {
       service,
       settings,
       runIndex,
-      setSettings,
       markRetryScheduled,
       clearRetryScheduled,
       setRetryCount: (value: number) => {
@@ -153,7 +149,6 @@ describe('RagAutoUpdateService', () => {
       ragOptions: {
         enabled: true,
         autoUpdateEnabled: true,
-        lastAutoUpdateAt: 0,
         indexPdf: true,
       },
       knowledgeBases: [
@@ -175,13 +170,11 @@ describe('RagAutoUpdateService', () => {
     } as unknown as YoloSettings
     const retryCounts = new Map<string, number>()
     const runIndex = jest.fn().mockResolvedValue(undefined)
-    const setSettings = jest.fn().mockResolvedValue(undefined)
     const markRetryScheduled = jest.fn().mockResolvedValue(undefined)
     const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
 
     const service = new RagAutoUpdateService({
       getSettings: () => settings,
-      setSettings,
       runIndex,
       getRetryCount: (kbId: string) => retryCounts.get(kbId) ?? 0,
       markRetryScheduled,

@@ -980,7 +980,6 @@ export default class YoloPlugin extends Plugin {
     if (!this.ragAutoUpdateService) {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
-        setSettings: (settings) => this.setSettings(settings),
         runIndex: async (kbId, request) => {
           // Background auto-update never surfaces partial failures (product
           // decision: settings page shows them durably via the snapshot). The

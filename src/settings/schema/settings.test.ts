@@ -38,7 +38,6 @@ describe('parseYoloSettings', () => {
       indexPdf: true,
       autoUpdateEnabled: true,
       autoUpdateIntervalHours: 0,
-      lastAutoUpdateAt: 0,
     })
 
     expect(result.mcp.servers).toEqual([])
