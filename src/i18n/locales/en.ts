@@ -2477,6 +2477,12 @@ export const en: TranslationKeys = {
     reloadingPlugin: 'Reloading "next-composer" due to migration',
     settingsInvalid: 'Invalid settings',
     settingsUpdateFailed: 'Failed to update settings',
+    settingsFileUnreadable:
+      'YOLO could not read its settings file (data.json) and is running with default settings. Changes will not be saved until the file can be read again. If a sync tool is updating it, wait for the sync to finish.',
+    settingsNotSavedUnreadable:
+      'Not saved: YOLO still cannot read its settings file (data.json).',
+    settingsReloadedRedo:
+      'YOLO reloaded your settings from data.json. Your last change was not saved — please redo it.',
     transportModeAutoPromoted:
       'Detected network/CORS issue. Automatically switched this provider to {mode}.',
     capturePdfNoLeaf: 'No PDF file is currently open.',

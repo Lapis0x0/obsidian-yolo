@@ -326,6 +326,12 @@ export default class YoloPlugin extends Plugin {
   settingsChangeListeners: ((newSettings: YoloSettings) => void)[] = []
   private deviceId: string | null = null
   private currentSettingsMeta: YoloDataMeta | null = null
+  /**
+   * Shown while `data.json` exists but could not be read or parsed. Until it
+   * is cleared, `this.settings` holds defaults standing in for the user's
+   * real settings, so nothing may be written back to `data.json`.
+   */
+  private unreadableSettingsNotice: Notice | null = null
   updateCheckResult: UpdateCheckResult | null = null
   private autoUpdatedItems: readonly AutoUpdatedItem[] = Object.freeze([])
   private readonly autoUpdatedListeners = new Set<() => void>()
@@ -2944,7 +2950,33 @@ export default class YoloPlugin extends Plugin {
     this.rawLearningLegacySettings = sourceRaw?.learningOptions
     const sourceMeta = pluginExtract?.meta ?? null
 
-    const parsedSettings = parseYoloSettings(sourceRaw)
+    let parsedSettings: YoloSettings | null = null
+    try {
+      parsedSettings = parseYoloSettings(sourceRaw)
+    } catch (error) {
+      console.error(
+        '[YOLO] data.json does not match the settings schema.',
+        error,
+      )
+    }
+    // Obsidian's loadData yields nothing both when data.json is missing (a
+    // fresh install) and when it exists but failed to read or parse — e.g.
+    // while a sync tool is replacing it. Only the former may start from
+    // defaults that get saved.
+    if (
+      parsedSettings === null ||
+      (!pluginExtract &&
+        (await this.app.vault.adapter.exists(`${this.manifest.dir}/data.json`)))
+    ) {
+      this.unreadableSettingsNotice = new Notice(
+        this.t(
+          'notices.settingsFileUnreadable',
+          'YOLO could not read its settings file (data.json) and is running with default settings. Changes will not be saved until the file can be read again. If a sync tool is updating it, wait for the sync to finish.',
+        ),
+        0,
+      )
+      parsedSettings = parseYoloSettings(null)
+    }
     const { ensureDefaultAssistantInSettings } = await import(
       './core/agent/default-assistant'
     )
@@ -2958,7 +2990,9 @@ export default class YoloPlugin extends Plugin {
       : settingsWithDefaultAssistant
 
     this.settings = normalizedSettings
-    this.currentSettingsMeta = sourceMeta
+    // No meta while unreadable, so whatever version of data.json reads next
+    // is adopted rather than compared against a version we never loaded.
+    this.currentSettingsMeta = this.unreadableSettingsNotice ? null : sourceMeta
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
@@ -3155,11 +3189,13 @@ export default class YoloPlugin extends Plugin {
    *   `data.json` without bumping `__meta.updatedAt` falls outside the
    *   protocol — we accept that such an edit may be missed until the
    *   next external-change event re-reads the file.
+   *
+   * Returns whether the payload was adopted.
    */
   private async applyExternalSettingsUpdate(
     raw: Record<string, unknown>,
     incomingMeta: YoloDataMeta | null,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Self-write echo: same device + same updatedAt means this event is
     // the reflection of our own most recent saveData. Suppress.
     if (
@@ -3168,13 +3204,13 @@ export default class YoloPlugin extends Plugin {
       incomingMeta.deviceId === this.currentSettingsMeta.deviceId &&
       incomingMeta.updatedAt === this.currentSettingsMeta.updatedAt
     ) {
-      return
+      return false
     }
     // Meta-less incoming with a meta-stamped local copy: refuse, per
     // protocol — we can't compare freshness so preferring local avoids
     // stale replays clobbering newer settings.
     if (!incomingMeta && this.currentSettingsMeta) {
-      return
+      return false
     }
     // Reject anything our current in-memory state already beats under
     // the total `metaBeats` ordering (older OR equal-and-loser).
@@ -3183,10 +3219,19 @@ export default class YoloPlugin extends Plugin {
       incomingMeta &&
       !this.metaBeats(this.currentSettingsMeta, incomingMeta)
     ) {
-      return
+      return false
     }
 
-    const parsedSettings = parseYoloSettings(raw)
+    let parsedSettings: YoloSettings
+    try {
+      parsedSettings = parseYoloSettings(raw)
+    } catch (error) {
+      console.warn(
+        '[YOLO] Ignored an external data.json change that does not match the settings schema.',
+        error,
+      )
+      return false
+    }
     const { ensureDefaultAssistantInSettings } = await import(
       './core/agent/default-assistant'
     )
@@ -3251,6 +3296,9 @@ export default class YoloPlugin extends Plugin {
     this.settingsChangeListeners.forEach((listener) => {
       listener(normalizedSettings)
     })
+    this.unreadableSettingsNotice?.hide()
+    this.unreadableSettingsNotice = null
+    return true
   }
 
   /**
@@ -3367,7 +3415,11 @@ export default class YoloPlugin extends Plugin {
     )
 
     if (shouldAdoptMirror && mirrorMeta) {
-      await this.applyExternalSettingsUpdate(mirrorRead.raw, mirrorMeta)
+      if (
+        !(await this.applyExternalSettingsUpdate(mirrorRead.raw, mirrorMeta))
+      ) {
+        return
+      }
       try {
         await this.saveData(stampYoloDataMeta(this.settings, mirrorMeta))
         this.currentSettingsMeta = mirrorMeta
@@ -3443,6 +3495,28 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           'settings.agent.yoloBaseDirHiddenPath',
           'YOLO root cannot contain a folder name starting with a dot because Obsidian does not index hidden folders.',
         ),
+      )
+      return false
+    }
+
+    if (this.unreadableSettingsNotice) {
+      // Persisting now would replace the user's real settings with the
+      // defaults standing in for them. Read the file again instead; if it
+      // reads, adopt it, and the user redoes the change on top of it.
+      const extract = extractYoloDataMeta(await this.loadData())
+      if (extract) {
+        await this.applyExternalSettingsUpdate(extract.raw, extract.meta)
+      }
+      new Notice(
+        this.unreadableSettingsNotice
+          ? this.t(
+              'notices.settingsNotSavedUnreadable',
+              'Not saved: YOLO still cannot read its settings file (data.json).',
+            )
+          : this.t(
+              'notices.settingsReloadedRedo',
+              'YOLO reloaded your settings from data.json. Your last change was not saved — please redo it.',
+            ),
       )
       return false
     }

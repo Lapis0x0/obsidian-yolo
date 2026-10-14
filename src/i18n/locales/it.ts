@@ -2343,6 +2343,12 @@ export const it: DeepPartial<TranslationKeys> = {
     reloadingPlugin: 'Ricaricamento "next-composer" a causa della migrazione',
     settingsInvalid: 'Impostazioni non valide',
     settingsUpdateFailed: 'Impossibile aggiornare le impostazioni',
+    settingsFileUnreadable:
+      'YOLO non riesce a leggere il file delle impostazioni (data.json) ed è in esecuzione con le impostazioni predefinite. Le modifiche non verranno salvate finché il file non sarà di nuovo leggibile. Se uno strumento di sincronizzazione lo sta aggiornando, attendi il termine della sincronizzazione.',
+    settingsNotSavedUnreadable:
+      'Non salvato: YOLO non riesce ancora a leggere il file delle impostazioni (data.json).',
+    settingsReloadedRedo:
+      "YOLO ha ricaricato le impostazioni da data.json. L'ultima modifica non è stata salvata: ripetila.",
     transportModeAutoPromoted:
       'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su {mode}.',
     capturePdfNoLeaf: 'Nessun file PDF aperto al momento.',

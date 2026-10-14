@@ -105,9 +105,8 @@ export type LocalEmbeddingSettings = z.infer<
  * is what lets `import-config.ts`'s `safeParse` (and `main.ts`'s
  * `setSettings`) surface a clear "duplicate knowledge base" error instead of
  * silently discarding one of the two. On the disk-load path
- * (`parseYoloSettings`), a failure here falls back to full schema defaults
- * like any other unparseable settings field — pre-existing, systemic
- * behavior, not specific to this field.
+ * (`parseYoloSettings`), a failure here fails the whole parse like any other
+ * unparseable settings field.
  */
 const knowledgeBasesFieldSchema = resilientArraySchema(knowledgeBaseSchema)
   .transform((items) =>

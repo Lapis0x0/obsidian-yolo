@@ -143,27 +143,23 @@ export function migrateYoloSettingsData(
   return currentData
 }
 
+/**
+ * Empty input yields defaults. Non-empty input that fails the schema throws
+ * rather than yielding defaults: it is someone's real settings, and the
+ * caller must not let defaults stand in for it.
+ */
 export function parseYoloSettings(data: unknown): YoloSettings {
-  try {
-    if (
-      !data ||
-      (typeof data === 'object' &&
-        data !== null &&
-        Object.keys(data as Record<string, unknown>).length === 0)
-    ) {
-      const parsed = yoloSettingsSchema.parse({})
-      return { ...parsed, version: SETTINGS_SCHEMA_VERSION }
-    }
-
-    const migratedData = migrateYoloSettingsData(
-      data as Record<string, unknown>,
-    )
-    const parsed = yoloSettingsSchema.parse(migratedData)
-    const normalized = normalizeYoloSettingsReferences(parsed)
-    return { ...normalized, version: SETTINGS_SCHEMA_VERSION }
-  } catch (error) {
-    console.warn('Invalid settings provided, using defaults:', error)
-    const defaults = yoloSettingsSchema.parse({})
-    return { ...defaults, version: SETTINGS_SCHEMA_VERSION }
+  if (
+    !data ||
+    (typeof data === 'object' &&
+      Object.keys(data as Record<string, unknown>).length === 0)
+  ) {
+    const parsed = yoloSettingsSchema.parse({})
+    return { ...parsed, version: SETTINGS_SCHEMA_VERSION }
   }
+
+  const migratedData = migrateYoloSettingsData(data as Record<string, unknown>)
+  const parsed = yoloSettingsSchema.parse(migratedData)
+  const normalized = normalizeYoloSettingsReferences(parsed)
+  return { ...normalized, version: SETTINGS_SCHEMA_VERSION }
 }

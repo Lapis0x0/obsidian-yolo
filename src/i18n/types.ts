@@ -2127,6 +2127,9 @@ export type TranslationKeys = {
     reloadingPlugin: string
     settingsInvalid: string
     settingsUpdateFailed: string
+    settingsFileUnreadable?: string
+    settingsNotSavedUnreadable?: string
+    settingsReloadedRedo?: string
     transportModeAutoPromoted: string
     capturePdfNoLeaf?: string
     capturePdfFailed?: string

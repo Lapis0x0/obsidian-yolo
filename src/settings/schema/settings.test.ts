@@ -710,28 +710,28 @@ describe('parseYoloSettings', () => {
     ])
   })
 
-  it('falls back to full settings defaults when two knowledge bases share an id or name', () => {
-    const byId = parseYoloSettings({
-      version: SETTINGS_SCHEMA_VERSION,
-      chatModelId: 'should-be-discarded',
-      knowledgeBases: [
-        { id: 'dup', name: 'A', description: '', include: [], exclude: [] },
-        { id: 'dup', name: 'B', description: '', include: [], exclude: [] },
-      ],
-    })
+  it('throws instead of yielding defaults when two knowledge bases share an id or name', () => {
     // A duplicate fails the whole field, which fails the whole settings
-    // parse (see knowledgeBasesFieldSchema's doc comment) — parseYoloSettings
-    // then falls back to full defaults, same as any other unparseable field.
-    expect(byId.knowledgeBases).toEqual([])
-    expect(byId.chatModelId).toBe('')
+    // parse (see knowledgeBasesFieldSchema's doc comment).
+    expect(() =>
+      parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
+        chatModelId: 'kept-on-disk',
+        knowledgeBases: [
+          { id: 'dup', name: 'A', description: '', include: [], exclude: [] },
+          { id: 'dup', name: 'B', description: '', include: [], exclude: [] },
+        ],
+      }),
+    ).toThrow()
 
-    const byName = parseYoloSettings({
-      version: SETTINGS_SCHEMA_VERSION,
-      knowledgeBases: [
-        { id: 'a', name: 'Same', description: '', include: [], exclude: [] },
-        { id: 'b', name: 'same', description: '', include: [], exclude: [] }, // case-insensitive collision
-      ],
-    })
-    expect(byName.knowledgeBases).toEqual([])
+    expect(() =>
+      parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
+        knowledgeBases: [
+          { id: 'a', name: 'Same', description: '', include: [], exclude: [] },
+          { id: 'b', name: 'same', description: '', include: [], exclude: [] }, // case-insensitive collision
+        ],
+      }),
+    ).toThrow()
   })
 })

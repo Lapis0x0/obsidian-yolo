@@ -2331,6 +2331,12 @@ export const zh: TranslationKeys = {
     reloadingPlugin: '由于迁移，正在重新加载 "next-composer"',
     settingsInvalid: '设置无效',
     settingsUpdateFailed: '设置更新失败',
+    settingsFileUnreadable:
+      'YOLO 无法读取设置文件（data.json），当前以默认设置运行。在文件恢复可读之前，任何设置更改都不会被保存。如果同步工具正在更新该文件，请等待同步完成。',
+    settingsNotSavedUnreadable:
+      '未保存：YOLO 仍无法读取设置文件（data.json）。',
+    settingsReloadedRedo:
+      'YOLO 已从 data.json 重新载入设置，刚才的更改没有保存，请重新操作。',
     transportModeAutoPromoted:
       '检测到网络/CORS 问题，已自动将该 Provider 切换为 {mode}。',
     capturePdfNoLeaf: '当前没有打开的 PDF 文件。',
