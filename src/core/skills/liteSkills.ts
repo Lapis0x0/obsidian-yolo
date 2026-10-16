@@ -212,7 +212,16 @@ const listSkillPathsInDir = async (
     return []
   }
 
-  const listing = await adapter.list(normalizedDir)
+  let listing: Awaited<ReturnType<typeof adapter.list>>
+  try {
+    listing = await adapter.list(normalizedDir)
+  } catch (error) {
+    // The desktop adapter stats every entry, so a single unreadable one (e.g.
+    // a dangling symlink or junction) fails the whole listing. One broken
+    // directory must not take down skills from every other directory.
+    console.warn(`[YOLO] Failed to list skills in "${normalizedDir}"`, error)
+    return []
+  }
   const paths: string[] = []
   for (const rawFolderPath of listing.folders) {
     const folderPath = normalizePath(rawFolderPath)

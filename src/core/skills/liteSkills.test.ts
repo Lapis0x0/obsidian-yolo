@@ -531,6 +531,52 @@ describe('getSkillScanDirs', () => {
 describe('listLiteSkillEntries and getLiteSkillDocument', () => {
   const settings = { yolo: { baseDir: 'YOLO' } }
 
+  it('skips a skill directory whose listing fails and keeps the others', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/healthy'],
+        },
+        'YOLO/skills/healthy': {
+          files: ['YOLO/skills/healthy/SKILL.md'],
+          folders: [],
+        },
+        '.claude/skills': {
+          files: [],
+          folders: ['.claude/skills/dead-link'],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/healthy/SKILL.md': [
+          '---',
+          'name: healthy',
+          'description: still listed',
+          '---',
+          'body',
+        ].join('\n'),
+      },
+    })
+    const list = app.vault.adapter.list.bind(app.vault.adapter)
+    jest
+      .spyOn(app.vault.adapter, 'list')
+      .mockImplementation((path) =>
+        path === '.claude/skills'
+          ? Promise.reject(new Error('ENOENT: no such file or directory, stat'))
+          : list(path),
+      )
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const entries = await listLiteSkillEntries(app, { settings })
+
+    expect(entries.map((entry) => entry.name)).toContain('healthy')
+    expect(warn).toHaveBeenCalledWith(
+      '[YOLO] Failed to list skills in ".claude/skills"',
+      expect.any(Error),
+    )
+    warn.mockRestore()
+  })
+
   it('shares one inflight recursive scan across list/get callers', async () => {
     const app = makeAdapterApp({
       listings: {
