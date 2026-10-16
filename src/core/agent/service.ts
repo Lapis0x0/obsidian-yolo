@@ -1196,8 +1196,9 @@ export class AgentSessionService {
   }
 
   /**
-   * Subscribe to abort events that carry the queued user messages dropped at
-   * abort time, so the UI can restore them into the input box.
+   * Subscribe to queued user messages that will never be sent — dropped by an
+   * abort, or by a run that ended on a tool call awaiting the user — so the UI
+   * can restore them into the input box.
    */
   subscribeToAbortedQueuedMessages(
     fn: AbortedQueuedMessagesSubscriber,
@@ -1601,7 +1602,6 @@ export class AgentSessionService {
       conversationId,
       toolCallId,
       response: { status: ToolCallResponseStatus.Running },
-      status: 'running',
     })
     if (!runningMessages) {
       return false
@@ -2374,6 +2374,19 @@ export class AgentSessionService {
       // Abort path is responsible for clearing the queue; do not continue.
       return
     }
+    const conversationEntry = this.conversationEntries.get(conversationId)
+    if (
+      conversationEntry &&
+      hasPendingUserInteraction(conversationEntry.state.messages)
+    ) {
+      // The run stopped on a tool call the user still has to answer; a request
+      // now would carry that call without a result. `enqueueUserMessage`
+      // refuses new messages in this state, so hand these back the same way.
+      this.pendingUserMessagesByKey.delete(runKey)
+      this.notifyConversationSubscribers(conversationId)
+      this.notifyDroppedQueuedMessages(conversationId, queue)
+      return
+    }
     this.continuationScheduledByKey.add(runKey)
 
     queueMicrotask(() => {
@@ -2482,12 +2495,23 @@ export class AgentSessionService {
       }
     }
 
-    if (droppedQueuedByConversation.length > 0) {
-      for (const subscriber of this.abortedQueuedMessagesSubscribers) {
-        subscriber(conversationId, droppedQueuedByConversation)
-      }
-    }
+    this.notifyDroppedQueuedMessages(
+      conversationId,
+      droppedQueuedByConversation,
+    )
     return didAbort
+  }
+
+  private notifyDroppedQueuedMessages(
+    conversationId: string,
+    messages: ChatUserMessage[],
+  ): void {
+    if (messages.length === 0) {
+      return
+    }
+    for (const subscriber of this.abortedQueuedMessagesSubscribers) {
+      subscriber(conversationId, messages)
+    }
   }
 
   abortAll(): void {
@@ -2986,12 +3010,10 @@ export class AgentSessionService {
     conversationId,
     toolCallId,
     response,
-    status,
   }: {
     conversationId: string
     toolCallId: string
     response: ToolCallResponse
-    status?: AgentRunStatus
   }): ChatMessage[] | null {
     const located = this.findToolCall(conversationId, toolCallId)
     if (!located) {
@@ -3014,7 +3036,6 @@ export class AgentSessionService {
       located.runEntry.state = {
         ...located.runEntry.state,
         messages: updatedMessages,
-        status: status ?? located.runEntry.state.status,
       }
     } else {
       const conversationEntry =
@@ -3023,7 +3044,6 @@ export class AgentSessionService {
       conversationEntry.state = {
         ...conversationEntry.state,
         messages: updatedMessages,
-        status: status ?? conversationEntry.state.status,
       }
       this.syncPendingApprovalRecoveryContext(conversationId, updatedMessages)
     }

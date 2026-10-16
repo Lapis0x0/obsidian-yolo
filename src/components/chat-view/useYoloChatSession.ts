@@ -1397,8 +1397,9 @@ export function useYoloChatSession({
     }
   }, [agentService, currentConversationId])
 
-  // When the user aborts a run, restore the most recently queued message into
-  // the input box so its content is not silently lost. If multiple messages
+  // When queued messages are dropped (the user aborts, or the run ends on a
+  // tool call awaiting the user), restore the most recently queued message
+  // into the input box so its content is not silently lost. If multiple messages
   // were queued, only the latest is restored (it best reflects the user's
   // current intent); a notice surfaces the count of dropped earlier entries.
   useEffect(() => {
