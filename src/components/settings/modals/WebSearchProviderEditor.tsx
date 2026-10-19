@@ -382,6 +382,19 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         />
       )}
 
+      {form.type === 'deepseek' && (
+        <>
+          <ApiKeyField
+            value={form.apiKey}
+            onChange={(value) => update('apiKey', value)}
+          />
+          <ProviderScrapeApiToggle
+            value={form.useProviderScrapeApi}
+            onChange={(value) => update('useProviderScrapeApi', value)}
+          />
+        </>
+      )}
+
       {form.type === 'anysearch' && (
         <ObsidianSetting
           name={t(

@@ -656,6 +656,7 @@ export type TranslationKeys = {
         zhipu?: string
         exa?: string
         anysearch?: string
+        deepseek?: string
       }
       fieldName?: string
       fieldApiKey?: string

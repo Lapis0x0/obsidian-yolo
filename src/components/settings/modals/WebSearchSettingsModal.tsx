@@ -71,6 +71,7 @@ const PROVIDER_MONO: Record<WebSearchProviderType, string> = {
   zhipu: 'Z',
   exa: 'E',
   anysearch: 'A',
+  deepseek: 'D',
 }
 
 function Content({ app, plugin }: { app: App; plugin: YoloPlugin }) {
@@ -389,5 +390,7 @@ function defaultTypeLabel(type: WebSearchProviderType): string {
       return 'Exa'
     case 'anysearch':
       return 'AnySearch'
+    case 'deepseek':
+      return 'DeepSeek'
   }
 }

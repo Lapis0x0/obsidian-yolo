@@ -29,6 +29,7 @@ export const WEB_SEARCH_PROVIDER_TYPES = [
   'zhipu',
   'exa',
   'anysearch',
+  'deepseek',
 ] as const
 export type WebSearchProviderType = (typeof WEB_SEARCH_PROVIDER_TYPES)[number]
 
@@ -134,6 +135,13 @@ export const anysearchOptionsSchema = z.object({
   apiKey: z.string().default(''),
 })
 
+export const deepseekSearchOptionsSchema = z.object({
+  ...baseFields,
+  type: z.literal('deepseek'),
+  apiKey: z.string().default(''),
+  useProviderScrapeApi: z.boolean().default(true),
+})
+
 export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
   tavilyOptionsSchema,
   jinaOptionsSchema,
@@ -144,6 +152,7 @@ export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
   zhipuOptionsSchema,
   exaOptionsSchema,
   anysearchOptionsSchema,
+  deepseekSearchOptionsSchema,
 ])
 export type WebSearchProviderOptions = z.infer<
   typeof webSearchProviderOptionsSchema
@@ -189,7 +198,11 @@ export type WebSearchScrapeInput = {
 export function isProviderScrapeApiEnabled(
   options: WebSearchProviderOptions,
 ): boolean {
-  if (options.type === 'tavily' || options.type === 'jina') {
+  if (
+    options.type === 'tavily' ||
+    options.type === 'jina' ||
+    options.type === 'deepseek'
+  ) {
     return options.useProviderScrapeApi
   }
   return false
@@ -291,5 +304,13 @@ export function createDefaultProviderOptions(
       return { id, name: 'Exa', type: 'exa', apiKey: '' }
     case 'anysearch':
       return { id, name: 'AnySearch', type: 'anysearch', apiKey: '' }
+    case 'deepseek':
+      return {
+        id,
+        name: 'DeepSeek',
+        type: 'deepseek',
+        apiKey: '',
+        useProviderScrapeApi: true,
+      }
   }
 }

@@ -886,6 +886,7 @@ export const en: TranslationKeys = {
         zhipu: 'Zhipu Web Search',
         exa: 'Exa',
         anysearch: 'AnySearch',
+        deepseek: 'DeepSeek',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',

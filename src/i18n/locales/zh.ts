@@ -819,6 +819,7 @@ export const zh: TranslationKeys = {
         zhipu: '智谱网页搜索',
         exa: 'Exa',
         anysearch: 'AnySearch',
+        deepseek: 'DeepSeek',
       },
       fieldName: '显示名称',
       fieldApiKey: 'API Key',

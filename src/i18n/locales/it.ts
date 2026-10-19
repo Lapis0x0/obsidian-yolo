@@ -828,6 +828,7 @@ export const it: DeepPartial<TranslationKeys> = {
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
         exa: 'Exa',
+        deepseek: 'DeepSeek',
       },
       fieldName: 'Nome visualizzato',
       fieldApiKey: 'API key',
