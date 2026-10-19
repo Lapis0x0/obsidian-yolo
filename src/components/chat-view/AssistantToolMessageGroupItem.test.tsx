@@ -63,7 +63,7 @@ jest.mock('./AssistantToolMessageGroupActions', () => ({
 }))
 jest.mock('./LLMResponseInlineInfo', () => ({
   __esModule: true,
-  default: () => null,
+  default: jest.fn(() => null),
 }))
 jest.mock('./ToolMessage', () => ({
   __esModule: true,
@@ -80,6 +80,7 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 
 const mockedAssistantMessageReasoning =
   AssistantMessageReasoning as jest.MockedFunction<
@@ -468,6 +469,51 @@ describe('AssistantToolMessageGroupItem', () => {
 
     expect(html).toContain('yolo-assistant-message-footer')
     expect(mockedAssistantToolMessageGroupActions).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts only the displayed branch in the footer usage', () => {
+    const mockedInlineInfo = LLMResponseInlineInfo as jest.MockedFunction<
+      typeof LLMResponseInlineInfo
+    >
+    mockedInlineInfo.mockClear()
+    const branchMessage = (branchId: string): ChatAssistantMessage => ({
+      role: 'assistant',
+      id: `assistant-${branchId}`,
+      content: branchId,
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId,
+        branchLabel: branchId,
+        branchRunStatus: 'completed',
+        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+      },
+    })
+    const messages = [branchMessage('model-a'), branchMessage('model-b')]
+
+    renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={messages}
+        inlineInfoMessages={messages}
+        activeBranchKey="model-b"
+        conversationId="conversation-1"
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(mockedInlineInfo).toHaveBeenCalled()
+    expect(mockedInlineInfo.mock.calls[0]?.[0].messages).toEqual([messages[1]])
   })
 
   describe('tool run collapsing', () => {

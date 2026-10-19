@@ -901,6 +901,20 @@ function AssistantToolMessageGroupItem({
         messages)
     return selectedMessages
   }, [branchGroups, hasMultipleBranches, messages, resolvedActiveBranchKey])
+  // The footer's usage may span several groups (a background-task bridge), but
+  // within this group it must count only the branch on display: each branch is
+  // its own conversation with its own context.
+  const footerUsageMessages = useMemo(() => {
+    const source = inlineInfoMessages ?? displayedMessages
+    if (!hasMultipleBranches) {
+      return source
+    }
+    const displayedBranchId = displayedMessages[0]?.metadata?.branchId
+    return source.filter((message) => {
+      const branchId = message.metadata?.branchId
+      return !branchId || branchId === displayedBranchId
+    })
+  }, [displayedMessages, hasMultipleBranches, inlineInfoMessages])
   const effectiveConversationId = useMemo(() => {
     if (!hasMultipleBranches) {
       return conversationId
@@ -1627,9 +1641,7 @@ function AssistantToolMessageGroupItem({
         !suppressFooter && (
           <div className="yolo-assistant-message-footer">
             {showInlineInfo && (
-              <LLMResponseInlineInfo
-                messages={inlineInfoMessages ?? displayedMessages}
-              />
+              <LLMResponseInlineInfo messages={footerUsageMessages} />
             )}
             <AssistantToolMessageGroupActions
               messages={displayedMessages}
