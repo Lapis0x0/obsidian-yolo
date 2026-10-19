@@ -19,6 +19,7 @@ import {
   createModuleFileView,
 } from './moduleFileView'
 import { resolveLocalizedText } from './moduleI18n'
+import { ModuleRibbonSlots } from './moduleRibbonSlots'
 import { installYoloModuleRuntimeBridge } from './runtimeBridge'
 import type {
   YoloModuleDefinition,
@@ -507,12 +508,14 @@ export class ObsidianModuleContributionRegistrar
   >()
   private readonly fileViewExtensionOwners = new Map<string, string>()
   private readonly fileMenuRegistry: ModuleFileMenuRegistry
+  readonly ribbonSlots: ModuleRibbonSlots
 
   constructor(
     private readonly plugin: Plugin,
     private readonly locales: LocaleStore = localeStore,
   ) {
     this.fileMenuRegistry = new ModuleFileMenuRegistry(plugin, locales)
+    this.ribbonSlots = new ModuleRibbonSlots(plugin)
   }
 
   commit(
@@ -603,7 +606,8 @@ export class ObsidianModuleContributionRegistrar
 
     if (contributions.ribbonAction) {
       const action = contributions.ribbonAction
-      const ribbon = this.plugin.addRibbonIcon(
+      const ribbon = this.ribbonSlots.bind(
+        moduleId,
         action.icon,
         resolveLocalizedText(action.title, this.locales.getSnapshot().locale),
         () => {
@@ -627,7 +631,7 @@ export class ObsidianModuleContributionRegistrar
       })
       lifecycle.add(() => {
         unsubscribeLocale()
-        ribbon.remove()
+        this.ribbonSlots.unbind(moduleId)
       })
     }
 
@@ -730,6 +734,7 @@ export class ObsidianModuleContributionRegistrar
       }
     }
     this.fileMenuRegistry.deactivate(moduleId)
+    this.ribbonSlots.forget(moduleId)
   }
 
   async openView(

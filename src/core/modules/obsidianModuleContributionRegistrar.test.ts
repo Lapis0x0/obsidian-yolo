@@ -332,16 +332,24 @@ describe('ObsidianModuleContributionRegistrar', () => {
     const locales = new LocaleStore({ readLocale: () => locale })
     const addCommand = jest.fn()
     const ribbon = {
-      remove: jest.fn(),
+      detach: jest.fn(),
       setAttribute: jest.fn(),
     }
     const addRibbonIcon = jest.fn(() => ribbon)
+    const removeRibbonAction = jest.fn()
     const registerView = jest.fn()
     const trigger = jest.fn()
     const lifecycle = new ModuleLifecycleScope()
     const registrar = new ObsidianModuleContributionRegistrar(
       {
-        app: withWorkspaceEvents({ workspace: { trigger } }),
+        app: {
+          ...withWorkspaceEvents({
+            workspace: { trigger, leftRibbon: { removeRibbonAction } },
+          }),
+          loadLocalStorage: jest.fn(() => null),
+          saveLocalStorage: jest.fn(),
+        },
+        manifest: { id: 'yolo' },
         addCommand,
         addRibbonIcon,
         registerView,
@@ -392,7 +400,8 @@ describe('ObsidianModuleContributionRegistrar', () => {
     expect(ribbon.setAttribute).toHaveBeenCalledWith('aria-label', '打开学习')
     expect(trigger).toHaveBeenCalledWith('layout-change')
     lifecycle.dispose()
-    expect(ribbon.remove).toHaveBeenCalledTimes(1)
+    expect(removeRibbonAction).toHaveBeenCalledWith('yolo:Open Learning')
+    expect(ribbon.detach).toHaveBeenCalledTimes(1)
   })
 
   it('registers a module file view and its extensions as a plugin-lifetime slot', () => {

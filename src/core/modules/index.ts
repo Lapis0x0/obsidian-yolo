@@ -277,6 +277,7 @@ export {
   ObsidianModuleContributionRegistrar,
   type ModuleContributionRegistrar,
 } from './moduleRuntime'
+export type { ModuleRibbonSlots } from './moduleRibbonSlots'
 export {
   ModuleRuntimeReservation,
   type ModuleRuntimeQuiescence,

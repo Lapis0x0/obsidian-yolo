@@ -103,6 +103,7 @@ import {
   ModuleLoader,
   ModulePdfCapabilityProvider,
   ModulePrivateStorageCapabilityProvider,
+  type ModuleRibbonSlots,
   ModuleRuntime,
   ModuleRuntimeReservation,
   type ModuleService,
@@ -379,6 +380,7 @@ export default class YoloPlugin extends Plugin {
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private moduleRibbonSlots: ModuleRibbonSlots | null = null
   private runtimeComponentService: RuntimeComponentService | null = null
   private pdfDocumentCache: PdfDocumentCache | null = null
   private localEmbeddingModelManager: LocalEmbeddingModelManager | null = null
@@ -2836,6 +2838,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+    this.moduleRibbonSlots = null
 
     // RagEngine cleanup — must run before `runtimeComponentService.stop()`
     // below so the local embedding session's `embedding-engine` lease is
@@ -4515,8 +4518,13 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const servicesReference: { current: ModuleService | null } = {
       current: null,
     }
+    const registrar = new ObsidianModuleContributionRegistrar(this)
+    // Plugin load runs before Obsidian restores the workspace layout, which is
+    // the only point where a ribbon icon gets its saved position back.
+    registrar.ribbonSlots.restore()
+    this.moduleRibbonSlots = registrar.ribbonSlots
     const runtime = new ModuleRuntime(
-      new ObsidianModuleContributionRegistrar(this),
+      registrar,
       new CoreModuleHostCapabilityProvider({
         agent: new CoreModuleAgentCapabilityProvider({
           isDebugCaptureEnabled: isLLMDebugCaptureEnabled,
@@ -5007,6 +5015,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       .start()
       .catch((error) => {
         console.error('[YOLO] Failed to start modules', error)
+      })
+      .finally(() => {
+        if (!this.isUnloaded) this.moduleRibbonSlots?.releaseUnclaimed()
       })
   }
 

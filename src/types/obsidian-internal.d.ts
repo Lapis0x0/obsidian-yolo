@@ -13,4 +13,15 @@ declare module 'obsidian' {
      */
     scope: Scope
   }
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- Declaration merging with Obsidian's own WorkspaceRibbon requires an interface.
+  interface WorkspaceRibbon {
+    /**
+     * Unregisters a ribbon icon by `<plugin id>:<title>` while keeping its
+     * saved position. Not part of the published API surface, but it is what
+     * `Plugin.addRibbonIcon` itself calls on unload; detaching the button
+     * alone leaves it registered, and the next ribbon render re-attaches it.
+     */
+    removeRibbonAction(id: string): void
+  }
 }
