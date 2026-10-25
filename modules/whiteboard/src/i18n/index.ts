@@ -13,6 +13,9 @@ export type WhiteboardTranslation = (key: string, fallback?: string) => string
 export type WhiteboardLocalizedTextKey =
   | 'module.name'
   | 'module.open'
+  | 'settings.title'
+  | 'settings.newBoardFolder'
+  | 'settings.newBoardFolderDescription'
   | 'command.newWhiteboard'
   | 'command.importAllCanvas'
   | 'command.exportBoard'
