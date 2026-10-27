@@ -2308,7 +2308,9 @@ body.is-mobile .yolo-inline-review-toolbar {
   }
 }
 
-button.yolo-chat-input-model-select {
+/* 平板：见 chat/input.css 发送按钮注释里的 `.is-tablet button:not(.clickable-icon)`。 */
+button.yolo-chat-input-model-select,
+body.is-tablet button.yolo-chat-input-model-select {
   background-color: transparent;
   box-shadow: none;
   border: 0;

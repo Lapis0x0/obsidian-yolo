@@ -731,7 +731,9 @@ button.yolo-chat-quick-access-add {
     opacity var(--yolo-anim-duration-feedback) ease;
 }
 
-button.yolo-chat-quick-access-entry {
+/* 平板：见下方发送按钮注释里的 `.is-tablet button:not(.clickable-icon)`。 */
+button.yolo-chat-quick-access-entry,
+body.is-tablet button.yolo-chat-quick-access-entry {
   gap: var(--size-2-2);
   min-width: 0;
   max-width: 100%;
@@ -765,7 +767,9 @@ button.yolo-chat-quick-access-entry.is-dragging {
   opacity: 0.72;
 }
 
-button.yolo-chat-quick-access-add {
+/* 平板：见下方发送按钮注释里的 `.is-tablet button:not(.clickable-icon)`。 */
+button.yolo-chat-quick-access-add,
+body.is-tablet button.yolo-chat-quick-access-add {
   width: 32px;
   padding: 0;
 }
@@ -4008,8 +4012,14 @@ button.yolo-update-toast-tab.is-active {
  *
  * 同样地，Obsidian 的全局规则 `svg { width/height: var(--icon-size) }`
  * 会覆盖 lucide 通过 inline 属性写入的尺寸 —— 必须在选择器内显式给 svg
- * 兜底宽高，否则图标会被撑大或缩成奇形怪状。 */
-button.yolo-chat-user-input-submit-button-circle {
+ * 兜底宽高，否则图标会被撑大或缩成奇形怪状。
+ *
+ * iPad 上 Obsidian 还有 `.is-tablet button:not(.clickable-icon)
+ * { padding: var(--size-4-1) var(--size-4-5) }`，特异度 (0,2,1) 高于这里，
+ * 会把 24px 圆按钮撑成椭圆、图标宽度挤成 0。聊天面板里自己定内边距的按钮
+ * 都要带上 `body.is-tablet` 版本的选择器才能在平板上保住自己的内边距。 */
+button.yolo-chat-user-input-submit-button-circle,
+body.is-tablet button.yolo-chat-user-input-submit-button-circle {
   /* 略大于左侧 `+` 按钮（var(--size-4-5) ≈ 20px），强化"主按钮"地位但
    * 又不至于撑出 var(--size-4-4) 行高太多。 */
   width: 24px;

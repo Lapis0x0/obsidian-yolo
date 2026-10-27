@@ -344,7 +344,11 @@ button.yolo-rail-menu-row {
   min-width: 0;
 }
 
-.yolo-continuation-model-select .yolo-chat-input-model-select {
+/* 平板：见 chat/input.css 发送按钮注释里的 `.is-tablet button:not(.clickable-icon)`。 */
+.yolo-continuation-model-select .yolo-chat-input-model-select,
+body.is-tablet
+  .yolo-continuation-model-select
+  button.yolo-chat-input-model-select {
   font-size: var(--font-ui-smaller);
   padding: 5px 9px 5px 10px;
   height: auto;

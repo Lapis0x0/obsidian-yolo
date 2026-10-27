@@ -1874,7 +1874,9 @@ button.yolo-llm-debug-modal-button:focus-visible {
   );
 }
 
-.yolo-view-toggle-button {
+/* 平板：见 chat/input.css 发送按钮注释里的 `.is-tablet button:not(.clickable-icon)`。 */
+.yolo-view-toggle-button,
+body.is-tablet button.yolo-view-toggle-button {
   position: relative;
   z-index: 2;
   background: transparent !important;
@@ -2324,7 +2326,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
     --yolo-total-width: 160px;
     --yolo-collapsed-width: 40px;
   }
-  .yolo-view-toggle-button {
+  .yolo-view-toggle-button,
+  body.is-tablet button.yolo-view-toggle-button {
     padding: 6px 2px;
     font-size: var(--font-ui-smallest);
   }
