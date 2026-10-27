@@ -1,7 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
 
-import { DEFAULT_EMBEDDING_MODELS } from '../../../../constants'
 import { useSettings } from '../../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../../core/rag/embedding'
 import type YoloPlugin from '../../../../main'
@@ -96,18 +95,14 @@ export function EmbeddingModelsSubSection({
                 <td>{embeddingModel.dimension}</td>
                 <td>
                   <div className="yolo-settings-actions">
-                    {!DEFAULT_EMBEDDING_MODELS.some(
-                      (v) => v.id === embeddingModel.id,
-                    ) && (
-                      <button
-                        onClick={() =>
-                          handleDeleteEmbeddingModel(embeddingModel.id)
-                        }
-                        className="clickable-icon"
-                      >
-                        <Trash2 />
-                      </button>
-                    )}
+                    <button
+                      onClick={() =>
+                        handleDeleteEmbeddingModel(embeddingModel.id)
+                      }
+                      className="clickable-icon"
+                    >
+                      <Trash2 />
+                    </button>
                   </div>
                 </td>
               </tr>

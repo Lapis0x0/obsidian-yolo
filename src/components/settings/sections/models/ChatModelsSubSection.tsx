@@ -3,7 +3,6 @@ import { App, Notice } from 'obsidian'
 import { type DragEvent, useRef } from 'react'
 import { ObsidianToggle } from 'src/components/common/ObsidianToggle'
 
-import { DEFAULT_CHAT_MODELS } from '../../../../constants'
 import { useSettings } from '../../../../contexts/settings-context'
 import type YoloPlugin from '../../../../main'
 import { ConfirmModal } from '../../../modals/ConfirmModal'
@@ -342,16 +341,12 @@ export function ChatModelsSubSection({
                 </td>
                 <td>
                   <div className="yolo-settings-actions">
-                    {!DEFAULT_CHAT_MODELS.some(
-                      (v) => v.id === chatModel.id,
-                    ) && (
-                      <button
-                        onClick={() => handleDeleteChatModel(chatModel.id)}
-                        className="clickable-icon"
-                      >
-                        <Trash2 />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleDeleteChatModel(chatModel.id)}
+                      className="clickable-icon"
+                    >
+                      <Trash2 />
+                    </button>
                   </div>
                 </td>
               </tr>
