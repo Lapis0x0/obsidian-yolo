@@ -71,6 +71,7 @@ function createHostVault() {
     resolveLink: () => null,
     generateLink: () => null,
     getAvailableAttachmentPath: async (name) => name,
+    getNewFileParent: () => '',
     ensureFolder: async () => undefined,
     createFolder: async () => undefined,
     createText: async (path) => ({ path, mtime: 1 }),

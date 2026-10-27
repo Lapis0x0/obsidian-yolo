@@ -108,9 +108,19 @@ function createApp(entries: Array<TFile | TFolder>) {
       async (fileName: string, sourcePath: string) =>
         `${sourcePath.split('/').slice(0, -1).join('/')}/attachments/${fileName}`,
     ),
+    // "Same folder as current file"; Obsidian's root folder is '/'.
+    getNewFileParent: jest.fn((sourcePath: string) => {
+      const parent = sourcePath.split('/').slice(0, -1).join('/')
+      return Object.assign(createFolder(parent || '/', []), {
+        isRoot: () => !parent,
+      })
+    }),
+  }
+  const workspace = {
+    getActiveFile: jest.fn((): TFile | null => null),
   }
   return {
-    app: { vault, fileManager } as unknown as App,
+    app: { vault, fileManager, workspace } as unknown as App,
     binary,
     emit: (event: string, ...args: unknown[]) => {
       for (const ref of [...refs]) {
@@ -120,6 +130,7 @@ function createApp(entries: Array<TFile | TFolder>) {
     refs,
     registerRef,
     vault,
+    workspace,
   }
 }
 
@@ -161,7 +172,7 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
   it('returns immutable entry DTOs and copied file content', async () => {
     const file = createFile('notes/card.md', 10, 20)
     const folder = createFolder('notes', [file])
-    const { app, binary, vault } = createApp([folder, file])
+    const { app, binary, vault, workspace } = createApp([folder, file])
     const lifecycle = new ModuleLifecycleScope()
     const capability = new ObsidianModuleVaultCapabilityProvider(app).create(
       'notes',
@@ -233,6 +244,13 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
         'boards/b.yoloboard',
       ),
     ).rejects.toThrow('must be a file name')
+
+    // A new file's place is the user's new-note setting, asked of Obsidian
+    // for the active file; Obsidian's root folder comes back as ''.
+    expect(capability.api.getNewFileParent()).toBe('')
+    workspace.getActiveFile.mockReturnValueOnce(file)
+    expect(capability.api.getNewFileParent()).toBe('notes')
+
     expect(() =>
       capability.api.generateLink('notes/card.md', '', 'page=1'),
     ).toThrow('must start with "#"')

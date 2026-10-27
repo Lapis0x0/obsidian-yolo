@@ -1,8 +1,8 @@
 // Shared "create a new whiteboard" flow behind the creation entries
 // (command + ribbon + folder context menu). The command and ribbon pass the
-// folder from the module settings ("New whiteboard folder"; `''` — the vault
-// root — when unset, see ./settings.ts); the folder menu action passes the
-// right-clicked folder.
+// folder from the module settings ("New whiteboard folder"; Obsidian's
+// default location for new notes when unset, see ./settings.ts); the folder
+// menu action passes the right-clicked folder.
 // All funnel through this one function so naming, conflict resolution,
 // and open-after-create behavior can never drift between the entry
 // points (src/index.tsx wires all of them to this).

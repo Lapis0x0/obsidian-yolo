@@ -119,6 +119,7 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   generateLink: () => unavailable(),
   getAvailableAttachmentPath: () =>
     Promise.reject(new Error('Module vault is unavailable')),
+  getNewFileParent: () => unavailable(),
   ensureFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createText: () => Promise.reject(new Error('Module vault is unavailable')),
@@ -366,6 +367,13 @@ function createObsidianModuleVaultCapability({
           normalizeModuleVaultPath(sourcePath, true),
         ),
       )
+    },
+    getNewFileParent: () => {
+      assertAvailable()
+      const folder = app.fileManager.getNewFileParent(
+        app.workspace.getActiveFile()?.path ?? '',
+      )
+      return folder.isRoot() ? '' : normalizeModuleVaultPath(folder.path)
     },
     ensureFolder: async (folderPath) => {
       assertAvailable()

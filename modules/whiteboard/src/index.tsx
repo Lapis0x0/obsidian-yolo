@@ -159,8 +159,9 @@ yolo.registerModule({
     host.lifecycle.add(registerWhiteboardRenameRewriter(host))
 
     // Creation entries: command and ribbon create in the folder configured in
-    // the module settings ("New whiteboard folder"; the vault root when unset,
-    // read per click so a settings change applies without reactivating); the
+    // the module settings ("New whiteboard folder"; Obsidian's default location
+    // for new notes when unset, read per click so a settings change applies
+    // without reactivating); the
     // folder context menu action creates inside the right-clicked folder —
     // the more specific choice always wins over the configured default.
     // The ribbon is a creation entry rather than an "open" one because a board

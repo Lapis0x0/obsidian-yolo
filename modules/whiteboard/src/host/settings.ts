@@ -2,9 +2,10 @@
 // module's pattern (modules/learning/src/host/settings/contribution.ts).
 //
 // One setting today: the vault folder where the "New whiteboard" command and
-// the ribbon icon create boards. The folder context-menu entry is not affected
-// — it already acts on the folder the user right-clicked, which is the more
-// specific choice.
+// the ribbon icon create boards; left empty, boards follow Obsidian's own
+// "Default location for new notes", as its New canvas command does. The
+// folder context-menu entry is not affected — it already acts on the folder
+// the user right-clicked, which is the more specific choice.
 
 import { WHITEBOARD_LOCALES, getWhiteboardText } from '../i18n'
 
@@ -52,16 +53,20 @@ export function contributeWhiteboardSettings(
   settings.contribute(WHITEBOARD_SETTINGS_CONTRIBUTION)
 }
 
-/** Reads the configured new-board folder from the module config, normalized
- * to a vault-relative folder path (`''` is the vault root, the default when
- * unset). Read fresh on every creation entry so a settings change takes
- * effect without reactivating the module. */
+/** The folder a new board goes in: the configured new-board folder,
+ * normalized to a vault-relative path, or — when unset — the folder Obsidian's
+ * "Default location for new notes" picks. Read fresh on every creation entry
+ * so a settings change takes effect without reactivating the module. */
 export function resolveNewBoardFolder(host: YoloModuleHostApiV1): string {
+  return readConfiguredFolder(host) || host.vault.getNewFileParent()
+}
+
+function readConfiguredFolder(host: YoloModuleHostApiV1): string {
   let data: unknown
   try {
     data = host.config.getSnapshot().data
   } catch {
-    // Config is unavailable (module deactivating); the vault root stands in.
+    // Config is unavailable (module deactivating); Obsidian's default stands in.
     return ''
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) return ''

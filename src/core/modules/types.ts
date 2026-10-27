@@ -867,6 +867,14 @@ export type YoloModuleVaultV1 = {
     fileName: string,
     sourcePath: string,
   ): Promise<string>
+  /**
+   * The folder a new file goes in under the user's "Default location for new
+   * notes" setting, relative to the active file (`''` is the vault root).
+   *
+   * Obsidian's own `getNewFileParent`, the one its "New note" and "New
+   * canvas" commands go through.
+   */
+  getNewFileParent(): string
   ensureFolder(folderPath: string): Promise<void>
   createFolder(folderPath: string): Promise<void>
   createText(

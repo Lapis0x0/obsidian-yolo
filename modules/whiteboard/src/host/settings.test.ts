@@ -36,11 +36,15 @@ describe('Whiteboard settings contribution', () => {
 })
 
 describe('resolveNewBoardFolder', () => {
+  // Obsidian's "Default location for new notes" answers 'Inbox' here.
   function createHarness(data: unknown) {
     let snapshot = { schemaVersion: 1, data }
     const host = {
       config: {
         getSnapshot: jest.fn(() => snapshot),
+      },
+      vault: {
+        getNewFileParent: jest.fn(() => 'Inbox'),
       },
     } as unknown as YoloModuleHostApiV1
     return { host, replace: (next: typeof snapshot) => (snapshot = next) }
@@ -51,21 +55,21 @@ describe('resolveNewBoardFolder', () => {
     expect(resolveNewBoardFolder(host)).toBe('Whiteboards')
   })
 
-  it('falls back to the vault root when the setting is absent', () => {
+  it("follows Obsidian's new-note location when the setting is absent", () => {
     const { host } = createHarness({})
-    expect(resolveNewBoardFolder(host)).toBe('')
+    expect(resolveNewBoardFolder(host)).toBe('Inbox')
   })
 
-  it('falls back to the vault root when the config is empty or malformed', () => {
+  it("follows Obsidian's new-note location when the config is empty or malformed", () => {
     for (const data of [undefined, null, 'Whiteboards', []]) {
       const { host } = createHarness(data)
-      expect(resolveNewBoardFolder(host)).toBe('')
+      expect(resolveNewBoardFolder(host)).toBe('Inbox')
     }
   })
 
-  it('falls back to the vault root for non-string values', () => {
+  it("follows Obsidian's new-note location for non-string values", () => {
     const { host } = createHarness({ newBoardFolder: 42 })
-    expect(resolveNewBoardFolder(host)).toBe('')
+    expect(resolveNewBoardFolder(host)).toBe('Inbox')
   })
 
   it('normalizes the folder to a vault-relative path', () => {
@@ -73,14 +77,14 @@ describe('resolveNewBoardFolder', () => {
     expect(resolveNewBoardFolder(host)).toBe('Whiteboards')
   })
 
-  it('treats a blank value as the vault root', () => {
+  it('treats a blank value as unset', () => {
     const { host } = createHarness({ newBoardFolder: '   ' })
-    expect(resolveNewBoardFolder(host)).toBe('')
+    expect(resolveNewBoardFolder(host)).toBe('Inbox')
   })
 
   it('reads the current snapshot, not a cached one', () => {
     const { host, replace } = createHarness({})
-    expect(resolveNewBoardFolder(host)).toBe('')
+    expect(resolveNewBoardFolder(host)).toBe('Inbox')
     replace({ schemaVersion: 1, data: { newBoardFolder: 'Boards' } })
     expect(resolveNewBoardFolder(host)).toBe('Boards')
   })
