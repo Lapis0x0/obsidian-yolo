@@ -516,6 +516,22 @@ button.yolo-agent-mcp-config-copy {
   min-width: 120px;
 }
 
+/* 面板标题行右侧的操作区：批量开关与搜索框。和左侧的统计分开放，
+ * 免得「全部启用」读起来像统计句子的延续。 */
+.yolo-agent-tools-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--size-4-3);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.yolo-agent-tools-panel-actions > .yolo-agent-tool-group-bulk-toggle {
+  flex: none;
+  white-space: nowrap;
+}
+
 .yolo-agent-panel-search input {
   width: 100%;
 }
@@ -741,6 +757,15 @@ button.yolo-agent-tool-group-bulk-toggle:hover {
   .yolo-agent-panel-search {
     flex: none;
     width: 100%;
+  }
+
+  .yolo-agent-tools-panel-actions {
+    width: 100%;
+  }
+
+  .yolo-agent-tools-panel-actions .yolo-agent-panel-search {
+    flex: 1 1 auto;
+    width: auto;
   }
 
   .yolo-agent-tools-panel .yolo-agent-tool-row {

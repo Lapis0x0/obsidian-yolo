@@ -802,6 +802,22 @@ export function AgentsSectionContent({
     })
   }
 
+  const setSkillsEnabled = (skillNames: string[], enabled: boolean) => {
+    setDraftAgent((prev) => {
+      if (!prev) {
+        return prev
+      }
+      const nextPreferences = { ...(prev.skillPreferences ?? {}) }
+      for (const skillName of skillNames) {
+        nextPreferences[skillName] = {
+          ...(nextPreferences[skillName] ?? {}),
+          enabled,
+        }
+      }
+      return { ...prev, skillPreferences: nextPreferences }
+    })
+  }
+
   const setSkillLoadMode = (
     skillName: string,
     loadMode: AssistantSkillLoadMode,
@@ -1199,6 +1215,7 @@ export function AgentsSectionContent({
   )
 
   const enabledSkillCount = skillRows.filter((skill) => skill.enabled).length
+  const allSkillsEnabled = enabledSkillCount === skillRows.length
   // Full injection is the one load mode that costs every request, so it is
   // the only one worth surfacing in the header.
   const alwaysSkillCount = skillRows.filter(
@@ -2088,15 +2105,33 @@ export function AgentsSectionContent({
                     </div>
                   </div>
                   {skillRows.length > 0 && (
-                    <div className="yolo-agent-panel-search">
-                      <ObsidianTextInput
-                        value={skillQuery}
-                        placeholder={t(
-                          'settings.agent.searchSkills',
-                          'Search skills…',
-                        )}
-                        onChange={setSkillQuery}
-                      />
+                    <div className="yolo-agent-tools-panel-actions">
+                      {skillQueryTerms.length === 0 && (
+                        <button
+                          type="button"
+                          className="yolo-agent-tool-group-bulk-toggle"
+                          onClick={() =>
+                            setSkillsEnabled(
+                              skillRows.map((skill) => skill.name),
+                              !allSkillsEnabled,
+                            )
+                          }
+                        >
+                          {allSkillsEnabled
+                            ? t('settings.agent.disableAllTools', 'Disable all')
+                            : t('settings.agent.enableAllTools', 'Enable all')}
+                        </button>
+                      )}
+                      <div className="yolo-agent-panel-search">
+                        <ObsidianTextInput
+                          value={skillQuery}
+                          placeholder={t(
+                            'settings.agent.searchSkills',
+                            'Search skills…',
+                          )}
+                          onChange={setSkillQuery}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
