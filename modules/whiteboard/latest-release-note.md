@@ -1,15 +1,11 @@
-## 0.0.7 Nested Boards 🪟
+## 0.0.8 Edge Jumping & New Board Folder 🧭
 
-- Added nested boards: embed another board in a board and edit it in place.
-- Added export settings, with export to image, PDF and more.
-- Introduced a unified card cache, improving how cards look in the zoomed-out view.
-- Reworked preview layout, fixing text and board cards changing height between preview and editing.
+- Added a custom default folder for new whiteboards; left empty, it follows Obsidian's location for new notes. (#629)
+- Added "Go to other end" for whiteboard edges, to jump back and forth between an annotation and its source passage. (#627)
 
 ---
 
-## 0.0.7 子白板 🪟
+## 0.0.8 连线跳转与新建目录 🧭
 
-- 新增子白板，支持在白板中嵌入并直接编辑其他白板。
-- 添加导出设置，支持导出为图片、PDF 等。
-- 引入统一卡片缓存机制，优化缩略态下各卡片的视觉表现。
-- 重构预览排版机制，修复文字卡片和白板卡片预览态和编辑态的高度不同步的问题。
+- 新建白板支持自定义默认目录，留空时跟随 Obsidian 新建笔记位置。（#629）
+- 白板连线支持「跳到另一端」，可在批注与原文段落之间来回跳转。（#627）
