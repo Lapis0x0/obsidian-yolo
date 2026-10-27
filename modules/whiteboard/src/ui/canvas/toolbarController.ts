@@ -168,6 +168,9 @@ export type ToolbarControllerCallbacks = Readonly<{
     edgeId: EdgeId,
     ends: readonly ('from' | 'to')[],
   ) => void
+  /** Takes the camera to the end of an edge not being looked at (canvas.ts's
+   * `jumpToEdgeEnd`). */
+  jumpToEdgeEnd: (edgeId: EdgeId) => void
   alignSelection: (edge: AlignEdge) => void
   distributeSelection: (axis: DistributeAxis) => void
   tidySelection: () => void
@@ -490,9 +493,16 @@ export class ToolbarController {
       edgeId === undefined ? undefined : this.callbacks.getEdge(edgeId)
     if (!edge) return null
 
+    // Last, and the one thing a board that cannot be edited still offers:
+    // following an edge is reading it, not changing it.
+    const jump: ToolbarItem = {
+      label: this.callbacks.t('toolbar.jumpToOtherEnd'),
+      icon: 'arrow-left-right',
+      onSelect: () => this.callbacks.jumpToEdgeEnd(edge.id),
+    }
     // Same row shape as a node's: delete, colour, then what is specific to an
     // edge. Deleting was this menu's only entry, so "more" goes with it.
-    if (!this.callbacks.canEdit()) return { items: [] }
+    if (!this.callbacks.canEdit()) return { items: [jump] }
     return {
       items: [
         {
@@ -511,6 +521,7 @@ export class ToolbarController {
             this.callbacks.beginRename({ kind: 'edge', id: edge.id }),
         },
         ...this.wholeCardControl(edge),
+        jump,
       ],
     }
   }

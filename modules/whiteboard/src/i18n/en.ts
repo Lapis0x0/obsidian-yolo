@@ -105,6 +105,7 @@ export const en = {
     wholeCard: 'Connect to whole card',
     wholeCardFrom: 'Start: whole card',
     wholeCardTo: 'End: whole card',
+    jumpToOtherEnd: 'Go to other end',
     openReader: 'Open in reader',
     openSpread: 'Spread out pages',
     closeSpread: 'Collapse to reader',

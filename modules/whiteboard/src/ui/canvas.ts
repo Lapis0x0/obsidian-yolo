@@ -117,6 +117,7 @@ import {
   spreadPages,
   spreadTitleMaxWidth,
 } from '../domain/spread'
+import { resolveTextAnchor } from '../domain/textAnchor'
 import { tidyRects } from '../domain/tidy'
 import {
   VirtualizationEngine,
@@ -2226,6 +2227,7 @@ export class WhiteboardCanvas {
       setEdgeEnds: (edgeId, direction) => this.setEdgeEnds(edgeId, direction),
       releaseEdgePassages: (edgeId, ends) =>
         this.releaseEdgePassages(edgeId, ends),
+      jumpToEdgeEnd: (edgeId) => this.jumpToEdgeEnd(edgeId),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
       tidySelection: () => this.tidySelection(),
@@ -3145,6 +3147,105 @@ export class WhiteboardCanvas {
     if (board === this.board) return
     this.applyBoardChange(board)
     this.rebuildEdgesSvg()
+  }
+
+  /**
+   * The edge toolbar's "go to other end": the camera glides to whichever end
+   * of the edge is farther from the middle of the view — the one not being
+   * looked at — and that end's card is turned to the passage or page it
+   * reaches (`turnToEnd`). The edge stays selected, so the same button
+   * brings the camera back: one button for both ways, rather than a "start"
+   * and an "end" the user would have to tell apart.
+   *
+   * The zoom is kept, so the jump reads as a move along the board; only from
+   * the overview tier, where no card shows its text, does it close in as far
+   * as `zoomInToEdit` does.
+   */
+  private jumpToEdgeEnd(edgeId: EdgeId): void {
+    const edge = this.core.getEdge(edgeId)
+    const fromNode = edge && this.nodesById.get(edge.fromNode)
+    const toNode = edge && this.nodesById.get(edge.toNode)
+    if (!edge || !fromNode || !toNode) return
+    const size = this.getViewportSize()
+    const view = this.cameraController.view
+    const middle = screenToWorld(view, {
+      x: size.width / 2,
+      y: size.height / 2,
+    })
+    const geometry = this.edgeLayer.edgeGeometry(edgeId)
+    const centerOf = (node: BoardNode): ScreenPoint => ({
+      x: node.x + node.w / 2,
+      y: node.y + node.h / 2,
+    })
+    const from = geometry?.start ?? centerOf(fromNode)
+    const to = geometry?.end ?? centerOf(toNode)
+    const toFrom =
+      Math.hypot(from.x - middle.x, from.y - middle.y) >=
+      Math.hypot(to.x - middle.x, to.y - middle.y)
+    const node = toFrom ? fromNode : toNode
+    this.turnToEnd(
+      node,
+      toFrom ? edge.fromAnchor : edge.toAnchor,
+      toFrom ? edge.fromPage : edge.toPage,
+    )
+    if (this.overview) {
+      this.cameraController.focusNode(node, OVERVIEW_RESTORE_SCALE * 1.25)
+      return
+    }
+    // A card taller than the view is met at its top, where `turnToEnd` has
+    // just put the passage, rather than at a middle that may be past it.
+    const half = size.height / 2 / view.scale
+    this.cameraController.centerOn(
+      {
+        x: node.x + node.w / 2,
+        y: node.y + Math.min(node.h / 2, half),
+      },
+      size,
+      { glide: true },
+    )
+  }
+
+  /**
+   * Brings what an edge end reaches into its card's view, when it is not in
+   * it already. A text passage moves the card's reading window to the block
+   * it is in; a PDF passage or page is gone to by the card's reader, or —
+   * with no reader drawn yet — becomes the page the reader will open at.
+   * Moving a window is reading, not editing: no history step, as scrolling
+   * a card is none (`commitReadingWindow`).
+   */
+  private turnToEnd(
+    node: BoardNode,
+    anchor: EdgeAnchor | undefined,
+    page: number | undefined,
+  ): void {
+    if (anchor?.kind === 'text') {
+      if (this.placePassage(node.id, anchor)?.state === 'visible') return
+      const source = this.passageSource(node.id)
+      const span = source === null ? null : resolveTextAnchor(source, anchor)
+      if (source === null || !span) return
+      const line = source.slice(0, span[0]).split('\n').length - 1
+      this.commitWithoutHistory(
+        this.boardWithSnappedWindow(this.board, node.id, line, source),
+      )
+      this.contentSyncQueue.add(node.id)
+      return
+    }
+    const target = anchor?.kind === 'pdf' ? anchor.page : page
+    if (target === undefined) return
+    const placement =
+      anchor?.kind === 'pdf'
+        ? this.placePassage(node.id, anchor)
+        : this.placePage(node.id, target)
+    if (placement?.state === 'visible') return
+    const reader = this.cardRenderer.getRuntime(node.id)?.pdfReader
+    if (reader) {
+      reader.revealLocation(
+        target,
+        anchor?.kind === 'pdf' ? (anchor.selection ?? null) : null,
+      )
+      return
+    }
+    this.commitWithoutHistory(boardWithPageWindow(this.board, node.id, target))
   }
 
   /** World point an edge's chrome hangs from: the midpoint of its curve, the

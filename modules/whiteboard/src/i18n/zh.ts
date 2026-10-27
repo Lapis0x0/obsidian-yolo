@@ -100,6 +100,7 @@ export const zh = {
     wholeCard: '连到整张卡片',
     wholeCardFrom: '起点连到整张卡片',
     wholeCardTo: '终点连到整张卡片',
+    jumpToOtherEnd: '跳到另一端',
     openReader: '展开阅读',
     openSpread: '平铺页面',
     closeSpread: '收起为阅读器',

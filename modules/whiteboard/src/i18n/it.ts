@@ -103,6 +103,7 @@ export const it = {
     wholeCard: 'Collega alla scheda intera',
     wholeCardFrom: 'Origine: scheda intera',
     wholeCardTo: 'Destinazione: scheda intera',
+    jumpToOtherEnd: "Vai all'altra estremità",
     openReader: 'Apri nel lettore',
     openSpread: 'Distribuisci le pagine',
     closeSpread: 'Riduci a lettore',

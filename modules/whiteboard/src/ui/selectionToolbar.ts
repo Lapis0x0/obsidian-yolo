@@ -105,6 +105,7 @@ export type ToolbarIconName =
   | 'pencil'
   | 'arrow-right'
   | 'arrow-left'
+  | 'arrow-left-right'
   | 'move-horizontal'
   | 'minus'
   | 'check'
@@ -385,6 +386,12 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     { kind: 'path', d: 'M12 19v3' },
     { kind: 'ring', cx: 12, cy: 12, r: 7 },
     { kind: 'ring', cx: 12, cy: 12, r: 3 },
+  ],
+  'arrow-left-right': [
+    { kind: 'path', d: 'M8 3 4 7l4 4' },
+    { kind: 'path', d: 'M4 7h16' },
+    { kind: 'path', d: 'm16 21 4-4-4-4' },
+    { kind: 'path', d: 'M20 17H4' },
   ],
   'maximize-2': [
     { kind: 'path', d: 'M15 3h6v6' },
