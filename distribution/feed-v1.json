@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 47,
+  "revision": 48,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.12",
+    "version": "1.6.13",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.12",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.13",
     "releaseNotes": {
-      "en": "## 1.6.12 DeepSeek Search & Fixes 🔍\n\n- Added DeepSeek as an optional provider for the search tool.\n- Fixed settings being overwritten with defaults when the settings file could not be read at startup in a synced folder, and stopped auto-indexing from frequently writing to the settings file. (#620)\n- Fixed conversations getting stuck in \"running\" after approving a tool, so new messages could not be sent. (#622)\n- Fixed conversations failing to send requests when the skills directory contains broken links. (#623)\n- Fixed the response usage stats adding up every model's usage when @-mentioning multiple models at once.\n- Fixed the Whiteboard and Learning Mode ribbon icons jumping position and losing their hidden state after a restart.",
-      "zh": "## 1.6.12 DeepSeek 搜索与问题修复 🔍\n\n- 添加 DeepSeek 作为搜索工具的可选 Provider\n- 修复同步目录下启动时读不到设置文件导致配置被默认值覆盖的问题，并停止自动索引对设置文件的高频写入。（#620）\n- 修复审批工具后会话卡在运行中、无法发送新消息。（#622）\n- 修复技能目录存在失效链接时对话无法发出请求。（#623）\n- 修复同时 @ 多个模型时，回复用量统计把各模型的用量叠加在一起的问题\n- 修复白板、学习模式的侧边栏图标重启后位置跳动、隐藏失效的问题"
+      "en": "## 1.6.13 Model Cleanup & Fixes 🧹\n\n- Added \"Enable all / Disable all\" toggles to the Agent skills page. (#621)\n- Removed retired default models, and allowed deleting default models in settings. (#624)\n- Fixed the send button being squeezed on iPad, hiding its icon. (#631)\n- Fixed memory climbing until a black-screen crash when a conversation file is corrupted. (#626)",
+      "zh": "## 1.6.13 模型清理与问题修复 🧹\n\n- 为 Agent 技能页增加「全部启用 / 全部停用」开关。（#621）\n- 移除已停用的默认模型，并允许在设置中删除默认模型。（#624）\n- 修复 iPad 上发送按钮被挤压、图标不显示的问题。（#631）\n- 修复会话文件损坏时内存持续上涨导致黑屏崩溃的问题。（#626）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.12/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.12/main.js",
-        "byteSize": 5817316,
-        "sha256": "8b4ef20e3370d76e7d891051625c2bf70de6ec5e6872ea484d548706b35e5918"
+        "mirrorPath": "core/1.6.13/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/main.js",
+        "byteSize": 5816766,
+        "sha256": "69900ffdabf9d9e8ba15451be7b854f521b8a76efb24da98bf7f0e7857fb676e"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.12/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.12/manifest.json",
+        "mirrorPath": "core/1.6.13/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/manifest.json",
         "byteSize": 412,
-        "sha256": "a93590756e3474785dae4e51bd4dbb5dd8d9be015dd124105c360c4afb05314e"
+        "sha256": "b39f4045a62e8ce6dc1cdff98af91887e8bad1f6a925d6bd01c4d4d8910d3331"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.12/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.12/styles.css",
-        "byteSize": 496523,
-        "sha256": "a446a504255f1dd193b6df8a0416d0fe2533c0c93a3b73adacb9e995f94ccc15"
+        "mirrorPath": "core/1.6.13/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/styles.css",
+        "byteSize": 497437,
+        "sha256": "7da9418e1d11831fe96199472a73fe20caccbf90617e09c3a5a9cd1c2cf4c8a8"
       }
     }
   },
