@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 48,
+  "revision": 49,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.13",
@@ -101,8 +101,8 @@
           "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
         }
       },
-      "version": "0.0.7",
-      "hostApi": "^1.11.0",
+      "version": "0.0.8",
+      "hostApi": "^1.12.0",
       "platforms": [
         "desktop",
         "mobile"
@@ -114,23 +114,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.7",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.8",
       "releaseNotes": {
-        "en": "## 0.0.7 Nested Boards 🪟\n\n- Added nested boards: embed another board in a board and edit it in place.\n- Added export settings, with export to image, PDF and more.\n- Introduced a unified card cache, improving how cards look in the zoomed-out view.\n- Reworked preview layout, fixing text and board cards changing height between preview and editing.",
-        "zh": "## 0.0.7 子白板 🪟\n\n- 新增子白板，支持在白板中嵌入并直接编辑其他白板。\n- 添加导出设置，支持导出为图片、PDF 等。\n- 引入统一卡片缓存机制，优化缩略态下各卡片的视觉表现。\n- 重构预览排版机制，修复文字卡片和白板卡片预览态和编辑态的高度不同步的问题。"
+        "en": "## 0.0.8 Edge Jumping & New Board Folder 🧭\n\n- Added a custom default folder for new whiteboards; left empty, it follows Obsidian's location for new notes. (#629)\n- Added \"Go to other end\" for whiteboard edges, to jump back and forth between an annotation and its source passage. (#627)",
+        "zh": "## 0.0.8 连线跳转与新建目录 🧭\n\n- 新建白板支持自定义默认目录，留空时跟随 Obsidian 新建笔记位置。（#629）\n- 白板连线支持「跳到另一端」，可在批注与原文段落之间来回跳转。（#627）"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.7/release-note.md",
-        "byteSize": 709,
-        "sha256": "07990d30bd6405bfcb7b7fce17937cd375ed1ea21018069741726171e6689a65"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.8/release-note.md",
+        "byteSize": 542,
+        "sha256": "70a388bc1d6fef47e2b0a754c4663e6e9e6cd8476e3e200a34735531b2ca89ef"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/whiteboard/0.0.7/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.7/module.json",
+        "mirrorPath": "modules/whiteboard/0.0.8/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.8/module.json",
         "byteSize": 1867,
-        "sha256": "ca70dbb147ade02101e20d6573aff88ef00ff0e6ce83a8306ee9e70e2c2319e7"
+        "sha256": "130f6032dd3d0582451c41cb061c095b8e42d58983b41edca58712f06962a6ce"
       }
     }
   ]
