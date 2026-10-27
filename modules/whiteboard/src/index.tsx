@@ -28,6 +28,10 @@ import { PictureStore, type PictureStores } from './host/pictureStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import {
+  contributeWhiteboardSettings,
+  resolveNewBoardFolder,
+} from './host/settings'
+import {
   createWhiteboardLocalizedText,
   createWhiteboardTranslation,
 } from './i18n'
@@ -154,14 +158,18 @@ yolo.registerModule({
     // as long as the module is active, independent of any open leaf.
     host.lifecycle.add(registerWhiteboardRenameRewriter(host))
 
-    // Creation entries: command and ribbon create at the vault
-    // root; the folder context menu action creates inside the target folder.
+    // Creation entries: command and ribbon create in the folder configured in
+    // the module settings ("New whiteboard folder"; the vault root when unset,
+    // read per click so a settings change applies without reactivating); the
+    // folder context menu action creates inside the right-clicked folder —
+    // the more specific choice always wins over the configured default.
     // The ribbon is a creation entry rather than an "open" one because a board
     // is a file — there is no home surface for it to open.
+    contributeWhiteboardSettings(host.settings)
     host.workspace.registerCommand({
       id: 'new-whiteboard',
       name: createWhiteboardLocalizedText('command.newWhiteboard'),
-      callback: () => createWhiteboard(host, ''),
+      callback: () => createWhiteboard(host, resolveNewBoardFolder(host)),
     })
     // The ribbon says "YOLO whiteboard", not just "whiteboard": Obsidian's own
     // Canvas ribbon action sits in the same strip under that exact name in
@@ -169,7 +177,7 @@ yolo.registerModule({
     host.workspace.registerRibbonAction({
       icon: WHITEBOARD_ICON,
       title: createWhiteboardLocalizedText('menu.newWhiteboard'),
-      onClick: () => void createWhiteboard(host, ''),
+      onClick: () => void createWhiteboard(host, resolveNewBoardFolder(host)),
     })
     host.workspace.registerFileMenuAction({
       id: 'whiteboard-new-in-folder',

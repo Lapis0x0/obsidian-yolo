@@ -3,6 +3,12 @@ export const en = {
     name: 'YOLO Whiteboard',
     open: 'Open whiteboard',
   },
+  settings: {
+    title: 'Whiteboards',
+    newBoardFolder: 'New whiteboard folder',
+    newBoardFolderDescription:
+      'Vault folder where the "New whiteboard" command and the ribbon icon create new boards. Leave empty for the vault root. The folder is created if it does not exist. Right-clicking a folder still creates inside that folder.',
+  },
   command: {
     exportBoard: 'Export current whiteboard',
     newWhiteboard: 'New whiteboard',

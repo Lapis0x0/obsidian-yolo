@@ -3,6 +3,12 @@ export const it = {
     name: 'Lavagna YOLO',
     open: 'Apri lavagna',
   },
+  settings: {
+    title: 'Lavagne',
+    newBoardFolder: 'Cartella per le nuove lavagne',
+    newBoardFolderDescription:
+      'Cartella del vault in cui il comando "Nuova lavagna" e l\'icona della barra laterale creano le nuove lavagne. Lascia vuoto per la radice del vault; la cartella viene creata se non esiste. Il clic destro su una cartella continua a creare al suo interno.',
+  },
   command: {
     exportBoard: 'Esporta la lavagna corrente',
     newWhiteboard: 'Nuova lavagna',

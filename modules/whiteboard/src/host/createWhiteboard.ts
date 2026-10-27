@@ -1,10 +1,11 @@
-// Shared "create a new whiteboard" flow behind both creation entries
-// (command + folder context menu). The command creates at the vault root
-// (`folderPath` `''`); the folder menu action creates inside the
+// Shared "create a new whiteboard" flow behind the creation entries
+// (command + ribbon + folder context menu). The command and ribbon pass the
+// folder from the module settings ("New whiteboard folder"; `''` — the vault
+// root — when unset, see ./settings.ts); the folder menu action passes the
 // right-clicked folder.
-// Both funnel through this one function so naming, conflict resolution,
-// and open-after-create behavior can never drift between the two entry
-// points (src/index.tsx wires both to this).
+// All funnel through this one function so naming, conflict resolution,
+// and open-after-create behavior can never drift between the entry
+// points (src/index.tsx wires all of them to this).
 
 import { emptyBoard, serializeBoard } from '../domain/fileFormat'
 import { generateBoardFileName } from '../domain/naming'
