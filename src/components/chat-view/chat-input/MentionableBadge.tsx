@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { PropsWithChildren } from 'react'
 
+import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import {
   Mentionable,
@@ -21,6 +22,7 @@ import {
   getBlockMentionableCountInfo,
   getLocalFolderDisplayName,
 } from '../../../utils/chat/mentionable'
+import { ImagePreviewModal } from '../../modals/ImagePreviewModal'
 
 import { getMentionableIcon } from './utils/get-metionable-icon'
 
@@ -378,44 +380,60 @@ function AssistantQuoteBadge({
   )
 }
 
+/**
+ * The attachments shown as badges above a message. In badge mode that is all
+ * of them; in inline mode they are named in the text instead — except
+ * images, whose name says nothing about what they show.
+ */
+export function selectBadgeMentionables<T extends { type: string }>(
+  mentionables: readonly T[],
+  mentionDisplayMode: 'inline' | 'badge',
+): readonly T[] {
+  return mentionDisplayMode === 'badge'
+    ? mentionables
+    : mentionables.filter((mentionable) => mentionable.type === 'image')
+}
+
+/** The image itself, not its file name: clicking it opens it full size. */
 function ImageBadge({
   mentionable,
   onDelete,
-  onClick,
-  isFocused,
-  isExpanded,
-  onToggleExpand,
-  showDeleteButton,
+  showDeleteButton = true,
 }: {
   mentionable: MentionableImage
   onDelete: () => void
-  onClick: () => void
-  isFocused: boolean
-  isExpanded?: boolean
-  onToggleExpand?: () => void
   showDeleteButton?: boolean
 }) {
-  const Icon = getMentionableIcon(mentionable)
+  const app = useApp()
   return (
-    <BadgeBase
-      onDelete={onDelete}
-      onClick={onClick}
-      isFocused={isFocused}
-      isExpanded={isExpanded}
-      onToggleExpand={onToggleExpand}
-      showExpandButton={false}
-      showDeleteButton={showDeleteButton}
-    >
-      <div className="yolo-chat-user-input-file-badge-name">
-        {Icon && (
-          <Icon
-            size={12}
-            className="yolo-chat-user-input-file-badge-name-icon"
-          />
-        )}
-        <span>{mentionable.name}</span>
-      </div>
-    </BadgeBase>
+    <div className="yolo-chat-user-input-image-badge">
+      <button
+        type="button"
+        className="yolo-chat-user-input-image-badge-thumbnail"
+        aria-label={mentionable.name}
+        // Inside a sent message the whole card opens it for editing; the
+        // image opens on its own.
+        onClick={(event) => {
+          event.stopPropagation()
+          new ImagePreviewModal(app, mentionable).open()
+        }}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <img src={mentionable.data} alt="" draggable={false} />
+      </button>
+      {showDeleteButton && (
+        <button
+          type="button"
+          className="yolo-chat-user-input-image-badge-delete"
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+        >
+          <X size={10} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -659,10 +677,6 @@ export default function MentionableBadge({
         <ImageBadge
           mentionable={mentionable}
           onDelete={onDelete}
-          onClick={onClick}
-          isFocused={isFocused}
-          isExpanded={isExpanded}
-          onToggleExpand={onToggleExpand}
           showDeleteButton={showDeleteButton}
         />
       )

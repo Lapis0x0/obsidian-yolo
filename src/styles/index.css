@@ -26,6 +26,7 @@
 @import './yolo-icon.css';
 @import './chat/view-header-title.css';
 @import './chat/input.css';
+@import './chat/image-preview.css';
 @import './chat/message.css';
 @import './chat/popover.css';
 @import './chat/edit-diff.css';

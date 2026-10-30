@@ -90,7 +90,9 @@ import {
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
-import MentionableBadge from './chat-input/MentionableBadge'
+import MentionableBadge, {
+  selectBadgeMentionables,
+} from './chat-input/MentionableBadge'
 import type { SlashCommand } from './chat-input/plugins/mention/SkillSlashPlugin'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatHeader } from './ChatHeader'
@@ -1099,6 +1101,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   ])
 
   const displayMentionablesForInput = inputMessage.mentionables
+  const mainInputBadgeMentionables = selectBadgeMentionables(
+    displayMentionablesForInput,
+    settings.chatOptions.mentionDisplayMode ?? 'inline',
+  )
 
   const currentFileOverride = resolveAssistantIncludeCurrentFileContent(
     selectedAssistant,
@@ -1911,10 +1917,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           />
         ) : null}
       </div>
-      {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
-      displayMentionablesForInput.length > 0 ? (
+      {mainInputBadgeMentionables.length > 0 ? (
         <div className="yolo-chat-user-input-files">
-          {displayMentionablesForInput.map((mentionable) => {
+          {mainInputBadgeMentionables.map((mentionable) => {
             const mentionableKey = getMentionableKey(
               serializeMentionable(mentionable),
             )

@@ -1,0 +1,14 @@
+/* An attached image at full size (ImagePreviewModal). */
+.modal.yolo-image-preview-modal {
+  width: auto;
+  max-width: min(90vw, 1200px);
+}
+
+.yolo-image-preview-modal-image {
+  display: block;
+  max-width: 100%;
+  max-height: 75vh;
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: var(--radius-s);
+}

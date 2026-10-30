@@ -11,7 +11,9 @@ import {
 } from '../../utils/chat/mentionable'
 
 import ChatSkillBadge from './chat-input/ChatSkillBadge'
-import MentionableBadge from './chat-input/MentionableBadge'
+import MentionableBadge, {
+  selectBadgeMentionables,
+} from './chat-input/MentionableBadge'
 import ReadOnlyUserMessageContent from './ReadOnlyUserMessageContent'
 
 type UserMessageCardProps = {
@@ -58,6 +60,12 @@ function UserMessageCard({
 }: UserMessageCardProps) {
   const { settings } = useSettings()
   const mentionDisplayMode = settings.chatOptions.mentionDisplayMode ?? 'inline'
+  const badgeSkills =
+    mentionDisplayMode === 'badge' ? snapshot.selectedSkills : []
+  const badgeMentionables = selectBadgeMentionables(
+    snapshot.mentionables,
+    mentionDisplayMode,
+  )
   const fallbackText = useMemo(
     () =>
       snapshot.text
@@ -84,21 +92,19 @@ function UserMessageCard({
       onClick={interactive ? onClick : undefined}
       onKeyDown={interactive ? handleKeyDown : undefined}
     >
-      {mentionDisplayMode === 'badge' &&
-        (snapshot.mentionables.length > 0 ||
-          snapshot.selectedSkills.length > 0) && (
-          <div className="yolo-chat-user-input-files yolo-user-message-card__badges">
-            {snapshot.selectedSkills.map((skill) => (
-              <ReadOnlySkillBadge key={skill.name} skill={skill} />
-            ))}
-            {snapshot.mentionables.map((mentionable) => (
-              <ReadOnlyBadge
-                key={getMentionableKey(serializeMentionable(mentionable))}
-                mentionable={mentionable}
-              />
-            ))}
-          </div>
-        )}
+      {(badgeSkills.length > 0 || badgeMentionables.length > 0) && (
+        <div className="yolo-chat-user-input-files yolo-user-message-card__badges">
+          {badgeSkills.map((skill) => (
+            <ReadOnlySkillBadge key={skill.name} skill={skill} />
+          ))}
+          {badgeMentionables.map((mentionable) => (
+            <ReadOnlyBadge
+              key={getMentionableKey(serializeMentionable(mentionable))}
+              mentionable={mentionable}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="yolo-chat-user-input-container">
         <div className="yolo-chat-user-input-editor">

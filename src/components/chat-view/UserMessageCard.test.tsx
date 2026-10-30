@@ -9,9 +9,11 @@ jest.mock('./ReadOnlyUserMessageContent', () => ({
   default: ({ fallbackText }: { fallbackText: string }) => fallbackText,
 }))
 
+import type { App } from 'obsidian'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import { AppProvider } from '../../contexts/app-context'
 import type { UserMessageDisplaySnapshot } from '../../types/chat-timeline'
 
 import UserMessageCard from './UserMessageCard'
@@ -44,5 +46,33 @@ describe('UserMessageCard interaction semantics', () => {
 
     expect(html).not.toContain('role="button"')
     expect(html).not.toContain('tabindex=')
+  })
+})
+
+describe('UserMessageCard attachments in inline mode', () => {
+  it('shows an attached image as itself, and leaves the rest to the text', () => {
+    const html = renderToStaticMarkup(
+      <AppProvider app={{} as App}>
+        <UserMessageCard
+          snapshot={{
+            ...snapshot,
+            mentionables: [
+              {
+                type: 'image',
+                name: 'screenshot.png',
+                mimeType: 'image/png',
+                data: 'data:image/png;base64,AAAA',
+              },
+              { type: 'url', url: 'https://example.com/page' },
+            ],
+          }}
+          onClick={jest.fn()}
+        />
+      </AppProvider>,
+    )
+
+    expect(html).toContain('src="data:image/png;base64,AAAA"')
+    expect(html).toContain('aria-label="screenshot.png"')
+    expect(html).not.toContain('example.com')
   })
 })

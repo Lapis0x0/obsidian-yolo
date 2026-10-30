@@ -63,7 +63,7 @@ import {
 import { ChatQuickAccess } from './ChatQuickAccess'
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
-import MentionableBadge from './MentionableBadge'
+import MentionableBadge, { selectBadgeMentionables } from './MentionableBadge'
 import MessageInputCore, { type MessageInputCoreRef } from './MessageInputCore'
 import { ModelSelect } from './ModelSelect'
 import { canAcceptDrop } from './plugins/drop/resolveDrop'
@@ -279,6 +279,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const effectiveMentionables = useMemo(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
+    )
+    const badgeMentionables = useMemo(
+      () => selectBadgeMentionables(effectiveMentionables, mentionDisplayMode),
+      [effectiveMentionables, mentionDisplayMode],
     )
     const effectiveSelectedSkills = useMemo(
       () => (enableSkills ? selectedSkills : []),
@@ -789,27 +793,23 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               ))}
             </div>
           )}
-        {!hideBadgeMentionables &&
-          mentionDisplayMode === 'badge' &&
-          effectiveMentionables.length > 0 && (
-            <div className="yolo-chat-user-input-files">
-              {effectiveMentionables.map((mentionable) => {
-                const mentionableKey = getMentionableKey(
-                  serializeMentionable(mentionable),
-                )
-                return (
-                  <MentionableBadge
-                    key={mentionableKey}
-                    mentionable={mentionable}
-                    onDelete={() =>
-                      handleDeleteMentionableFromBadge(mentionable)
-                    }
-                    onClick={() => {}}
-                  />
-                )
-              })}
-            </div>
-          )}
+        {!hideBadgeMentionables && badgeMentionables.length > 0 && (
+          <div className="yolo-chat-user-input-files">
+            {badgeMentionables.map((mentionable) => {
+              const mentionableKey = getMentionableKey(
+                serializeMentionable(mentionable),
+              )
+              return (
+                <MentionableBadge
+                  key={mentionableKey}
+                  mentionable={mentionable}
+                  onDelete={() => handleDeleteMentionableFromBadge(mentionable)}
+                  onClick={() => {}}
+                />
+              )
+            })}
+          </div>
+        )}
         <div
           className="yolo-chat-user-input-container"
           ref={containerRef}
