@@ -139,8 +139,12 @@ class HostModuleFileView extends TextFileView {
    * document arrived through `setViewData` and belongs to whatever file was
    * loaded then. If that is not the file being saved now, this view has
    * nothing to say about it.
+   *
+   * "The file" is the `TFile` itself, not its path: a rename moves the same
+   * object to a new path without reloading the view, and the document is
+   * still that file's.
    */
-  private document: Readonly<{ path: string | null }> | null = null
+  private document: Readonly<{ file: TFile | null }> | null = null
   private opened = false
   private closed = true
   private unsubscribeSlot: (() => void) | null = null
@@ -213,7 +217,7 @@ class HostModuleFileView extends TextFileView {
     // believes is in it, which turns the save that asked into a no-op
     // (TextFileView.save skips a write when the data is unchanged) instead of
     // a destructive one.
-    if (!this.holdsDocumentFor(this.file?.path ?? null)) {
+    if (!this.holdsDocumentFor(this.file)) {
       return this.data ?? ''
     }
     if (this.instance) {
@@ -226,20 +230,20 @@ class HostModuleFileView extends TextFileView {
     return this.cachedData
   }
 
-  /** Whether the document this view is holding is `path`'s. */
-  private holdsDocumentFor(path: string | null): boolean {
+  /** Whether the document this view is holding is `file`'s. */
+  private holdsDocumentFor(file: TFile | null): boolean {
     const document = this.document
     if (!document) return false
     // A document that arrived with no file to belong to is taken at face
     // value: Obsidian only calls setViewData from its own load path, where a
     // file is always set, so this is the embedding-in-a-test case rather than
     // a stale document.
-    return document.path === null || document.path === path
+    return document.file === null || document.file === file
   }
 
   setViewData(data: string, clear: boolean): void {
     this.cachedData = data
-    this.document = { path: this.file?.path ?? null }
+    this.document = { file: this.file }
     if (this.instance) {
       try {
         this.instance.setViewData(data, clear)

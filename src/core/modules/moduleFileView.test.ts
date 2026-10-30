@@ -392,6 +392,47 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
     expect(hostView.getViewData()).toBe('{"board":"second"}')
   })
 
+  it('keeps answering for its file after the file is renamed', () => {
+    const { factory, handles } = makeFactory()
+    const view: YoloModuleFileViewV1 = {
+      viewType: 'yolo-whiteboard',
+      extensions: ['yoloboard'],
+      name: 'Whiteboard',
+      icon: 'layout-grid',
+      factory,
+    }
+    const slot = new ModuleFileViewSlot(
+      'whiteboard',
+      'yolo-whiteboard',
+      'layout-grid',
+      view.name,
+      makeLocales(),
+    )
+    const hostView = createModuleFileView(
+      {} as never,
+      makePlugin(),
+      slot,
+    ) as unknown as {
+      onOpen(): Promise<void>
+      getViewData(): string
+      setViewData(data: string, clear: boolean): void
+      file: TFile | null
+      data: string | null
+    }
+
+    slot.bind(view)
+    void hostView.onOpen()
+    const board = makeFile('old.yoloboard')
+    hostView.file = board
+    hostView.setViewData('{"board":"loaded"}', true)
+
+    // Obsidian renames by moving the same TFile; the view is not reloaded.
+    board.path = 'new.yoloboard'
+    handles[0].liveData = '{"board":"loaded","edited":true}'
+
+    expect(hostView.getViewData()).toBe('{"board":"loaded","edited":true}')
+  })
+
   it('caches setViewData calls that arrive before onOpen and replays them on bind', () => {
     const { factory, handles } = makeFactory()
     const view: YoloModuleFileViewV1 = {
