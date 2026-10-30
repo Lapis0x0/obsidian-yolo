@@ -173,14 +173,15 @@ export const RUNTIME_CAPABILITIES: Record<
   // behind `AcpCliRuntime` so far: it advertises `loadSession`, image
   // prompts, and permission policies as ACP session modes — including a
   // `plan` one, which is why this is the first ACP runtime with plan mode
-  // turned on. Rewrite stays off because ACP has no call for it, and native
-  // skills/MCP panels stay off because those read through `CliRuntime`
-  // methods the generic ACP runtime does not implement for any agent.
+  // turned on. Rewrite stays off because ACP has no call for it, and the MCP
+  // panel stays off because the generic ACP runtime has no status call for
+  // it. Native skills are on: CodeBuddy marks which advertised commands are
+  // skills (`isSkillCommand` in its profile).
   codebuddy: {
     supportsPlanMode: true,
     showsYoloToggle: true,
     needsWarmup: false,
-    hasNativeSkills: false,
+    hasNativeSkills: true,
     hasNativeMcpPanel: false,
     hasPluginManagement: false,
     hasAssistants: false,

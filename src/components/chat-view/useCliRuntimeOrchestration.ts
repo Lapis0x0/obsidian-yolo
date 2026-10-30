@@ -312,6 +312,9 @@ export function useCliRuntimeOrchestration({
   const refreshCliSkills = useCallback(() => {
     setCliSkillsRefreshTick((tick) => tick + 1)
   }, [])
+  // An ACP agent advertises its skills after the session binds, and again
+  // when they change: each time, the list below is read again.
+  const cliSkillsRevision = cliConversationSnapshot?.skillsRevision ?? 0
   useEffect(() => {
     if (
       !isCliRuntime(activeRuntimeId) ||
@@ -353,6 +356,7 @@ export function useCliRuntimeOrchestration({
     cliConversationController,
     cliRuntimeScope,
     cliSkillsRefreshTick,
+    cliSkillsRevision,
   ])
   useEffect(() => {
     if (activeRuntimeId === 'yolo' || !cliConversationController) return

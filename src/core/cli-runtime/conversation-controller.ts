@@ -60,6 +60,9 @@ export type CliConversationSnapshot = Readonly<{
   >
   /** Latest provider-reported context usage for the input ring; not persisted. */
   contextUsage?: CliContextUsage | null
+  /** Bumped each time the runtime's skills change (`listSkills` answers
+   * differently); not persisted. */
+  skillsRevision?: number
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -1206,6 +1209,16 @@ export class CliConversationController {
       ) {
         this.publish({ ...this.snapshot, sessionRef: event.ref })
       }
+      return
+    }
+
+    // Not transcript content, and sent while the session is still binding:
+    // the runtime's current answer, whenever it arrives.
+    if (event.type === 'skills_changed') {
+      this.publish({
+        ...this.snapshot,
+        skillsRevision: (this.snapshot.skillsRevision ?? 0) + 1,
+      })
       return
     }
 

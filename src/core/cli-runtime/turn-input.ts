@@ -236,15 +236,19 @@ export const buildCliTurnContent = ({
     text,
     references,
   })
-  const selectedClaudeSkill =
-    runtimeId === 'claude-code' ? selectedSkills.at(-1) : undefined
+  // Codex takes skills as structured input; these two run one when the
+  // prompt starts with its slash command.
+  const selectedSlashSkill =
+    runtimeId === 'claude-code' || runtimeId === 'codebuddy'
+      ? selectedSkills.at(-1)
+      : undefined
   const environmentParts = buildEnvironmentParts(
     timeContext,
     environmentContext,
   )
   if (binaryParts.length === 0 && environmentParts.length === 0) {
-    return selectedClaudeSkill
-      ? `/${selectedClaudeSkill.name}${textPart ? ` ${textPart}` : ''}`
+    return selectedSlashSkill
+      ? `/${selectedSlashSkill.name}${textPart ? ` ${textPart}` : ''}`
       : textPart
   }
   const contentParts: ContentPart[] = [
@@ -252,8 +256,8 @@ export const buildCliTurnContent = ({
     ...(textPart ? [{ type: 'text' as const, text: textPart }] : []),
     ...binaryParts,
   ]
-  if (selectedClaudeSkill) {
-    const command = `/${selectedClaudeSkill.name}`
+  if (selectedSlashSkill) {
+    const command = `/${selectedSlashSkill.name}`
     const firstPart = contentParts[0]
     if (firstPart?.type === 'text') {
       contentParts[0] = {

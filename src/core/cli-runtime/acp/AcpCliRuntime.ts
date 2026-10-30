@@ -30,6 +30,7 @@ import type {
   CliRuntimeId,
   CliRuntimeModel,
   CliRuntimeReadyInput,
+  CliRuntimeSkill,
   CliSessionHydration,
   CliSessionRef,
   CliTurnInput,
@@ -137,6 +138,8 @@ export class AcpCliRuntime implements CliRuntime {
   private sessionModeIds: ReadonlySet<string> = new Set()
   private currentSessionModeId: string | null = null
   private thoughtLevel: AcpThoughtLevelState | null = null
+  /** The bound session's skills, as the agent last advertised them. */
+  private skills: CliRuntimeSkill[] = []
   private turnInFlight = false
   private cancelRequested = false
   private disposed = false
@@ -267,6 +270,12 @@ export class AcpCliRuntime implements CliRuntime {
     }
     this.bindSession(host, input.sessionRef)
     await this.applySessionMode()
+  }
+
+  /** Advertised by the agent after the session binds, and again whenever its
+   * skills change — each time with a `skills_changed` event. */
+  async listSkills(): Promise<CliRuntimeSkill[]> {
+    return [...this.skills]
   }
 
   async getConfiguration(
@@ -764,6 +773,10 @@ export class AcpCliRuntime implements CliRuntime {
     this.unregisterSession?.()
     this.aggregator.reset()
     this.activeSessionRef = ref
+    if (this.skills.length > 0) {
+      this.skills = []
+      this.emit({ type: 'skills_changed' })
+    }
     this.unregisterSession = host.registerSession(ref.nativeSessionId, {
       onUpdate: (update) => {
         // Carries context pressure rather than transcript content, so it never
@@ -771,6 +784,19 @@ export class AcpCliRuntime implements CliRuntime {
         if (update.sessionUpdate === 'usage_update') {
           const usage = mapAcpUsageUpdate(update)
           if (usage) this.emit({ type: 'context_usage', usage })
+          return
+        }
+        if (update.sessionUpdate === 'available_commands_update') {
+          const isSkill = this.options.profile?.isSkillCommand
+          if (!isSkill) return
+          this.skills = update.availableCommands
+            .filter((command) => isSkill(command))
+            .map((command) => ({
+              name: command.name,
+              description: command.description,
+              path: `${this.runtimeId}://skills/${encodeURIComponent(command.name)}`,
+            }))
+          this.emit({ type: 'skills_changed' })
           return
         }
         for (const message of this.aggregator.apply(update, this.runtimeId)) {

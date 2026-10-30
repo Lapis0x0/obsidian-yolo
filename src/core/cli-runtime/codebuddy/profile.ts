@@ -46,4 +46,7 @@ export const codebuddyAgentProfile: AcpAgentProfile = {
     if (mode === 'plan') return 'plan'
     return yoloEnabled ? 'bypassPermissions' : 'acceptEdits'
   },
+  // CodeBuddy marks each skill — bundled, user or project — with
+  // `_meta.type: 'skill'`; the rest of its list is TUI commands.
+  isSkillCommand: (command) => command._meta?.type === 'skill',
 }

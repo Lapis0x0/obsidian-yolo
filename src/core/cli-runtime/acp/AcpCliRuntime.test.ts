@@ -1763,6 +1763,97 @@ describe('AcpCliRuntime', () => {
   })
 })
 
+describe('AcpCliRuntime skills', () => {
+  const skillProfile: Partial<AcpAgentProfile> = {
+    isSkillCommand: (command) => command._meta?.type === 'skill',
+  }
+  const commandsUpdate = (sessionId: string, names: string[]) => ({
+    sessionId,
+    update: {
+      sessionUpdate: 'available_commands_update',
+      availableCommands: [
+        { name: 'login', description: 'Sign in' },
+        ...names.map((name) => ({
+          name,
+          description: `The ${name} skill`,
+          _meta: { type: 'skill' },
+        })),
+      ],
+    },
+  })
+  const skillsChanged = (events: CliRuntimeEvent[]) =>
+    events.filter((event) => event.type === 'skills_changed').length
+  const until = async (done: () => boolean) => {
+    for (let tries = 0; !done(); tries += 1) {
+      if (tries > 100) throw new Error('timed out')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+  }
+
+  it('offers the advertised commands its profile calls skills, as last advertised', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    const runtime = createRuntime(agent, skillProfile)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+
+    agent.notify('session/update', commandsUpdate('sess-1', ['review']))
+    await until(() => skillsChanged(events) === 1)
+    expect(await runtime.listSkills()).toEqual([
+      {
+        name: 'review',
+        description: 'The review skill',
+        path: 'hermes://skills/review',
+      },
+    ])
+
+    agent.notify('session/update', commandsUpdate('sess-1', ['review', 'mine']))
+    await until(() => skillsChanged(events) === 2)
+    expect((await runtime.listSkills()).map((skill) => skill.name)).toEqual([
+      'review',
+      'mine',
+    ])
+    await runtime.dispose()
+  })
+
+  it('keeps the commands advertised while a session was still loading', async () => {
+    const agent = new FakeAcpAgent()
+    // CodeBuddy advertises them before `session/load` answers, while the
+    // session has no live listener yet.
+    agent.on('session/load', (message) => {
+      const params = message.params as { sessionId: string }
+      agent.notify('session/update', commandsUpdate(params.sessionId, ['mine']))
+      return {}
+    })
+    const runtime = createRuntime(agent, skillProfile)
+    await runtime.ensureReady({
+      sessionRef: { runtimeId: 'hermes', nativeSessionId: 'sess-2' },
+    })
+
+    expect((await runtime.listSkills()).map((skill) => skill.name)).toEqual([
+      'mine',
+    ])
+    await runtime.dispose()
+  })
+
+  it('offers no skills when its profile does not say which commands are', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/prompt', () => ({ stopReason: 'end_turn' }))
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+
+    agent.notify('session/update', commandsUpdate('sess-1', ['review']))
+    // A turn's round trip: the update before it has been handled by then.
+    await runtime.sendTurn({ content: 'hi' })
+
+    expect(await runtime.listSkills()).toEqual([])
+    expect(skillsChanged(events)).toBe(0)
+    await runtime.dispose()
+  })
+})
+
 describe('AcpCliRuntime thought level', () => {
   const THOUGHT_LEVEL = {
     type: 'select',

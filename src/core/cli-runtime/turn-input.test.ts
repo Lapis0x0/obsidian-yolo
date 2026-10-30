@@ -279,6 +279,23 @@ describe('buildCliTurnContent', () => {
     ).toBe('/review Review this change.')
   })
 
+  it('invokes an explicitly selected CodeBuddy skill through slash syntax', () => {
+    expect(
+      buildCliTurnContent({
+        runtimeId: 'codebuddy',
+        text: 'Review this change.',
+        mentionables: [],
+        selectedSkills: [
+          {
+            name: 'review',
+            description: 'Review code',
+            path: 'codebuddy://skills/review',
+          },
+        ],
+      }),
+    ).toBe('/review Review this change.')
+  })
+
   it('keeps a Claude skill command first while placing environment context above user text', () => {
     const content = buildCliTurnContent({
       runtimeId: 'claude-code',

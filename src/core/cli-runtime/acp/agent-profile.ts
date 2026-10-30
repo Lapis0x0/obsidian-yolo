@@ -1,4 +1,7 @@
-import type { InitializeResponse } from '@agentclientprotocol/sdk'
+import type {
+  AvailableCommand,
+  InitializeResponse,
+} from '@agentclientprotocol/sdk'
 
 import type { CliPermissionProfileUpdate, CliRuntimeId } from '../types'
 
@@ -68,4 +71,14 @@ export type AcpAgentProfile = Readonly<{
    * selecting `auto` leaves the agent on whatever it last had.
    */
   autoThoughtLevelValueId?: string
+  /**
+   * Which of the commands this agent advertises (`available_commands_update`)
+   * are skills, offered in the skills picker and sent as `/name` prompt text.
+   *
+   * ACP's command list mixes skills with the agent's own terminal commands
+   * (login, keybindings, status line…), which mean nothing in a chat pane,
+   * and has no field telling them apart. Agents that leave this undefined
+   * offer no skills.
+   */
+  isSkillCommand?(command: AvailableCommand): boolean
 }>

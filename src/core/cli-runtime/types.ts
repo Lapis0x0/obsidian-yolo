@@ -298,6 +298,10 @@ export type CliRuntimeEvent =
       type: 'compaction_boundary'
       boundary: Omit<CliCompactionBoundary, 'afterMessageId'>
     }
+  | {
+      /** What `listSkills` answers changed: the agent advertised new skills. */
+      type: 'skills_changed'
+    }
 
 export type CliApprovalDecision =
   | 'approve_once'
