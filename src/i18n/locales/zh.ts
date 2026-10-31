@@ -1824,7 +1824,7 @@ export const zh: TranslationKeys = {
     scrollToBottom: '回到底部',
     scrollToBottomWhileStreaming: '回到底部继续跟随',
     queueMessage: {
-      tooltip: '加入排队，等当前回合完成后继续',
+      tooltip: '加入排队，当前步骤结束后交给 Agent',
       hint: '等待 Agent 完成当前步骤...',
       blockedApproval: '请先批准或拒绝待审批工具，再发送新消息。',
       blockedAwaitingInput: '请先在对话中回答模型的提问，再发送新消息。',

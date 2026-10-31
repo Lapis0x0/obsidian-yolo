@@ -35,7 +35,7 @@ export function SubmitButton({
   const sendLabel = t('chat.sendMessage', 'Chat')
   const queueLabel = t(
     'chat.queueMessage.tooltip',
-    '加入排队，等当前回合完成后继续',
+    '加入排队，当前步骤结束后交给 Agent',
   )
   const blockedLabel = t(
     'chat.queueMessage.blockedActiveTooltip',
