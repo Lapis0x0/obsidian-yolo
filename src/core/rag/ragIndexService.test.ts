@@ -88,9 +88,7 @@ describe('RagIndexService', () => {
     await service.initialize()
 
     expect(Object.keys(service.getSnapshot().runs)).toEqual(['kb-a'])
-    expect(Object.keys(JSON.parse(saved.yolo_rag_index_runs))).toEqual([
-      'kb-a',
-    ])
+    expect(Object.keys(JSON.parse(saved.yolo_rag_index_runs))).toEqual(['kb-a'])
   })
 
   it('restores an interrupted sync as sync (idempotent)', async () => {
