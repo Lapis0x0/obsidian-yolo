@@ -4,6 +4,7 @@ import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
 import { listCapabilities } from '../tools/registry'
 
+import { ASSISTANT_INERT_BUILTIN_TOOL_NAMES } from './chat-runtime-profiles'
 import {
   type ModuleToolSetEnablementV1,
   getEnabledAssistantToolNames,
@@ -71,6 +72,10 @@ export function countEnabledVisibleAssistantTools(
   let count = 0
 
   for (const tool of availableTools) {
+    // The editor offers no switch for these, so a count that included them
+    // would report tools the user can neither see nor turn off.
+    if (ASSISTANT_INERT_BUILTIN_TOOL_NAMES.has(tool.name)) continue
+
     let serverName = localServerName
     let shortName = tool.name
 

@@ -1,5 +1,6 @@
 import * as Popover from '@radix-ui/react-popover'
 import {
+  BookOpen,
   Check,
   ChevronDown,
   ChevronUp,
@@ -27,6 +28,8 @@ import {
 } from '../../core/agent/default-assistant'
 import { countEnabledVisibleAssistantTools } from '../../core/agent/tool-display-count'
 import { toModuleToolSetEnablement } from '../../core/modules/moduleToolSetRegistry'
+import { countEnabledAssistantSkills } from '../../core/skills/skillPolicy'
+import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
 import { Assistant } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
@@ -53,6 +56,7 @@ export function AssistantSelector({
   const plugin = usePlugin()
   const [open, setOpen] = useState(false)
   const [availableTools, setAvailableTools] = useState<McpTool[]>([])
+  const skillEntries = useLiteSkillEntries(app, { settings })
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const isControlled = typeof currentAssistantId === 'string'
 
@@ -197,6 +201,11 @@ export function AssistantSelector({
       availableTools,
       moduleToolSetEnablement,
     )
+    const skillCount = countEnabledAssistantSkills({
+      assistant,
+      skills: skillEntries,
+      disabledSkillNames: settings.skills?.disabledSkillIds,
+    })
     return (
       <div className="yolo-assistant-selector-item-meta">
         {modelLabel && (
@@ -211,6 +220,15 @@ export function AssistantSelector({
             {t('settings.agent.toolsCount', '{count} tools').replace(
               '{count}',
               String(toolCount),
+            )}
+          </span>
+        </span>
+        <span className="yolo-assistant-selector-meta-chip">
+          <BookOpen size={10} />
+          <span>
+            {t('settings.agent.skillsCount', '{count} skills').replace(
+              '{count}',
+              String(skillCount),
             )}
           </span>
         </span>

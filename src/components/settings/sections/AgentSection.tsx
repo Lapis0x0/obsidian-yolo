@@ -14,14 +14,18 @@ import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-model'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
-import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
+import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import { McpManager } from '../../../core/mcp/mcpManager'
 import { toModuleToolSetEnablement } from '../../../core/modules/moduleToolSetRegistry'
 import { humanizeSkillName } from '../../../core/skills/liteSkills'
-import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import { countEnabledAssistantSkills } from '../../../core/skills/skillPolicy'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { Assistant } from '../../../types/assistant.types'
-import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
+import {
+  McpServerState,
+  McpServerStatus,
+  McpTool,
+} from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ConfirmModal } from '../../modals/ConfirmModal'
@@ -104,6 +108,29 @@ export function AgentSection({ app }: AgentSectionProps) {
       unsubscribe()
     }
   }, [mcpManager])
+
+  // The catalog the cards count against, so they speak in the agent editor's
+  // units rather than in raw enabled tool names.
+  const [availableTools, setAvailableTools] = useState<McpTool[]>([])
+  useEffect(() => {
+    if (!mcpManager) {
+      return
+    }
+    let isMounted = true
+    void mcpManager
+      .listAvailableTools()
+      .then((tools) => {
+        if (isMounted) {
+          setAvailableTools(tools)
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load available tools for Agent cards', error)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [mcpManager, mcpServers, settings.mcp.builtinCapabilityOptions])
 
   const handleOpenAssistantsModal = (
     initialAssistantId?: string,
@@ -516,24 +543,29 @@ export function AgentSection({ app }: AgentSectionProps) {
                 </span>
                 <span className="yolo-agent-meta-item">
                   <Wrench size={12} />
-                  {`${
-                    getEnabledAssistantToolNames(
-                      assistant,
-                      moduleToolSetEnablement,
-                    ).length
-                  } tools`}
+                  {t('settings.agent.toolsCount', '{count} tools').replace(
+                    '{count}',
+                    String(
+                      countEnabledVisibleAssistantTools(
+                        assistant,
+                        availableTools,
+                        moduleToolSetEnablement,
+                      ),
+                    ),
+                  )}
                 </span>
                 <span className="yolo-agent-meta-item">
                   <BookOpen size={12} />
-                  {`${
-                    allSkillEntries.filter((skill) =>
-                      isSkillEnabledForAssistant({
+                  {t('settings.agent.skillsCount', '{count} skills').replace(
+                    '{count}',
+                    String(
+                      countEnabledAssistantSkills({
                         assistant,
-                        skillName: skill.name,
+                        skills: allSkillEntries,
                         disabledSkillNames: disabledSkillIds,
                       }),
-                    ).length
-                  } skills`}
+                    ),
+                  )}
                 </span>
               </div>
             </>

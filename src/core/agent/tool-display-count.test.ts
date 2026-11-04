@@ -73,25 +73,18 @@ describe('countEnabledVisibleAssistantTools', () => {
     ).toBe(0)
   })
 
-  // The `58 / 56 active` regression: this used to fold only `file_editing`
-  // and `web_access` into one unit each, from a hand-written pair of member
-  // name sets, while the agent editor folds *every* capability into one row.
-  // Any other multi-tool capability therefore counted once per member here
-  // and once per capability there, so the enabled count could exceed the
-  // total. Counted off the registry now, so a capability added later is
-  // folded without anyone remembering to add it to a list.
-  it('counts a multi-tool capability outside the old hand-written pair as one', () => {
-    const enabledToolNames = [
-      'yolo_local__read_file',
-      'yolo_local__write_file',
-      'yolo_local__edit_file',
-    ]
-
+  // `native_files` is on by default, but the editor offers no switch for it
+  // (Max forces it on, and no other mode exposes it). The chat agent selector
+  // once showed `1 tool` beside an editor reading `0 / 5 active` because only
+  // the editor dropped it before counting.
+  it('leaves out built-in tools the assistant cannot switch', () => {
     expect(
-      countEnabledVisibleAssistantTools(
-        assistantWithTools(enabledToolNames),
-        enabledToolNames.map(tool),
-      ),
+      countEnabledVisibleAssistantTools(assistantWithTools([]), [
+        tool('yolo_local__read_file'),
+        tool('yolo_local__write_file'),
+        tool('yolo_local__edit_file'),
+        tool('yolo_local__fs_read'),
+      ]),
     ).toBe(1)
   })
 

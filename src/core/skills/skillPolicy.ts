@@ -63,3 +63,21 @@ export function isSkillEnabledForAssistant({
     defaultLoadMode,
   }).enabled
 }
+
+/** How many of `skills` this assistant has on, after the global disable list. */
+export function countEnabledAssistantSkills({
+  assistant,
+  skills,
+  disabledSkillNames,
+}: {
+  assistant: Assistant | null | undefined
+  skills: readonly { name: string }[]
+  disabledSkillNames?: string[]
+}): number {
+  const disabledSet = getDisabledSkillNameSet(disabledSkillNames)
+  return skills.filter(
+    (skill) =>
+      !disabledSet.has(skill.name) &&
+      resolveAssistantSkillPolicy({ assistant, skillName: skill.name }).enabled,
+  ).length
+}
