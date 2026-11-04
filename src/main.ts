@@ -3957,7 +3957,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.updateCheckResult = null
     this.notifyUpdateCheckListeners()
     if (reload === 'plugin') {
-      reloadPlugin(this.app, this.manifest.id)
+      reloadPlugin(this.app, this.manifest.id, this.manifest.dir!)
     } else {
       window.location.reload()
     }
