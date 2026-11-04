@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 49,
+  "revision": 50,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.13",
+    "version": "1.6.14",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.13",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.14",
     "releaseNotes": {
-      "en": "## 1.6.13 Model Cleanup & Fixes 🧹\n\n- Added \"Enable all / Disable all\" toggles to the Agent skills page. (#621)\n- Removed retired default models, and allowed deleting default models in settings. (#624)\n- Fixed the send button being squeezed on iPad, hiding its icon. (#631)\n- Fixed memory climbing until a black-screen crash when a conversation file is corrupted. (#626)",
-      "zh": "## 1.6.13 模型清理与问题修复 🧹\n\n- 为 Agent 技能页增加「全部启用 / 全部停用」开关。（#621）\n- 移除已停用的默认模型，并允许在设置中删除默认模型。（#624）\n- 修复 iPad 上发送按钮被挤压、图标不显示的问题。（#631）\n- 修复会话文件损坏时内存持续上涨导致黑屏崩溃的问题。（#626）"
+      "en": "## 1.6.14 Image Thumbnails & Fixes 🖼️\n\n- Image attachments in chat now show as thumbnails, and can be clicked to enlarge or removed. (#636)\n- The / menu of the CodeBuddy runtime now supports picking user-level and project-level skills. (#634)\n- Improved the hint for queuing a message while a run is in progress, explaining that the message is handed to the Agent once the current step finishes. (#637)\n- Fixed the tool counts disagreeing between the Agent editor, the Agents cards, and the Agent selector; the Agent selector now shows the number of enabled skills.\n- Fixed all edits made after renaming a whiteboard not being saved. (#633)",
+      "zh": "## 1.6.14 图片缩略图与问题修复 🖼️\n\n- 聊天中的图片附件显示为缩略图，支持点击放大与删除。（#636）\n- CodeBuddy 运行时的 / 菜单支持选用用户级与项目级技能。（#634）\n- 优化运行中排队发送的提示文案，说明消息会在当前步骤结束后交给 Agent。（#637）\n- 修复 Agent 编辑器、Agents 卡片与 Agent 选择器的工具数量不一致的问题；Agent 选择器显示已开启的技能数。\n- 修复白板改名后的编辑全部不会保存的问题。（#633）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.13/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/main.js",
-        "byteSize": 5816766,
-        "sha256": "69900ffdabf9d9e8ba15451be7b854f521b8a76efb24da98bf7f0e7857fb676e"
+        "mirrorPath": "core/1.6.14/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.14/main.js",
+        "byteSize": 5818446,
+        "sha256": "a8c61e7b40e31ae7c81cce880c1f3cba38f39c32e610c92af9d8b2d5c147c6db"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.13/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/manifest.json",
+        "mirrorPath": "core/1.6.14/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.14/manifest.json",
         "byteSize": 412,
-        "sha256": "b39f4045a62e8ce6dc1cdff98af91887e8bad1f6a925d6bd01c4d4d8910d3331"
+        "sha256": "bdc8b55dd060a79dba969203f4e9700f0287ef865617373412fe8b6b55c1989a"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.13/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.13/styles.css",
-        "byteSize": 497437,
-        "sha256": "7da9418e1d11831fe96199472a73fe20caccbf90617e09c3a5a9cd1c2cf4c8a8"
+        "mirrorPath": "core/1.6.14/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.14/styles.css",
+        "byteSize": 499050,
+        "sha256": "a6cbc598a0e51b96a56f962ed403e01e41a68e0f971b469a20cb9b5712ffd6df"
       }
     }
   },
