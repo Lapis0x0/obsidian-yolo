@@ -4100,7 +4100,22 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     void this.runUpdateCheck()
   }
 
+  /**
+   * Runs the startup update check once per session.
+   *
+   * The update mode governs everything this function does:
+   * - `auto`: download and install core + module updates, then report them.
+   * - `notify`: announce available updates and download them ahead of install.
+   * - `off`: nothing — no network request, no announcement, no download.
+   *
+   * In `off` mode the function returns before any network call, so the
+   * distribution Feed (`updates.yoloapp.dev`) is never contacted.
+   */
   private async runUpdateCheck(): Promise<void> {
+    const mode = this.settings.pluginUpdateMode
+    if (mode === 'off') {
+      return
+    }
     // Written by the instance that installed this core and reloaded into us.
     const updatedCore = takeAutoUpdatedCore(this.app, this.manifest.version)
     // The Feed and the module catalog are loaded in every mode: they are also
@@ -4113,11 +4128,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         console.warn('[YOLO] Module update check failed', error)
       }),
     ])
-    // Not gated by the mode: turning prompts off means "don't interrupt me",
-    // not "leave my modules behind the core".
+    // Modules that track the core follow it in both `auto` and `notify` modes,
+    // since both download ahead of the user confirming.
     const followed = await this.followCoreUpdate()
     if (this.isUnloaded) return
-    const mode = this.settings.pluginUpdateMode
     const coreUpdate = core?.hasUpdate ? core : null
     if (mode === 'auto') {
       if (
@@ -4133,7 +4147,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       await this.reportAutoUpdated(updatedCore, [...followed, ...installed])
     } else {
       this.noticeModulesFollowedCore(followed)
-      if (mode === 'off') return
     }
     // What is left is prompted: everything in notify mode, and in auto mode
     // whatever could not be installed here, as the fallback.
