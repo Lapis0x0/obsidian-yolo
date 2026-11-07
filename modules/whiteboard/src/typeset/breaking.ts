@@ -180,6 +180,9 @@ function isCjk(cp: number): boolean {
 
 const isSpace = (ch: string): boolean => ch === ' ' || ch === '\t'
 
+/** A CJK letter — not a mark — which no font kerns against another. */
+const CJK_LETTER = /^[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}]$/u
+
 type AtomKind = 'space' | 'cjk' | 'word' | 'image'
 
 type Atom = {
@@ -349,13 +352,17 @@ function atomsOf(
       // kerning between them is counted, as the browser sets the run whole —
       // but not across a pair of marks that give up room (`trimBetween`):
       // the canvas trims those itself, and the trim is taken below, from
-      // the mark that gives it.
+      // the mark that gives it. Nor between two CJK letters, which are not
+      // kerned: each takes its own width, one every other card's same
+      // character reuses, rather than a pair measured once and thrown away
+      // (marks and quotes are, and keep the pair).
       const lead = i > 0 ? parts[i - 1] : null
       const pair =
         lead !== null &&
         lead.kind === 'cjk' &&
         part.kind === 'cjk' &&
-        trimBetween(lead.text, part.text) !== null
+        (trimBetween(lead.text, part.text) !== null ||
+          (CJK_LETTER.test(lead.text) && CJK_LETTER.test(part.text)))
       let width =
         lead === null || pair
           ? measure(part.text, style.font)

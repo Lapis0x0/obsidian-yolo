@@ -27,8 +27,15 @@ const segmenter = SegmenterClass
   ? new SegmenterClass(undefined, { granularity: 'grapheme' })
   : null
 
+/** Text whose every character is a grapheme of its own: Latin, general
+ * punctuation and CJK, without a joiner, a combining mark or a kana sound
+ * mark among them — most of what a card holds, split without segmenting. */
+const SIMPLE =
+  /^[\u0020-\u02ff\u2010-\u2027\u2030-\u205e\u3000-\u3098\u309b-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7a3\uff01-\uff9d]*$/
+
 /** The graphemes of `text`: what a reader takes for one character each. */
 export function graphemes(text: string): string[] {
+  if (SIMPLE.test(text)) return text.split('')
   if (!segmenter) return Array.from(text)
   const out: string[] = []
   for (const { segment } of segmenter.segment(text)) out.push(segment)

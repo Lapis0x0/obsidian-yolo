@@ -72,13 +72,29 @@ export class Typesetter {
       }
       return index
     }
+    // A glyph's index by font, then text: found without its key being put
+    // together, which is every glyph but a font's first of each.
+    const glyphIndex = new Map<string, Map<string, number>>()
+    const glyphOf = (text: string, font: string): number => {
+      let known = glyphIndex.get(font)
+      if (!known) {
+        known = new Map()
+        glyphIndex.set(font, known)
+      }
+      let index = known.get(text)
+      if (index === undefined) {
+        index = keyOf(glyphKey(text, font))
+        known.set(text, index)
+      }
+      return index
+    }
     const out: TypesetResultCard[] = []
     const transfer: ArrayBuffer[] = []
     for (const card of cards) {
       const sections = parseCard(card.markdown)
       const ops = this.layout(tokens, card, sections)
       const content = cardInstances(ops, {
-        glyphId: (text, font) => keyOf(glyphKey(text, font)),
+        glyphId: glyphOf,
         iconId: (name, size) => keyOf(iconKey(name, size)),
         color: (css) => this.color(css),
         measure: (text, font) => this.measure(text, font),

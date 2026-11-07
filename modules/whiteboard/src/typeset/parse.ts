@@ -225,13 +225,18 @@ export function parseCard(markdown: string): Section[] {
   const source = quoteParagraphsKept(
     itemSpacesDropped(calloutTitlesApart(stripFrontmatter(markdown))),
   )
-  const tree = fromMarkdown(source, {
-    // Emphasis next to CJK punctuation (`从而**“耗竭”**`), which CommonMark
-    // leaves as text and Obsidian does not.
-    extensions: [gfm(), cjkFriendlyExtension()],
-    mdastExtensions: [gfmFromMarkdown()],
-  })
+  const tree = fromMarkdown(source, PARSER)
   return sectionsOf(tree.children)
+}
+
+/** The parser's extensions, made once: they describe syntax and hold no
+ * state, and combining them anew for every card is a good part of its
+ * parse. */
+const PARSER = {
+  // Emphasis next to CJK punctuation (`从而**“耗竭”**`), which CommonMark
+  // leaves as text and Obsidian does not.
+  extensions: [gfm(), cjkFriendlyExtension()],
+  mdastExtensions: [gfmFromMarkdown()],
 }
 
 function sectionsOf(nodes: readonly Flow[]): Section[] {
