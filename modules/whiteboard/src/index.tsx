@@ -97,13 +97,11 @@ yolo.registerModule({
         'image thumbnail',
         reportError,
       ),
-      card: new PictureStore(
-        host.privateStorage.deviceLocal,
-        'card-pictures',
-        'card picture',
-        reportError,
-      ),
     }
+    // Card pictures are typeset now and made again rather than kept
+    // (ui/pictures/typesetCards.ts): what earlier versions kept of them on
+    // this device goes, once, when the first board opens.
+    let staleCardPicturesRemoved = false
     host.lifecycle.add(() => {
       for (const store of Object.values(pictureStores)) store.dispose()
     })
@@ -120,6 +118,12 @@ yolo.registerModule({
         annotationPrefs.load()
         minimapPrefs.load()
         boardCameras.load()
+        if (!staleCardPicturesRemoved) {
+          staleCardPicturesRemoved = true
+          void host.privateStorage.deviceLocal
+            .remove('card-pictures')
+            .catch(() => undefined)
+        }
         const canvas = new WhiteboardCanvas(
           context,
           host,

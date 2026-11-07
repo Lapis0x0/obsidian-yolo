@@ -1,8 +1,8 @@
 // What a card is and shows of its markdown, built one way whether the card is
-// on the board (./cardRenderer.ts) or off it, having its picture taken
-// (../pictures/cardStage.ts): the same element with the same classes, the
-// same slice of its source, the same one-pass render. A picture of a card
-// built any other way would be a picture of some other card.
+// on the board (./cardRenderer.ts) or off it, read for how it looks
+// (../pictures/typesetStyle.ts): the same element with the same classes, the
+// same slice of its source, the same one-pass render. A card built any other
+// way would look like some other card.
 
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { PLAIN_TEXT_AUTO_CLASS } from '../constants'

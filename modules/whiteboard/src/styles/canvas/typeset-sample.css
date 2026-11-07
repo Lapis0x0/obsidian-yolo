@@ -1,0 +1,13 @@
+/* --- the typeset sample -----------------------------------------------------
+ * A card the host renders a fixed sample into, read for how cards look
+ * (ui/pictures/typesetStyle.ts) and taken down at once. Laid out, since what
+ * is read off it is where things are, but never seen nor reached. */
+
+.yolo-whiteboard-typeset-sample {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+}

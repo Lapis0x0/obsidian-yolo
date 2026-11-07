@@ -12,6 +12,11 @@
     "build": "node ../../scripts/build-first-party-modules.mjs --module whiteboard",
     "test:boundary": "node --test ../../scripts/check-whiteboard-module-boundary.test.mjs"
   },
+  "dependencies": {
+    "mdast-util-from-markdown": "^2.0.1",
+    "mdast-util-gfm": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.13",
     "@types/node": "^16.11.6",

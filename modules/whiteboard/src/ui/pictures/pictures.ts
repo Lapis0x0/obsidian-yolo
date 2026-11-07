@@ -106,7 +106,10 @@ export type PictureTurn = Readonly<{
 /** What makes one kind of picture. */
 export type PictureSource = Readonly<{
   id: PictureSourceId
-  store: PictureStore
+  /** Where its pictures are kept on the device. None for a source whose
+   * pictures cost less to make again than to read back: they are made
+   * whenever they are wanted and not held. */
+  store?: PictureStore
   /** What its errors are reported as. */
   label: string
   turn: PictureTurn
@@ -416,6 +419,16 @@ export class Pictures {
       }
       for (const want of wants) {
         if (!this.canDraw(source.id)) break
+        // Nowhere to keep it and no room to hold it: made once there is
+        // room, or once it is nearer than what is held — else it would be
+        // made, dropped and made again on every look.
+        if (
+          !source.store &&
+          full &&
+          (!farthestHeld || want.distance >= farthestHeld.distance)
+        ) {
+          break
+        }
         if (!source.turn.begin(want, this.wake)) break
         const k = refKey(want)
         this.drawing.set(k, source.id)
@@ -543,7 +556,13 @@ export class Pictures {
       metas: new Map(),
     }
     this.groups.set(k, state)
-    void source.store.entries(ref.group, version).then(
+    const store = source.store
+    if (!store) {
+      // Nothing kept: every picture of it is made.
+      state.stored = new Map()
+      return state
+    }
+    void store.entries(ref.group, version).then(
       (entries) => {
         if (this.groups.get(k) !== state) return
         this.complete = false
@@ -567,15 +586,13 @@ export class Pictures {
     const group = this.groups.get(gk)
     const stored = group?.stored?.get(want.key)
     if (!group || !stored) return
+    const store = group.source.store
+    if (!store) return
     const k = refKey(want)
     const level = levelFor(want.screen, stored.width)
     this.reading.add(k)
     void (async () => {
-      const data = await group.source.store.read(
-        group.group,
-        group.version,
-        want.key,
-      )
+      const data = await store.read(group.group, group.version, want.key)
       if (this.groups.get(gk) !== group) return
       if (!data) {
         // Gone from the device after all: made instead.
@@ -636,11 +653,15 @@ export class Pictures {
       // Past the budget it is only kept, not held: the scan reads it back
       // once it is nearer than the farthest held.
       const held = this.bytes < this.budget
+      const store = source.store
+      // A picture made past the budget with nowhere to keep it is made
+      // again when it is wanted nearer.
+      if (!held && !store) return
       const [bitmap, encoded] = await Promise.all([
         held
           ? win.createImageBitmap(canvas, resizedTo(level, fullWidth))
           : null,
-        encode(canvas),
+        store ? encode(canvas) : null,
       ])
       if (this.destroyed || this.groups.get(gk) !== group) {
         bitmap?.close()
@@ -648,14 +669,14 @@ export class Pictures {
       }
       if (bitmap) this.hold(k, { bitmap, level, fullWidth, stamp: want.stamp })
       if (meta !== null) group.metas.set(want.key, meta)
-      if (encoded) {
+      if (encoded && store) {
         const picture: StoredPicture = {
           width: fullWidth,
           height: canvas.height,
           stamp: want.stamp,
           meta,
         }
-        source.store.write(
+        store.write(
           group.group,
           group.version,
           want.key,

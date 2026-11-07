@@ -218,9 +218,7 @@ import type {
 } from './pdf/pdfReader'
 import { PictureAnnotations } from './pdf/pictureAnnotations'
 import { PictureActivity } from './pictures/activity'
-import { CardPictures, cardRef, cardStamp } from './pictures/cardPictures'
 import { cardSignature, isCardPictured } from './pictures/cardSignature'
-import { CardStage } from './pictures/cardStage'
 import { IdleSlices } from './pictures/idle'
 import { ImageFiles, imageRef } from './pictures/imageFiles'
 import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
@@ -230,7 +228,13 @@ import {
   Pictures,
   type WantedPicture,
 } from './pictures/pictures'
-import { PictureStyles } from './pictures/pictureStyles'
+import {
+  TypesetCards,
+  cardRef,
+  cardStamp,
+  nodeColorFrom,
+} from './pictures/typesetCards'
+import { TypesetStyle } from './pictures/typesetStyle'
 import { applyColorToElement } from './selectionToolbar'
 
 /**
@@ -661,15 +665,12 @@ export class WhiteboardCanvas {
   private pictures: Pictures | null = null
   /** The idle time pictures are made in (./pictures/idle.ts). */
   private pictureSlices: IdleSlices | null = null
-  /** The stylesheet card pictures are shown with, and the style
-   * environment they are of (./pictures/pictureStyles.ts). */
-  private pictureStyles: PictureStyles | null = null
+  /** How a card looks, as the typesetter that draws card pictures reads
+   * it (./pictures/typesetStyle.ts). */
+  private typesetStyle: TypesetStyle | null = null
   /** The board's line in the host's activity list while it makes pictures
    * (./pictures/activity.ts). */
   private pictureActivity: PictureActivity | null = null
-  /** Where cards that are not mounted are built to have their pictures
-   * taken (./pictures/cardStage.ts). */
-  private cardStage: CardStage | null = null
   /** The annotations of the PDFs whose pages have pictures, which the
    * overview draws over them (./pdf/pictureAnnotations.ts). */
   private pictureAnnotations: PictureAnnotations | null = null
@@ -865,15 +866,6 @@ export class WhiteboardCanvas {
     this.selfHealMissingFileNodes()
     this.unrecorded = null
     this.unrecordedCreations.clear()
-    // The pictures kept of cards this board no longer has go.
-    const boardPath = this.sourcePathForBoard()
-    if (boardPath !== '') {
-      this.pictureStores.card.keep(
-        boardPath,
-        0,
-        new Set(this.cardNodes.filter(isCardPictured).map((node) => node.id)),
-      )
-    }
     // Baseline for undo, taken after self-heal so the repaired board is the
     // oldest state anyone can get back to. Reset rather than extended: this
     // is a different file, or the same file rewritten from outside, and
@@ -1600,12 +1592,10 @@ export class WhiteboardCanvas {
     this.pictures = null
     this.pictureSlices?.destroy()
     this.pictureSlices = null
-    this.pictureStyles?.destroy()
-    this.pictureStyles = null
+    this.typesetStyle?.destroy()
+    this.typesetStyle = null
     this.pictureActivity?.destroy()
     this.pictureActivity = null
-    this.cardStage?.destroy()
-    this.cardStage = null
     this.pictureAnnotations?.destroy()
     this.pictureAnnotations = null
     this.viewportObserver?.disconnect()
@@ -1776,16 +1766,21 @@ export class WhiteboardCanvas {
       this.getViewportSize().width > 0
     const pictureSlices = new IdleSlices(pictureWin, pictureReady)
     this.pictureSlices = pictureSlices
-    this.pictureStyles?.destroy()
-    const pictureStyles = new PictureStyles({
-      doc,
+    this.typesetStyle?.destroy()
+    const typesetStyle = new TypesetStyle({
+      host: this.host,
+      root,
       boardStyle: styleEl,
-      varsFrom: world,
       slices: pictureSlices,
-      onChange: () => this.pictures?.invalidate(),
+      sourcePath: () => this.sourcePathForBoard(),
+      onChange: () => {
+        // Every card picture's stamp names the look: what is wanted changed.
+        this.pictures?.retain()
+        this.pictures?.invalidate()
+      },
       reportError: (stage, error) => this.reportError(stage, error),
     })
-    this.pictureStyles = pictureStyles
+    this.typesetStyle = typesetStyle
     this.pictureActivity?.destroy()
     const pictureActivity = new PictureActivity({
       win: pictureWin,
@@ -1798,13 +1793,6 @@ export class WhiteboardCanvas {
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.pictureActivity = pictureActivity
-    this.cardStage?.destroy()
-    const cardStage = new CardStage({
-      host: this.host,
-      root,
-      boardPath: () => this.sourcePathForBoard(),
-    })
-    this.cardStage = cardStage
     this.pictures = new Pictures({
       doc,
       sources: [
@@ -1824,11 +1812,10 @@ export class WhiteboardCanvas {
           mtime: (path) => this.fileMtime(path),
           ready: pictureReady,
         }),
-        new CardPictures({
-          store: this.pictureStores.card,
+        new TypesetCards({
           doc,
           slices: pictureSlices,
-          styles: pictureStyles,
+          style: typesetStyle,
           // After the cards on screen: none is waiting to be mounted or
           // built.
           ready: () =>
@@ -1836,18 +1823,20 @@ export class WhiteboardCanvas {
             this.engine.pendingMountCount === 0 &&
             this.contentSyncQueue.size === 0,
           // As its file has it: a picture is of the card, kept for its own
-          // board too, and taken at its own size.
+          // board too, and made at its own size.
           getNode: (id) => {
             const node = this.nodesById.get(id)
             return node && fileNodeOf(node)
           },
           idOf: (want) => this.pictureNodeId(want.group, want.key),
-          mounted: (id) => this.cardRenderer.pictureSource(id),
-          pending: (id) => this.cardRenderer.contentPending(id),
-          stage: cardStage,
-          rootClass: ROOT_CLASS,
-          worldClass: WORLD_CLASS,
-          reportError: (stage, error) => this.reportError(stage, error),
+          readNote: async (path) => {
+            try {
+              return await this.host.vault.readText(path)
+            } catch {
+              return null
+            }
+          },
+          colorOf: nodeColorFrom(root),
         }),
       ],
       wanted: () => this.wantedPictures(),
@@ -4120,7 +4109,7 @@ export class WhiteboardCanvas {
     const cx = (view.left + view.right) / 2
     const cy = (view.top + view.bottom) / 2
     const boardPath = this.sourcePathForBoard()
-    const environment = this.pictureStyles?.environment ?? null
+    const look = this.typesetStyle?.hash ?? null
     // What can show: a card behind a portal that its frame hides has nothing
     // to picture.
     for (const node of this.visibilityNodes) {
@@ -4131,7 +4120,7 @@ export class WhiteboardCanvas {
       if (isCardPictured(node)) {
         // Not before the look it would be of is known, and never a card
         // being written in: what it shows is not on the board yet.
-        if (!environment || boardPath === '') continue
+        if (look === null || boardPath === '') continue
         if (this.editing.isEditing(node.id)) continue
         if (this.cardGeneration.isGenerating(node.id)) continue
         const signature = cardSignature(
@@ -4143,7 +4132,7 @@ export class WhiteboardCanvas {
           ...this.pictureKeyOf(node.id),
           width: node.w,
           distance,
-          stamp: cardStamp(signature, environment),
+          stamp: cardStamp(signature, look),
         }
         continue
       }

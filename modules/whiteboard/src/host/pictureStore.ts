@@ -411,5 +411,4 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export type PictureStores = Readonly<{
   pdf: PictureStore
   image: PictureStore
-  card: PictureStore
 }>

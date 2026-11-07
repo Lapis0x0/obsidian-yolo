@@ -9,10 +9,11 @@ module.exports = {
     '\\.svg$': '<rootDir>/scripts/jest-svg-transform.cjs',
     '\\.md$': '<rootDir>/scripts/jest-md-transform.cjs',
   },
-  // Only the ESM-only markdown parsing chain and the ACP SDK (also ESM-only)
+  // Only the ESM-only markdown parsing chain (GFM included, which the
+  // whiteboard's typesetter parses with) and the ACP SDK (also ESM-only)
   // need transpiling; everything else in node_modules stays untransformed.
   transformIgnorePatterns: [
-    '/node_modules/(?!(mdast-util-from-markdown|mdast-util-to-string|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-stringify-position|@agentclientprotocol/sdk)/)',
+    '/node_modules/(?!(mdast-util-[a-z-]+|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-[a-z-]+|ccount|escape-string-regexp|markdown-table|longest-streak|zwitch|@agentclientprotocol/sdk)/)',
   ],
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],

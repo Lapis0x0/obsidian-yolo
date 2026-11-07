@@ -359,40 +359,6 @@ export class CardRenderer {
     return bodyEl?.classList.contains(CARD_BODY_LIVE_CLASS) === true
   }
 
-  /**
-   * The element of a card that shows its own content and nothing else has
-   * a hold on — what a picture of it is taken from
-   * (../pictures/cardPictures.ts): mounted and not parked, its one-pass
-   * render finished, and neither an editor nor a generation in its body.
-   * The focused card's scrollable preview is not one: it shows where it has
-   * been scrolled to, which is no card's look until it is let go of.
-   */
-  pictureSource(id: NodeId): HTMLElement | null {
-    const runtime = this.runtimeByNodeId.get(id)
-    if (!runtime?.el || !runtime.contentRendered) return null
-    if (runtime.contentRenderer === null || runtime.contentView !== null) {
-      return null
-    }
-    if (this.parkedCards.has(id)) return null
-    if (this.callbacks.isEditing(id) || this.callbacks.isGenerating(id)) {
-      return null
-    }
-    return runtime.el
-  }
-
-  /**
-   * Whether a card on the board is about to show its content — mounted, not
-   * parked, its one-pass render under way or waiting its turn — so that its
-   * picture is better taken from it in a moment (`pictureSource`) than
-   * built again off the board (../pictures/cardStage.ts).
-   */
-  contentPending(id: NodeId): boolean {
-    const runtime = this.runtimeByNodeId.get(id)
-    if (!runtime?.el || this.parkedCards.has(id)) return false
-    if (runtime.contentView !== null || runtime.contentRendered) return false
-    return !runtime.missingFile
-  }
-
   /** Tears every mounted/parked card down to nothing — used by
    * canvas.ts's `teardownAllCards` on a full reload/dispose. */
   destroyAll(): void {

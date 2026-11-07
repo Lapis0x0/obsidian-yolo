@@ -1,6 +1,6 @@
 // What a card's picture of itself (./cardPictures.ts) is a picture of: the
 // fields of its node that change how its content looks, named by a hash.
-// Joined with the style environment's (./pictureStyles.ts), it is the
+// Joined with the look's hash (./typesetStyle.ts), it is the
 // picture's stamp: a picture of another signature is not the card any more.
 //
 // Not its colour: a card's colour is its frame's, drawn around the picture by
