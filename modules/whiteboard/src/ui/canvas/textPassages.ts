@@ -224,6 +224,56 @@ function offsetNear(
   return best
 }
 
+/** Where a passage is in a built card, line by line — a box per line it
+ * covers, those in sight — in the card's own units; or that it is out of
+ * sight above or below. */
+export function placeTextLines(
+  card: HTMLElement,
+  body: HTMLElement,
+  source: string,
+  anchor: TextAnchor,
+):
+  | Readonly<{
+      state: 'visible'
+      lines: readonly Readonly<{
+        top: number
+        bottom: number
+        left: number
+        right: number
+      }>[]
+    }>
+  | Readonly<{ state: 'above' | 'below' }>
+  | null {
+  const range = passageRange(body, source, anchor)
+  if (!range) {
+    const outside = passageBeyond(body, source, anchor)
+    return outside && outside.state !== 'visible' ? outside : null
+  }
+  const rects = Array.from(range.getClientRects()).filter(
+    (rect) => rect.height > 0 && rect.width > 0,
+  )
+  if (rects.length === 0) return null
+  const shown = body.getBoundingClientRect()
+  if (Math.max(...rects.map((rect) => rect.bottom)) <= shown.top) {
+    return { state: 'above' }
+  }
+  if (Math.min(...rects.map((rect) => rect.top)) >= shown.bottom) {
+    return { state: 'below' }
+  }
+  const cardRect = card.getBoundingClientRect()
+  const scale = card.offsetHeight > 0 ? cardRect.height / card.offsetHeight : 0
+  if (!(scale > 0)) return null
+  const lines = rects
+    .filter((rect) => rect.bottom > shown.top && rect.top < shown.bottom)
+    .map((rect) => ({
+      top: (Math.max(rect.top, shown.top) - cardRect.top) / scale,
+      bottom: (Math.min(rect.bottom, shown.bottom) - cardRect.top) / scale,
+      left: (rect.left - cardRect.left) / scale,
+      right: (rect.right - cardRect.left) / scale,
+    }))
+  return { state: 'visible', lines }
+}
+
 /**
  * Where a passage is in its card, measured down from the card's top edge in
  * the card's own units (world units — the card is drawn under the camera's

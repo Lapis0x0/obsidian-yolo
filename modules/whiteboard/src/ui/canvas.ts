@@ -117,7 +117,7 @@ import {
   spreadPages,
   spreadTitleMaxWidth,
 } from '../domain/spread'
-import { resolveTextAnchor } from '../domain/textAnchor'
+import { resolveTextAnchor, textAnchorAt } from '../domain/textAnchor'
 import { tidyRects } from '../domain/tidy'
 import {
   VirtualizationEngine,
@@ -148,6 +148,7 @@ import { type CardPassagePlacement, EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
 import { ExportController } from './canvas/exportController'
 import { FindController, type FindHit } from './canvas/findController'
+import { FindMarks } from './canvas/findMarks'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -167,6 +168,7 @@ import {
   blockAnchorAt,
   paintPassages,
   passageRange,
+  placeTextLines,
   placeTextPassage,
   rangeContains,
   selectionAnchor,
@@ -213,7 +215,11 @@ import {
 import { GpuBoard } from './gpu/gpuBoard'
 import { ImageSizes } from './gpu/imageSizes'
 import { NearImages } from './gpu/nearImages'
-import { placeDrawnPassage } from './gpu/passages'
+import {
+  canvasGlyphAdvance,
+  placeDrawnLines,
+  placeDrawnPassage,
+} from './gpu/passages'
 import { checkTypeset, showTypeset } from './gpu/typesetCheck'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
@@ -511,8 +517,12 @@ export class WhiteboardCanvas {
   private emptyHintEl: HTMLElement | null = null
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
-  /** The board's find (./canvas/findController.ts). */
+  /** The board's find (./canvas/findController.ts), what it found and the
+   * hit stepped to, and their marks on the cards. */
   private find: FindController | null = null
+  private findMarks: FindMarks | null = null
+  /** Where a drawn card's glyphs are, for placing a passage among them. */
+  private readonly glyphAdvance = canvasGlyphAdvance()
   /** The whole board in the viewport's corner (./canvas/minimap.ts). */
   private minimap: Minimap | null = null
   /** Keeps this board's minimap switch in step with a change made from
@@ -1608,6 +1618,8 @@ export class WhiteboardCanvas {
     this.canvasControls?.destroy()
     this.find?.destroy()
     this.find = null
+    this.findMarks?.destroy()
+    this.findMarks = null
     this.canvasControls = null
     this.minimap?.destroy()
     this.minimap = null
@@ -1963,7 +1975,11 @@ export class WhiteboardCanvas {
         group: () => this.sourcePathForBoard(),
       },
       onTypeset: (ids) => {
-        for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
+        for (const id of ids) {
+          this.edgeLayer.redrawPassageEdges(id)
+          // Where a hit of the find is in it is known now.
+          this.findMarks?.cardMoved(id)
+        }
         // The images in them are wanted now.
         this.pictures?.invalidate()
       },
@@ -2599,8 +2615,23 @@ export class WhiteboardCanvas {
           y: (view.top + view.bottom) / 2,
         }
       },
-      reveal: (hit) => this.revealFindHit(hit),
-      showHits: () => {},
+      reveal: (hit, source) => this.revealFindHit(hit, source),
+      showHits: (hits, current) => this.findMarks?.show(hits, current),
+    })
+    this.findMarks = new FindMarks(world, {
+      place: (hit, source) => {
+        const node = this.nodesById.get(hit.id)
+        const placed = node ? this.placeFindHit(hit, source) : null
+        if (!node || placed?.state !== 'visible') return null
+        return placed.lines.map((line) => ({
+          x: node.x + line.left,
+          y: node.y + line.top,
+          w: line.right - line.left,
+          h: line.bottom - line.top,
+        }))
+      },
+      requestFrame: (callback) =>
+        this.context.getWindow().requestAnimationFrame(callback),
     })
     // A freshly built world element carries none of the old one's inline
     // custom properties, so the handle size has to be written again. It is
@@ -2666,7 +2697,9 @@ export class WhiteboardCanvas {
     const target = event.target as Element | null
     const id = (target?.closest?.('[data-node-id]') as HTMLElement | null)
       ?.dataset.nodeId
-    if (id !== undefined) this.passagesMoved(id)
+    if (id === undefined) return
+    this.passagesMoved(id)
+    this.findMarks?.cardMoved(id)
   }
 
   /** Content-freshness: scoped to the whole vault ('' —
@@ -4287,11 +4320,74 @@ export class WhiteboardCanvas {
   }
 
   /** Brings a hit of the board's find to view: its card at a size it can
-   * be read at. */
-  private revealFindHit(hit: FindHit): void {
+   * be read at, and the hit in the middle of the viewport where the card
+   * shows it. */
+  private revealFindHit(hit: FindHit, source: string): void {
     const node = this.nodesById.get(hit.id)
-    if (node)
-      this.cameraController.focusNode(node, OVERVIEW_RESTORE_SCALE * 1.25)
+    if (!node) return
+    const readable = OVERVIEW_RESTORE_SCALE * 1.25
+    if (this.cameraController.view.scale < readable) {
+      this.cameraController.focusNode(node, readable)
+      return
+    }
+    const placed = this.placeFindHit(hit, source)
+    const box =
+      placed?.state === 'visible'
+        ? {
+            x: Math.min(...placed.lines.map((line) => line.left)),
+            y: Math.min(...placed.lines.map((line) => line.top)),
+            right: Math.max(...placed.lines.map((line) => line.right)),
+            bottom: Math.max(...placed.lines.map((line) => line.bottom)),
+          }
+        : { x: 0, y: 0, right: node.w, bottom: node.h }
+    this.cameraController.centerOn(
+      {
+        x: node.x + (box.x + box.right) / 2,
+        y: node.y + (box.y + box.bottom) / 2,
+      },
+      this.getViewportSize(),
+      { glide: true },
+    )
+  }
+
+  /** Where a hit of the find is on its card, line by line, in board units
+   * from the card's top left: from its DOM when it is built, else from what
+   * the GPU scene drew of it. */
+  private placeFindHit(
+    hit: FindHit,
+    source: string,
+  ):
+    | Readonly<{
+        state: 'visible'
+        lines: readonly Readonly<{
+          top: number
+          bottom: number
+          left: number
+          right: number
+        }>[]
+      }>
+    | Readonly<{ state: 'above' | 'below' }>
+    | null {
+    const anchor = textAnchorAt(source, [hit.start, hit.end])
+    const runtime = this.cardRenderer.getRuntime(hit.id)
+    if (runtime?.el && runtime.bodyEl && this.engine.mounted.has(hit.id)) {
+      const placed = placeTextLines(runtime.el, runtime.bodyEl, source, anchor)
+      if (placed?.state !== 'visible') return placed
+      const scale = nodeElementScale(runtime.el)
+      return {
+        state: 'visible',
+        lines: placed.lines.map((line) => ({
+          top: line.top * scale,
+          bottom: line.bottom * scale,
+          left: line.left * scale,
+          right: line.right * scale,
+        })),
+      }
+    }
+    const drawn = this.gpuBoard?.drawnText(hit.id) ?? null
+    return drawn
+      ? placeDrawnLines(drawn, source, anchor, this.glyphAdvance)
+      : null
   }
 
   /** Whether a card is drawn by the canvas rather than built, at the size
@@ -4932,6 +5028,7 @@ export class WhiteboardCanvas {
       this.passagesMoved(id)
       this.refreshPassageMarks()
     })
+    this.findMarks?.cardMoved(id)
   }
 
   /** Where a passage's ends are on screen in `id`'s card, while the card
@@ -5141,7 +5238,9 @@ export class WhiteboardCanvas {
         // Drawn by the GPU scene rather than built: placed in what it laid
         // out.
         const drawn = this.gpuBoard?.drawnText(id)
-        return drawn ? placeDrawnPassage(drawn, source, anchor) : null
+        return drawn
+          ? placeDrawnPassage(drawn, source, anchor, this.glyphAdvance)
+          : null
       }
       return inBoardUnits(
         placeTextPassage(runtime.el, runtime.bodyEl, source, anchor),

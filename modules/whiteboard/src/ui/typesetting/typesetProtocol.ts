@@ -89,12 +89,14 @@ export type TypesetResultCard = Readonly<{
    * in it is found in (../gpu/passages.ts). */
   shown: string
   /** Per run, RUN_FIELDS floats: where its text is in `shown` (start,
-   * end), its box in the card (left, top, right, bottom), and its
-   * baseline. */
+   * end), its box in the card (left, top, right, bottom), its baseline,
+   * and its font, as an index into `fonts`. */
   runs: ArrayBuffer
+  /** The fonts its runs are set in, each once. */
+  fonts: readonly string[]
 }>
 
-export const RUN_FIELDS = 7
+export const RUN_FIELDS = 8
 
 export type TypesetResult = Readonly<{
   cards: readonly TypesetResultCard[]

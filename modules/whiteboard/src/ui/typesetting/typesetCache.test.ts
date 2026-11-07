@@ -29,17 +29,20 @@ function glyphs(ids: readonly number[]): ArrayBuffer {
 
 describe('typesetCache', () => {
   test('a card comes back as it was kept, its glyphs naming its own keys', () => {
+    const font = '400 15px "PingFang SC", ui-sans-serif, sans-serif'
+    const bold = '700 15px "PingFang SC", ui-sans-serif, sans-serif'
     const typeset: TypesetResultCard = {
       id: 'n1',
       rects: new Uint32Array([1, 2, 3]).buffer,
       glyphs: glyphs([7, 2, 7]),
       greeks: new Uint32Array([9]).buffer,
-      runs: new Float32Array([0, 2, 1.5, 0, 10, 20, 15, 4]).buffer,
+      runs: new Float32Array([0, 2, 1.5, 0, 10, 20, 15, 1]).buffer,
       host: false,
       shown: '标题正文',
       images: [{ target: 'a.png', x: 1, y: 2, w: 10, h: 20, radius: 4 }],
+      // One its glyphs are in, one only a blank run is.
+      fonts: [font, bold],
     }
-    const font = '400 15px "PingFang SC", ui-sans-serif, sans-serif'
     const key = (text: string) => `${font}${String.fromCharCode(0)}${text}`
     const batchKeys = ['k0', 'k1', key('二'), 'k3', 'k4', 'k5', 'k6', key('七')]
     const kept = decodeTypeset('n1', encodeTypeset(typeset, batchKeys))
@@ -56,8 +59,9 @@ describe('typesetCache', () => {
     expect([...new Uint32Array(kept.card.rects)]).toEqual([1, 2, 3])
     expect([...new Uint32Array(kept.card.greeks)]).toEqual([9])
     expect([...new Float32Array(kept.card.runs)]).toEqual([
-      0, 2, 1.5, 0, 10, 20, 15, 4,
+      0, 2, 1.5, 0, 10, 20, 15, 1,
     ])
+    expect(kept.card.fonts).toEqual([font, bold])
     expect(kept.card.shown).toBe('标题正文')
     expect(kept.card.images).toEqual(typeset.images)
     expect(kept.card.host).toBe(false)

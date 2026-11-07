@@ -103,7 +103,7 @@ export class Typesetter {
       const rects = content.rects.buffer as ArrayBuffer
       const glyphs = content.glyphs.buffer as ArrayBuffer
       const greeks = content.greeks.buffer as ArrayBuffer
-      const { shown, runs } = this.runsOf(ops)
+      const { shown, runs, fonts } = this.runsOf(ops)
       const images: PlacedImage[] = []
       for (const op of ops) {
         if (op.op !== 'image') continue
@@ -127,6 +127,7 @@ export class Typesetter {
           hasStrayEmphasis(sections),
         shown,
         runs,
+        fonts,
       })
       transfer.push(rects, glyphs, greeks, runs)
     }
@@ -137,12 +138,21 @@ export class Typesetter {
   private runsOf(ops: readonly DrawOp[]): {
     shown: string
     runs: ArrayBuffer
+    fonts: string[]
   } {
     let shown = ''
     const values: number[] = []
+    const fonts: string[] = []
+    const fontIndex = new Map<string, number>()
     for (const op of ops) {
       if (op.op !== 'text' || op.marker) continue
       const { ascent, descent } = this.metrics(op.font)
+      let font = fontIndex.get(op.font)
+      if (font === undefined) {
+        font = fonts.length
+        fontIndex.set(op.font, font)
+        fonts.push(op.font)
+      }
       const start = shown.length
       shown += op.text
       values.push(
@@ -153,9 +163,10 @@ export class Typesetter {
         op.x + this.measure(op.text, op.font),
         op.y + Math.round(descent),
         op.y,
+        font,
       )
     }
-    return { shown, runs: new Float32Array(values).buffer }
+    return { shown, runs: new Float32Array(values).buffer, fonts }
   }
 
   /** A card laid out, as ../../typeset/layout.ts's draw ops. */

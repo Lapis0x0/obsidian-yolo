@@ -239,9 +239,12 @@ input.yolo-whiteboard-pdf-search-input {
  * API on the text layer's transparent spans — the colours Obsidian's own
  * search uses for a match and for the current one. */
 ::highlight(yolo-whiteboard-pdf-search) {
-  background-color: var(--text-highlight-bg);
+  background-color: var(--highlight-background, var(--text-highlight-bg));
 }
 
 ::highlight(yolo-whiteboard-pdf-search-current) {
-  background-color: var(--text-highlight-bg-active, rgba(255, 128, 0, 0.4));
+  background-color: var(
+    --highlight-background-orange,
+    var(--text-highlight-bg-active, rgba(255, 128, 0, 0.4))
+  );
 }

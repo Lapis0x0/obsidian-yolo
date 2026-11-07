@@ -717,6 +717,7 @@ export class GpuBoard implements ContentLayer {
       this.texts.set(node.id, {
         shown: typeset.shown,
         runs: new Float32Array(typeset.runs),
+        fonts: typeset.fonts,
       })
       const images: CardImage[] = []
       for (const image of typeset.images) {

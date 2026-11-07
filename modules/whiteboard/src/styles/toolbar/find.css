@@ -49,3 +49,27 @@ button.yolo-whiteboard-find-button {
   padding: 3px;
   box-shadow: none;
 }
+
+/* What the find found (ui/canvas/findMarks.ts): boxes in the world layer,
+ * over the cards, in Obsidian's highlight colour, the current one in its
+ * orange. (`--text-highlight-bg` is declared empty by current Obsidian.) */
+.yolo-whiteboard-find-marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--layer-cover);
+  pointer-events: none;
+}
+
+.yolo-whiteboard-find-mark {
+  position: absolute;
+  border-radius: 2px;
+  background-color: var(--highlight-background, var(--text-highlight-bg));
+}
+
+.yolo-whiteboard-find-mark-current {
+  background-color: var(
+    --highlight-background-orange,
+    var(--text-highlight-bg-active, rgba(255, 128, 0, 0.4))
+  );
+}

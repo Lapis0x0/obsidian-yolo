@@ -17,8 +17,18 @@ import {
 import type { CardPassagePlacement } from '../canvas/edgeLayer'
 import { RUN_FIELDS } from '../typesetting/typesetProtocol'
 
-/** A card's runs: its shown text, and per run RUN_FIELDS floats. */
-export type DrawnText = Readonly<{ shown: string; runs: Float32Array }>
+import { runOffsetX } from './glyphs'
+
+/** A card's runs: its shown text, per run RUN_FIELDS floats, and the fonts
+ * they name. */
+export type DrawnText = Readonly<{
+  shown: string
+  runs: Float32Array
+  fonts: readonly string[]
+}>
+
+/** A glyph's advance in a font. */
+export type GlyphAdvance = (glyph: string, font: string) => number
 
 /** How many characters at either end of what a card draws are looked for
  * in the source to tell where the drawing starts and ends. */
@@ -31,19 +41,43 @@ export function placeDrawnPassage(
   drawn: DrawnText,
   source: string,
   anchor: TextAnchor,
+  advance: GlyphAdvance,
 ): CardPassagePlacement | null {
+  const placed = placeDrawnLines(drawn, source, anchor, advance)
+  if (!placed || placed.state !== 'visible') return placed
+  const { lines } = placed
+  return {
+    state: 'visible',
+    top: Math.min(...lines.map((line) => line.top)),
+    bottom: Math.max(...lines.map((line) => line.bottom)),
+    left: Math.min(...lines.map((line) => line.left)),
+    right: Math.max(...lines.map((line) => line.right)),
+  }
+}
+
+/** Where a passage is on a drawn card, run by run — a box per piece of a
+ * line it covers — in the card's own units; or that it is not drawn. */
+export function placeDrawnLines(
+  drawn: DrawnText,
+  source: string,
+  anchor: TextAnchor,
+  advance: GlyphAdvance,
+):
+  | Readonly<{ state: 'visible'; lines: readonly PassageBox[] }>
+  | Readonly<{ state: 'above' | 'below' }>
+  | null {
   const span = resolveTextAnchor(source, anchor)
   if (!span) return null
   const found = findLoose(drawn.shown, source.slice(span[0], span[1]), {
     before: source.slice(Math.max(0, span[0] - TEXT_QUOTE_CONTEXT), span[0]),
     after: source.slice(span[1], span[1] + TEXT_QUOTE_CONTEXT),
   })
-  if (!found) return beyond(drawn.shown, source, span)
+  if (!found) {
+    const outside = beyond(drawn.shown, source, span)
+    return outside && outside.state !== 'visible' ? outside : null
+  }
   const [start, end] = found
-  let top = Infinity
-  let bottom = -Infinity
-  let left = Infinity
-  let right = -Infinity
+  const lines: PassageBox[] = []
   const { runs } = drawn
   for (let i = 0; i < runs.length; i += RUN_FIELDS) {
     const runStart = runs[i]
@@ -51,18 +85,39 @@ export function placeDrawnPassage(
     if (runEnd <= start || runStart >= end) continue
     const x0 = runs[i + 2]
     const x1 = runs[i + 4]
-    // Across the run as far as the passage goes: its characters taken as
-    // sharing the run's width evenly.
+    const text = drawn.shown.slice(runStart, runEnd)
+    const font = drawn.fonts[runs[i + 7]] ?? ''
+    // Across the run as far as the passage goes: where the GPU scene puts
+    // its glyphs (./glyphs.ts).
     const at = (offset: number) =>
-      x0 + ((x1 - x0) * (offset - runStart)) / Math.max(1, runEnd - runStart)
-    left = Math.min(left, at(Math.max(start, runStart)))
-    right = Math.max(right, at(Math.min(end, runEnd)))
-    top = Math.min(top, runs[i + 3])
-    bottom = Math.max(bottom, runs[i + 5])
+      x0 +
+      runOffsetX(
+        text,
+        x1 - x0,
+        (glyph) => advance(glyph, font),
+        offset - runStart,
+      )
+    const top = runs[i + 3]
+    const bottom = runs[i + 5]
+    if (!(top < bottom)) continue
+    lines.push({
+      top,
+      bottom,
+      left: at(Math.max(start, runStart)),
+      right: at(Math.min(end, runEnd)),
+    })
   }
-  if (!(top < bottom)) return null
-  return { state: 'visible', top, bottom, left, right }
+  if (lines.length === 0) return null
+  return { state: 'visible', lines }
 }
+
+/** A box in a card, in its own units from its top left. */
+export type PassageBox = Readonly<{
+  top: number
+  bottom: number
+  left: number
+  right: number
+}>
 
 /** A passage the card does not draw: above all it draws, or below. */
 function beyond(
@@ -76,4 +131,26 @@ function beyond(
   if (first && span[1] <= first[0]) return { state: 'above' }
   if (last && span[0] >= last[1]) return { state: 'below' }
   return null
+}
+
+/** Glyph advances as this window's canvas measures them — as the
+ * typesetting worker's does, from the same fonts — each measured once. */
+export function canvasGlyphAdvance(): GlyphAdvance {
+  let ctx: OffscreenCanvasRenderingContext2D | null | undefined
+  const known = new Map<string, Map<string, number>>()
+  return (glyph, font) => {
+    ctx ??= new OffscreenCanvas(1, 1).getContext('2d')
+    let widths = known.get(font)
+    if (!widths) {
+      widths = new Map()
+      known.set(font, widths)
+    }
+    let width = widths.get(glyph)
+    if (width === undefined) {
+      if (ctx && ctx.font !== font) ctx.font = font
+      width = ctx ? ctx.measureText(glyph).width : 0
+      widths.set(glyph, width)
+    }
+    return width
+  }
 }

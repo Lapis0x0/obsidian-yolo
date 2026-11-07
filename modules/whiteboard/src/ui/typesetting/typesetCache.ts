@@ -20,7 +20,7 @@ import {
 
 /** The group version a board's cards are kept under: raised when the shape
  * they are kept in changes, and a group of another is let go of whole. */
-export const TYPESET_GROUP_VERSION = 2
+export const TYPESET_GROUP_VERSION = 3
 
 /** The typesetting worker's code, as built: whatever it changes, a card
  * kept by another is not used. The build names each worker's source by its
@@ -71,6 +71,8 @@ type Header = Readonly<{
   heads: readonly string[]
   /** Its keys, each as a head's index and what follows the separator. */
   keys: readonly (readonly [number, string])[]
+  /** Its runs' fonts, as heads' indices: a run's font is its glyphs'. */
+  fonts: readonly number[]
   /** Byte lengths of rects, glyphs, greeks and runs, in that order. */
   lengths: readonly [number, number, number, number]
 }>
@@ -97,16 +99,18 @@ export function encodeTypeset(
   const buffers = [card.rects, glyphs.buffer, card.greeks, card.runs]
   const heads: string[] = []
   const headIndex = new Map<string, number>()
-  const split = keys.map((key) => {
-    const at = key.indexOf(SEPARATOR)
-    const head = key.slice(0, at)
+  const headOf = (head: string): number => {
     let index = headIndex.get(head)
     if (index === undefined) {
       index = heads.length
       headIndex.set(head, index)
       heads.push(head)
     }
-    return [index, key.slice(at + 1)] as const
+    return index
+  }
+  const split = keys.map((key) => {
+    const at = key.indexOf(SEPARATOR)
+    return [headOf(key.slice(0, at)), key.slice(at + 1)] as const
   })
   const header: Header = {
     host: card.host,
@@ -114,6 +118,7 @@ export function encodeTypeset(
     images: card.images,
     heads,
     keys: split,
+    fonts: card.fonts.map(headOf),
     lengths: [
       buffers[0].byteLength,
       buffers[1].byteLength,
@@ -162,6 +167,7 @@ export function decodeTypeset(id: string, data: ArrayBuffer): KeptCard | null {
         host: header.host,
         shown: header.shown,
         images: header.images,
+        fonts: header.fonts.map((head) => header.heads[head]),
       },
       keys: header.keys.map(
         ([head, rest]) => `${header.heads[head]}${SEPARATOR}${rest}`,

@@ -54,20 +54,54 @@ export function placeRun(
   advance: (glyph: string) => number,
 ): PlacedGlyph[] {
   const parts = graphemes(text)
-  if (parts.length === 0) return []
-  const advances = parts.map(advance)
-  const natural = advances.reduce((sum, a) => sum + a, 0)
-  // Shared between the gaps, so the first glyph stays at the run's start and
-  // the last ends at its end.
-  const gaps = parts.length - 1
-  const extra = gaps > 0 ? (width - natural) / gaps : 0
+  const starts = spread(parts, width, advance)
   const out: PlacedGlyph[] = []
-  let x = 0
   for (let i = 0; i < parts.length; i++) {
-    if (!BLANK.test(parts[i])) out.push({ text: parts[i], x })
-    x += advances[i] + extra
+    if (!BLANK.test(parts[i])) out.push({ text: parts[i], x: starts[i] })
   }
   return out
+}
+
+/** Where the character at `offset` in a run `width` wide starts, from the
+ * run's start — where `placeRun` puts its grapheme; the run's end past its
+ * last. */
+export function runOffsetX(
+  text: string,
+  width: number,
+  advance: (glyph: string) => number,
+  offset: number,
+): number {
+  if (offset <= 0) return 0
+  if (offset >= text.length) return width
+  const parts = graphemes(text)
+  const starts = spread(parts, width, advance)
+  let at = 0
+  for (let i = 0; i < parts.length; i++) {
+    at += parts[i].length
+    if (at > offset) return starts[i]
+  }
+  return width
+}
+
+/** Where each grapheme of a run `width` wide starts: at its own advance,
+ * what kerning changed shared between the gaps, so the first glyph stays at
+ * the run's start and the last ends at its end. */
+function spread(
+  parts: readonly string[],
+  width: number,
+  advance: (glyph: string) => number,
+): number[] {
+  const advances = parts.map(advance)
+  const natural = advances.reduce((sum, a) => sum + a, 0)
+  const gaps = parts.length - 1
+  const extra = gaps > 0 ? (width - natural) / gaps : 0
+  const starts: number[] = []
+  let x = 0
+  for (let i = 0; i < parts.length; i++) {
+    starts.push(x)
+    x += advances[i] + extra
+  }
+  return starts
 }
 
 const PICTOGRAPHIC = /\p{Extended_Pictographic}/u

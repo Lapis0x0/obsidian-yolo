@@ -4,7 +4,7 @@ import { glyphKey, iconKey, parseKey } from '../typesetting/typesetProtocol'
 import { needsHost } from '../typesetting/typesetter'
 
 import { shelfSpot } from './atlas'
-import { fontSize, placeRun, resizeFont } from './glyphs'
+import { fontSize, placeRun, resizeFont, runOffsetX } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'
 import { placeDrawnPassage } from './passages'
 
@@ -25,6 +25,20 @@ describe('placeRun', () => {
   test('takes blanks’ room without drawing them, and keeps clusters whole', () => {
     const placed = placeRun('a 👍🏽b', 8 + 8 + 8 + 8, advance)
     expect(placed.map((p) => p.text)).toEqual(['a', '👍🏽', 'b'])
+  })
+
+  test('runOffsetX is where placeRun puts the character at an offset', () => {
+    // Mixed widths: "当前" 16 each, "ab" 8 each, natural 48, measured 51.
+    const text = '当前ab'
+    const placed = placeRun(text, 51, advance)
+    expect([0, 1, 2, 3].map((i) => runOffsetX(text, 51, advance, i))).toEqual(
+      placed.map((p) => p.x),
+    )
+    expect(runOffsetX(text, 51, advance, 4)).toBe(51)
+    // Inside a cluster, its start.
+    expect(runOffsetX('a👍🏽b', 32, advance, 2)).toBe(
+      runOffsetX('a👍🏽b', 32, advance, 1),
+    )
   })
 })
 
@@ -160,27 +174,48 @@ describe('placeDrawnPassage', () => {
   const drawn = {
     shown: 'Hello worldsecond line',
     runs: new Float32Array([
-      0, 11, 10, 0, 120, 20, 16, 11, 22, 10, 24, 120, 44, 40,
+      0, 11, 10, 0, 120, 20, 16, 0, 11, 22, 10, 24, 120, 44, 40, 0,
     ]),
+    fonts: ['15px f'],
   }
   const source = '# Hello world\n\nsecond line\n'
   const anchor = (start: number, end: number) =>
     textAnchorAt(source, [start, end])
 
-  test('a passage across a run, spread over its characters', () => {
-    // "world" in the first run: characters 6 to 11 of 11.
-    const placed = placeDrawnPassage(drawn, source, anchor(8, 13))
+  const at = (glyph: string) => advance(glyph)
+
+  test('a passage in a run, where its glyphs are drawn', () => {
+    // "world" in the first run: from its 7th glyph — natural 88, spread to
+    // 110, 2.2 more in each of the 10 gaps — to the run's end.
+    const placed = placeDrawnPassage(drawn, source, anchor(8, 13), at)
     expect(placed).toEqual({
       state: 'visible',
       top: 0,
       bottom: 20,
-      left: 10 + (110 * 6) / 11,
+      left: expect.closeTo(10 + 6 * (8 + 2.2), 4) as number,
       right: 120,
     })
   })
 
+  test('in a run of mixed widths, a passage sits on its own glyphs', () => {
+    const mixed = {
+      shown: '当前Workflow项目',
+      // Natural 2 × 16 + 8 × 8 + 2 × 16 = 128, drawn at that.
+      runs: new Float32Array([0, 12, 0, 0, 128, 20, 16, 0]),
+      fonts: ['15px f'],
+    }
+    const text = '当前Workflow项目'
+    const placed = placeDrawnPassage(
+      mixed,
+      text,
+      textAnchorAt(text, [2, 10]),
+      at,
+    )
+    expect(placed).toMatchObject({ left: 32, right: 96 })
+  })
+
   test('across lines it spans them; one not drawn is below', () => {
-    const both = placeDrawnPassage(drawn, source, anchor(2, 26))
+    const both = placeDrawnPassage(drawn, source, anchor(2, 26), at)
     expect(both).toMatchObject({ state: 'visible', top: 0, bottom: 44 })
     const longer = `${source}\nthird part never drawn`
     expect(
@@ -188,6 +223,7 @@ describe('placeDrawnPassage', () => {
         drawn,
         longer,
         textAnchorAt(longer, [longer.length - 5, longer.length]),
+        at,
       ),
     ).toEqual({ state: 'below' })
   })
