@@ -443,9 +443,12 @@ export function contentWidths(
 
 type Placed = { atom: Atom; x: number }
 
-/** What a sum of widths may be over and still fit: the floats' error,
- * no more — a column sized to its widest piece holds it. */
-const FIT_SLACK = 1e-3
+/** The browser's layout unit, in px: where one run of a line ends — an
+ * element's text — the next starts at the unit at or after it; and a line
+ * fits if what it holds, to the unit below, does (measured in Chrome). */
+const UNIT = 1 / 64
+const unitUp = (x: number): number => Math.ceil(x / UNIT - 1e-6) * UNIT
+const unitDown = (x: number): number => Math.floor(x / UNIT + 1e-6) * UNIT
 
 export function breakLines(
   inlines: readonly Inline[],
@@ -505,8 +508,17 @@ export function breakLines(
     filled = 0
     trailing = 0
   }
+  /** Where an atom goes on the line: past the spaces after the last, and
+   * at the unit up from there where it starts a run of its own. */
+  const startOf = (atom: Atom): number => {
+    const end = filled + trailing
+    const last = line[line.length - 1]
+    return last && last.atom.run !== atom.run ? unitUp(end) : end
+  }
   const place = (given: Atom) => {
     let atom = given
+    const start = startOf(given)
+    trailing = start - filled
     if (line.length === 0 && continues(lastPlaced, atom)) {
       const pad = padOf(atom)
       atom = { ...atom, padLeft: atom.padLeft + pad, width: atom.width + pad }
@@ -555,15 +567,15 @@ export function breakLines(
     const after = atoms[i]
     const endPad = continues(last, after) ? padOf(last) : 0
     const fits = (from: number) =>
-      from + width + endPad - endTrim <= maxWidth + FIT_SLACK
-    if (line.length > 0 && !fits(filled + trailing)) finish(chunk[0])
+      unitDown(from + width + endPad - endTrim) <= maxWidth + 1e-6
+    if (line.length > 0 && !fits(startOf(chunk[0]))) finish(chunk[0])
     if (fits(filled) || line.length > 0) {
       for (const atom of chunk) place(atom)
       continue
     }
     // Wider than a line on its own: cut wherever it stops fitting.
     for (const atom of chunk) {
-      if (filled + trailing + atom.width <= maxWidth + FIT_SLACK) {
+      if (unitDown(startOf(atom) + atom.width) <= maxWidth + 1e-6) {
         place(atom)
         continue
       }

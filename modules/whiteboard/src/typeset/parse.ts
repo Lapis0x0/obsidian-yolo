@@ -141,6 +141,35 @@ export function itemSpacesDropped(markdown: string): string {
   return out.join('\n')
 }
 
+const EMPTY_QUOTE = /^((?:[ \t]*>)+)[ \t]*$/
+/** A line that starts a block of its own, outside any paragraph. */
+const BLOCK_START =
+  /^[ \t]*(?:>|#{1,6}(?:[ \t]|$)|(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)|```|~~~|(?:[-*_][ \t]*){3,}$|<|\|)/
+
+/**
+ * A line of text right after a quote's empty line is the quote's to
+ * Obsidian, a paragraph of its own in it, where CommonMark has the quote
+ * end there: it is marked as the quote's. A line that starts a block of
+ * its own (a heading, a list) is outside it to both.
+ */
+export function quoteParagraphsKept(markdown: string): string {
+  const lines = markdown.split('\n')
+  let fence: string | null = null
+  return lines
+    .map((line, i) => {
+      const opened = FENCE.exec(line)
+      if (opened) {
+        fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
+        return line
+      }
+      if (fence !== null || i === 0 || line.trim() === '') return line
+      if (BLOCK_START.test(line)) return line
+      const quote = EMPTY_QUOTE.exec(lines[i - 1])
+      return quote ? `${quote[1]} ${line}` : line
+    })
+    .join('\n')
+}
+
 /** How many columns leading whitespace takes, a tab to the next stop of
  * four. */
 function columns(space: string): number {
@@ -158,8 +187,8 @@ export function stripFrontmatter(markdown: string): string {
 }
 
 export function parseCard(markdown: string): Section[] {
-  const source = itemSpacesDropped(
-    calloutTitlesApart(stripFrontmatter(markdown)),
+  const source = quoteParagraphsKept(
+    itemSpacesDropped(calloutTitlesApart(stripFrontmatter(markdown))),
   )
   const tree = fromMarkdown(source, {
     extensions: [gfm()],

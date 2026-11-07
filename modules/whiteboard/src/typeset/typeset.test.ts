@@ -128,6 +128,14 @@ describe('parseCard', () => {
     expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
   })
 
+  test("a line of text after a quote's empty line is the quote's", () => {
+    const kinds = (markdown: string) =>
+      parseCard(markdown).map((section) => section.block.kind)
+    expect(kinds('> a\n>\nb\n\nafter')).toEqual(['quote', 'paragraph'])
+    expect(kinds('> a\n>\n\nb')).toEqual(['quote', 'paragraph'])
+    expect(kinds('> a\n>\n# h')).toEqual(['quote', 'heading'])
+  })
+
   test('a line of spaces indented into an item keeps a list tight', () => {
     const spread = (markdown: string) => {
       const [section] = parseCard(markdown)

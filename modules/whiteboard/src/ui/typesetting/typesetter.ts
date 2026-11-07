@@ -27,6 +27,9 @@ const MEASURES_KEPT = 8192
 const EMOJI =
   /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F)(?:\p{Emoji_Modifier}|\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F?))*/gu
 
+/** The fonts an emoji falls back to, wherever the board runs. */
+const EMOJI_FONTS = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"'
+
 export class Typesetter {
   private readonly widths = new Map<string, Map<string, number>>()
   private readonly advances = new Map<string, Map<string, number>>()
@@ -207,21 +210,35 @@ export class Typesetter {
     let width = known.get(text)
     if (width === undefined) {
       if (this.ctx.font !== font) this.ctx.font = font
-      // An emoji takes the browser's advance, not the canvas's.
+      // An emoji drawn from the emoji font takes the browser's advance, not
+      // the canvas's; one the font has a glyph of itself is its own.
       let emoji = 0
-      const rest = text.replace(EMOJI, () => {
-        emoji += 1
+      const rest = text.replace(EMOJI, (match) => {
+        emoji += this.emojiAdvance(match, font)
         return ''
       })
       width =
-        emoji === 0
+        emoji === 0 && rest === text
           ? this.ctx.measureText(text).width
-          : this.ctx.measureText(rest).width +
-            emoji * this.emojiEm * fontSize(font)
+          : this.ctx.measureText(rest).width + emoji
       if (known.size >= MEASURES_KEPT) known.clear()
       known.set(text, width)
     }
     return width
+  }
+
+  /** An emoji's advance in `font`: the browser's, an em's worth of it
+   * (`emojiEm`), where the font has no glyph of it and it falls back to the
+   * emoji font — as the canvas measures it the same in both — and the
+   * canvas's own where the font has one. */
+  private emojiAdvance(emoji: string, font: string): number {
+    const size = fontSize(font)
+    this.ctx.font = font
+    const own = this.ctx.measureText(emoji).width
+    this.ctx.font = `${size}px ${EMOJI_FONTS}`
+    const fallback = this.ctx.measureText(emoji).width
+    this.ctx.font = font
+    return Math.abs(own - fallback) < 0.01 ? this.emojiEm * size : own
   }
 
   private metrics(font: string): Readonly<{ ascent: number; descent: number }> {
