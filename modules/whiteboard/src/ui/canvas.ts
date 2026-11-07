@@ -725,9 +725,11 @@ export class WhiteboardCanvas {
       isOverview: () => this.overview,
       portalTierOf: (id) => this.portalTierOf(id),
       drawnCardAt: (point) => {
-        if (this.drawnPortals.size === 0) return null
+        if (this.drawnPortals.size === 0 && !this.gpuBoard) return null
         const id = this.cardAtPoint(point, false)
-        return id !== null && this.portalTierOf(id) === 'drawn' ? id : null
+        if (id === null) return null
+        const node = this.nodesById.get(id)
+        return node && this.isDrawn(node) ? id : null
       },
       applyBoardChange: (next, historyKey) =>
         this.applyBoardChange(next, historyKey),
@@ -1909,6 +1911,7 @@ export class WhiteboardCanvas {
           style: typesetStyle,
           view: this.core.getView,
           isMounted: (id) => this.engine.mounted.has(id),
+          isSelected: (id) => this.selectedIds.has(id),
           redrawOverview: () => this.overviewLayer?.markDirty(),
           readNote: async (path) => {
             try {
@@ -2543,9 +2546,9 @@ export class WhiteboardCanvas {
   private setupVaultSubscription(): void {
     this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
       if (event.type !== 'create') {
-        this.pictures?.fileChanged(
-          event.type === 'rename' ? event.oldPath : event.entry.path,
-        )
+        const path = event.type === 'rename' ? event.oldPath : event.entry.path
+        this.pictures?.fileChanged(path)
+        this.gpuBoard?.fileChanged(path)
       }
       if (event.type === 'delete' && this.pdf.onFileDeleted(event.entry.path)) {
         return
@@ -4025,6 +4028,9 @@ export class WhiteboardCanvas {
       this.board,
       this.pinsRevision,
       this.engine.revision,
+      // What the GPU scene can draw, and the card a selection opens.
+      this.gpuBoard?.revision ?? 0,
+      this.gpuBoard ? this.selectedIds : null,
       // A new object each time: equal to nothing.
       this.interaction.liveNodeRects ? {} : null,
     ]
@@ -4053,7 +4059,7 @@ export class WhiteboardCanvas {
     this.updateOverviewState()
     const moved = this.interaction.liveNodeRects
     this.updateDrawnPortals()
-    if (this.sources.composition.portals.size === 0) {
+    if (this.sources.composition.portals.size === 0 && !this.gpuBoard) {
       if (this.overview) {
         // Two populations, one engine: groups keep their DOM at every tier
         // and are asked the ordinary question, cards are asked one they
@@ -4138,7 +4144,23 @@ export class WhiteboardCanvas {
   private isDrawn(node: BoardNode): boolean {
     if (node.type === 'group') return false
     const tier = this.portalTierOf(node.id)
-    return tier === null ? this.overview : tier === 'drawn'
+    if (tier !== null) return tier === 'drawn'
+    return this.overview || this.gpuDraws(node.id)
+  }
+
+  /**
+   * Whether the GPU scene draws a card near to as well as far away, rather
+   * than its DOM being built: a card it can typeset whole (./gpu/gpuBoard.ts's
+   * `drawable`) that nothing needs the DOM of — not being typed or generated
+   * in, not under a gesture (pinned), and not the one card selected, which is
+   * how a card is opened to select and copy its text.
+   */
+  private gpuDraws(id: NodeId): boolean {
+    if (!this.gpuBoard?.drawable(id)) return false
+    if (this.pinnedIds.has(id)) return false
+    if (this.selectedIds.size === 1 && this.selectedIds.has(id)) return false
+    if (this.editing.isEditing(id)) return false
+    return !this.cardGeneration.isGenerating(id)
   }
 
   /** Every page of every open spread, the pages a folded PDF card shows

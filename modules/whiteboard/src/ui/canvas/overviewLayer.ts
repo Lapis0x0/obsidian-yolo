@@ -115,11 +115,12 @@ type Surface = Readonly<{
 }>
 
 /**
- * Another layer that draws the content of some of the cards this one draws
- * the surfaces of: the GPU scene (../gpu/gpuBoard.ts), over this canvas and
- * under the world. Each frame this layer draws, it starts a pass and asks,
- * card by card, whether the other draws it; a card it says yes to gets its
- * surface here and no picture.
+ * Another layer that draws some of the cards this one would: the GPU scene
+ * (../gpu/gpuBoard.ts), over this canvas and under the world. Each frame
+ * this layer draws, it starts a pass and asks, card by card, whether the
+ * other draws it; a card it says yes to it draws whole — surface, colour,
+ * border, selection and content — and this layer draws nothing of it but its
+ * title line.
  */
 export type ContentLayer = Readonly<{
   begin: () => void
@@ -976,8 +977,6 @@ export class OverviewLayer {
       surface.screen && unit === 1 && nodes === this.callbacks.getCardNodes()
         ? this.callbacks.contentLayer()
         : null
-    /** The cards whose content the content layer draws this frame. */
-    const elsewhere = new Set<NodeId>()
     for (const node of nodes) {
       if (skip?.(node.id)) continue
       const moving = this.motions.has(node.id)
@@ -1015,11 +1014,7 @@ export class OverviewLayer {
       // The rest of it is drawn on its own, at its own opacity
       // (`drawMotions`).
       if (moving) continue
-      if (content?.claim(node, rect, view.scale)) {
-        elsewhere.add(node.id)
-        // Bare text has no surface: the content layer draws all of it.
-        if (isPlainText(node)) continue
-      }
+      if (content?.claim(node, rect, view.scale)) continue
       if (isPlainText(node)) texts.push(item)
       else if (badge && isSpreadTitle(node)) {
         titles.push({
@@ -1078,7 +1073,6 @@ export class OverviewLayer {
     //    borders below.
     const pictures = new Map<NodeId, ImageBitmap>()
     for (const card of visible) {
-      if (elsewhere.has(card.node.id)) continue
       const picture = this.pictureOf(card.node, card, palette.dark)
       if (picture) pictures.set(card.node.id, picture)
     }
@@ -1090,7 +1084,7 @@ export class OverviewLayer {
       const bucket = byColor.get(color)
       if (bucket) bucket.push(card)
       else byColor.set(color, [card])
-      const pictured = pictures.has(card.node.id) || elsewhere.has(card.node.id)
+      const pictured = pictures.has(card.node.id)
       if (pictured && own === null) continue
       const alpha = pictured
         ? OVERVIEW_THEMED_CARD_WASH_ALPHA[palette.dark ? 'dark' : 'light']
@@ -1127,7 +1121,7 @@ export class OverviewLayer {
         )
       }
     }
-    const pictured = new Set([...pictures.keys(), ...elsewhere])
+    const pictured = new Set(pictures.keys())
 
     // 3. Borders. An uncoloured card takes the theme's border token at full
     //    strength; a coloured one takes its own colour at the stylesheet's 70%.

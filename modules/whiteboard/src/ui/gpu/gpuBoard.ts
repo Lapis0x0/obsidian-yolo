@@ -25,6 +25,10 @@ import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
+import {
+  OVERVIEW_THEMED_BORDER_ALPHA,
+  OVERVIEW_THEMED_CARD_WASH_ALPHA,
+} from '../constants'
 import type { TypesetStyle } from '../pictures/typesetStyle'
 import type { Look, TypesetClient } from '../typesetting/typesetClient'
 import {
@@ -33,8 +37,8 @@ import {
   parseKey,
 } from '../typesetting/typesetProtocol'
 
-import { GLYPH_WORDS } from './instances'
-import { GpuScene } from './scene'
+import { GLYPH_WORDS, packColor } from './instances'
+import { GpuScene, type SceneFrame } from './scene'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
 
@@ -55,6 +59,12 @@ const SETTLE_MS = 120
 /** The smallest a card's body type is drawn, in device pixels: below it a
  * card's picture says as much, for far less. */
 const MIN_BODY_DEVICE_PX = 5
+/** A card's corners (styles/cards/card.css), and its border and a
+ * selected one's, at least that many CSS pixels wide however far away. */
+const CARD_RADIUS = 10
+const CARD_BORDER = 1
+const SELECTED_BORDER = 2
+
 /** Cards a call to the worker typesets, and calls in flight at once: few
  * enough that what the overview asks for next is not queued behind the
  * whole board. */
@@ -74,6 +84,7 @@ export type GpuBoardDeps = Readonly<{
    * again for that; bare text's DOM is transparent and would not cover this
    * layer's drawing, so a mounted card is dropped here. */
   isMounted: (id: string) => boolean
+  isSelected: (id: string) => boolean
   /** Has the overview draw again: it asks anew which cards this layer
    * draws. */
   redrawOverview: () => void
@@ -103,8 +114,19 @@ export class GpuBoard implements ContentLayer {
   private claimed = new Map<string, CardRect>()
   /** What the scene shows now. */
   private shown = new Set<string>()
+  /** The board's palette as RGBA8 words, read once a look. */
+  private palette: Palette | null = null
+  private readonly colorCtx: CanvasRenderingContext2D
   /** Cards asked for that are not typeset yet: typeset first. */
   private readonly wanted = new Set<string>()
+  /** The typeset cards that hold only what the typesetter draws: what may
+   * be drawn rather than built at any zoom (`drawable`). */
+  private readonly drawables = new Set<string>()
+  private drawableRevision = 0
+  /** Cards whose content changed since they were last typeset: what the
+   * scene has of them is out of date, so they are built until it is not.
+   * A new look does not count — the old one is near enough meanwhile. */
+  private readonly changed = new Set<string>()
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -114,6 +136,11 @@ export class GpuBoard implements ContentLayer {
     // DEBUG(p4): reachable from the console while the scene is developed.
     Object.assign(this.canvas, { gpuBoard: this })
     this.scene = new GpuScene(this.canvas)
+    const ctx = doc.createElement('canvas').getContext('2d', {
+      willReadFrequently: true,
+    })
+    if (!ctx) throw new Error('no 2D canvas')
+    this.colorCtx = ctx
   }
 
   /** The board's cards, bottom to top. */
@@ -126,6 +153,10 @@ export class GpuBoard implements ContentLayer {
       cards.push(node.id)
       const before = this.nodes.get(node.id)
       if (before === node) continue
+      if (before && contentOf(before) !== contentOf(node)) {
+        this.changed.add(node.id)
+        this.drawableRevision += 1
+      }
       this.nodes.set(node.id, node)
       this.pending.set(node.id, { node, text: null, reading: false })
     }
@@ -134,9 +165,39 @@ export class GpuBoard implements ContentLayer {
       this.nodes.delete(id)
       this.pending.delete(id)
       this.scene.removeCard(id)
+      this.setDrawable(id, false)
+      this.changed.delete(id)
     }
     this.scene.setOrder(cards)
     this.dirty = true
+  }
+
+  /** A file changed: the note cards showing it are typeset again, and
+   * built until they are. */
+  fileChanged(path: string): void {
+    for (const node of this.nodes.values()) {
+      if (node.type !== 'file' || node.file !== path) continue
+      this.pending.set(node.id, { node, text: null, reading: false })
+      this.changed.add(node.id)
+      this.drawableRevision += 1
+    }
+  }
+
+  /** Whether a card may be drawn rather than built near to: it is
+   * typeset, and holds nothing only the host's renderer shows as it should
+   * (../typesetting/typesetter.ts's `needsHost`). */
+  drawable(id: string): boolean {
+    return (
+      this.drawables.has(id) &&
+      this.deps.typesetter.usable &&
+      this.scene.usable &&
+      !this.changed.has(id)
+    )
+  }
+
+  /** Changes whenever `drawable` may answer differently. */
+  get revision(): number {
+    return this.drawableRevision
   }
 
   begin(): void {
@@ -216,12 +277,15 @@ export class GpuBoard implements ContentLayer {
     }
     for (const [id, rect] of this.claimed) {
       const card = this.scene.cardOf(id)
-      if (!card) continue
+      const node = this.nodes.get(id)
+      if (!card || !node) continue
+      const frame = this.frameOf(node, this.deps.isSelected(id))
       if (
         card.x !== rect.x ||
         card.y !== rect.y ||
         card.w !== rect.w ||
-        card.h !== rect.h
+        card.h !== rect.h ||
+        !sameFrame(card.frame, frame)
       ) {
         this.scene.setCard(id, {
           ...card,
@@ -229,6 +293,7 @@ export class GpuBoard implements ContentLayer {
           y: rect.y,
           w: rect.w,
           h: rect.h,
+          frame,
         })
         this.dirty = true
       }
@@ -248,6 +313,7 @@ export class GpuBoard implements ContentLayer {
    * typeset again. What is drawn stays until its replacement comes. */
   private newLook(hash: string): void {
     this.styleHash = hash
+    this.palette = null
     this.generation += 1
     for (const node of this.nodes.values()) {
       this.pending.set(node.id, { node, text: null, reading: false })
@@ -313,6 +379,13 @@ export class GpuBoard implements ContentLayer {
     }
   }
 
+  private setDrawable(id: string, drawable: boolean): void {
+    if (this.drawables.has(id) === drawable) return
+    if (drawable) this.drawables.add(id)
+    else this.drawables.delete(id)
+    this.drawableRevision += 1
+  }
+
   /** Reads a note's text, for a later batch. */
   private read(id: string, pending: Pending): void {
     pending.reading = true
@@ -349,6 +422,8 @@ export class GpuBoard implements ContentLayer {
         used.add(glyphs[i])
       }
       const { node } = entry.pending
+      this.setDrawable(node.id, !typeset.host)
+      if (this.changed.delete(node.id)) this.drawableRevision += 1
       // Not shown until the overview claims it: it draws the surface.
       const before = this.scene.cardOf(node.id)
       this.scene.setCard(node.id, {
@@ -356,7 +431,7 @@ export class GpuBoard implements ContentLayer {
         y: node.y,
         w: node.w,
         h: node.h,
-        frame: null,
+        frame: before?.frame ?? null,
         fade: entry.card.plain ? 0 : FADE,
         content: {
           rects: new Uint32Array(typeset.rects),
@@ -368,6 +443,71 @@ export class GpuBoard implements ContentLayer {
     }
     // The overview draws their pictures until it asks again.
     this.deps.redrawOverview()
+  }
+
+  /**
+   * A card's frame as the overview draws it (../canvas/overviewLayer.ts's
+   * `drawCards`): its surface, washed with its colour when it has one; its
+   * border in the theme's border colour, or its own colour faintly; the
+   * accent, wider, when it is selected. Bare text has only the selection.
+   */
+  private frameOf(node: BoardNode, selected: boolean): SceneFrame | null {
+    const palette = (this.palette ??= this.readPalette())
+    const tint = node.color !== undefined ? this.nodeColor(node.color) : null
+    const tintWord = tint === null ? null : this.pack(tint)
+    if (isPlainText(node)) {
+      return selected
+        ? {
+            fill: 0,
+            border: palette.accent,
+            borderWidth: SELECTED_BORDER,
+            radius: 0,
+          }
+        : null
+    }
+    return {
+      fill:
+        tintWord === null
+          ? palette.background
+          : mix(palette.background, tintWord, palette.wash),
+      border: selected
+        ? palette.accent
+        : tintWord === null
+          ? palette.border
+          : withAlpha(tintWord, OVERVIEW_THEMED_BORDER_ALPHA),
+      borderWidth: selected ? SELECTED_BORDER : CARD_BORDER,
+      radius: CARD_RADIUS,
+    }
+  }
+
+  private readPalette(): Palette {
+    const style = this.canvas.ownerDocument.defaultView?.getComputedStyle(
+      this.deps.root,
+    )
+    const read = (name: string, fallback: string) =>
+      style?.getPropertyValue(name).trim() || fallback
+    const dark = this.deps.root.closest('.theme-dark') !== null
+    return {
+      background: this.pack(
+        read('--yolo-whiteboard-card-background', '#ffffff'),
+      ),
+      border: this.pack(read('--yolo-whiteboard-card-border', '#e8e8e8')),
+      accent: this.pack(read('--interactive-accent', '#7c3aed')),
+      wash: dark
+        ? OVERVIEW_THEMED_CARD_WASH_ALPHA.dark
+        : OVERVIEW_THEMED_CARD_WASH_ALPHA.light,
+    }
+  }
+
+  /** A CSS colour as RGBA8, as the canvas parses it. */
+  private pack(css: string): number {
+    const ctx = this.colorCtx
+    ctx.clearRect(0, 0, 1, 1)
+    ctx.fillStyle = '#000'
+    ctx.fillStyle = css
+    ctx.fillRect(0, 0, 1, 1)
+    const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data
+    return packColor(r, g, b, a)
   }
 
   private nodeColor(color: string): string | null {
@@ -402,4 +542,50 @@ function onScreen(
     x + card.w * view.scale > 0 &&
     y + card.h * view.scale > 0
   )
+}
+
+/** What of a card its typeset content is made from: a move keeps it; an
+ * edit, a resize or a new colour do not. A note's text is its file's
+ * (`fileChanged`). */
+function contentOf(node: BoardNode): string {
+  // The size wraps its lines, and bare text is set in its colour.
+  const box = `${node.w}x${node.h}:${node.color ?? ''}`
+  if (node.type === 'text') return `${box}:text:${node.text}`
+  if (node.type === 'file') return `${box}:file:${node.file}`
+  return `${box}:${node.type}`
+}
+
+/** The board's colours a card's frame is drawn in, as RGBA8 words. */
+type Palette = Readonly<{
+  background: number
+  border: number
+  accent: number
+  /** How strongly a coloured card's surface takes its colour. */
+  wash: number
+}>
+
+function sameFrame(a: SceneFrame | null, b: SceneFrame | null): boolean {
+  if (a === null || b === null) return a === b
+  return (
+    a.fill === b.fill &&
+    a.border === b.border &&
+    a.borderWidth === b.borderWidth &&
+    a.radius === b.radius
+  )
+}
+
+/** `over` laid over `under` at `alpha`, both RGBA8 words. */
+function mix(under: number, over: number, alpha: number): number {
+  const channel = (shift: number) => {
+    const a = (under >>> shift) & 255
+    const b = (over >>> shift) & 255
+    return Math.round(a + (b - a) * alpha)
+  }
+  return packColor(channel(0), channel(8), channel(16), (under >>> 24) & 255)
+}
+
+/** An RGBA8 word at `alpha` of its own opacity. */
+function withAlpha(word: number, alpha: number): number {
+  const a = Math.round(((word >>> 24) & 255) * alpha)
+  return ((word & 0xffffff) | (a << 24)) >>> 0
 }

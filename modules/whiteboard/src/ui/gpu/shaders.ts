@@ -89,7 +89,10 @@ void main() {
   vec2 half_ = vBox.xy * 0.5;
   float d = roundBox((vLocal - half_) * k, half_ * k, vBox.z * k);
   float outer = clamp(0.5 - d, 0.0, 1.0);
-  float inner = clamp(0.5 - (d + vBox.w * k), 0.0, 1.0);
+  // Its width in world units near to, and never under that many CSS
+  // pixels far away: the overview's line, which does not shrink with zoom.
+  float width = max(vBox.w * k, vBox.w * cam.w);
+  float inner = clamp(0.5 - (d + width), 0.0, 1.0);
   vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a);
   vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a);
   bool opaque = vFill.a >= 1.0;

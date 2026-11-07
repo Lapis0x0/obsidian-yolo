@@ -72,7 +72,7 @@ export class Typesetter {
       })
       const rects = content.rects.buffer as ArrayBuffer
       const glyphs = content.glyphs.buffer as ArrayBuffer
-      out.push({ id: card.id, rects, glyphs })
+      out.push({ id: card.id, rects, glyphs, host: needsHost(card.markdown) })
       transfer.push(rects, glyphs)
     }
     return { result: { cards: out, keys }, transfer }
@@ -174,4 +174,29 @@ export class Typesetter {
     }
     return word
   }
+}
+
+/** Code blocks a plugin, or Obsidian itself, draws as something else. */
+const DRAWN_FENCES =
+  /^\s*(?:```|~~~)\s*(?:mermaid|dataview|dataviewjs|tasks|query|chart|excalidraw|math|latex|ad-[\w-]+)\b/im
+/** `$$…$$`, or `$…$` hugging what it encloses, as Obsidian reads math. */
+const MATH = /\$\$|(?:^|[^\\$\w])\$(?=\S)[^$\n]*?\S\$(?!\d)/m
+const EMBED = /!\[\[|!\[[^\]]*\]\(/
+const HTML = /<\/?[a-z][\w-]*(?:\s[^>]*)?>/i
+
+/**
+ * Whether a card's markdown holds what only the host's renderer shows as it
+ * should — an embed or an image, math, HTML, a block a plugin draws — or
+ * nothing at all, which the card shows its empty state's chips for. Such a
+ * card keeps its DOM where it can be read; the typesetter only stands in for
+ * it far away, where its picture is enough.
+ */
+export function needsHost(markdown: string): boolean {
+  if (markdown.trim() === '') return true
+  return (
+    EMBED.test(markdown) ||
+    DRAWN_FENCES.test(markdown) ||
+    MATH.test(markdown) ||
+    HTML.test(markdown)
+  )
 }

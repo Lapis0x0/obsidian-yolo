@@ -1,10 +1,10 @@
 import { absoluteSrc, splitFamilies } from '../typesetting/fontSources'
 import { glyphKey, iconKey, parseKey } from '../typesetting/typesetProtocol'
+import { needsHost } from '../typesetting/typesetter'
 
 import { shelfSpot } from './atlas'
 import { fontSize, placeRun, resizeFont } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'
-
 
 const advance = (glyph: string): number =>
   (glyph.codePointAt(0) ?? 0) > 0x2e80 ? 16 : 8
@@ -130,5 +130,22 @@ test('a glyph or icon key reads back as what it names', () => {
     kind: 'icon',
     name: 'check',
     size: 15,
+  })
+})
+
+describe('needsHost', () => {
+  test('what only the host draws keeps a card in the DOM', () => {
+    expect(needsHost('')).toBe(true)
+    expect(needsHost('see ![[pic.png]]')).toBe(true)
+    expect(needsHost('![alt](x.png)')).toBe(true)
+    expect(needsHost('```mermaid\ngraph TD\n```')).toBe(true)
+    expect(needsHost('energy $E = mc^2$ here')).toBe(true)
+    expect(needsHost('a <span>b</span>')).toBe(true)
+  })
+
+  test('plain markdown, prices and ordinary code do not', () => {
+    expect(needsHost('# Title\n- a **b** [[link]]')).toBe(false)
+    expect(needsHost('costs $5 and $10 today')).toBe(false)
+    expect(needsHost('```ts\nconst a = 1\n```')).toBe(false)
   })
 })

@@ -61,6 +61,9 @@ export type TypesetResultCard = Readonly<{
   id: string
   rects: ArrayBuffer
   glyphs: ArrayBuffer
+  /** It holds what only the host's renderer shows as it should
+   * (../typesetting/typesetter.ts's `needsHost`): kept in the DOM near to. */
+  host: boolean
 }>
 
 export type TypesetResult = Readonly<{
