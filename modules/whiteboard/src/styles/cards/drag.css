@@ -107,7 +107,7 @@
   overflow: hidden;
   /* The card no longer clips, so the box that fills it has to. */
   border-radius: inherit;
-  font-size: 13px;
+  font-size: var(--yolo-whiteboard-card-font-size);
   /* Containing block for the reading preview while an editor is over it. */
   position: relative;
 }

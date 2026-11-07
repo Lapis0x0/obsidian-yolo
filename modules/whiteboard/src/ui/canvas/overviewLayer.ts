@@ -28,7 +28,7 @@
 // back (single-direction dependency between the canvas and its collaborators).
 
 import type { ScreenPoint } from '../../domain/camera'
-import { type ColorPreset, resolveColor } from '../../domain/color'
+import { type ColorPreset, PRESET_HEX, resolveColor } from '../../domain/color'
 import {
   EDGE_CONTROL_MAX_PX,
   computeEdgeGeometry,
@@ -745,7 +745,9 @@ export class OverviewLayer {
       if (!picture || own !== null) {
         ctx.globalAlpha =
           alpha *
-          (picture ? OVERVIEW_THEMED_CARD_WASH_ALPHA : OVERVIEW_CARD_WASH_ALPHA)
+          (picture
+            ? OVERVIEW_THEMED_CARD_WASH_ALPHA[palette.dark ? 'dark' : 'light']
+            : OVERVIEW_CARD_WASH_ALPHA)
         ctx.fillStyle = own ?? palette.neutral
         ctx.fillRect(x, y, w, h)
       }
@@ -831,19 +833,19 @@ export class OverviewLayer {
     }
     return {
       presets: {
-        '1': read('--yolo-whiteboard-color-1', '#e93147'),
-        '2': read('--yolo-whiteboard-color-2', '#ec7500'),
-        '3': read('--yolo-whiteboard-color-3', '#e0ac00'),
-        '4': read('--yolo-whiteboard-color-4', '#08b94e'),
-        '5': read('--yolo-whiteboard-color-5', '#00bfbc'),
-        '6': read('--yolo-whiteboard-color-6', '#7852ee'),
+        '1': read('--yolo-whiteboard-color-1', PRESET_HEX['1']),
+        '2': read('--yolo-whiteboard-color-2', PRESET_HEX['2']),
+        '3': read('--yolo-whiteboard-color-3', PRESET_HEX['3']),
+        '4': read('--yolo-whiteboard-color-4', PRESET_HEX['4']),
+        '5': read('--yolo-whiteboard-color-5', PRESET_HEX['5']),
+        '6': read('--yolo-whiteboard-color-6', PRESET_HEX['6']),
       },
       neutral: read('--yolo-whiteboard-color', '#c0c0c0'),
-      border: read('--background-modifier-border', '#dcddde'),
+      border: read('--yolo-whiteboard-card-border', '#e8e8e8'),
       accent: read('--interactive-accent', '#7c3aed'),
       text: read('--text-normal', '#222222'),
       muted: read('--text-muted', '#5c5c5c'),
-      background: read('--background-primary', '#ffffff'),
+      background: read('--yolo-whiteboard-card-background', '#ffffff'),
       fontFamily: style.fontFamily || 'sans-serif',
       annotations: {
         yellow: read('--color-yellow', '#e0ac00'),
@@ -1052,7 +1054,7 @@ export class OverviewLayer {
       const pictured = pictures.has(card.node.id)
       if (pictured && own === null) continue
       const alpha = pictured
-        ? OVERVIEW_THEMED_CARD_WASH_ALPHA
+        ? OVERVIEW_THEMED_CARD_WASH_ALPHA[palette.dark ? 'dark' : 'light']
         : OVERVIEW_CARD_WASH_ALPHA
       const strength = washes.get(alpha) ?? new Map<string, typeof visible>()
       washes.set(alpha, strength)
@@ -1740,10 +1742,9 @@ export class OverviewLayer {
    *
    * One line, ellipsised at the stylesheet's `max-width`, where the element
    * wraps: wrapping buys a second row of type this small, which is not a
-   * trade. The chip is a plain rectangle rather than the element's rounded
-   * one — its radius is 4 world units, under a pixel and a half here, so the
-   * corners are a rounding error and `fillRect` is what a rounding error
-   * should cost.
+   * trade. The chip is the element's pill — ends fully round, a hairline of
+   * the card border — since at this zoom its shape is most of what is left
+   * of it.
    */
   private drawEdgeLabels(
     ctx: CanvasRenderingContext2D,
@@ -1789,15 +1790,22 @@ export class OverviewLayer {
     if (drawn.length === 0) return
 
     ctx.fillStyle = palette.background
+    ctx.strokeStyle = palette.border
+    ctx.lineWidth = root
+    ctx.beginPath()
     for (const label of drawn) {
-      ctx.fillRect(
+      const h = lineHeight + padY * 2
+      ctx.roundRect(
         label.x - padX,
         label.y - lineHeight / 2 - padY,
         label.width + padX * 2,
-        lineHeight + padY * 2,
+        h,
+        h / 2,
       )
     }
-    ctx.fillStyle = palette.text
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle = palette.muted
     for (const label of drawn) ctx.fillText(label.text, label.x, label.y)
   }
 

@@ -19,43 +19,89 @@
   padding: 0;
 }
 
+/* --- the board's own look ---------------------------------------------------
+ * A board has a design of its own (docs: the whiteboard's visual spec) and
+ * takes from the theme only what the theme contract names: the fonts, the
+ * three text colours, the accent, the two background colours, light or
+ * dark. Everything else a card looks like is set here and in the card
+ * stylesheets, so a board reads the same under any theme.
+ *
+ * A card is a sheet on a desk: the desk is the darker of the two background
+ * colours and the card the lighter one. In light themes that is secondary
+ * under primary; dark themes have the two the other way round (Obsidian's
+ * own dark sidebar is lighter than its editor), so the pair swaps — otherwise
+ * every card would read as a hole cut in the board.
+ *
+ * Registered as colours so that what a canvas reads back from them
+ * (ui/canvas/overviewLayer.ts's palette) is a resolved colour rather than the
+ * `color-mix()` text they are written as. */
+@property --yolo-whiteboard-board-background {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --yolo-whiteboard-card-background {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --yolo-whiteboard-card-border {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
 .yolo-whiteboard-root {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--background-primary);
+  --yolo-whiteboard-board-background: var(--background-secondary);
+  --yolo-whiteboard-card-background: var(--background-primary);
+  --yolo-whiteboard-card-border: color-mix(
+    in srgb,
+    var(--text-normal) 9%,
+    transparent
+  );
+  /* A card's content inset and type size: the preview, the editor, and
+   * every placeholder that stands where a card's first line goes share them,
+   * so clicking into a card or watching it fill does not move its text. */
+  --yolo-whiteboard-card-inset: 16px 20px;
+  --yolo-whiteboard-card-font-size: 15px;
+  /* A resting card's lift (cards/card.css). A shadow list rather than
+   * `none`, so the rings the card states lay over it can append it. */
+  --yolo-whiteboard-card-shadow: 0 1px 2px rgb(0 0 0 / 4%),
+    0 4px 12px rgb(0 0 0 / 5%);
+  background: var(--yolo-whiteboard-board-background);
 
   /* --- node/edge colour palette (JSON Canvas `color`) --------------------
-   * The six presets are the theme's named colours, in the order Obsidian's
-   * own Canvas maps them (app.css: `--canvas-color-1: var(--color-red)` and
-   * so on), so a board coloured "3" and a Canvas node coloured "3" stay the
-   * same yellow in whatever theme the user runs.
-   *
-   * `--color-X` is read rather than `--canvas-color-N` or `--color-X-rgb`:
-   * it is the one form Obsidian guarantees to be a whole colour, and the one
-   * a theme always sets when it re-tunes its palette. Many themes still write
-   * `--canvas-color-N` as a bare `r, g, b` triplet (Canvas's pre-1.x format),
-   * which is no colour at all to `background-color` or `color-mix`, and the
-   * `-rgb` twins are not always kept in step with `--color-X`. The same rule
-   * holds for every themed colour in this module (see pdf/annotations.css).
+   * The six presets are the board's own, not the theme's `--color-X`: a
+   * card's colour is part of its design, and a theme that re-tunes its
+   * palette would otherwise recolour every board. Same order as Obsidian
+   * Canvas (1 red … 6 purple), so a JSON Canvas file still means what it
+   * says. domain/color.ts's PRESET_HEX carries the same six values for the
+   * colour picker.
    *
    * `--yolo-whiteboard-color` is the *resolved* colour of whatever element is
-   * being painted: this default (Obsidian Canvas's uncoloured grey, owned
-   * here because themes rewrite `--canvas-color` in the triplet form too)
-   * unless a .yolo-whiteboard-color-N class or an inline custom property
-   * overrides it further down the tree. Everything that paints in a node
-   * colour reads only this one property. */
-  --yolo-whiteboard-color-1: var(--color-red);
-  --yolo-whiteboard-color-2: var(--color-orange);
-  --yolo-whiteboard-color-3: var(--color-yellow);
-  --yolo-whiteboard-color-4: var(--color-green);
-  --yolo-whiteboard-color-5: var(--color-cyan);
-  --yolo-whiteboard-color-6: var(--color-purple);
+   * being painted: this default (Obsidian Canvas's uncoloured grey) unless a
+   * .yolo-whiteboard-color-N class or an inline custom property overrides it
+   * further down the tree. Everything that paints in a node colour reads only
+   * this one property. */
+  --yolo-whiteboard-color-1: #e5484d;
+  --yolo-whiteboard-color-2: #f76b15;
+  --yolo-whiteboard-color-3: #ffc53d;
+  --yolo-whiteboard-color-4: #30a46c;
+  --yolo-whiteboard-color-5: #12a594;
+  --yolo-whiteboard-color-6: #8e4ec6;
   --yolo-whiteboard-color: #c0c0c0;
 }
 
 .theme-dark .yolo-whiteboard-root {
+  --yolo-whiteboard-board-background: var(--background-primary);
+  --yolo-whiteboard-card-background: var(--background-secondary);
+  --yolo-whiteboard-card-shadow: 0 0 transparent;
   --yolo-whiteboard-color: #7e7e7e;
 }
 

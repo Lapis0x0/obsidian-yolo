@@ -17,8 +17,179 @@
  * for a full document page (0,1,0), so a two-class selector is what it takes
  * to state the card's instead. */
 .yolo-whiteboard-card-body .markdown-preview-view {
-  padding: 6px 10px;
-  font-size: 13px;
+  padding: var(--yolo-whiteboard-card-inset);
+  font-size: var(--yolo-whiteboard-card-font-size);
+}
+
+/* ---- The card's typography -------------------------------------------------
+ * A card's content is set in the board's own type (root.css's design note),
+ * not the theme's: everything below is Obsidian's own variables, stated on
+ * the preview and on the editor so both read them, and so a theme that sets
+ * them on the body, the theme class or `.markdown-rendered` reaches neither.
+ * What is left to the theme is its fonts and its colours — `--font-text`,
+ * `--text-*`, the accent — which nothing here names.
+ *
+ * Three classes deep so a theme's variable rules (`.markdown-rendered`,
+ * `.markdown-source-view.mod-cm6`, `body.theme-dark .markdown-preview-view`)
+ * cannot outweigh them. A theme's rules that style the elements themselves
+ * still apply; taking those away needs the card's content out of the
+ * document's cascade, which the GPU renderer's editing card will do. */
+.yolo-whiteboard-card .yolo-whiteboard-card-body .markdown-preview-view,
+.yolo-whiteboard-card .yolo-whiteboard-editor-host .markdown-source-view {
+  /* `initial`, never `inherit`, for "no value of its own": a custom
+   * property set to `inherit` takes its parent's value, which is the theme's.
+   * `initial` leaves the variable unset, so whatever reads it falls back to
+   * inheriting the property itself — the text colour, the weight around it. */
+  --font-text-size: var(--yolo-whiteboard-card-font-size);
+  --line-height-normal: 1.6;
+
+  --h1-size: 20px;
+  --h1-weight: 700;
+  --h1-line-height: 1.35;
+  --h1-color: initial;
+  --h1-variant: normal;
+  --h1-style: normal;
+  --h1-letter-spacing: normal;
+  --h2-size: 17px;
+  --h2-weight: 650;
+  --h2-line-height: 1.4;
+  --h2-color: initial;
+  --h2-variant: normal;
+  --h2-style: normal;
+  --h2-letter-spacing: normal;
+  --h3-size: 15px;
+  --h3-weight: 650;
+  --h3-line-height: 1.5;
+  --h3-color: initial;
+  --h3-variant: normal;
+  --h3-style: normal;
+  --h3-letter-spacing: normal;
+  --h4-size: 15px;
+  --h4-weight: 600;
+  --h4-line-height: 1.5;
+  --h4-color: initial;
+  --h4-variant: normal;
+  --h4-style: normal;
+  --h4-letter-spacing: normal;
+  --h5-size: 14px;
+  --h5-weight: 600;
+  --h5-line-height: 1.5;
+  --h5-color: var(--text-muted);
+  --h5-variant: normal;
+  --h5-style: normal;
+  --h5-letter-spacing: normal;
+  --h6-size: 13px;
+  --h6-weight: 600;
+  --h6-line-height: 1.5;
+  --h6-color: var(--text-muted);
+  --h6-variant: normal;
+  --h6-style: normal;
+  --h6-letter-spacing: normal;
+
+  --bold-weight: 650;
+  --bold-color: initial;
+  --italic-color: initial;
+
+  --link-color: var(--text-accent);
+  --link-color-hover: var(--text-accent-hover);
+  --link-decoration: none;
+  --link-decoration-hover: underline;
+  --link-external-color: var(--text-accent);
+  --link-external-color-hover: var(--text-accent-hover);
+  --link-external-decoration: none;
+  --link-external-decoration-hover: underline;
+  --link-unresolved-color: var(--text-accent);
+  --link-unresolved-opacity: 0.65;
+  --link-unresolved-decoration-style: none;
+
+  --tag-size: 0.86em;
+  --tag-color: var(--text-accent);
+  --tag-color-hover: var(--text-accent);
+  --tag-background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    transparent
+  );
+  --tag-background-hover: color-mix(
+    in srgb,
+    var(--interactive-accent) 18%,
+    transparent
+  );
+  --tag-border-width: 0;
+  --tag-padding-x: 0.55em;
+  --tag-padding-y: 0.12em;
+  --tag-radius: 999px;
+  --tag-weight: initial;
+  --tag-decoration: none;
+  --tag-decoration-hover: none;
+
+  --text-highlight-bg: rgb(255 197 61 / 38%);
+
+  --code-background: color-mix(in srgb, var(--text-normal) 5%, transparent);
+  --code-normal: var(--text-normal);
+  --code-size: 0.86em;
+  --code-radius: 6px;
+
+  --blockquote-border-thickness: 3px;
+  --blockquote-border-color: color-mix(
+    in srgb,
+    var(--text-normal) 15%,
+    transparent
+  );
+  --blockquote-color: var(--text-muted);
+  --blockquote-font-style: normal;
+  --blockquote-background-color: transparent;
+
+  --list-indent: 1.5em;
+  --list-spacing: 0.15em;
+  --list-bullet-size: 5px;
+  --list-marker-color: var(--text-faint);
+  --list-marker-color-hover: var(--text-muted);
+  --list-marker-color-collapsed: var(--text-accent);
+
+  --checkbox-size: 15px;
+  --checkbox-radius: 4px;
+  --checkbox-color: var(--interactive-accent);
+  --checkbox-color-hover: var(--interactive-accent-hover);
+  --checkbox-border-color: var(--text-faint);
+  --checkbox-border-color-hover: var(--text-muted);
+  --checkbox-marker-color: var(--background-primary);
+  --checklist-done-decoration: line-through;
+  --checklist-done-color: var(--text-muted);
+
+  --callout-radius: 8px;
+  --callout-padding: 12px 14px;
+  --callout-title-weight: 650;
+  --callout-border-width: 0;
+
+  --table-border-width: 1px;
+  --table-border-color: color-mix(in srgb, var(--text-normal) 12%, transparent);
+  --table-header-border-width: 1px;
+  --table-header-border-color: color-mix(
+    in srgb,
+    var(--text-normal) 12%,
+    transparent
+  );
+  --table-header-background: transparent;
+  --table-header-weight: 650;
+  --table-header-color: initial;
+  --table-background: transparent;
+  --table-row-background-hover: transparent;
+  --table-row-alt-background: transparent;
+
+  --hr-color: color-mix(in srgb, var(--text-normal) 10%, transparent);
+  --hr-thickness: 1px;
+}
+
+.theme-dark
+  .yolo-whiteboard-card
+  .yolo-whiteboard-card-body
+  .markdown-preview-view,
+.theme-dark
+  .yolo-whiteboard-card
+  .yolo-whiteboard-editor-host
+  .markdown-source-view {
+  --text-highlight-bg: rgb(255 197 61 / 25%);
 }
 
 /* ---- Block spacing: the preview laid out on the editor's lines ----
@@ -204,13 +375,13 @@
  * our 0,2,0); nothing styles the scroller's padding, so nothing has to be
  * fought here. */
 .yolo-whiteboard-editor-host .cm-scroller {
-  padding: 6px 10px;
+  padding: var(--yolo-whiteboard-card-inset);
   overflow: auto;
 }
 
 .yolo-whiteboard-editor-host .cm-editor {
   height: 100%;
-  font-size: 13px;
+  font-size: var(--yolo-whiteboard-card-font-size);
 }
 
 .yolo-whiteboard-card-missing,
@@ -220,7 +391,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  padding: 6px 10px;
+  padding: var(--yolo-whiteboard-card-inset);
   color: var(--text-muted);
   text-align: center;
 }

@@ -2,8 +2,8 @@
  * (See ui/canvas/cardGeneration.ts for what builds them.)
  *
  * The hint is the card's placeholder: one faint line exactly where the first
- * line of text goes (the same 6px 10px inset as the preview and the editor
- * scroller), so with the editor open it sits on the caret's line the way a
+ * line of text goes (the same inset as the preview and the editor scroller,
+ * root.css's --yolo-whiteboard-card-inset), so with the editor open it sits on the caret's line the way a
  * placeholder does. Its instruction words are the only pressable part.
  *
  * Laid over the body rather than after it: an empty card's body holds an
@@ -19,7 +19,7 @@
 .yolo-whiteboard-card-chips {
   position: absolute;
   inset: 0;
-  padding: 6px 10px;
+  padding: var(--yolo-whiteboard-card-inset);
   overflow: hidden;
   color: var(--text-faint);
   font-size: inherit;
@@ -82,7 +82,7 @@ button.yolo-whiteboard-card-chip:hover {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 6px 10px;
+  padding: var(--yolo-whiteboard-card-inset);
   overflow: hidden;
 }
 
@@ -137,7 +137,7 @@ button.yolo-whiteboard-card-chip:hover {
   overflow: hidden;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
+  font-size: var(--yolo-whiteboard-card-font-size);
   line-height: 1.5;
   color: var(--text-normal);
 }

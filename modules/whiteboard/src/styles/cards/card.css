@@ -10,20 +10,18 @@
   overflow: visible;
   display: flex;
   flex-direction: column;
-  /* One step firmer than Obsidian's hairline: an uncoloured card is an
-   * opaque white box on a near-white board, and the hairline alone let a
-   * dense board's cards melt into it (a coloured card never had the problem —
-   * its border is its colour). */
-  border: 1px solid var(--background-modifier-border-hover);
-  border-radius: var(--radius-m, 6px);
+  /* A sheet on the desk (root.css): the lighter background on the darker
+   * one, a hairline of the text colour round it, and in light themes a
+   * shadow soft enough to lift it without a halo — two layers, a tight one
+   * for the edge and a wide faint one for the lift. Dark themes have no
+   * shadow to cast onto; the hairline does the work there. */
+  border: 1px solid var(--yolo-whiteboard-card-border);
+  border-radius: 10px;
   /* background-color rather than the shorthand: a coloured card adds a wash
    * as a background-image layer on top of it (see .yolo-whiteboard-themed
    * below), and the shorthand would reset that layer. */
-  background-color: var(--background-primary);
-  /* No resting shadow: against the dot grid a card reads as a card from its
-   * opaque fill and border alone, and --shadow-s at card scale is a heavy
-   * halo that turns a dense board into visual noise. box-shadow stays
-   * reserved for the selected/editing/dragging rings below. */
+  background-color: var(--yolo-whiteboard-card-background);
+  box-shadow: var(--yolo-whiteboard-card-shadow);
   /* `paint` would clip to the border box exactly as overflow did, title
    * included; layout and style containment are what the dense-board budget
    * actually wanted. */
@@ -31,20 +29,24 @@
   cursor: grab;
 }
 
-/* One accent ring, at one weight, for both states. Editing used to draw a
- * heavier one, which made the band 3px against a 260px card — Obsidian's own
- * 3px sits on a 400px card, so ours read half again as thick at the same
- * apparent card size. A ring is chrome: what matters is its share of the
- * card's width, not its pixel count, exactly as with the dot grid.
+/* One accent ring, at one weight, for both states: the border turns accent
+ * and a 1px ring outside it makes the band 2px — the weight of the sheet
+ * being picked up, against the hairline at rest. A ring is chrome: what
+ * matters is its share of the card's width, not its pixel count, exactly as
+ * with the dot grid, and a heavier one read as a frame drawn round the card
+ * rather than as the card being held.
  *
  * The two states are not told apart by weight because they never were:
  * Obsidian has no separate editing ring either. Editing is already
  * unmistakable from the caret, the live-preview markup and the text cursor,
- * and a second thickness tier only competes with them. */
+ * and a second thickness tier only competes with them. The resting shadow
+ * stays under the ring. */
 .yolo-whiteboard-card.yolo-whiteboard-card-editing,
 .yolo-whiteboard-card.yolo-whiteboard-card-selected {
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
+  box-shadow:
+    0 0 0 1px var(--interactive-accent),
+    var(--yolo-whiteboard-card-shadow);
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-card-editing {
@@ -61,7 +63,7 @@
 .yolo-whiteboard-card.yolo-whiteboard-card-hovered:not(
     .yolo-whiteboard-card-selected
   ):not(.yolo-whiteboard-card-editing) {
-  border-color: var(--background-modifier-border-focus);
+  border-color: color-mix(in srgb, var(--text-normal) 20%, transparent);
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-hovered:not(

@@ -237,7 +237,7 @@ export const DRAG_THRESHOLD_PX = 4
  * Scale below which cards leave the DOM for the canvas.
  *
  * Placed where a card's content stops earning its construction: below this a
- * card is ~90px wide and its 13px body type is under 5 screen pixels, so what
+ * card is ~90px wide and its 15px body type is under 6 screen pixels, so what
  * a reader gets from it is its title and its colour — both of which a
  * rectangle and one `fillText` give for a rounding error of the cost. Above it
  * the mounted count is bounded by what a screen holds; below it the count is
@@ -306,12 +306,16 @@ export const SPREAD_TITLE_WORLD = {
 export const OVERVIEW_CARD_WASH_ALPHA = 0.1
 
 /** Alpha of the colour wash under an overview card's picture: a coloured
- * card's own, cards/color.css's `color-mix(… 7% …)`. */
-export const OVERVIEW_THEMED_CARD_WASH_ALPHA = 0.07
+ * card's own, cards/color.css's `--yolo-whiteboard-card-wash` (10%, and 16%
+ * on a dark sheet). */
+export const OVERVIEW_THEMED_CARD_WASH_ALPHA = {
+  light: 0.1,
+  dark: 0.16,
+} as const
 
 /** Alpha of a coloured card's border, matching the stylesheet's
- * `color-mix(in oklch, var(--yolo-whiteboard-color) 70%, transparent)`. */
-export const OVERVIEW_THEMED_BORDER_ALPHA = 0.7
+ * `color-mix(in srgb, var(--yolo-whiteboard-color) 28%, transparent)`. */
+export const OVERVIEW_THEMED_BORDER_ALPHA = 0.28
 
 /** Edge stroke weight in world units at 1:1 — style.css's
  * `.yolo-whiteboard-edge-path`, before its counter-scale. */
@@ -347,9 +351,9 @@ export const OVERVIEW_ARROW_MIN_SCREEN_PX = 4
 /** Label type size in screen pixels at 1:1, before the counter-scale below. */
 export const EDGE_LABEL_FONT_PX = 15
 
-/** The label chip's padding at 1:1, in screen pixels — the stylesheet's
- * `2px 6px`, counter-scaled the same way the type is. */
-export const EDGE_LABEL_PADDING_PX = { x: 6, y: 2 } as const
+/** The label pill's padding at 1:1, in screen pixels — the stylesheet's
+ * `2px 8px`, counter-scaled the same way the type is. */
+export const EDGE_LABEL_PADDING_PX = { x: 8, y: 2 } as const
 
 /** The stylesheet's `max-width: 17em`, in ems so it follows the type size. A
  * canvas cannot wrap the way the element does, so past this the label is
@@ -379,7 +383,7 @@ export const EDGE_HIT_STROKE_WORLD_PX = 16
 /** Font size of a group's label in world units — style.css's
  * `.yolo-whiteboard-group-label`. The two must stay in step: the overview tier
  * counter-scales this value rather than replacing it. */
-export const GROUP_LABEL_WORLD_FONT_PX = 20
+export const GROUP_LABEL_WORLD_FONT_PX = 15
 
 /**
  * Screen size a group's label is held at in the overview tier, however far the
@@ -686,11 +690,12 @@ export const GRID_MIN_SCREEN_STEP_PX = 10
  * card is being dragged along: a card stopped by it should stop on a grid line,
  * not a step short of one.
  *
- * 4x3 is the smallest rectangle that still holds one line of 13px body text
- * with its 6px/10px padding and border — below that a card cannot show its
- * own content, which is the point at which "small" turns into "broken".
+ * 5x5 is the smallest rectangle that still holds one line of body text (15px
+ * at a 24px line) and a character of it, inside root.css's 16px/20px card
+ * inset and border — below that a card cannot show its own content, which is
+ * the point at which "small" turns into "broken".
  */
-const MIN_CARD_CELLS = Object.freeze({ w: 4, h: 3 })
+const MIN_CARD_CELLS = Object.freeze({ w: 5, h: 5 })
 
 export const MIN_CARD_SIZE = Object.freeze({
   w: GRID_WORLD_STEP_PX * MIN_CARD_CELLS.w,
@@ -847,9 +852,9 @@ export const EDGE_CULLED_CLASS = 'yolo-whiteboard-edge-culled'
 // -----------------------------------------------------------------------
 
 /**
- * The tightest line box a card body can produce, in world pixels — 13px type
- * (style.css's `.yolo-whiteboard-card-body .markdown-preview-view`) at the
- * smallest line height a theme is likely to set.
+ * The tightest line box a card body can produce, in world pixels — 15px type
+ * (root.css's `--yolo-whiteboard-card-font-size`) at a line height a good
+ * deal under the 1.6 the card sets (cards/content.css).
  *
  * Deliberately an underestimate: it is the divisor that turns a card's height
  * into a *line budget*, so a value below the truth over-provisions the prefix

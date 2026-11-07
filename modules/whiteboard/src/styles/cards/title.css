@@ -13,9 +13,9 @@
  * Sized in world units, like everything else in the world layer — the title
  * shrinks with the card rather than being counter-scaled, so what matters is
  * its share of the card, not its pixel count. 32px is Obsidian Canvas's own
- * figure (measured off its low-zoom placeholder); against our 13px body it
- * is an even stronger jump than Canvas's 32-over-16, which is the point —
- * this line is the only thing carrying a card while its markdown is gone.
+ * figure (measured off its low-zoom placeholder); against our 15px body it
+ * is a stronger jump than Canvas's 32-over-16, which is the point — this
+ * line is the only thing carrying a card while its markdown is gone.
  *
  * The wash is Canvas's too, down to the declaration: at this zoom a board is
  * a field of cards, and white-on-white leaves nothing but the hairline border

@@ -29,19 +29,18 @@ const NONE: ResolvedColor = Object.freeze({ kind: 'none' })
 const HEX_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
 
 /**
- * The six presets' colours in Obsidian's default theme (read off
- * `--canvas-color-1`..`-6` in a running Obsidian 1.13.7). Not what a board
- * renders — style.css reads the live theme colours — only what seeds the
- * custom-colour input when the current colour is a preset: an OS colour
- * picker has to open on some concrete value.
+ * The six presets' colours — the board's own palette, the same values
+ * styles/root.css paints with (`--yolo-whiteboard-color-1`..`-6`). Here only
+ * to seed the custom-colour input when the current colour is a preset: an OS
+ * colour picker has to open on some concrete value.
  */
 export const PRESET_HEX: Readonly<Record<ColorPreset, string>> = Object.freeze({
-  '1': '#e93147',
-  '2': '#ec7500',
-  '3': '#e0ac00',
-  '4': '#08b94e',
-  '5': '#00bfbc',
-  '6': '#7852ee',
+  '1': '#e5484d',
+  '2': '#f76b15',
+  '3': '#ffc53d',
+  '4': '#30a46c',
+  '5': '#12a594',
+  '6': '#8e4ec6',
 })
 
 export function resolveColor(color: string | undefined): ResolvedColor {

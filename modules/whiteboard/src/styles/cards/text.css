@@ -9,6 +9,9 @@
   border: none;
   border-radius: var(--radius-s, 4px);
   background-color: transparent;
+  /* Nothing to lift: the sheet's shadow (card.css) would draw a box round
+   * text that has none. */
+  box-shadow: none;
   /* A coloured card's wash (color.css): bare text is coloured in its ink. */
   background-image: none;
 }
