@@ -137,7 +137,7 @@ test('a glyph or icon key reads back as what it names', () => {
 
 describe('needsHost', () => {
   test('what only the host draws keeps a card in the DOM', () => {
-    expect(needsHost('')).toBe(true)
+    expect(needsHost('')).toBe(false)
     expect(needsHost('see ![[pic.png]]')).toBe(true)
     expect(needsHost('![alt](x.png)')).toBe(true)
     expect(needsHost('```mermaid\ngraph TD\n```')).toBe(true)

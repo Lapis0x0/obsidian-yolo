@@ -291,16 +291,16 @@ const HTML = /<\/?(?!br\b)[a-z][\w-]*(?:\s[^>]*)?>/i
 /**
  * Whether a card's markdown holds what only the host's renderer shows as it
  * should — an embed that is not an image, an image whose size is not known
- * (`images`), math, HTML, a block a plugin draws — or nothing at all, which
- * the card shows its empty state's chips for. Such a card keeps its DOM
+ * (`images`), math, HTML, a block a plugin draws. Such a card keeps its DOM
  * where it can be read; the typesetter only stands in for it far away,
- * where its picture is enough.
+ * where its picture is enough. An empty card is the typesetter's: it shows
+ * nothing until it is the one selected or being edited, which have their
+ * DOM anyway (canvas.ts's `gpuDraws`) and the chips with it.
  */
 export function needsHost(
   markdown: string,
   images: Readonly<Record<string, unknown>> = {},
 ): boolean {
-  if (markdown.trim() === '') return true
   for (const link of embedLinks(markdown)) {
     const image = imageOf(link)
     // Only an image that can be drawn is in `images` — one on the web once
