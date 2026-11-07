@@ -3420,12 +3420,7 @@ export class WhiteboardCanvas {
       if (this.placePassage(node.id, anchor)?.state === 'visible') return
       const source = this.passageSource(node.id)
       const span = source === null ? null : resolveTextAnchor(source, anchor)
-      if (source === null || !span) return
-      const line = source.slice(0, span[0]).split('\n').length - 1
-      this.commitWithoutHistory(
-        this.boardWithSnappedWindow(this.board, node.id, line, source),
-      )
-      this.contentSyncQueue.add(node.id)
+      if (source !== null && span) this.turnTextTo(node.id, source, span[0])
       return
     }
     const target = anchor?.kind === 'pdf' ? anchor.page : page
@@ -3444,6 +3439,16 @@ export class WhiteboardCanvas {
       return
     }
     this.commitWithoutHistory(boardWithPageWindow(this.board, node.id, target))
+  }
+
+  /** Moves a card's reading window to the block that `offset` in its
+   * `source` is in. */
+  private turnTextTo(id: NodeId, source: string, offset: number): void {
+    const line = source.slice(0, offset).split('\n').length - 1
+    this.commitWithoutHistory(
+      this.boardWithSnappedWindow(this.board, id, line, source),
+    )
+    this.contentSyncQueue.add(id)
   }
 
   /** World point an edge's chrome hangs from: the midpoint of its curve, the
@@ -4321,7 +4326,9 @@ export class WhiteboardCanvas {
 
   /** Brings a hit of the board's find to view: its card at a size it can
    * be read at, and the hit in the middle of the viewport where the card
-   * shows it. */
+   * shows it. A hit past what a long card shows opens the card to read
+   * (selects it) at the block the hit is in, as an edge's end is turned to
+   * (`turnToEnd`) — and the card keeps that as where it is read from. */
   private revealFindHit(hit: FindHit, source: string): void {
     const node = this.nodesById.get(hit.id)
     if (!node) return
@@ -4331,6 +4338,19 @@ export class WhiteboardCanvas {
       return
     }
     const placed = this.placeFindHit(hit, source)
+    if (placed && placed.state !== 'visible') {
+      this.setSelection([hit.id])
+      this.turnTextTo(hit.id, source, hit.start)
+      // Met at its top, where the hit's block now is.
+      const size = this.getViewportSize()
+      const half = size.height / 2 / this.cameraController.view.scale
+      this.cameraController.centerOn(
+        { x: node.x + node.w / 2, y: node.y + Math.min(node.h / 2, half) },
+        size,
+        { glide: true },
+      )
+      return
+    }
     const box =
       placed?.state === 'visible'
         ? {
