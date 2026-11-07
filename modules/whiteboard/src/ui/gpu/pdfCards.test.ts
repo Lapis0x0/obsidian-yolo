@@ -3,11 +3,20 @@ import { READER_METRICS } from '../pdf/readerLayout'
 
 import { pageOfKey, pdfCardImages, pdfPageKey } from './pdfCards'
 
-const base = { id: 'n1', x: 0, y: 0, width: 200, height: 300 }
-const folded = (startPage?: number): BoardNode =>
-  ({ ...base, type: 'file', file: 'a.pdf', startPage }) as BoardNode
-const sheet = (page: number): BoardNode =>
-  ({ ...base, type: 'pdf-page', parent: 'n0', file: 'a.pdf', page }) as BoardNode
+const base = { id: 'n1', x: 0, y: 0, w: 200, h: 300, extra: {} }
+const folded = (startPage?: number): BoardNode => ({
+  ...base,
+  type: 'file',
+  file: 'a.pdf',
+  ...(startPage === undefined ? {} : { startPage }),
+})
+const sheet = (page: number): BoardNode => ({
+  ...base,
+  type: 'pdf-page',
+  parent: 'n0',
+  file: 'a.pdf',
+  page,
+})
 
 /** Pages 100 × 150: 300 tall at the card's 200. */
 const pages =

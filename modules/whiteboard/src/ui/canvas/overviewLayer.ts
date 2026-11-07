@@ -883,12 +883,16 @@ export class OverviewLayer {
    * rather than in the fallback. */
   private parses(ctx: CanvasRenderingContext2D, value: string): boolean {
     const before = ctx.fillStyle
-    ctx.fillStyle = value
-    const accepted = ctx.fillStyle !== before
+    // Tried against two different colours, so a value that happens to be
+    // the one already set — the text colour the last frame's titles left
+    // there, when the theme is read again — is not taken for rejected.
+    const acceptedOver = (probe: string): boolean => {
+      ctx.fillStyle = probe
+      ctx.fillStyle = value
+      return ctx.fillStyle !== probe
+    }
+    const accepted = acceptedOver('#000000') || acceptedOver('#ffffff')
     ctx.fillStyle = before
-    // A value that normalises to exactly what was already set reads as
-    // rejected; accepting the false negative costs a fallback colour, where
-    // the false positive would cost a wrong one.
     return accepted
   }
 
