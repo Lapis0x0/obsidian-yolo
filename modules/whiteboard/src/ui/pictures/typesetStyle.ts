@@ -371,7 +371,26 @@ export function measureSample(
       italic: style.fontStyle === 'italic',
       color: style.color,
       lineHeight,
+      baseline: baselineOf(el, style),
     }
+  }
+  /** Where `el`'s first line has its baseline, below its content's top: a
+   * mark of no size put at its start sits on it. */
+  const baselineOf = (el: Element, style: CSSStyleDeclaration): number => {
+    const mark = doc.createElement('span')
+    Object.assign(mark.style, {
+      display: 'inline-block',
+      width: '0',
+      height: '0',
+    })
+    el.insertBefore(mark, el.firstChild)
+    const top =
+      el.getBoundingClientRect().top +
+      px(style.borderTopWidth) +
+      px(style.paddingTop)
+    const baseline = mark.getBoundingClientRect().top - top
+    mark.remove()
+    return baseline
   }
 
   /** From a card's edge to its content: border and padding, and the gutter
@@ -627,6 +646,7 @@ export function measureSample(
       family: codeStyle.family,
       size: codeStyle.size,
       lineHeight: codeStyle.lineHeight,
+      baseline: codeStyle.baseline,
       color: codeStyle.color,
       background: pre ? cs(pre).backgroundColor : 'transparent',
       radius: pre ? px(cs(pre).borderTopLeftRadius) : 0,

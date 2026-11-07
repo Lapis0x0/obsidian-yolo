@@ -28,6 +28,10 @@ export type TextStyle = FontFace &
     color: string
     /** The line box, in world pixels. */
     lineHeight: number
+    /** From a line's top to its baseline, as the browser puts it: how it
+     * shares the line's spare height out above and below the text rounds
+     * in ways a font's metrics do not tell. */
+    baseline: number
   }>
 
 export type Pill = Readonly<{
@@ -143,6 +147,8 @@ export type TypesetTokens = Readonly<{
     family: string
     size: number
     lineHeight: number
+    /** From a line's top to its baseline (`TextStyle`'s). */
+    baseline: number
     color: string
     background: string
     radius: number

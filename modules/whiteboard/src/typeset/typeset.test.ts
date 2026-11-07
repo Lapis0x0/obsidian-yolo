@@ -128,6 +128,19 @@ describe('parseCard', () => {
     expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
   })
 
+  test('a line of spaces indented into an item keeps a list tight', () => {
+    const spread = (markdown: string) => {
+      const [section] = parseCard(markdown)
+      if (section.block.kind !== 'list') throw new Error(section.block.kind)
+      return section.block.spread
+    }
+    expect(spread('- a\n    \n- b')).toBe(false)
+    expect(spread('- a\n  \n- b')).toBe(false)
+    // Indented less than the item's content, or empty: a blank line.
+    expect(spread('- a\n \n- b')).toBe(true)
+    expect(spread('- a\n\n- b')).toBe(true)
+  })
+
   test('an image on the web is an image, though its address names no type', () => {
     const [section] = parseCard('![图片](https://a.b/640?wx_fmt=png#i=0)')
     if (section.block.kind !== 'paragraph') throw new Error(section.block.kind)
@@ -298,6 +311,7 @@ describe('layoutCard', () => {
     italic: false,
     color: 'black',
     lineHeight,
+    baseline: (lineHeight - size * 1.2) / 2 + size,
   })
   const body = style(15, 24)
   const line = { width: 1, color: 'grey' }
@@ -379,6 +393,7 @@ describe('layoutCard', () => {
       family: 'mono',
       size: 13,
       lineHeight: 20,
+      baseline: 15,
       color: 'black',
       background: 'grey',
       radius: 6,
@@ -441,7 +456,9 @@ describe('layoutCard', () => {
     expect(title.x).toBe(21)
     expect(title.font).toContain('20px')
     // The heading's line, then the paragraph's, then one blank line.
-    expect(one.y - title.y).toBeCloseTo(27 / 2 + 24 / 2 + (15 - 20) * 0.3, 0)
+    // Each baseline where its style puts it: a 27-high line, then the
+    // paragraph's 24.
+    expect(one.y - title.y).toBe(27 + 18 - 21.5)
     expect(two.y - one.y).toBe(24 * 2)
   })
 
@@ -488,6 +505,7 @@ describe('images', () => {
           italic: false,
           color: 'black',
           lineHeight: 24,
+          baseline: 18,
         },
         boldWeight: 700,
         embed: 'grey',

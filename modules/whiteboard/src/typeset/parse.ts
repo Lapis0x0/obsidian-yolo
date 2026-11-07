@@ -86,6 +86,59 @@ export function calloutTitlesApart(markdown: string): string {
   return out.join('\n')
 }
 
+const LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/
+
+/**
+ * A line of nothing but spaces inside a list item, indented as far as the
+ * item's content, is the item's to Obsidian, not a blank line: the list
+ * stays tight, and a paragraph goes on past it. CommonMark reads it as
+ * blank, so it goes — only a line indented less (or empty) parts the items.
+ */
+export function itemSpacesDropped(markdown: string): string {
+  const out: string[] = []
+  let fence: string | null = null
+  // The column the open item's content starts at; null outside a list.
+  let item: number | null = null
+  let afterBlank = false
+  for (const line of markdown.split('\n')) {
+    const opened = FENCE.exec(line)
+    if (opened) {
+      fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
+      out.push(line)
+      continue
+    }
+    if (fence !== null) {
+      out.push(line)
+      continue
+    }
+    if (/^[ \t]*$/.test(line)) {
+      if (line !== '' && item !== null && columns(line) >= item) continue
+      afterBlank = true
+      out.push(line)
+      continue
+    }
+    const marker = LIST_ITEM.exec(line)
+    const indent = columns(/^[ \t]*/.exec(line)?.[0] ?? '')
+    if (marker) {
+      item =
+        columns(marker[1]) + marker[2].length + Math.max(1, marker[3].length)
+    } else if (item !== null && afterBlank && indent < item) {
+      item = null
+    }
+    afterBlank = false
+    out.push(line)
+  }
+  return out.join('\n')
+}
+
+/** How many columns leading whitespace takes, a tab to the next stop of
+ * four. */
+function columns(space: string): number {
+  let n = 0
+  for (const ch of space) n = ch === '\t' ? n + 4 - (n % 4) : n + 1
+  return n
+}
+
 const FRONTMATTER = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/
 
 export function stripFrontmatter(markdown: string): string {
@@ -95,7 +148,10 @@ export function stripFrontmatter(markdown: string): string {
 }
 
 export function parseCard(markdown: string): Section[] {
-  const tree = fromMarkdown(calloutTitlesApart(stripFrontmatter(markdown)), {
+  const source = itemSpacesDropped(
+    calloutTitlesApart(stripFrontmatter(markdown)),
+  )
+  const tree = fromMarkdown(source, {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   })
@@ -157,6 +213,7 @@ function blockOf(node: Flow): Block | null {
     case 'thematicBreak':
       return { kind: 'rule' }
     case 'html': {
+      if (/^\s*<!--[\s\S]*-->\s*$/.test(node.value)) return { kind: 'nothing' }
       const text = node.value.replace(/<[^>]*>/g, '').trim()
       return text === ''
         ? null

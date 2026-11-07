@@ -248,6 +248,8 @@ function layoutBlock(
       return layoutCode(ctx, block.text, left, right, y)
     case 'table':
       return layoutTable(ctx, block, left, right, y, voice)
+    case 'nothing':
+      return y
     case 'rule': {
       const { rule } = tokens
       const h = tokens.body.lineHeight
@@ -358,7 +360,7 @@ function layoutText(
   const lineHeight = voice.style.lineHeight
   lines.forEach((line, i) => {
     if (y >= ctx.bottom) return
-    const normal = baselineIn(ctx, fontString(voice.style), y, lineHeight)
+    const normal = y + voice.style.baseline
     // An image stands on the baseline: one taller than the line above it
     // pushes the baseline down, and the line with it.
     const tallest = Math.max(0, ...line.pieces.map((p) => p.height ?? 0))
@@ -370,21 +372,6 @@ function layoutText(
     y += lineHeight + (baseline - normal)
   })
   return y
-}
-
-function baselineIn(
-  ctx: Ctx,
-  font: string,
-  top: number,
-  lineHeight: number,
-): number {
-  // Whole pixels, as the browser keeps a font's ascent and descent: a
-  // baseline placed with the font's own fractions sits a fraction lower
-  // than the card's.
-  const { ascent, descent } = ctx.metrics(font)
-  const a = Math.round(ascent)
-  const d = Math.round(descent)
-  return top + (lineHeight - (a + d)) / 2 + a
 }
 
 function drawLine(
@@ -563,7 +550,7 @@ function layoutList(
       ctx.ops.push({
         op: 'text',
         x: textLeft + L.numberRight - width,
-        y: baselineIn(ctx, font, start, lineHeight),
+        y: start + voice.style.baseline,
         text: label,
         font,
         color: L.numberColor,
@@ -681,6 +668,7 @@ function layoutCode(
     italic: false,
     color: c.color,
     lineHeight: c.lineHeight,
+    baseline: c.baseline,
   }
   const font = fontString(style)
   const inner = { left: left + c.padX, right: right - c.padX }
@@ -713,7 +701,7 @@ function layoutCode(
           },
         ]
     for (const line of lines) {
-      const baseline = baselineIn(ctx, font, cursor, c.lineHeight)
+      const baseline = cursor + c.baseline
       for (const piece of line.pieces) {
         if (piece.text === '') continue
         ctx.ops.push({

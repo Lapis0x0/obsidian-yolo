@@ -156,7 +156,9 @@ describe('placeDrawnPassage', () => {
   // Two runs on two lines: "Hello world" and "second line".
   const drawn = {
     shown: 'Hello worldsecond line',
-    runs: new Float32Array([0, 11, 10, 0, 120, 20, 11, 22, 10, 24, 120, 44]),
+    runs: new Float32Array([
+      0, 11, 10, 0, 120, 20, 16, 11, 22, 10, 24, 120, 44, 40,
+    ]),
   }
   const source = '# Hello world\n\nsecond line\n'
   const anchor = (start: number, end: number) =>

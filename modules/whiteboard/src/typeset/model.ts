@@ -74,6 +74,9 @@ export type Block =
       rows: readonly (readonly (readonly Inline[])[])[]
     }>
   | Readonly<{ kind: 'rule' }>
+  /** A block that shows nothing but still holds its place among the
+   * others — an HTML comment: the blank lines after it count. */
+  | Readonly<{ kind: 'nothing' }>
   | Readonly<{ kind: 'embed'; target: string }>
 
 /** A block and the blank source lines written after it — what a card spaces

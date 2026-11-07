@@ -127,6 +127,7 @@ export class Typesetter {
         op.y - Math.round(ascent),
         op.x + this.measure(op.text, op.font),
         op.y + Math.round(descent),
+        op.y,
       )
     }
     return { shown, runs: new Float32Array(values).buffer }

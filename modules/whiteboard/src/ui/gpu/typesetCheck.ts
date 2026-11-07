@@ -27,6 +27,9 @@ const FULL_WIDTH_MARKS = new Set(
 )
 /** How far a character may be from where the browser puts it, px. */
 const TOLERANCE = 1.5
+/** How far apart two baselines may be: drawn text a fraction of a pixel
+ * off moves when a card goes from one to the other. */
+const BASELINE_TOLERANCE = 0.25
 
 export type TypesetCheckDeps = Readonly<{
   host: YoloModuleHostApiV1
@@ -215,6 +218,38 @@ function domPlaces(card: HTMLElement, node: BoardNode): Placed[] {
   const walker = doc.createTreeWalker(card, NodeFilter.SHOW_TEXT)
   const range = doc.createRange()
   const out: Placed[] = []
+  // A character's box is its font's, whatever line it is on: its baseline
+  // is that far below the box's top, found once per font on a mark that
+  // sits on the baseline.
+  const drops = new Map<string, number>()
+  const dropOf = (el: Element): number => {
+    const font = win?.getComputedStyle(el).font ?? ''
+    const known = drops.get(font)
+    if (known !== undefined) return known
+    const probe = doc.createElement('div')
+    Object.assign(probe.style, {
+      position: 'absolute',
+      visibility: 'hidden',
+      whiteSpace: 'pre',
+      font,
+    })
+    const mark = doc.createElement('span')
+    Object.assign(mark.style, {
+      display: 'inline-block',
+      width: '0',
+      height: '0',
+    })
+    probe.append(mark, 'x')
+    card.appendChild(probe)
+    const glyph = doc.createRange()
+    glyph.setStart(probe.lastChild as Text, 0)
+    glyph.setEnd(probe.lastChild as Text, 1)
+    const drop =
+      mark.getBoundingClientRect().top - glyph.getBoundingClientRect().top
+    probe.remove()
+    drops.set(font, drop)
+    return drop
+  }
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
     const value = text.nodeValue ?? ''
     let clipLeft = 0
@@ -235,6 +270,7 @@ function domPlaces(card: HTMLElement, node: BoardNode): Placed[] {
         clipBottom = Math.min(clipBottom, box.bottom - origin.top)
       }
     }
+    const drop = text.parentElement ? dropOf(text.parentElement) : 0
     let i = 0
     for (const ch of value) {
       const at = i
@@ -245,7 +281,8 @@ function domPlaces(card: HTMLElement, node: BoardNode): Placed[] {
       const rect = range.getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) continue
       const x = rect.left - origin.left
-      const y = rect.top - origin.top
+      // Shown when its baseline is: the same test for the typesetter's.
+      const y = rect.top - origin.top + drop
       if (x < clipLeft - TOLERANCE || x >= clipRight || y >= clipBottom) {
         continue
       }
@@ -266,7 +303,10 @@ function typesetPlaces(
   const out: Placed[] = []
   const { runs, shown } = drawn
   for (let r = 0; r + RUN_FIELDS <= runs.length; r += RUN_FIELDS) {
-    const [start, end, left, top, right] = runs.subarray(r, r + RUN_FIELDS)
+    const [start, end, left, , right, , baseline] = runs.subarray(
+      r,
+      r + RUN_FIELDS,
+    )
     // Where each character starts, near enough to tell whether the clip
     // cuts it off: the run's width shared out evenly.
     const chars = Array.from(shown.slice(start, end))
@@ -280,12 +320,12 @@ function typesetPlaces(
         /\s/.test(ch) ||
         x < clipLeft - TOLERANCE ||
         x >= clipRight ||
-        top >= clipBottom
+        baseline >= clipBottom
       ) {
         first = false
         return
       }
-      out.push({ ch, x: left, y: top, runStart: first })
+      out.push({ ch, x: left, y: baseline, runStart: first })
       first = false
     })
   }
@@ -352,11 +392,10 @@ function compare(
       }
     }
   }
-  // Where a line and a run start: the browser's glyph box top is not the
-  // typesetter's run top, so lines are compared to the card's first.
-  const dy = dom.length > 0 ? dom[0].y - typeset[0].y : 0
+  // Where a line and a run start: baselines, the browser's and the
+  // typesetter's.
   for (let i = 0; i < n; i += 1) {
-    if (Math.abs(dom[i].y - typeset[i].y - dy) > TOLERANCE) {
+    if (Math.abs(dom[i].y - typeset[i].y) > BASELINE_TOLERANCE) {
       return {
         problem: 'place',
         at: i,
