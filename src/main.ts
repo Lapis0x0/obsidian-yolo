@@ -101,6 +101,7 @@ import {
   ModuleFileTextRendererRegistry,
   ModuleIntentStore,
   ModuleLoader,
+  ModuleMathCapabilityProvider,
   ModuleNetworkCapabilityProvider,
   ModulePdfCapabilityProvider,
   ModulePrivateStorageCapabilityProvider,
@@ -4591,6 +4592,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             )
           },
         }),
+        math: new ModuleMathCapabilityProvider(),
         network: new ModuleNetworkCapabilityProvider(),
         privateStorage: new ModulePrivateStorageCapabilityProvider({
           synchronized: {

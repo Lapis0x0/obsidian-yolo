@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react'
 
 import type { YoloAgentCapability } from '../agent/capability-profile'
+import type {
+  MathLayout,
+  MathPiece,
+  MathRequest,
+  MathShape,
+} from '../runtime-components/contracts'
 
 import type { ModuleConfigV1 } from './moduleConfig'
 import type { ModuleFailure } from './moduleFailure'
@@ -1130,6 +1136,29 @@ export type YoloModulePdfV1 = Readonly<{
   ): Promise<ArrayBuffer>
 }>
 
+/** A formula to lay out: TeX, inline (`$…$`) or display (`$$…$$`). */
+export type YoloModuleMathRequestV1 = MathRequest
+/** A formula as Obsidian lays it out in a note, in ems, as shapes. */
+export type YoloModuleMathLayoutV1 = MathLayout
+export type YoloModuleMathPieceV1 = MathPiece
+export type YoloModuleMathShapeV1 = MathShape
+
+/** Formulas, laid out for a module that draws its own text. */
+export type YoloModuleMathV1 = Readonly<{
+  /**
+   * Each formula as Obsidian's MathJax lays it out in a note — the same
+   * version, font and TeX packages — in order: pieces inline math may wrap
+   * between, each a list of shapes (glyph outlines, rules, text) in ems of
+   * the text around it. Null for one with something in it that is not drawn
+   * as these shapes; show that one as Obsidian does. Rejects when the math
+   * engine runtime component is disabled or failed to install (it is
+   * installed on demand, so the first call may wait for a download).
+   */
+  layout(
+    requests: readonly YoloModuleMathRequestV1[],
+  ): Promise<readonly (YoloModuleMathLayoutV1 | null)[]>
+}>
+
 export type YoloModuleNetworkResponseV1 = Readonly<{
   /** The response's `Content-Type`, when it has one. */
   contentType: string | null
@@ -1154,6 +1183,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   chat: YoloModuleChatV1
   config: ModuleConfigV1
   i18n: YoloModuleI18nV1
+  math: YoloModuleMathV1
   network: YoloModuleNetworkV1
   paths: YoloModulePathsV1
   pdf: YoloModulePdfV1

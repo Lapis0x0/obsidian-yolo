@@ -137,6 +137,10 @@ export {
   type ModulePathsCapabilityProviderV1,
 } from './modulePaths'
 export {
+  ModuleMathCapabilityProvider,
+  type ModuleMathCapabilityProviderV1,
+} from './moduleMath'
+export {
   ModuleNetworkCapabilityProvider,
   type ModuleNetworkCapabilityProviderV1,
 } from './moduleNetwork'

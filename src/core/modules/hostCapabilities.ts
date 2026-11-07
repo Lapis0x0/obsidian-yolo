@@ -30,6 +30,10 @@ import {
   type ModuleI18nCapabilityProviderV1,
 } from './moduleI18n'
 import {
+  type ModuleMathCapabilityProviderV1,
+  UNAVAILABLE_MODULE_MATH_CAPABILITY_PROVIDER,
+} from './moduleMath'
+import {
   type ModuleNetworkCapabilityProviderV1,
   UNAVAILABLE_MODULE_NETWORK_CAPABILITY_PROVIDER,
 } from './moduleNetwork'
@@ -187,6 +191,7 @@ type CoreModuleHostCapabilityProviderOptions = {
   chat?: ModuleChatCapabilityProviderV1
   config?: ModuleConfigCapabilityProviderV1
   i18n?: ModuleI18nCapabilityProviderV1
+  math?: ModuleMathCapabilityProviderV1
   network?: ModuleNetworkCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
   pdf?: ModulePdfCapabilityProviderV1
@@ -209,6 +214,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly config: ModuleConfigCapabilityProviderV1
   private readonly now: () => number
   private readonly i18n: ModuleI18nCapabilityProviderV1
+  private readonly math: ModuleMathCapabilityProviderV1
   private readonly network: ModuleNetworkCapabilityProviderV1
   private readonly paths: ModulePathsCapabilityProviderV1
   private readonly pdf: ModulePdfCapabilityProviderV1
@@ -229,6 +235,7 @@ export class CoreModuleHostCapabilityProvider
     chat = UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER,
     config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
     i18n = new ModuleI18nCapabilityProvider(),
+    math = UNAVAILABLE_MODULE_MATH_CAPABILITY_PROVIDER,
     network = UNAVAILABLE_MODULE_NETWORK_CAPABILITY_PROVIDER,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     pdf = UNAVAILABLE_MODULE_PDF_CAPABILITY_PROVIDER,
@@ -251,6 +258,7 @@ export class CoreModuleHostCapabilityProvider
     this.chat = chat
     this.config = config
     this.i18n = i18n
+    this.math = math
     this.network = network
     this.paths = paths
     this.pdf = pdf
@@ -279,6 +287,7 @@ export class CoreModuleHostCapabilityProvider
     const chat = this.chat.create(moduleId, lifecycle)
     const config = this.config.create(moduleId, lifecycle)
     const i18n = this.i18n.create(moduleId, lifecycle)
+    const math = this.math.create(moduleId, lifecycle)
     const network = this.network.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
     const pdf = this.pdf.create(moduleId, lifecycle)
@@ -295,6 +304,7 @@ export class CoreModuleHostCapabilityProvider
         chat: chat.api,
         config: config.api,
         i18n: i18n.api,
+        math: math.api,
         network: network.api,
         paths: paths.api,
         pdf: pdf.api,
