@@ -2,7 +2,7 @@
 // against a 2D context — the typesetting worker's OffscreenCanvas
 // (./typesetWorker.ts) — so that nothing of it is on the main thread.
 
-import { embedLinks, imageOf } from '../../typeset/images'
+import { embedLinks, imageOf, isRemoteImage } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
 import { paint } from '../../typeset/paint'
 import { parseCard } from '../../typeset/parse'
@@ -267,7 +267,11 @@ export function needsHost(
   if (markdown.trim() === '') return true
   for (const link of embedLinks(markdown)) {
     const image = imageOf(link)
-    if (!image || !(image.target in images)) return true
+    // An image on the web: its pixels are the browser's to show — a page
+    // may not read them — so it is shown where the browser shows it.
+    if (!image || !(image.target in images) || isRemoteImage(image.target)) {
+      return true
+    }
   }
   return (
     DRAWN_FENCES.test(markdown) || MATH.test(markdown) || HTML.test(markdown)

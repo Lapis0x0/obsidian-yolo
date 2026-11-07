@@ -48,8 +48,14 @@ const TYPESET_VERSION = 2
 
 /** A card picture's stamp: its card's signature (./cardSignature.ts) and
  * the look it is typeset in. */
-export function cardStamp(signature: string, styleHash: string): string {
-  return `${signature}.${styleHash}.${TYPESET_VERSION}`
+export function cardStamp(
+  signature: string,
+  styleHash: string,
+  /** The web images' sizes as known (../../host/remoteImageSizes.ts): a
+   * picture made before one was may have left it out. */
+  imagesRevision: number,
+): string {
+  return `${signature}.${styleHash}.${TYPESET_VERSION}.${imagesRevision}`
 }
 
 /** The picture of card `id` of the board at `boardPath`. */
@@ -70,6 +76,11 @@ export type TypesetCardsDeps = Readonly<{
   readNote: (path: string) => Promise<string | null>
   /** A node colour as the board paints it (root.css's palette). */
   colorOf: (color: string) => string | null
+  /** The own sizes of the images `markdown` embeds, by what it names
+   * each, as far as they are known (../gpu/imageSizes.ts). */
+  imagesOf: (
+    markdown: string,
+  ) => Promise<Record<string, Readonly<{ w: number; h: number }>>>
 }>
 
 export class TypesetCards implements PictureSource {
@@ -132,11 +143,15 @@ export class TypesetCards implements PictureSource {
       Math.sqrt(MAX_PIXELS / Math.max(1, node.w * node.h)),
     )
     const plain = isPlainText(node)
+    const clipped = clippedCardMarkdown(node, markdown)
+    // Its images take their room, as the card's do.
+    const images = await deps.imagesOf(clipped)
     const image = await deps.typesetter.picture(
       { tokens, hash },
       {
         id,
-        markdown: clippedCardMarkdown(node, markdown),
+        markdown: clipped,
+        images,
         w: node.w,
         h: node.h,
         plain,

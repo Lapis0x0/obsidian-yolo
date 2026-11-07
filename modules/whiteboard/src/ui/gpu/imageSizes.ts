@@ -4,11 +4,18 @@
 // header (../../domain/imageSize.ts) once and kept until the file changes.
 
 import { type ImageSize, imageSize } from '../../domain/imageSize'
+import {
+  type RemoteImageSizes,
+  remoteImageKey,
+} from '../../host/remoteImageSizes'
+import { isRemoteImage } from '../../typeset/images'
 
 export type ImageSizesDeps = Readonly<{
   vault: Pick<YoloModuleHostApiV1['vault'], 'resolveLink' | 'readBinary'>
   /** The document embeds are resolved against: the board's file. */
   sourcePath: () => string
+  /** The sizes of images on the web, as cards' DOM found them. */
+  remote: Pick<RemoteImageSizes, 'get'>
 }>
 
 export class ImageSizes {
@@ -18,8 +25,10 @@ export class ImageSizes {
 
   constructor(private readonly deps: ImageSizesDeps) {}
 
-  /** The file `target` names, or null when it names none. */
+  /** The file `target` names, or null when it names none; an image on the
+   * web, its address. */
   resolve(target: string): string | null {
+    if (isRemoteImage(target)) return remoteImageKey(target)
     if (/^[a-z][\w+.-]*:/i.test(target)) return null
     return (
       this.deps.vault.resolveLink(target, this.deps.sourcePath())?.path ?? null
@@ -28,12 +37,22 @@ export class ImageSizes {
 
   /** A file's size; null when it has none; undefined while it is read. */
   get(path: string): ImageSize | null | undefined {
+    // An image on the web is known once a card's DOM has shown it.
+    if (isRemoteImage(path)) return this.deps.remote.get(path)
     const known = this.sizes.get(path)
     if (known === undefined) {
       this.sizes.set(path, this.load(path))
       return undefined
     }
     return known instanceof Promise ? undefined : known
+  }
+
+  /** A file's size, once it is read. */
+  async sizeOf(path: string): Promise<ImageSize | null> {
+    const now = this.get(path)
+    if (now !== undefined) return now
+    await this.sizes.get(path)
+    return this.get(path) ?? null
   }
 
   /** A file changed: its size is read again when next asked for. */

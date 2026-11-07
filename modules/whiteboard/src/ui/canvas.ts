@@ -132,7 +132,9 @@ import type { MinimapPrefs } from '../host/minimapPrefs'
 import { takePendingFit } from '../host/pendingFit'
 import type { PictureStores } from '../host/pictureStore'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
+import type { RemoteImageSizes } from '../host/remoteImageSizes'
 import { createWhiteboardTranslation } from '../i18n'
+import { imageTargets, isRemoteImage } from '../typeset/images'
 
 import { BoardSources } from './canvas/boardSources'
 import { CameraController } from './canvas/cameraController'
@@ -679,6 +681,9 @@ export class WhiteboardCanvas {
   private typesetClient: TypesetClient | null = null
   /** The GPU scene, behind its development switch (./gpu/gpuBoard.ts). */
   private gpuBoard: GpuBoard | null = null
+  /** The own sizes of the images cards embed (./gpu/imageSizes.ts). */
+  private imageSizes: ImageSizes | null = null
+  private unsubscribeRemoteSizes: (() => void) | null = null
   /** The images GPU cards show near to, decoded at that size. */
   private nearImages: NearImages | null = null
   /** The board's line in the host's activity list while it makes pictures
@@ -706,6 +711,7 @@ export class WhiteboardCanvas {
     private readonly minimapPrefs: MinimapPrefs,
     private readonly boardCameras: BoardCameras,
     documents: BoardDocuments,
+    private readonly remoteImageSizes: RemoteImageSizes,
   ) {
     this.sources = new BoardSources({
       documents,
@@ -1597,6 +1603,8 @@ export class WhiteboardCanvas {
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
+    this.unsubscribeRemoteSizes?.()
+    this.unsubscribeRemoteSizes = null
     this.gpuBoard?.destroy()
     this.gpuBoard = null
     this.nearImages?.destroy()
@@ -1661,6 +1669,23 @@ export class WhiteboardCanvas {
     viewport.className = VIEWPORT_CLASS
     const world = doc.createElement('div')
     world.className = WORLD_CLASS
+    // An image on the web a card shows: its size, once the browser has it
+    // (../host/remoteImageSizes.ts). `load` does not bubble; it is caught on
+    // its way down.
+    world.addEventListener(
+      'load',
+      (event) => {
+        const img = event.target as HTMLImageElement | null
+        if (img?.tagName !== 'IMG') return
+        const src = img.currentSrc || img.src
+        if (!isRemoteImage(src)) return
+        this.remoteImageSizes.learn(src, {
+          w: img.naturalWidth,
+          h: img.naturalHeight,
+        })
+      },
+      true,
+    )
 
     // Edges overlay: one SVG covering the whole (unbounded) world layer.
     // `overflow: visible` on a nominally 1x1px element lets paths be drawn
@@ -1865,6 +1890,17 @@ export class WhiteboardCanvas {
             }
           },
           colorOf: nodeColorFrom(root),
+          imagesOf: async (markdown) => {
+            const sizes = this.imageSizes
+            const out: Record<string, Readonly<{ w: number; h: number }>> = {}
+            if (!sizes) return out
+            for (const target of imageTargets(markdown)) {
+              const path = sizes.resolve(target)
+              const size = path === null ? null : await sizes.sizeOf(path)
+              if (size) out[target] = size
+            }
+            return out
+          },
         }),
       ],
       wanted: () => this.wantedPictures(),
@@ -1916,7 +1952,9 @@ export class WhiteboardCanvas {
     const imageSizes = new ImageSizes({
       vault: this.host.vault,
       sourcePath: () => this.sourcePathForBoard(),
+      remote: this.remoteImageSizes,
     })
+    this.imageSizes = imageSizes
     const nearImages = new NearImages({
       win: this.context.getWindow(),
       vault: this.host.vault,
@@ -1953,6 +1991,12 @@ export class WhiteboardCanvas {
         })
       : null
     this.gpuBoard?.setNodes(this.ownCardNodes)
+    this.unsubscribeRemoteSizes?.()
+    this.unsubscribeRemoteSizes = this.remoteImageSizes.subscribe((key) => {
+      this.gpuBoard?.imageLearned(key)
+      // Its cards' pictures, made without it, are made again.
+      this.pictures?.invalidate()
+    })
     // DEBUG(p4): the typesetter checked against the browser, from the
     // console (./gpu/typesetCheck.ts).
     if (this.gpuBoard) {
@@ -4245,7 +4289,7 @@ export class WhiteboardCanvas {
           ...this.pictureKeyOf(node.id),
           width: node.w,
           distance,
-          stamp: cardStamp(signature, look),
+          stamp: cardStamp(signature, look, this.remoteImageSizes.revision),
         }
         continue
       }

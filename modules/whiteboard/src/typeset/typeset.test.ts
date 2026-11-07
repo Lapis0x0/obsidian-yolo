@@ -128,6 +128,14 @@ describe('parseCard', () => {
     expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
   })
 
+  test('an image on the web is an image, though its address names no type', () => {
+    const [section] = parseCard('![图片](https://a.b/640?wx_fmt=png#i=0)')
+    if (section.block.kind !== 'paragraph') throw new Error(section.block.kind)
+    expect(section.block.inlines[0].image?.target).toBe(
+      'https://a.b/640?wx_fmt=png',
+    )
+  })
+
   test('a link shows its alias, or its heading steps', () => {
     expect(linkText('note|alias')).toBe('alias')
     expect(linkText('note#one#two')).toBe('note > one > two')

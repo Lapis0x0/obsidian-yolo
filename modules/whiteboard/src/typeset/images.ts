@@ -7,6 +7,14 @@
 import type { InlineImage } from './model'
 
 const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i
+const REMOTE = /^https?:\/\//i
+
+/** Whether an image's target is on the web rather than in the vault: an
+ * image link's address may name no file type at all
+ * (`https://…/640?wx_fmt=png`), and the browser shows it all the same. */
+export function isRemoteImage(target: string): boolean {
+  return REMOTE.test(target)
+}
 const IMAGE_SIZE = /^(\d+)(?:x(\d+))?$/
 
 /** An embed's link text as an image, if it names one: its target, and the
@@ -15,7 +23,7 @@ export function imageOf(link: string): InlineImage | null {
   const bar = link.indexOf('|')
   const target = (bar === -1 ? link : link.slice(0, bar)).trim()
   const path = target.replace(/#.*$/, '')
-  if (!IMAGE_FILE.test(path)) return null
+  if (!IMAGE_FILE.test(path) && !isRemoteImage(path)) return null
   const size = bar === -1 ? null : IMAGE_SIZE.exec(link.slice(bar + 1).trim())
   return {
     target: path,
