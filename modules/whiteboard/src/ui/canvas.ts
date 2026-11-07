@@ -209,6 +209,7 @@ import {
 } from './constants'
 import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
 import { ImageSizes } from './gpu/imageSizes'
+import { NearImages } from './gpu/nearImages'
 import { placeDrawnPassage } from './gpu/passages'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
@@ -677,6 +678,8 @@ export class WhiteboardCanvas {
   private typesetClient: TypesetClient | null = null
   /** The GPU scene, behind its development switch (./gpu/gpuBoard.ts). */
   private gpuBoard: GpuBoard | null = null
+  /** The images GPU cards show near to, decoded at that size. */
+  private nearImages: NearImages | null = null
   /** The board's line in the host's activity list while it makes pictures
    * (./pictures/activity.ts). */
   private pictureActivity: PictureActivity | null = null
@@ -1595,6 +1598,8 @@ export class WhiteboardCanvas {
     this.overviewLayer = null
     this.gpuBoard?.destroy()
     this.gpuBoard = null
+    this.nearImages?.destroy()
+    this.nearImages = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
     this.passagePoints?.destroy()
@@ -1906,6 +1911,19 @@ export class WhiteboardCanvas {
       },
     })
     this.gpuBoard?.destroy()
+    this.nearImages?.destroy()
+    const imageSizes = new ImageSizes({
+      vault: this.host.vault,
+      sourcePath: () => this.sourcePathForBoard(),
+    })
+    const nearImages = new NearImages({
+      win: this.context.getWindow(),
+      vault: this.host.vault,
+      ownWidth: (path) => imageSizes.get(path)?.w ?? null,
+      picture: (path) => this.pictures?.get(imageRef(path), false) ?? null,
+      onDecoded: () => this.gpuBoard?.markDirty(),
+    })
+    this.nearImages = nearImages
     this.gpuBoard = gpuSwitchedOn(this.context.getWindow())
       ? new GpuBoard({
           parent: viewport,
@@ -1928,12 +1946,8 @@ export class WhiteboardCanvas {
             }
           },
           typesetter: typesetClient,
-          imagePicture: (path) =>
-            this.pictures?.get(imageRef(path), false) ?? null,
-          images: new ImageSizes({
-            vault: this.host.vault,
-            sourcePath: () => this.sourcePathForBoard(),
-          }),
+          imagePicture: (path, devicePx) => nearImages.get(path, devicePx),
+          images: imageSizes,
           reportError: (stage, error) => this.reportError(stage, error),
         })
       : null
@@ -2562,6 +2576,7 @@ export class WhiteboardCanvas {
         const path = event.type === 'rename' ? event.oldPath : event.entry.path
         this.pictures?.fileChanged(path)
         this.gpuBoard?.fileChanged(path)
+        this.nearImages?.fileChanged(path)
       }
       if (event.type === 'delete' && this.pdf.onFileDeleted(event.entry.path)) {
         return

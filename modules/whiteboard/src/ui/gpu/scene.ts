@@ -59,9 +59,12 @@ export type CardImage = Readonly<{
   h: number
 }>
 
-/** An image's picture, as the scene is handed it: a bitmap, or null while
- * there is none. */
-export type ImagePicture = (path: string) => ImageBitmap | null
+/** An image's picture for showing it `devicePx` wide, as the scene is
+ * handed it: a bitmap, or null while there is none. */
+export type ImagePicture = (
+  path: string,
+  devicePx: number,
+) => ImageBitmap | null
 
 /** Textures kept for images not drawn in a frame, before the oldest go. */
 const IMAGE_TEXTURES_KEPT = 48
@@ -306,7 +309,7 @@ export class GpuScene {
       gl.bindVertexArray(chunk.rectVao)
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, chunk.rectCount)
     }
-    this.drawImages(g, visible, picture, common)
+    this.drawImages(g, visible, picture, common, view.scale * dpr)
     common(g.glyph)
     gl.uniform1i(g.glyph.uniforms.lookup, 2)
     gl.uniform1i(g.glyph.uniforms.pages, 3)
@@ -340,6 +343,7 @@ export class GpuScene {
     visible: readonly Chunk[],
     picture: ImagePicture,
     common: (p: Program) => void,
+    devicePerWorld: number,
   ): void {
     const { gl } = g
     this.frameCount += 1
@@ -350,7 +354,7 @@ export class GpuScene {
         const slot = this.slots.get(id)
         if (!images || !slot?.shown) continue
         for (const image of images) {
-          const bitmap = picture(image.path)
+          const bitmap = picture(image.path, image.w * devicePerWorld)
           if (!bitmap) continue
           const texture = this.textureOf(g, image.path, bitmap)
           if (!bound) {
