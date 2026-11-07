@@ -6,7 +6,8 @@ import { embedLinks, imageOf } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
 import { paint } from '../../typeset/paint'
 import { parseCard } from '../../typeset/parse'
-import type { TypesetTokens } from '../../typeset/tokens'
+import { type TypesetTokens, contentClip } from '../../typeset/tokens'
+import { fontSize } from '../gpu/glyphs'
 import { cardInstances, packColor } from '../gpu/instances'
 
 import {
@@ -22,6 +23,9 @@ type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 /** Widths a font keeps before they are measured afresh. */
 const MEASURES_KEPT = 8192
+/** An emoji, with what it is joined with or modified by. */
+const EMOJI =
+  /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F)(?:\p{Emoji_Modifier}|\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F?))*/gu
 
 export class Typesetter {
   private readonly widths = new Map<string, Map<string, number>>()
@@ -31,6 +35,8 @@ export class Typesetter {
     Readonly<{ ascent: number; descent: number }>
   >()
   private readonly colors = new Map<string, number>()
+  /** The look's emoji advance, in em (../../typeset/tokens.ts). */
+  private emojiEm = 1
 
   constructor(
     private readonly ctx: Context2D,
@@ -50,6 +56,7 @@ export class Typesetter {
     tokens: TypesetTokens,
     cards: readonly TypesetCard[],
   ): { result: TypesetResult; transfer: ArrayBuffer[] } {
+    this.useLook(tokens)
     const keys: string[] = []
     const keyIndex = new Map<string, number>()
     const keyOf = (key: string): number => {
@@ -120,11 +127,13 @@ export class Typesetter {
 
   /** A card laid out, as ../../typeset/layout.ts's draw ops. */
   layout(tokens: TypesetTokens, card: TypesetCard): DrawOp[] {
-    const inset = card.plain ? tokens.plainInset : tokens.inset
+    this.useLook(tokens)
     return layoutCard({
       sections: parseCard(card.markdown),
       width: card.w,
-      height: card.h - inset.bottom,
+      // What overflows the content shows over the bottom padding too, to
+      // the card's edge.
+      height: card.h,
       tokens,
       plain: card.plain,
       color: card.color,
@@ -154,8 +163,17 @@ export class Typesetter {
       width: card.w,
       height: card.h,
       fade,
+      clip: contentClip(tokens, card.plain),
     })
     return canvas.transferToImageBitmap()
+  }
+
+  /** Widths measured in another look's emoji advance are measured again. */
+  private useLook(tokens: TypesetTokens): void {
+    if (tokens.emoji === this.emojiEm) return
+    this.emojiEm = tokens.emoji
+    this.widths.clear()
+    this.advances.clear()
   }
 
   private measure(text: string, font: string): number {
@@ -179,7 +197,17 @@ export class Typesetter {
     let width = known.get(text)
     if (width === undefined) {
       if (this.ctx.font !== font) this.ctx.font = font
-      width = this.ctx.measureText(text).width
+      // An emoji takes the browser's advance, not the canvas's.
+      let emoji = 0
+      const rest = text.replace(EMOJI, () => {
+        emoji += 1
+        return ''
+      })
+      width =
+        emoji === 0
+          ? this.ctx.measureText(text).width
+          : this.ctx.measureText(rest).width +
+            emoji * this.emojiEm * fontSize(font)
       if (known.size >= MEASURES_KEPT) known.clear()
       known.set(text, width)
     }

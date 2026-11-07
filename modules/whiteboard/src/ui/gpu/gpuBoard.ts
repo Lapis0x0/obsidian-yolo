@@ -24,6 +24,7 @@ import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
 import { imageTargets } from '../../typeset/images'
+import { contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
 import {
@@ -447,7 +448,9 @@ export class GpuBoard implements ContentLayer {
         )
         .then(
           (result) => {
-            if (generation === this.generation) this.place(batch, result)
+            if (generation === this.generation) {
+              this.place(look, batch, result)
+            }
           },
           (error: unknown) => this.deps.reportError('typeset', error),
         )
@@ -480,6 +483,7 @@ export class GpuBoard implements ContentLayer {
   /** What the worker typeset, into the scene — the atlas's ids for its
    * glyph keys — for each card still as it was when it was sent. */
   private place(
+    look: Look,
     batch: readonly {
       pending: Pending
       card: TypesetCard
@@ -529,6 +533,7 @@ export class GpuBoard implements ContentLayer {
         h: node.h,
         frame: before?.frame ?? null,
         fade: entry.card.plain ? 0 : FADE,
+        clip: contentClip(look.tokens, entry.card.plain),
         content: {
           rects: new Uint32Array(typeset.rects),
           glyphs,

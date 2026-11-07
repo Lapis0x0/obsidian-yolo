@@ -1,4 +1,4 @@
-import { breakLines } from './breaking'
+import { breakLines, breakOpportunities } from './breaking'
 import { layoutCard } from './layout'
 import {
   BOLD,
@@ -10,7 +10,7 @@ import {
   STRIKE,
   TAG,
 } from './model'
-import { parseCard } from './parse'
+import { calloutTitlesApart, linkText, parseCard } from './parse'
 import type { TextStyle, TypesetTokens } from './tokens'
 
 // Latin 8 units a character, CJK 16: enough to reason about where lines
@@ -20,7 +20,7 @@ const measure = (text: string): number =>
     (sum, ch) => sum + ((ch.codePointAt(0) ?? 0) > 0x2e80 ? 16 : 8),
     0,
   )
-const plain = () => ({ font: 'f', padX: 0 })
+const plain = () => ({ font: 'f', padX: 0, linkIcon: 0 })
 const texts = (lines: ReturnType<typeof breakLines>) =>
   lines.map((line) => line.pieces.map((p) => p.text).join(''))
 
@@ -86,6 +86,85 @@ describe('parseCard', () => {
     expect(numbered).toMatchObject({ kind: 'list', ordered: true, start: 3 })
     expect(embed).toEqual({ kind: 'embed', target: 'note' })
   })
+
+  test('a callout body starts under its title, a list included', () => {
+    const [section] = parseCard(
+      '> [!question] Q\n> 18. eighteen\n> 19. nineteen',
+    )
+    const callout = section.block
+    if (callout.kind !== 'callout') throw new Error(callout.kind)
+    expect(callout.title.map((i) => i.text).join('')).toBe('Q')
+    expect(callout.children[0].block).toMatchObject({
+      kind: 'list',
+      ordered: true,
+      start: 18,
+    })
+    // Not inside code.
+    expect(calloutTitlesApart('```\n> [!x] t\n> y\n```')).toBe(
+      '```\n> [!x] t\n> y\n```',
+    )
+  })
+
+  test('a folded callout shows only its title', () => {
+    const [section] = parseCard('> [!info]- Files\n> - one\n> - two')
+    if (section.block.kind !== 'callout') throw new Error(section.block.kind)
+    expect(section.block.children).toEqual([])
+  })
+
+  test('an empty task is a task', () => {
+    const [section] = parseCard('- [ ] \n- [x]\n- [ ] todo')
+    if (section.block.kind !== 'list') throw new Error(section.block.kind)
+    expect(section.block.items.map((i) => i.checked)).toEqual([
+      false,
+      true,
+      false,
+    ])
+    expect(section.block.items[0].children).toEqual([])
+  })
+
+  test('an external link ends in its icon, a wikilink does not', () => {
+    const [section] = parseCard('[a](https://x.y) [[b]] https://z.w')
+    if (section.block.kind !== 'paragraph') throw new Error(section.block.kind)
+    expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
+  })
+
+  test('a link shows its alias, or its heading steps', () => {
+    expect(linkText('note|alias')).toBe('alias')
+    expect(linkText('note#one#two')).toBe('note > one > two')
+    expect(linkText('#one')).toBe('one')
+    expect(linkText('note#^block')).toBe('note > ^block')
+  })
+})
+
+describe('breakOpportunities', () => {
+  // Each case measured in Chrome (spike/break-oracle.mjs).
+  const breaksIn = (text: string) =>
+    [...breakOpportunities(text)]
+      .filter((p) => p > 0 && p < text.length)
+      .sort((a, b) => a - b)
+      .map((p) => `${text.slice(0, p)}|${text.slice(p)}`)
+  test('a hyphen before a digit, after a letter or digit only', () => {
+    expect(breaksIn('2026-07')).toEqual(['2026-|07'])
+    expect(breaksIn('(-1')).toEqual([])
+  })
+  test('ASCII pairs by Chrome’s table', () => {
+    expect(breaksIn('logs/app')).toEqual([])
+    expect(breaksIn('a--b')).toEqual(['a-|-b', 'a--|b'])
+    expect(breaksIn('x,(y')).toEqual(['x,|(y'])
+  })
+  test('after spaces, always', () => {
+    expect(breaksIn('资源 。')).toContain('资源 |。')
+  })
+  test('curly double quotes break as brackets, single ones do not', () => {
+    expect(breaksIn('的“记”的')).toEqual(['的|“记”的', '的“记”|的'])
+    expect(breaksIn('Let’s')).toEqual([])
+  })
+  test('before a full-width opening bracket after Latin', () => {
+    expect(breaksIn('SSRI（选')).toContain('SSRI|（选')
+  })
+  test('before the prolonged sound mark', () => {
+    expect(breaksIn('データ')).toEqual(['デ|ータ', 'デー|タ'])
+  })
 })
 
 describe('breakLines', () => {
@@ -137,6 +216,34 @@ describe('breakLines', () => {
     ])
   })
 
+  test('a closing bracket at the end of a line may overhang by half, a stop may not', () => {
+    // Four characters are 64 wide, on a line 60 wide.
+    const lines = (text: string) =>
+      texts(breakLines([{ text, flags: 0 }], 60, plain, measure))
+    expect(lines('一二三）')).toEqual(['一二三）'])
+    expect(lines('一二三。')).toEqual(['一二', '三。'])
+  })
+
+  test('a pair of marks gives up its room once, though the canvas trims it too', () => {
+    // A canvas measures "）。" as an em and a half, as the browser sets it.
+    const trimming = (text: string) =>
+      measure(text) - (text.includes('）。') ? 8 : 0)
+    const [line] = breakLines(
+      [{ text: '坑）。三', flags: 0 }],
+      400,
+      plain,
+      trimming,
+    )
+    expect(line.width).toBe(16 * 3.5)
+  })
+
+  test('an opening quote before an opening mark gives up room, a closing one does not', () => {
+    const width = (text: string) =>
+      breakLines([{ text, flags: 0 }], 400, plain, measure)[0].width
+    expect(width('“（')).toBeLessThan(width('“') + width('（'))
+    expect(width('”（')).toBe(width('”') + width('（'))
+  })
+
   test('cuts a word only when it is wider than the line', () => {
     const lines = breakLines(
       [{ text: 'ab abcdefghij', flags: 0 }],
@@ -155,7 +262,7 @@ describe('breakLines', () => {
         { text: 'code', flags: CODE },
       ],
       200,
-      (flags) => ({ font: 'f', padX: flags & CODE ? 4 : 0 }),
+      (flags) => ({ font: 'f', padX: flags & CODE ? 4 : 0, linkIcon: 0 }),
       measure,
     )
     expect(texts(lines)).toEqual(['a', 'code'])
@@ -173,6 +280,8 @@ describe('layoutCard', () => {
     lineHeight,
   })
   const body = style(15, 24)
+  const line = { width: 1, color: 'grey' }
+  const GRID = [line, line, line, line] as const
   const tokens: TypesetTokens = {
     inset: { top: 17, right: 21, bottom: 17, left: 21 },
     plainInset: { top: 2, right: 4, bottom: 0, left: 4 },
@@ -187,6 +296,7 @@ describe('layoutCard', () => {
     ],
     boldWeight: 650,
     linkColor: 'blue',
+    linkIcon: 0,
     highlight: 'yellow',
     muted: 'grey',
     code: {
@@ -226,7 +336,14 @@ describe('layoutCard', () => {
       doneColor: 'grey',
       doneStrike: true,
     },
-    quote: { barWidth: 3, barColor: 'grey', indent: 24, color: 'grey' },
+    quote: {
+      left: 0,
+      right: 0,
+      barWidth: 3,
+      barColor: 'grey',
+      indent: 24,
+      color: 'grey',
+    },
     callout: {
       radius: 8,
       padX: 14,
@@ -248,15 +365,28 @@ describe('layoutCard', () => {
       wrap: true,
     },
     table: {
-      border: 'grey',
-      borderWidth: 1,
+      frame: { width: 0, color: 'grey' },
+      collapse: true,
+      spacing: 0,
+      borders: {
+        header: { first: GRID, last: GRID },
+        body: { first: GRID, last: GRID },
+      },
       padX: 8,
       padY: 4,
-      headerWeight: 650,
       marginY: 16,
+      header: { ...body, weight: 650 },
+      cell: body,
+      headerAlign: 'left',
+      align: 'left',
+      headerMinWidth: 0,
+      minWidth: 0,
+      headerBackground: 'transparent',
+      rowBackgrounds: ['transparent', 'transparent'],
     },
     rule: { color: 'grey', thickness: 1 },
     embed: 'grey',
+    emoji: 1,
   }
   const metrics = (font: string) => {
     const size = Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 15)

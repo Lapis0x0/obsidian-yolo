@@ -1,11 +1,12 @@
 // Lines out of a paragraph's runs (./model.ts's Inline), the way a browser
-// breaks a card's text: at spaces, around CJK characters, never before a
-// closing mark or after an opening one (the CJK rule a browser follows under
-// `line-break: auto`), and inside a word only when the word alone is wider
-// than the line (`overflow-wrap: break-word`).
+// breaks a card's text: where the Unicode line breaking algorithm (UAX #14,
+// which the browser's ICU follows) allows a break, and inside a word only
+// when the word alone is wider than the line (`overflow-wrap: break-word`).
 //
 // Widths come from `measure`, so the same breaker runs against a canvas, in
 // a Worker, or in a test against made-up widths.
+
+import LineBreaker from 'linebreak'
 
 import { CODE, type Inline, type InlineImage, TAG } from './model'
 
@@ -20,7 +21,12 @@ export type ImageSize = (
 
 /** How a run is set: its font, and the room a pill (inline code, a tag)
  * takes on either side of its text. */
-export type RunStyle = Readonly<{ font: string; padX: number }>
+export type RunStyle = Readonly<{
+  font: string
+  padX: number
+  /** How wide an external link's icon is (./model.ts's `linkIcon`). */
+  linkIcon: number
+}>
 
 export type Piece = Readonly<{
   text: string
@@ -32,6 +38,8 @@ export type Piece = Readonly<{
   /** Its whole width, pill padding included. */
   width: number
   padLeft: number
+  /** An external link's icon: room, drawn as nothing. */
+  icon?: true
   /** An image's: what it is, and how tall it stands on the baseline. */
   image?: InlineImage
   height?: number
@@ -39,28 +47,124 @@ export type Piece = Readonly<{
 
 export type Line = Readonly<{ pieces: readonly Piece[]; width: number }>
 
-/** Marks a line may not start with. */
-const CLOSING = new Set(
-  Array.from('，。、；：？！）」』】》〉〕〗｝’”…‥—–·～%％,.;:?!)]}' + 'ー々'),
-)
-/** Marks a line may not end with. */
-const OPENING = new Set(Array.from('（「『【《〈〔〖｛‘“([{'))
-
 /** Full-width marks whose ink sits in one half of their em, the other half
  * blank: closing ones on the left, opening ones on the right. */
 const HALF_CLOSING = new Set(Array.from('，。、；：）」』】》〉〕〗｝'))
 const HALF_OPENING = new Set(Array.from('（「『【《〈〔〖｛'))
+/** The closing ones that are brackets (Unicode's Pe), not stops. */
+const CLOSING_BRACKETS = new Set(Array.from('）」』】》〉〕〗｝'))
+/** Marks that are not full-width but take a full-width one's blank half
+ * from it: after a closing mark, closing quotes and middle dots; before an
+ * opening one, opening quotes and middle dots (measured in Chrome). */
+const AFTER_CLOSING = new Set(Array.from('”’·・'))
+const BEFORE_OPENING = new Set(Array.from('“‘·・'))
+/** Marks the breaker keeps as atoms of their own, as it does CJK. */
+const QUOTES_AND_DOTS = new Set(Array.from('“”‘’·・'))
 
 /**
- * Whether a full-width mark followed by `next` gives up the blank half
- * between them — the browser's `text-spacing-trim: normal`, which sets
- * "，「" or "」。" in an em and a half rather than two.
+ * Which of two marks side by side gives up its blank half — the browser's
+ * `text-spacing-trim: normal`, which sets "，「" or "」。" in an em and a
+ * half rather than two: a closing mark before another mark, or an opening
+ * one after an opening mark, a quote or a middle dot (measured in Chrome).
+ * Where the room goes is the same either way; which mark gives it is what
+ * says how much.
  */
-function trimsBefore(mark: string, next: string): boolean {
+function trimBetween(mark: string, next: string): 'first' | 'second' | null {
   if (HALF_CLOSING.has(mark)) {
-    return HALF_CLOSING.has(next) || HALF_OPENING.has(next)
+    return HALF_CLOSING.has(next) ||
+      HALF_OPENING.has(next) ||
+      AFTER_CLOSING.has(next)
+      ? 'first'
+      : null
   }
-  return HALF_OPENING.has(mark) && HALF_OPENING.has(next)
+  if (!HALF_OPENING.has(next)) return null
+  return HALF_OPENING.has(mark) || BEFORE_OPENING.has(mark) ? 'second' : null
+}
+
+/**
+ * Where Chrome lets a line break between two printable ASCII characters:
+ * after the first, before any of the second (measured in Chrome, every
+ * pair). It uses a table of its own for these rather than the Unicode
+ * algorithm; a pair not here does not break.
+ */
+const ASCII_BREAKS: ReadonlyArray<readonly [string, string]> = [
+  ['!"#%&)*+,.:;=>\\]|}~', '(<[{'],
+  [
+    '-',
+    `"#%&'(*+-<=>@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\^_\`abcdefghijklmnopqrstuvwxyz{|~`,
+  ],
+  [
+    '?',
+    '#$%&(*+-0123456789<=>@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\^_`abcdefghijklmnopqrstuvwxyz{|~',
+  ],
+]
+const ASCII_BREAK_TABLE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  ASCII_BREAKS.flatMap(([firsts, seconds]) =>
+    Array.from(firsts, (first) => [first, new Set(seconds)] as const),
+  ),
+)
+
+const isPrintableAscii = (ch: string): boolean => ch > ' ' && ch <= '~'
+const isAsciiAlnum = (ch: string | undefined): boolean =>
+  ch !== undefined && /^[0-9A-Za-z]$/.test(ch)
+const isEastAsian = (ch: string | undefined): boolean =>
+  ch !== undefined && isCjk(ch.codePointAt(0) ?? 0)
+const FULL_WIDTH_OPENING = new Set(Array.from('（「『【《〈〔〖｛［'))
+/** Unicode's conditional Japanese starters (CJ): small kana and the
+ * prolonged sound mark. */
+const CONDITIONAL_STARTERS =
+  /[ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰ-ㇿーｧ-ｯｰ]/g
+
+/**
+ * Where a line may break in `text`, as Chrome breaks it: before each
+ * position in the set. The Unicode algorithm's answer (UAX #14, the version
+ * the linebreak package implements), with what Chrome does otherwise —
+ * measured against it over real notes:
+ * - after a run of spaces, always;
+ * - between two printable ASCII characters, by its own table
+ *   (`ASCII_BREAKS`), and after a hyphen before a digit only where the
+ *   hyphen follows a letter or digit — "2026-07", not "-1";
+ * - curly double quotes break as the brackets they are in Chinese text:
+ *   the opening one as an opening bracket, the closing one as a closing
+ *   bracket (single ones break as quotes, an apostrophe among them);
+ * - small kana and the prolonged sound mark break as any other kana do
+ *   (`line-break: normal`);
+ * - and before a full-width opening bracket after anything not East Asian,
+ *   as Unicode 15.1 has it.
+ */
+export function breakOpportunities(text: string): Set<number> {
+  const out = new Set<number>()
+  const breaker = new LineBreaker(
+    text
+      .replace(/“/g, '（')
+      .replace(/”/g, '）')
+      .replace(CONDITIONAL_STARTERS, '字'),
+  )
+  for (let next = breaker.nextBreak(); next; next = breaker.nextBreak()) {
+    out.add(next.position)
+  }
+  for (let i = 1; i < text.length; i += 1) {
+    const before = text[i - 1]
+    const after = text[i]
+    let allow: boolean | null = null
+    if (isSpace(before)) {
+      allow = !isSpace(after)
+    } else if (isPrintableAscii(before) && isPrintableAscii(after)) {
+      allow =
+        before === '-' && after >= '0' && after <= '9'
+          ? isAsciiAlnum(text[i - 2])
+          : (ASCII_BREAK_TABLE.get(before)?.has(after) ?? false)
+    } else if (
+      FULL_WIDTH_OPENING.has(after) &&
+      !isEastAsian(before) &&
+      !'"“‘([{'.includes(before)
+    ) {
+      allow = true
+    }
+    if (allow === true) out.add(i)
+    else if (allow === false) out.delete(i)
+  }
+  return out
 }
 
 function isCjk(cp: number): boolean {
@@ -94,30 +198,46 @@ type Atom = {
   height?: number
 }
 
-function atomize(text: string): { text: string; kind: AtomKind }[] {
-  const out: { text: string; kind: AtomKind }[] = []
+/** A run's text in atoms — spaces, single CJK characters and marks, and
+ * words cut wherever a line may break (`breaks`, positions from `offset`) —
+ * each knowing whether a line may break before it. */
+function atomize(
+  text: string,
+  offset: number,
+  breaks: ReadonlySet<number>,
+): { text: string; kind: AtomKind; breakBefore: boolean }[] {
+  const out: { text: string; kind: AtomKind; breakBefore: boolean }[] = []
   let word = ''
+  let wordAt = 0
   let space = ''
   const flushWord = () => {
-    if (word !== '') out.push({ text: word, kind: 'word' })
+    if (word !== '') {
+      out.push({ text: word, kind: 'word', breakBefore: breaks.has(wordAt) })
+    }
     word = ''
   }
   const flushSpace = () => {
-    if (space !== '') out.push({ text: space, kind: 'space' })
+    if (space !== '')
+      out.push({ text: space, kind: 'space', breakBefore: true })
     space = ''
   }
+  let at = offset
   for (const ch of text) {
+    const here = at
+    at += ch.length
     if (isSpace(ch)) {
       flushWord()
       space += ch
       continue
     }
     flushSpace()
-    if (isCjk(ch.codePointAt(0) ?? 0)) {
+    if (isCjk(ch.codePointAt(0) ?? 0) || QUOTES_AND_DOTS.has(ch)) {
       flushWord()
-      out.push({ text: ch, kind: 'cjk' })
+      out.push({ text: ch, kind: 'cjk', breakBefore: breaks.has(here) })
       continue
     }
+    if (word !== '' && breaks.has(here)) flushWord()
+    if (word === '') wordAt = here
     word += ch
   }
   flushWord()
@@ -125,26 +245,24 @@ function atomize(text: string): { text: string; kind: AtomKind }[] {
   return out
 }
 
-function canBreakBetween(
-  a: { text: string; kind: AtomKind },
-  b: { text: string; kind: AtomKind },
-): boolean {
-  if (a.kind === 'space' || b.kind === 'space') return true
-  if (a.kind === 'image' || b.kind === 'image') return true
-  if (CLOSING.has(b.text.charAt(0))) return false
-  if (OPENING.has(a.text.charAt(a.text.length - 1))) return false
-  return a.kind === 'cjk' || b.kind === 'cjk'
-}
-
-type Placed = { atom: Atom; x: number }
-
-export function breakLines(
+/** The paragraph's atoms in order, each knowing whether a line may break
+ * before it; null for a hard break. */
+function atomsOf(
   inlines: readonly Inline[],
   maxWidth: number,
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
   imageSize?: ImageSize,
-): Line[] {
+): (Atom | null)[] {
+  // Where a line may break, over the paragraph's text as a whole: a break
+  // depends on what is either side of it, whichever run each is in.
+  const offsets: number[] = []
+  let text = ''
+  for (const inline of inlines) {
+    offsets.push(text.length)
+    text += inline.text
+  }
+  const breaks = breakOpportunities(text)
   // Atoms, run by run, each knowing whether a line may break before it.
   const atoms: (Atom | null)[] = [] // null: a hard break
   let previous: Atom | null = null
@@ -152,6 +270,23 @@ export function breakLines(
     if (inline.text === '\n') {
       atoms.push(null)
       previous = null
+      return
+    }
+    if (inline.linkIcon) {
+      const width = styleOf(inline.flags).linkIcon
+      if (width <= 0) return
+      const atom: Atom = {
+        text: inline.text,
+        kind: 'image',
+        run,
+        width,
+        height: 0,
+        breakBefore: true,
+        padLeft: 0,
+        trimmed: false,
+      }
+      atoms.push(atom)
+      previous = atom
       return
     }
     if (inline.image) {
@@ -173,34 +308,99 @@ export function breakLines(
     }
     const style = styleOf(inline.flags)
     const pill = (inline.flags & (CODE | TAG)) !== 0 ? style.padX : 0
-    const parts = atomize(inline.text)
+    const parts = atomize(inline.text, offsets[run], breaks)
     parts.forEach((part, i) => {
-      let width = measure(part.text, style.font)
+      // What it adds after the atom before it in the same run, so that the
+      // kerning between them is counted, as the browser sets the run whole —
+      // but not across a pair of marks that give up room (`trimBetween`):
+      // the canvas trims those itself, and the trim is taken below, from
+      // the mark that gives it.
+      const lead = i > 0 ? parts[i - 1] : null
+      const pair =
+        lead !== null &&
+        lead.kind === 'cjk' &&
+        part.kind === 'cjk' &&
+        trimBetween(lead.text, part.text) !== null
+      let width =
+        lead === null || pair
+          ? measure(part.text, style.font)
+          : measure(lead.text + part.text, style.font) -
+            measure(lead.text, style.font)
       if (i === 0) width += pill
       if (i === parts.length - 1) width += pill
       const atom: Atom = {
         ...part,
         run,
         width,
-        breakBefore: previous === null || canBreakBetween(previous, part),
+        breakBefore: previous === null || part.breakBefore,
         padLeft: i === 0 ? pill : 0,
         trimmed: false,
       }
       const before: Atom | null = previous
-      if (
+      const trim =
         before !== null &&
         before.kind === 'cjk' &&
         part.kind === 'cjk' &&
-        before.padLeft === 0 &&
-        trimsBefore(before.text, part.text)
-      ) {
-        before.width /= 2
+        before.padLeft === 0
+          ? trimBetween(before.text, part.text)
+          : null
+      if (before !== null && trim !== null) {
+        // Half the full-width mark's em, taken from the room between them.
+        before.width -= (trim === 'first' ? before.width : width) / 2
         before.trimmed = true
       }
       atoms.push(atom)
       previous = atom
     })
   })
+  return atoms
+}
+
+/**
+ * How wide a paragraph is laid out with no room to spare (`min`: its
+ * widest piece no line can break inside) and with all the room it wants
+ * (`max`: its longest line) — what a table's columns are sized by.
+ */
+export function contentWidths(
+  inlines: readonly Inline[],
+  styleOf: (flags: number) => RunStyle,
+  measure: Measure,
+  imageSize?: ImageSize,
+): Readonly<{ min: number; max: number }> {
+  const atoms = atomsOf(inlines, Infinity, styleOf, measure, imageSize)
+  let min = 0
+  let chunk = 0
+  let trailing = 0
+  for (const atom of atoms) {
+    if (atom === null || atom.breakBefore) {
+      min = Math.max(min, chunk)
+      chunk = 0
+      trailing = 0
+    }
+    if (atom === null) continue
+    if (atom.kind === 'space') {
+      trailing += atom.width
+      continue
+    }
+    chunk += trailing + atom.width
+    trailing = 0
+  }
+  min = Math.max(min, chunk)
+  const lines = breakLines(inlines, Infinity, styleOf, measure, imageSize)
+  const max = Math.max(0, ...lines.map((line) => line.width))
+  return { min, max: Math.max(min, max) }
+}
+
+type Placed = { atom: Atom; x: number }
+
+export function breakLines(
+  inlines: readonly Inline[],
+  maxWidth: number,
+  styleOf: (flags: number) => RunStyle,
+  measure: Measure,
+  imageSize?: ImageSize,
+): Line[] {
+  const atoms = atomsOf(inlines, maxWidth, styleOf, measure, imageSize)
 
   const lines: Placed[][] = []
   let line: Placed[] = []
@@ -247,8 +447,18 @@ export function breakLines(
       continue
     }
     const width = chunk.reduce((sum, atom) => sum + atom.width, 0)
-    if (line.length > 0 && filled + trailing + width > maxWidth) finish()
-    if (filled + width <= maxWidth || line.length > 0) {
+    // A full-width closing bracket at the end of a line may give up its
+    // blank half to fit there (`text-spacing-trim: normal`, its
+    // `allow-end`) — a bracket only, not a full stop or a comma (measured
+    // in Chrome). It is only fitted so: drawn, it keeps its em.
+    const last = chunk[chunk.length - 1]
+    const endTrim =
+      last.kind === 'cjk' && !last.trimmed && CLOSING_BRACKETS.has(last.text)
+        ? last.width / 2
+        : 0
+    const fits = (from: number) => from + width - endTrim <= maxWidth
+    if (line.length > 0 && !fits(filled + trailing)) finish()
+    if (fits(filled) || line.length > 0) {
       for (const atom of chunk) place(atom)
       continue
     }
@@ -339,6 +549,7 @@ function piecesOf(
       width: current.end - current.x,
       padLeft: current.padLeft,
       ...(inline.image ? { image: inline.image, height: current.height } : {}),
+      ...(inline.linkIcon ? { icon: true as const } : {}),
     })
     current = null
   }

@@ -11,9 +11,9 @@ module.exports = {
   },
   // Only the ESM-only markdown parsing chain (GFM included, which the
   // whiteboard's typesetter parses with) and the ACP SDK (also ESM-only)
-  // need transpiling; everything else in node_modules stays untransformed.
+  // need transpiling, and linebreak's ES build (see moduleNameMapper); everything else in node_modules stays untransformed.
   transformIgnorePatterns: [
-    '/node_modules/(?!(mdast-util-[a-z-]+|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-[a-z-]+|ccount|escape-string-regexp|markdown-table|longest-streak|zwitch|@agentclientprotocol/sdk)/)',
+    '/node_modules/(?!(mdast-util-[a-z-]+|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-[a-z-]+|ccount|escape-string-regexp|markdown-table|longest-streak|zwitch|@agentclientprotocol/sdk|linebreak)/)',
   ],
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
@@ -30,5 +30,10 @@ module.exports = {
     // (runtime-components/bash-engine/src/entry.ts) still resolves the real
     // browser subpath via esbuild at build time; this mapping never affects it.
     '^just-bash/browser$': '<rootDir>/node_modules/just-bash/dist/bundle/index.cjs',
+    // linebreak's CommonJS build exports its class as the module itself,
+    // which a default import resolves to undefined under ts-jest, as with
+    // path-browserify above; its ES build (what esbuild bundles) has it as
+    // the default export, and is transpiled below.
+    '^linebreak$': '<rootDir>/node_modules/linebreak/dist/module.mjs',
   },
 }

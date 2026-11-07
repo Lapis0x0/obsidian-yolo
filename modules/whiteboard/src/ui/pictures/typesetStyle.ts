@@ -15,7 +15,13 @@
 // Popout safety: everything is the board's own document's and window's.
 
 import { hashText } from '../../domain/hash'
-import type { TextStyle, TypesetTokens } from '../../typeset/tokens'
+import type {
+  BorderSide,
+  CellBorders,
+  TableAlign,
+  TextStyle,
+  TypesetTokens,
+} from '../../typeset/tokens'
 import {
   createCardBody,
   createNodeElement,
@@ -25,6 +31,7 @@ import {
 import type { IdleSlices } from './idle'
 
 const STAGE_CLASS = 'yolo-whiteboard-typeset-sample'
+const SCROLLBAR_PROBE_CLASS = 'yolo-whiteboard-scrollbar-probe'
 
 /** The callout types Obsidian colours apart. */
 const CALLOUT_TYPES = [
@@ -67,9 +74,10 @@ const SAMPLE = [
   'code',
   '```',
   '',
-  '| h |',
-  '| - |',
-  '| c |',
+  '| h | h |',
+  '| - | - |',
+  '| c | c |',
+  '| c | c |',
   '',
   '---',
 ].join('\n')
@@ -93,6 +101,11 @@ export class TypesetStyle {
   private current: Readonly<{ tokens: TypesetTokens; hash: string }> | null =
     null
   private readonly observers: MutationObserver[] = []
+  /** Watches the scrollbar's width (`SCROLLBAR_PROBE_CLASS`). */
+  private probe: Readonly<{
+    el: HTMLElement
+    observer: ResizeObserver
+  }> | null = null
   private refreshing = false
   private again = false
   private destroyed = false
@@ -124,6 +137,22 @@ export class TypesetStyle {
         subtree: true,
       })
       this.observers.push(head, body, own)
+      // A card's lines wrap short of the gutter its preview keeps for a
+      // scrollbar, and how wide that is changes with no stylesheet changing:
+      // the system shows scrollbars over content or beside it, and switches
+      // when a mouse comes and goes. A box that keeps the same gutter
+      // narrows or widens with it.
+      const el = doc.createElement('div')
+      el.className = SCROLLBAR_PROBE_CLASS
+      deps.root.appendChild(el)
+      let width: number | null = null
+      const observer = new win.ResizeObserver(() => {
+        const next = el.clientWidth
+        if (width !== null && next !== width) this.refresh()
+        width = next
+      })
+      observer.observe(el)
+      this.probe = { el, observer }
     }
     this.refresh()
   }
@@ -142,6 +171,9 @@ export class TypesetStyle {
     this.destroyed = true
     for (const observer of this.observers) observer.disconnect()
     this.observers.length = 0
+    this.probe?.observer.disconnect()
+    this.probe?.el.remove()
+    this.probe = null
   }
 
   private refresh(): void {
@@ -244,6 +276,30 @@ const px = (value: string): number => {
   return Number.isFinite(n) ? n : 0
 }
 
+/** How much wider an external link is than its text: whatever a theme
+ * adds after it — an icon as a background and padding, or a pseudo-element
+ * with a margin. */
+function linkIconWidth(link: Element | null): number {
+  const text = link?.firstChild
+  if (!link || !text) return 0
+  const range = link.ownerDocument.createRange()
+  range.selectNodeContents(text)
+  const extra =
+    link.getBoundingClientRect().width - range.getBoundingClientRect().width
+  return Math.max(0, extra)
+}
+
+/** An emoji's advance in `el`'s em, as the browser lays it out there. */
+function emojiEm(el: Element | null, size: number): number {
+  if (!el || size <= 0) return 1
+  const probe = el.ownerDocument.createElement('span')
+  probe.textContent = '✅✅'
+  el.prepend(probe)
+  const width = probe.getBoundingClientRect().width
+  probe.remove()
+  return width > 0 ? width / 2 / size : 1
+}
+
 /** Where `el`'s first line of text starts. */
 function textStart(el: Element): DOMRect | null {
   const doc = el.ownerDocument
@@ -320,6 +376,8 @@ export function measureSample(
   const plainInset = plainView ? insetOf(plainCard, plainView) : inset
   const contentLeft =
     view.getBoundingClientRect().left + px(cs(view).paddingLeft)
+  // Where lines end: short of the scrollbar's gutter too (`insetOf`).
+  const contentRight = card.getBoundingClientRect().right - inset.right
 
   const p = q('.el-p p')
   const body = textStyle(p)
@@ -385,6 +443,60 @@ export function measureSample(
   const table = q('.el-table table')
   const th = q('th')
   const td = q('td')
+  const bodyRows = table ? Array.from(table.querySelectorAll('tbody > tr')) : []
+  /** What a row's first cell is filled with: its own fill, or its row's,
+   * or the table's. */
+  const fillOf = (row: Element | null | undefined): string => {
+    const cell = row?.firstElementChild
+    for (const el of [cell, row, table]) {
+      if (!el) continue
+      const color = cs(el).backgroundColor
+      if (!isClear(color)) return color
+    }
+    return 'transparent'
+  }
+  const sideOf = (
+    style: CSSStyleDeclaration,
+    side: 'Top' | 'Right' | 'Bottom' | 'Left',
+  ): BorderSide => ({
+    width:
+      style.getPropertyValue(`border-${side.toLowerCase()}-style`) === 'none'
+        ? 0
+        : px(style.getPropertyValue(`border-${side.toLowerCase()}-width`)),
+    color: style.getPropertyValue(`border-${side.toLowerCase()}-color`),
+  })
+  const bordersOf = (el: Element | null | undefined): CellBorders => {
+    const none = { width: 0, color: 'transparent' }
+    if (!el) return [none, none, none, none]
+    const style = cs(el)
+    return [
+      sideOf(style, 'Top'),
+      sideOf(style, 'Right'),
+      sideOf(style, 'Bottom'),
+      sideOf(style, 'Left'),
+    ]
+  }
+  const alignOf = (el: Element | null): TableAlign => {
+    const align = el ? cs(el).textAlign : 'start'
+    return align === 'center'
+      ? 'center'
+      : align === 'right' || align === 'end'
+        ? 'right'
+        : 'left'
+  }
+  const cellMinWidth = (el: Element | null): number => {
+    if (!el) return 0
+    const style = cs(el)
+    const min = px(style.minWidth)
+    if (style.boxSizing === 'border-box') return min
+    return (
+      min +
+      px(style.paddingLeft) +
+      px(style.paddingRight) +
+      px(style.borderLeftWidth) +
+      px(style.borderRightWidth)
+    )
+  }
   const hr = q('hr')
 
   return {
@@ -394,6 +506,7 @@ export function measureSample(
     headings,
     boldWeight: Number.parseInt(cs(q('strong') ?? view).fontWeight, 10) || 700,
     linkColor: cs(q('a.external-link') ?? view).color,
+    linkIcon: linkIconWidth(q('a.external-link')),
     highlight: cs(q('mark') ?? view).backgroundColor,
     muted: resolve('var(--text-muted)'),
     code: pill(q('.el-p p > code')),
@@ -433,6 +546,8 @@ export function measureSample(
         : false,
     },
     quote: {
+      left: quote ? quote.getBoundingClientRect().left - contentLeft : 0,
+      right: quote ? contentRight - quote.getBoundingClientRect().right : 0,
       barWidth: quote ? px(cs(quote).borderLeftWidth) : 0,
       barColor: quote ? cs(quote).borderLeftColor : body.color,
       indent:
@@ -490,17 +605,38 @@ export function measureSample(
       wrap: code ? cs(code).whiteSpace.includes('wrap') : true,
     },
     table: {
-      border: td ? cs(td).borderTopColor : body.color,
-      borderWidth: td ? px(cs(td).borderTopWidth) : 1,
+      frame: table
+        ? sideOf(cs(table), 'Top')
+        : { width: 0, color: 'transparent' },
+      collapse: table ? cs(table).borderCollapse === 'collapse' : true,
+      spacing: table ? px(cs(table).borderSpacing) : 0,
+      borders: {
+        header: {
+          first: bordersOf(th?.parentElement?.firstElementChild),
+          last: bordersOf(th?.parentElement?.lastElementChild),
+        },
+        body: {
+          first: bordersOf(bodyRows[0]?.firstElementChild),
+          last: bordersOf(bodyRows[0]?.lastElementChild),
+        },
+      },
       padX: th ? px(cs(th).paddingLeft) : 8,
       padY: th ? px(cs(th).paddingTop) : 4,
-      headerWeight: th ? Number.parseInt(cs(th).fontWeight, 10) || 600 : 600,
       marginY: table ? px(cs(table).marginTop) : 0,
+      header: textStyle(th, body),
+      cell: textStyle(td, body),
+      headerAlign: alignOf(th),
+      align: alignOf(td),
+      headerMinWidth: cellMinWidth(th),
+      minWidth: cellMinWidth(td),
+      headerBackground: fillOf(th?.parentElement),
+      rowBackgrounds: [fillOf(bodyRows[0]), fillOf(bodyRows[1])],
     },
     rule: {
       color: hr ? cs(hr).borderTopColor : body.color,
       thickness: hr ? px(cs(hr).borderTopWidth) : 1,
     },
     embed: pre ? cs(pre).backgroundColor : 'transparent',
+    emoji: emojiEm(p, body.size),
   }
 }

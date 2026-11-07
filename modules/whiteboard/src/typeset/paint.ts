@@ -14,6 +14,9 @@ export type PaintOptions = Readonly<{
    * units: the card's own content mask (styles/cards/content.css). 0 for
    * none. */
   fade: number
+  /** How far in from the left and right edges it is cut off
+   * (./tokens.ts's `contentClip`). */
+  clip: Readonly<{ left: number; right: number }>
 }>
 
 export function paint(
@@ -25,7 +28,12 @@ export function paint(
   ctx.save()
   ctx.scale(scale, scale)
   ctx.beginPath()
-  ctx.rect(0, 0, width, height)
+  ctx.rect(
+    options.clip.left,
+    0,
+    width - options.clip.left - options.clip.right,
+    height,
+  )
   ctx.clip()
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'

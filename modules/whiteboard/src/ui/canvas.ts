@@ -211,6 +211,7 @@ import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
 import { ImageSizes } from './gpu/imageSizes'
 import { NearImages } from './gpu/nearImages'
 import { placeDrawnPassage } from './gpu/passages'
+import { checkTypeset, showTypeset } from './gpu/typesetCheck'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
@@ -1952,6 +1953,27 @@ export class WhiteboardCanvas {
         })
       : null
     this.gpuBoard?.setNodes(this.ownCardNodes)
+    // DEBUG(p4): the typesetter checked against the browser, from the
+    // console (./gpu/typesetCheck.ts).
+    if (this.gpuBoard) {
+      const board = this.gpuBoard
+      const checkDeps = () => ({
+        host: this.host,
+        root,
+        sourcePath: this.sourcePathForBoard(),
+        nodes: this.ownCardNodes,
+        drawnText: (id: string) => board.drawnText(id),
+        drawable: (id: string) => board.drawable(id),
+        typesetter: typesetClient,
+        style: typesetStyle,
+      })
+      Object.assign(board.canvas, {
+        checkTypeset: (ids?: readonly string[]) =>
+          checkTypeset(checkDeps(), ids),
+        showTypeset: (id: string | null, scale?: number) =>
+          showTypeset(checkDeps(), id, scale),
+      })
+    }
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
     // cursor comes from it and the viewport's own style never changes during

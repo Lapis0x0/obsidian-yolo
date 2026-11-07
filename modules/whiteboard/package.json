@@ -16,6 +16,7 @@
     "test:boundary": "node --test ../../scripts/check-whiteboard-module-boundary.test.mjs"
   },
   "dependencies": {
+    "linebreak": "1.1.0",
     "mdast-util-from-markdown": "^2.0.1",
     "mdast-util-gfm": "^3.0.0",
     "micromark-extension-gfm": "^3.0.0"

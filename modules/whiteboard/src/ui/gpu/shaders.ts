@@ -134,7 +134,7 @@ void main() {
   vLocal = local - rect.xy;
   vCard = local;
   vRect = vec4(rect.zw, shape);
-  vClip = vec4(box.zw, depth.z, 0.0);
+  vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
   vFill = fill;
   vBorder = border;
   gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.y * 2.0 - 1.0, 1.0);
@@ -142,7 +142,7 @@ void main() {
 
 const CLIP = /* glsl */ `
 float clipped(vec2 card, vec4 clip) {
-  if (card.x < 0.0 || card.y < 0.0 || card.x > clip.x || card.y > clip.y) return 0.0;
+  if (card.x < clip.w || card.y < 0.0 || card.x > clip.x || card.y > clip.y) return 0.0;
   return clip.z > 0.0 ? clamp((clip.y - card.y) / clip.z, 0.0, 1.0) : 1.0;
 }
 `
@@ -205,7 +205,7 @@ void main() {
   float page = mod(l1.w, 16.0);
   vUV = vec3((l0.xy + corner * l0.zw) / pageSize, page);
   vCard = origin + offset / l1.z;
-  vClip = vec4(box.zw, depth.z, 0.0);
+  vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
   vColor = color;
   vOwnColors = l1.w >= 16.0 ? 1.0 : 0.0;
 }`
@@ -240,10 +240,11 @@ flat out vec4 vClip;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
+  vec4 more = cardTexel(slot, 2);
   vec2 local = rect.xy + corner * rect.zw;
   vUV = corner;
   vCard = local;
-  vClip = vec4(box.zw, depth.z, 0.0);
+  vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
   gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.y * 2.0 - 1.0, 1.0);
 }`
 

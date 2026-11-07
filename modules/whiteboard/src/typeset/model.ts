@@ -32,6 +32,9 @@ export type Inline = Readonly<{
   text: string
   flags: number
   image?: InlineImage
+  /** The icon a theme puts after an external link: room in the line,
+   * drawn as nothing. */
+  linkIcon?: true
 }>
 
 export type ListItem = Readonly<{

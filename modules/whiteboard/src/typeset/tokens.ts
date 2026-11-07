@@ -12,6 +12,17 @@ export type FontFace = Readonly<{
   italic: boolean
 }>
 
+export type TableAlign = 'left' | 'center' | 'right'
+
+export type BorderSide = Readonly<{ width: number; color: string }>
+/** Top, right, bottom, left. */
+export type CellBorders = readonly [
+  BorderSide,
+  BorderSide,
+  BorderSide,
+  BorderSide,
+]
+
 export type TextStyle = FontFace &
   Readonly<{
     color: string
@@ -54,6 +65,9 @@ export type TypesetTokens = Readonly<{
   ]
   boldWeight: number
   linkColor: string
+  /** How much wider an external link is than its text: the icon a theme
+   * puts after it, and its margin. */
+  linkIcon: number
   highlight: string
   muted: string
   code: Pill
@@ -88,6 +102,9 @@ export type TypesetTokens = Readonly<{
     doneStrike: boolean
   }>
   quote: Readonly<{
+    /** From the content's edges to the quote's: its own margins. */
+    left: number
+    right: number
     barWidth: number
     barColor: string
     /** From the quote's left edge to its text. */
@@ -121,15 +138,58 @@ export type TypesetTokens = Readonly<{
     wrap: boolean
   }>
   table: Readonly<{
-    border: string
-    borderWidth: number
+    /** The table's own border, all round. */
+    frame: BorderSide
+    /** `border-collapse: collapse`: a cell's border and its neighbour's
+     * are one line, as wide as the wider; otherwise each cell has its own,
+     * `spacing` apart. */
+    collapse: boolean
+    spacing: number
+    /** Each cell's borders, a header cell's and a body cell's, in the
+     * first column and the last: a theme draws a column's sides by which
+     * end it is. A column between them takes the first's, but the last's
+     * left side. */
+    borders: Readonly<{
+      header: Readonly<{ first: CellBorders; last: CellBorders }>
+      body: Readonly<{ first: CellBorders; last: CellBorders }>
+    }>
     padX: number
     padY: number
-    headerWeight: number
     /** Above and below the table. */
     marginY: number
+    /** How a header cell's text and a body cell's are set and aligned. */
+    header: TextStyle
+    cell: TextStyle
+    headerAlign: TableAlign
+    align: TableAlign
+    /** The least a header cell and a body cell are wide, padding included
+     * (a theme's `--table-column-min-width`, in `ch` of each one's own
+     * type). */
+    headerMinWidth: number
+    minWidth: number
+    /** The header row's fill, and the body rows' in turn from the first. */
+    headerBackground: string
+    rowBackgrounds: readonly [string, string]
   }>
   rule: Readonly<{ color: string; thickness: number }>
   /** What an embed's placeholder is filled with. */
   embed: string
+  /** An emoji's advance in the text's em: the browser lays an emoji out
+   * narrower than a canvas measures it. */
+  emoji: number
 }>
+
+/**
+ * How far in from a card's left and right edges what it shows is cut off:
+ * at its content box for a framed card — where a table or a code block too
+ * wide for it is cut, by the section around it that scrolls sideways — and
+ * at its own edges for bare text, which has no box of its own.
+ */
+export function contentClip(
+  tokens: TypesetTokens,
+  plain: boolean,
+): Readonly<{ left: number; right: number }> {
+  return plain
+    ? { left: 0, right: 0 }
+    : { left: tokens.inset.left, right: tokens.inset.right }
+}

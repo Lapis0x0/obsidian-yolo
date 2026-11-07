@@ -42,6 +42,50 @@ type TableRow = Extract<RootContent, { type: 'table' }>['children'][number]
 /** Any block: a list item's and a quote's children are among the root's. */
 type Flow = RootContent
 
+/** A callout's first line, at any depth of quoting. */
+const CALLOUT_LINE = /^((?:[ \t]*>)+)[ \t]*\[![^\]\s]+\]/
+const FENCE = /^(?:[ \t]*>)*[ \t]*(```|~~~)/
+
+/** A block's id at the end of its last line (`text ^id`). */
+const BLOCK_ID = /[ \t]\^[A-Za-z0-9-]+[ \t]*$/
+
+/**
+ * Two things Obsidian reads off lines that CommonMark does not, outside
+ * code, where such a line is only text:
+ * - a callout's title is its first line alone; CommonMark would run the
+ *   lines after it into the same paragraph, so that a list or a heading
+ *   written straight under the title would be text. An empty quoted line
+ *   after the title keeps them apart.
+ * - a block's id at the end of the block is not shown.
+ */
+export function calloutTitlesApart(markdown: string): string {
+  const lines = markdown.split('\n')
+  const out: string[] = []
+  let fence: string | null = null
+  lines.forEach((line, i) => {
+    out.push(line)
+    const opened = FENCE.exec(line)
+    if (opened) {
+      fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
+      return
+    }
+    if (fence !== null) return
+    const next = lines[i + 1]
+    const endsBlock = next === undefined || /^(?:[ \t]*>)*[ \t]*$/.test(next)
+    if (endsBlock && BLOCK_ID.test(line)) {
+      out[out.length - 1] = line.replace(BLOCK_ID, '')
+    }
+    const callout = CALLOUT_LINE.exec(line)
+    if (!callout || next === undefined) return
+    // Only where the next line goes on in the same quote with something.
+    const quote = callout[1]
+    if (next.startsWith(quote) && next.slice(quote.length).trim() !== '') {
+      out.push(quote)
+    }
+  })
+  return out.join('\n')
+}
+
 const FRONTMATTER = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/
 
 export function stripFrontmatter(markdown: string): string {
@@ -51,7 +95,7 @@ export function stripFrontmatter(markdown: string): string {
 }
 
 export function parseCard(markdown: string): Section[] {
-  const tree = fromMarkdown(stripFrontmatter(markdown), {
+  const tree = fromMarkdown(calloutTitlesApart(stripFrontmatter(markdown)), {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   })
@@ -124,7 +168,23 @@ function blockOf(node: Flow): Block | null {
   }
 }
 
+const EMPTY_TASK = /^\[([ xX])\]\s*$/
+
 function itemOf(item: MdListItem): ListItem {
+  // `- [ ]` with nothing after it: GFM reads the box as text, Obsidian
+  // draws an empty task.
+  const [first, ...rest] = item.children
+  const lead =
+    first?.type === 'paragraph' && first.children.length === 1
+      ? first.children[0]
+      : null
+  const empty =
+    item.checked == null && lead?.type === 'text'
+      ? EMPTY_TASK.exec(lead.value)
+      : null
+  if (empty) {
+    return { checked: empty[1] !== ' ', children: sectionsOf(rest) }
+  }
   return {
     checked: typeof item.checked === 'boolean' ? item.checked : null,
     children: sectionsOf(item.children),
@@ -135,7 +195,7 @@ function cellsOf(row: TableRow): Inline[][] {
   return row.children.map((cell) => inlinesOf(cell.children))
 }
 
-const CALLOUT_HEAD = /^\[!([^\]\s]+)\][+-]?[ \t]*/
+const CALLOUT_HEAD = /^\[!([^\]\s]+)\]([+-]?)[ \t]*/
 
 /** A quote whose first line is `[!type] title`: a callout. */
 function calloutOf(quoted: readonly Flow[]): Block | null {
@@ -177,9 +237,11 @@ function calloutOf(quoted: readonly Flow[]): Block | null {
   })
   const type = head[1].toLowerCase()
   const title = inlinesOf(titleNodes)
-  const sections = sectionsOf(rest)
+  // Folded (`[!type]-`): only its title shows.
+  const folded = head[2] === '-'
+  const sections = folded ? [] : sectionsOf(rest)
   const children: Section[] =
-    bodyNodes.length > 0
+    bodyNodes.length > 0 && !folded
       ? [
           {
             block: { kind: 'paragraph', inlines: inlinesOf(bodyNodes) },
@@ -250,6 +312,10 @@ function walk(
     case 'link':
     case 'linkReference':
       for (const child of node.children) walk(child, flags | LINK, out, state)
+      // A link to a URL is an external one: a theme marks it with an icon.
+      if (node.type === 'link' && URL_SCHEME.test(node.url)) {
+        out.push({ text: LINK_ICON_TEXT, flags: flags | LINK, linkIcon: true })
+      }
       return
     case 'image': {
       const image = imageOf(decodedUrl(node.url))
@@ -282,6 +348,21 @@ function walk(
  * Obsidian shows as line breaks. */
 const OBSIDIAN =
   /(!?)\[\[([^\]\n]+?)\]\]|==|(^|[\s([{（「『【，。、；：！？,.;:!?])#([^\s#,.;:!?'"()[\]{}，。、；：！？（）「」『』【】“”‘’<>`*~=]+)|\n/gu
+
+/** A URL's scheme: what makes a link an external one. */
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i
+/** What an external link's icon is in a paragraph's text: an object the
+ * line may break either side of, as the browser treats an inline block. */
+const LINK_ICON_TEXT = '\uFFFC'
+
+/** What a wikilink shows, as Obsidian's reading view does: its alias, or
+ * its target with each heading or block step after a " > " — and none
+ * before one in the note itself. */
+export function linkText(target: string): string {
+  const bar = target.indexOf('|')
+  if (bar !== -1) return target.slice(bar + 1)
+  return target.replace(/^#/, '').replace(/#/g, ' > ')
+}
 
 /** A tag needs one character that is not a digit: `#123` is text. */
 const TAG_HAS_NAME = /\D/
@@ -322,9 +403,7 @@ function obsidianText(
         at = index + token.length
         continue
       }
-      const bar = target.indexOf('|')
-      const shown = bar === -1 ? target : target.slice(bar + 1)
-      push(out, shown, flags | LINK, state)
+      push(out, linkText(target), flags | LINK, state)
       at = index + token.length
       continue
     }
@@ -357,6 +436,8 @@ function merge(runs: readonly Inline[]): Inline[] {
       last &&
       !last.image &&
       !run.image &&
+      !last.linkIcon &&
+      !run.linkIcon &&
       last.flags === run.flags &&
       last.text !== '\n' &&
       run.text !== '\n' &&

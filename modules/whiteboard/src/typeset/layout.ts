@@ -13,6 +13,7 @@ import {
   type Measure,
   type RunStyle,
   breakLines,
+  contentWidths,
 } from './breaking'
 import {
   BOLD,
@@ -26,7 +27,14 @@ import {
   type Section,
   TAG,
 } from './model'
-import type { FontFace, TextStyle, TypesetTokens } from './tokens'
+import type {
+  BorderSide,
+  CellBorders,
+  FontFace,
+  TableAlign,
+  TextStyle,
+  TypesetTokens,
+} from './tokens'
 
 export type DrawOp =
   | Readonly<{
@@ -209,15 +217,15 @@ function layoutBlock(
       const end = layoutSections(
         ctx,
         block.children,
-        left + quote.indent,
-        right,
+        left + quote.left + quote.indent,
+        right - quote.right,
         y,
         { style: voice.style, color: quote.color },
         tokens.body.lineHeight,
       )
       ctx.ops.push({
         op: 'rect',
-        x: left,
+        x: left + quote.left,
         y: top,
         w: quote.barWidth,
         h: Math.min(end, ctx.bottom) - top,
@@ -307,6 +315,7 @@ function styler(
         font: fontString(faceOf(tokens, voice, flags)),
         padX:
           flags & CODE ? tokens.code.padX : flags & TAG ? tokens.tag.padX : 0,
+        linkIcon: tokens.linkIcon,
       }
       cache.set(flags, style)
     }
@@ -323,6 +332,7 @@ function layoutText(
   y: number,
   voice: Voice,
   firstLine?: (line: Line, top: number, baseline: number) => void,
+  align: TableAlign = 'left',
 ): number {
   const lines = breakLines(
     inlines,
@@ -340,7 +350,9 @@ function layoutText(
     const tallest = Math.max(0, ...line.pieces.map((p) => p.height ?? 0))
     const baseline = Math.max(normal, y + tallest)
     if (i === 0) firstLine?.(line, y, baseline)
-    drawLine(ctx, line, left, baseline, lineHeight, voice)
+    const spare = Math.max(0, right - left - line.width)
+    const shift = align === 'center' ? spare / 2 : align === 'right' ? spare : 0
+    drawLine(ctx, line, left + shift, baseline, lineHeight, voice)
     y += lineHeight + (baseline - normal)
   })
   return y
@@ -372,6 +384,7 @@ function drawLine(
   const { tokens, ops } = ctx
   for (const piece of line.pieces) {
     const x = left + piece.x
+    if (piece.icon) continue
     if (piece.image) {
       const h = piece.height ?? 0
       ops.push({
@@ -644,7 +657,7 @@ function layoutCode(
       ? breakLines(
           [{ text: raw === '' ? ' ' : raw, flags: 0 }],
           Math.max(1, inner.right - inner.left),
-          () => ({ font, padX: 0 }),
+          () => ({ font, padX: 0, linkIcon: 0 }),
           ctx.measure,
         )
       : [
@@ -682,89 +695,301 @@ function layoutTable(
   y: number,
   voice: Voice,
 ): number {
-  const { table: t } = ctx.tokens
+  const { tokens } = ctx
+  const t = tokens.table
   const rows = [table.header, ...table.rows]
   const columns = Math.max(0, ...rows.map((row) => row.length))
   if (columns === 0) return y
-  const headVoice: Voice = {
-    style: { ...voice.style, weight: t.headerWeight },
-    color: voice.color,
-  }
-  // Each column as wide as its widest cell on one line, shrunk evenly to
-  // the card when they do not all fit — the table's own auto layout, near
-  // enough.
-  const natural = new Array<number>(columns).fill(0)
-  rows.forEach((row, r) => {
-    const style = styler(ctx.tokens, r === 0 ? headVoice : voice)
-    row.forEach((cell, c) => {
-      const width = cell.reduce(
-        (sum, run) => sum + ctx.measure(run.text, style(run.flags).font),
-        0,
-      )
-      natural[c] = Math.max(natural[c], width + t.padX * 2)
-    })
+  const voiceOf = (style: TextStyle): Voice => ({
+    style,
+    color: voice.color === tokens.body.color ? style.color : voice.color,
   })
-  const room = right - left
-  const total = natural.reduce((a, b) => a + b, 0)
-  const widths =
-    total <= room ? natural : natural.map((w) => (w / total) * room)
+  const headVoice = voiceOf(t.header)
+  const cellVoice = voiceOf(t.cell)
+  const rowVoice = (r: number) => (r === 0 ? headVoice : cellVoice)
+  const grid = tableGrid(t, rows.length, columns)
+
+  // Columns: how much of each is not its content (padding, borders), and
+  // how wide its content wants to be.
+  const chrome = Array.from(
+    { length: columns },
+    (_, c) => t.padX * 2 + grid.left(c) + grid.right(c),
+  )
+  const widths = columnWidths(
+    ctx,
+    rows,
+    chrome,
+    right - left - grid.outerX,
+    rowVoice,
+  )
+  const xs = [left + grid.startX]
+  widths.forEach((w, c) => xs.push(xs[c] + w + grid.gapX))
+  const tableRight = xs[columns] - grid.gapX + grid.endX
+
   y += t.marginY
-  let cursor = y
-  const tableWidth = widths.reduce((a, b) => a + b, 0)
+  const tableTop = y
+  let cursor = y + grid.startY
+  const fills: DrawOp[] = []
+  const borders: DrawOp[] = []
   rows.forEach((row, r) => {
     if (cursor >= ctx.bottom) return
-    const rowVoice = r === 0 ? headVoice : voice
-    let x = left
-    let tallest = rowVoice.style.lineHeight + t.padY * 2
+    const align = r === 0 ? t.headerAlign : t.align
+    const under = ctx.ops.length
     // A row is as tall as its tallest cell.
+    let tallest = rowVoice(r).style.lineHeight + t.padY * 2
+    const top = cursor + grid.top(r)
     widths.forEach((width, c) => {
-      const cell = row[c] ?? []
+      const x = xs[c] + grid.left(c)
       const end = layoutText(
         ctx,
-        cell,
+        row[c] ?? [],
         x + t.padX,
-        x + width - t.padX,
-        cursor + t.padY,
-        rowVoice,
+        x + width - grid.left(c) - grid.right(c) - t.padX,
+        top + t.padY,
+        rowVoice(r),
+        undefined,
+        align,
       )
-      tallest = Math.max(tallest, end - cursor + t.padY)
-      x += width
+      tallest = Math.max(tallest, end - top + t.padY)
     })
-    ctx.ops.push({
-      op: 'line',
-      x1: left,
-      y1: cursor,
-      x2: left + tableWidth,
-      y2: cursor,
-      color: t.border,
-      width: t.borderWidth,
-    })
-    cursor += tallest
+    const height = grid.top(r) + tallest + grid.bottom(r)
+    const fill = r === 0 ? t.headerBackground : t.rowBackgrounds[(r - 1) % 2]
+    if (paints(fill)) {
+      fills.push({
+        op: 'rect',
+        x: xs[0],
+        y: cursor,
+        w: xs[columns] - grid.gapX - xs[0],
+        h: height,
+        radius: 0,
+        color: fill,
+      })
+    }
+    // The row's fill goes under its text.
+    ctx.ops.splice(under, 0, ...fills.splice(0))
+    borders.push(...grid.cellBorders(r, xs, widths, cursor, height))
+    cursor += height + grid.gapY
   })
-  // The closing rule, and the columns' sides.
-  ctx.ops.push({
-    op: 'line',
-    x1: left,
-    y1: cursor,
-    x2: left + tableWidth,
-    y2: cursor,
-    color: t.border,
-    width: t.borderWidth,
-  })
-  let x = left
-  for (let c = 0; c <= columns; c += 1) {
-    ctx.ops.push({
-      op: 'line',
-      x1: x,
-      y1: y,
-      x2: x,
-      y2: Math.min(cursor, ctx.bottom),
-      color: t.border,
-      width: t.borderWidth,
-    })
-    x += widths[c] ?? 0
+  const tableBottom = cursor - grid.gapY + grid.endY
+  ctx.ops.push(
+    ...borders,
+    ...grid.frame(
+      left,
+      tableTop,
+      tableRight,
+      Math.min(tableBottom, ctx.bottom),
+    ),
+  )
+  return tableBottom + t.marginY
+}
+
+type TableTokens = TypesetTokens['table']
+
+/**
+ * Where a table's borders and cells are, by the stylesheet's model: with
+ * `border-collapse: separate` each cell has its own borders inside its box,
+ * `spacing` apart and the table's frame round them all; collapsed, a cell's
+ * border and its neighbour's (or the frame) are one line as wide as the
+ * wider, centred on where they meet, and each cell keeps half of it.
+ */
+function tableGrid(t: TableTokens, rows: number, columns: number) {
+  const sides = (r: number, c: number): CellBorders => {
+    const group = r === 0 ? t.borders.header : t.borders.body
+    if (columns === 1) {
+      const [top, , bottom, leftSide] = group.first
+      return [top, group.last[1], bottom, leftSide]
+    }
+    if (c === 0) return group.first
+    if (c === columns - 1) return group.last
+    const [top, rightSide, bottom] = group.first
+    return [top, rightSide, bottom, group.last[3]]
   }
-  return cursor + t.marginY
+  const frame = t.frame.width
+  if (!t.collapse) {
+    const s = t.spacing
+    // Rows of one kind are alike: the body's first row stands for all.
+    const at = (r: number) => (r === 0 ? 0 : 1)
+    return {
+      startX: frame + s,
+      endX: s + frame,
+      startY: frame + s,
+      endY: s + frame,
+      gapX: s,
+      gapY: s,
+      outerX: frame * 2 + s * (columns + 1),
+      left: (c: number) => Math.max(sides(1, c)[3].width, sides(0, c)[3].width),
+      right: (c: number) =>
+        Math.max(sides(1, c)[1].width, sides(0, c)[1].width),
+      top: (r: number) => sides(at(r), 0)[0].width,
+      bottom: (r: number) => sides(at(r), 0)[2].width,
+      cellBorders: (
+        r: number,
+        xs: readonly number[],
+        widths: readonly number[],
+        y: number,
+        height: number,
+      ): DrawOp[] =>
+        widths.flatMap((w, c) => boxBorders(sides(r, c), xs[c], y, w, height)),
+      frame: (x1: number, y1: number, x2: number, y2: number): DrawOp[] =>
+        boxBorders(
+          [t.frame, t.frame, t.frame, t.frame],
+          x1,
+          y1,
+          x2 - x1,
+          y2 - y1,
+        ),
+    }
+  }
+  // Collapsed: one line where two meet.
+  const vertical = (c: number): BorderSide => {
+    const candidates: BorderSide[] = []
+    for (const r of [0, 1]) {
+      if (c > 0) candidates.push(sides(r, c - 1)[1])
+      if (c < columns) candidates.push(sides(r, c)[3])
+    }
+    if (c === 0 || c === columns) candidates.push(t.frame)
+    return widest(candidates)
+  }
+  const horizontal = (r: number): BorderSide => {
+    const candidates: BorderSide[] = []
+    if (r > 0) candidates.push(sides(Math.min(r - 1, 1), 0)[2])
+    if (r < rows) candidates.push(sides(Math.min(r, 1), 0)[0])
+    if (r === 0 || r === rows) candidates.push(t.frame)
+    return widest(candidates)
+  }
+  return {
+    startX: vertical(0).width / 2,
+    endX: vertical(columns).width / 2,
+    startY: 0,
+    endY: 0,
+    gapX: 0,
+    gapY: 0,
+    outerX: (vertical(0).width + vertical(columns).width) / 2,
+    left: (c: number) => vertical(c).width / 2,
+    right: (c: number) => vertical(c + 1).width / 2,
+    top: (r: number) => horizontal(r).width / 2,
+    bottom: (r: number) => horizontal(r + 1).width / 2,
+    cellBorders: (
+      r: number,
+      xs: readonly number[],
+      widths: readonly number[],
+      y: number,
+      height: number,
+    ): DrawOp[] => {
+      const out: DrawOp[] = []
+      const x2 = xs[widths.length]
+      const line = horizontal(r)
+      if (line.width > 0) {
+        out.push(band(xs[0], y - line.width / 2, x2 - xs[0], line.width, line))
+      }
+      if (r === rows - 1) {
+        const last = horizontal(rows)
+        if (last.width > 0) {
+          out.push(
+            band(
+              xs[0],
+              y + height - last.width / 2,
+              x2 - xs[0],
+              last.width,
+              last,
+            ),
+          )
+        }
+      }
+      for (let c = 0; c <= widths.length; c += 1) {
+        const side = vertical(c)
+        if (side.width <= 0) continue
+        out.push(band(xs[c] - side.width / 2, y, side.width, height, side))
+      }
+      return out
+    },
+    frame: (): DrawOp[] => [],
+  }
+}
+
+function widest(sides: readonly BorderSide[]): BorderSide {
+  return sides.reduce((a, b) => (b.width > a.width ? b : a), {
+    width: 0,
+    color: 'transparent',
+  })
+}
+
+/** A filled band: a border drawn as the box it is. */
+function band(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  side: BorderSide,
+): DrawOp {
+  return { op: 'rect', x, y, w, h, radius: 0, color: side.color }
+}
+
+/** A box's own borders, inside it. */
+function boxBorders(
+  [top, right, bottom, left]: CellBorders,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): DrawOp[] {
+  const out: DrawOp[] = []
+  if (top.width > 0) out.push(band(x, y, w, top.width, top))
+  if (bottom.width > 0) {
+    out.push(band(x, y + h - bottom.width, w, bottom.width, bottom))
+  }
+  if (left.width > 0) out.push(band(x, y, left.width, h, left))
+  if (right.width > 0) {
+    out.push(band(x + w - right.width, y, right.width, h, right))
+  }
+  return out
+}
+
+/**
+ * A table's columns, as the browser's automatic table layout sizes them:
+ * each at least as wide as the widest piece of its cells no line can break
+ * inside (and a theme's least cell width), at most as wide as its longest
+ * line, its padding and borders (`chrome`) included. The table takes the
+ * room there is between the two, and a column gets its share of what is
+ * over its least by how much more it would take — so a table that cannot
+ * fit at its least is wider than the card, and cut off by it, as the
+ * browser's is.
+ */
+function columnWidths(
+  ctx: Ctx,
+  rows: readonly (readonly (readonly Inline[])[])[],
+  chrome: readonly number[],
+  room: number,
+  voiceOf: (row: number) => Voice,
+): number[] {
+  const t = ctx.tokens.table
+  const min = [...chrome]
+  const max = [...chrome]
+  rows.forEach((row, r) => {
+    const style = styler(ctx.tokens, voiceOf(r))
+    const least = r === 0 ? t.headerMinWidth : t.minWidth
+    row.forEach((cell, c) => {
+      if (c >= chrome.length) return
+      const widths = contentWidths(cell, style, ctx.measure, ctx.imageSize)
+      min[c] = Math.max(min[c], least, widths.min + chrome[c])
+      max[c] = Math.max(max[c], widths.max + chrome[c], min[c])
+    })
+  })
+  const sumMin = min.reduce((a, b) => a + b, 0)
+  const sumMax = max.reduce((a, b) => a + b, 0)
+  const width = Math.min(sumMax, Math.max(sumMin, room))
+  if (sumMax <= sumMin) return max
+  const share = (width - sumMin) / (sumMax - sumMin)
+  return min.map((m, c) => m + (max[c] - m) * share)
+}
+
+/** Whether a computed colour paints anything. */
+function paints(color: string): boolean {
+  return !(
+    color === 'transparent' ||
+    /,\s*0\)$/.test(color) ||
+    /\/\s*0\)$/.test(color)
+  )
 }
 
 /** `color` at `alpha` of its own opacity, for a colour a canvas reads as

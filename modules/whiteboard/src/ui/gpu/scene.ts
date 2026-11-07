@@ -13,7 +13,7 @@
 // The card table holds, per slot, CARD_TEXELS texels:
 //   [x, y, w, h]                          its box, world units
 //   [frame depth, content depth, fade, radius]
-//   [border width, shown, 0, 0]
+//   [border width, shown, clip left, clip right]
 // and the colour table one texel: [fill, border, 0, 0] as RGBA8 words.
 //
 // Knows nothing of boards or nodes: whoever shows the board tells it what
@@ -78,6 +78,8 @@ export type SceneCard = Readonly<{
   frame: SceneFrame | null
   /** How far above the bottom edge its content fades out; 0 for none. */
   fade: number
+  /** How far in from its left and right edges its content is cut off. */
+  clip: Readonly<{ left: number; right: number }>
   /** Null while it has none (or never will: an image, a PDF). */
   content: CardInstances | null
 }>
@@ -651,8 +653,8 @@ export class GpuScene {
         frame?.radius ?? 0,
         frame?.borderWidth ?? 0,
         slot.shown ? 1 : 0,
-        0,
-        0,
+        card.clip.left,
+        card.clip.right,
       ],
       at,
     )
