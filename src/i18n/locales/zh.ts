@@ -320,6 +320,11 @@ export const zh: TranslationKeys = {
           impact:
             '关闭后 Claude Code Agent 与使用 Claude Code 登录的模型将不可用。',
         },
+        mathjaxEngine: {
+          name: '公式引擎',
+          description: '为白板排版公式，让含公式的卡片和其他卡片一样直接绘制。',
+          impact: '关闭后白板上含公式的卡片仍用较慢的笔记视图显示。',
+        },
         statuses: {
           missing: '等待安装',
           downloading: '正在下载',

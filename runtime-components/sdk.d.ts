@@ -4,6 +4,7 @@ export type RuntimeComponentId =
   | 'bash-engine'
   | 'embedding-engine'
   | 'claude-agent-sdk'
+  | 'mathjax-engine'
 
 export type RuntimeComponentDefinition<TApi = unknown> = Readonly<{
   id: RuntimeComponentId

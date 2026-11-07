@@ -296,6 +296,7 @@ export type TranslationKeys = {
         bashEngine: { name: string; description: string; impact: string }
         embeddingEngine: { name: string; description: string; impact: string }
         claudeAgentSdk: { name: string; description: string; impact: string }
+        mathjaxEngine: { name: string; description: string; impact: string }
         statuses: {
           missing: string
           downloading: string

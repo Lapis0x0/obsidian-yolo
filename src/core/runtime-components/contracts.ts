@@ -6,6 +6,7 @@ export type RuntimeComponentId =
   | 'bash-engine'
   | 'embedding-engine'
   | 'claude-agent-sdk'
+  | 'mathjax-engine'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -471,6 +472,79 @@ export type EmbeddingEngineComponentApi = Readonly<{
   dispose(): Promise<void>
 }>
 
+/** A formula to lay out: TeX, inline (`$…$`) or display (`$$…$$`). */
+export type MathRequest = Readonly<{ tex: string; display: boolean }>
+
+/**
+ * A formula as Obsidian's MathJax lays it out in a note, in ems of the text
+ * around it: the same MathJax and font, output as shapes rather than HTML.
+ * Lengths are in ems; y runs down from the baseline.
+ */
+export type MathLayout = Readonly<{
+  /** Its outlines, each once, as SVG path data: a glyph's in font units —
+   * a thousand to the em, y up — and a rule's or stroke's as drawn. A
+   * shape names one by index. */
+  paths: readonly string[]
+  /** What it breaks into: inline math may break between pieces, where
+   * MathJax would wrap it; display math is one piece. */
+  pieces: readonly MathPiece[]
+}>
+
+export type MathPiece = Readonly<{
+  width: number
+  /** Above the baseline. */
+  height: number
+  /** Below the baseline. */
+  depth: number
+  /** After it, the room left when the line goes on past it, or a break
+   * the TeX asks for (`\\`); 0 after the last. */
+  after: number | 'newline'
+  shapes: readonly MathShape[]
+}>
+
+export type MathShape =
+  | Readonly<{
+      kind: 'path'
+      path: number
+      /** From the path's units to the piece's, as SVG's `matrix(a b c d e
+       * f)`: a glyph's own scale, stretched for a tall bracket or a long
+       * arrow, and where its origin is, from the piece's left on the
+       * baseline. */
+      transform: readonly [number, number, number, number, number, number]
+      /** Null: the text's own colour. */
+      color: string | null
+    }>
+  | Readonly<{
+      kind: 'rect'
+      x: number
+      y: number
+      width: number
+      height: number
+      color: string | null
+    }>
+  | Readonly<{
+      /** Text the math font has no glyph for (`\text{中文}`), set in a
+       * text font. */
+      kind: 'text'
+      text: string
+      x: number
+      y: number
+      size: number
+      family: string
+      italic: boolean
+      bold: boolean
+      color: string | null
+    }>
+
+export type MathEngineComponentApi = Readonly<{
+  /** Each request's layout, in order; null for one with something in it
+   * that is not drawn as shapes (an ellipse). */
+  layout(
+    requests: readonly MathRequest[],
+  ): Promise<readonly (MathLayout | null)[]>
+  dispose(): void
+}>
+
 export type RuntimeComponentApiMap = {
   tokenizer: TokenizerComponentApi
   'pdf-engine': PdfEngineComponentApi
@@ -482,6 +556,7 @@ export type RuntimeComponentApiMap = {
    * belongs to the query object, which its caller closes.
    */
   'claude-agent-sdk': ClaudeSdkModule
+  'mathjax-engine': MathEngineComponentApi
 }
 
 export type RuntimeComponentDefinition<

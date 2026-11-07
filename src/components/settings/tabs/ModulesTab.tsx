@@ -571,6 +571,8 @@ function runtimeComponentIcon(componentId: string): string {
       return 'vector-square'
     case 'claude-agent-sdk':
       return 'bot'
+    case 'mathjax-engine':
+      return 'sigma'
     default:
       return 'component'
   }

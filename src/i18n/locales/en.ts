@@ -359,6 +359,13 @@ export const en: TranslationKeys = {
           impact:
             'Turning this off disables the Claude Code agent and models that use the Claude Code login.',
         },
+        mathjaxEngine: {
+          name: 'Math engine',
+          description:
+            'Lays out formulas so whiteboard cards with math are drawn like the rest of the board.',
+          impact:
+            'Turning this off keeps whiteboard cards with math in the slower note view.',
+        },
         statuses: {
           missing: 'Waiting to install',
           downloading: 'Downloading',

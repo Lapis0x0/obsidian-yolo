@@ -382,6 +382,13 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, l’agente Claude Code e i modelli che usano l’accesso Claude Code non sono disponibili.',
         },
+        mathjaxEngine: {
+          name: 'Motore delle formule',
+          description:
+            'Impagina le formule perché le schede della lavagna con formule siano disegnate come le altre.',
+          impact:
+            'Disattivandolo, le schede della lavagna con formule restano nella vista nota, più lenta.',
+        },
         statuses: {
           missing: 'In attesa di installazione',
           downloading: 'Download in corso',

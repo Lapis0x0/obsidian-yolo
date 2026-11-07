@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "id": "mathjax-engine",
+  "platforms": ["desktop", "mobile"],
+  "nameKey": "settings.modules.runtimeComponents.mathjaxEngine.name",
+  "descriptionKey": "settings.modules.runtimeComponents.mathjaxEngine.description",
+  "impactKey": "settings.modules.runtimeComponents.mathjaxEngine.impact",
+  "entry": "dist/entry.js"
+}

@@ -83,6 +83,7 @@ const RUNTIME_COMPONENT_IDS = new Set([
   'bash-engine',
   'embedding-engine',
   'claude-agent-sdk',
+  'mathjax-engine',
 ])
 
 export async function validateRuntimeComponentArtifacts(root) {

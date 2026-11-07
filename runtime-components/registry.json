@@ -53,6 +53,19 @@
       ]
     },
     {
+      "id": "mathjax-engine",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.mathjaxEngine.name",
+      "descriptionKey": "settings.modules.runtimeComponents.mathjaxEngine.description",
+      "impactKey": "settings.modules.runtimeComponents.mathjaxEngine.impact",
+      "entry": "runtime-components/mathjax-engine/dist/entry.js",
+      "byteSize": 2906892,
+      "sha256": "05300e8f4c5ad1200c0f81723f9087c12fc77de89076e64bb22e95d47b1696da"
+    },
+    {
       "id": "pdf-engine",
       "platforms": [
         "desktop",

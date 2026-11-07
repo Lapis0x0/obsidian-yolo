@@ -21,6 +21,7 @@ const allowedIds = new Set([
   'bash-engine',
   'embedding-engine',
   'claude-agent-sdk',
+  'mathjax-engine',
 ])
 const nodeBuiltins = new Set([
   ...builtinModules,
@@ -93,8 +94,8 @@ for (const entry of entries.sort((left, right) =>
   components.push(descriptor)
   const metafileJson = `${JSON.stringify(result.metafile, null, 2)}\n`
   // Combined worker-bundle metafile(s) — captured only for components whose
-  // esbuild plugin inlines a nested worker build (currently embedding-engine
-  // only). Checked in `--check` mode and written otherwise, mirroring
+  // esbuild plugin inlines a nested worker build (embedding-engine and
+  // mathjax-engine). Checked in `--check` mode and written otherwise, mirroring
   // `meta.json`, so `verify-runtime-component-boundaries.mjs` has a stable
   // artifact to inspect the worker's own dependency closure through (the
   // worker's imports never appear in the outer `meta.json` since the worker
@@ -361,7 +362,16 @@ function componentPlugins(componentId, workerMetafiles) {
     })
   }
   if (componentId === 'embedding-engine') {
-    plugins.push(embeddingWorkerPlugin(workerMetafiles))
+    plugins.push(
+      workerScriptPlugin(componentId, 'embedding', workerMetafiles, [
+        'onnxruntime-web-use-extern-wasm',
+      ]),
+    )
+  }
+  if (componentId === 'mathjax-engine') {
+    plugins.push(
+      workerScriptPlugin(componentId, 'mathjax', workerMetafiles, []),
+    )
   }
   return plugins
 }
@@ -406,35 +416,36 @@ async function readPdfBinaryData() {
 }
 
 /**
- * Bundles `worker.ts` (Transformers.js + onnxruntime-web + our RPC glue)
- * into a single self-contained classic-worker script via a *nested* esbuild
- * build, then inlines the result as a string constant so entry.ts can spin
- * it up with `new Worker(URL.createObjectURL(new Blob([source])))` — the
- * same "virtual:*-worker-script" pattern pdf-engine uses for pdf.worker.js,
- * except pdf-engine inlines an already-prebuilt file verbatim while this one
- * needs its own bundling pass (worker.ts has real, unresolved `import`s).
+ * Bundles a component's `worker.ts` into a single self-contained classic-
+ * worker script via a *nested* esbuild build, then inlines the result as a
+ * string constant (`virtual:<name>-worker-script`) so entry.ts can spin it
+ * up with `new Worker(URL.createObjectURL(new Blob([source])))` — the same
+ * pattern pdf-engine uses for pdf.worker.js, except pdf-engine inlines an
+ * already-prebuilt file verbatim while these need their own bundling pass
+ * (worker.ts has real, unresolved `import`s).
  *
- * The `onnxruntime-web-use-extern-wasm` condition steers onnxruntime-web's
- * "exports" map to the variant that loads its .wasm binaries externally
- * (`ort.min.mjs`, via `wasmPaths`) instead of the default variant that
- * inlines them as base64 (`ort.bundle.min.mjs`) — the latter would balloon
- * this component by another ~15MB of base64 text and defeat the whole
- * point of shipping wasm as separate, cacheable assets.
+ * embedding-engine's `onnxruntime-web-use-extern-wasm` condition steers
+ * onnxruntime-web's "exports" map to the variant that loads its .wasm
+ * binaries externally (`ort.min.mjs`, via `wasmPaths`) instead of the default
+ * variant that inlines them as base64 (`ort.bundle.min.mjs`) — the latter
+ * would balloon that component by another ~15MB of base64 text and defeat
+ * the whole point of shipping wasm as separate, cacheable assets.
  */
-function embeddingWorkerPlugin(workerMetafiles) {
+function workerScriptPlugin(componentId, name, workerMetafiles, conditions) {
+  const virtual = `virtual:${name}-worker-script`
   return {
-    name: 'runtime-embedding-worker',
+    name: `runtime-${name}-worker`,
     setup(build) {
-      build.onResolve({ filter: /^virtual:embedding-worker-script$/ }, () => ({
-        path: 'embedding-worker',
+      build.onResolve({ filter: new RegExp(`^${virtual}$`) }, () => ({
+        path: `${name}-worker`,
         namespace: 'runtime-worker',
       }))
       build.onLoad(
-        { filter: /^embedding-worker$/, namespace: 'runtime-worker' },
+        { filter: new RegExp(`^${name}-worker$`), namespace: 'runtime-worker' },
         async () => {
           const result = await esbuild.build({
             entryPoints: [
-              path.join(componentRoot, 'embedding-engine', 'src', 'worker.ts'),
+              path.join(componentRoot, componentId, 'src', 'worker.ts'),
             ],
             bundle: true,
             platform: 'browser',
@@ -444,7 +455,7 @@ function embeddingWorkerPlugin(workerMetafiles) {
             sourcemap: false,
             metafile: true,
             write: false,
-            conditions: ['onnxruntime-web-use-extern-wasm'],
+            conditions,
             define: {
               'process.env.NODE_ENV': JSON.stringify(
                 production ? 'production' : 'development',
