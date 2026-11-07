@@ -361,6 +361,7 @@ export class ModuleRuntime {
             chat: capabilityActivation.capabilities.chat,
             config: capabilityActivation.capabilities.config,
             i18n: capabilityActivation.capabilities.i18n,
+            network: capabilityActivation.capabilities.network,
             paths: capabilityActivation.capabilities.paths,
             pdf: capabilityActivation.capabilities.pdf,
             privateStorage: capabilityActivation.capabilities.privateStorage,

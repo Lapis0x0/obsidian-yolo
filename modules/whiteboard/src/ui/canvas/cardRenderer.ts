@@ -238,6 +238,8 @@ export type CardRendererCallbacks = Readonly<{
   onNoteCardRendered: (id: NodeId) => void
   /** A card's one-pass render has finished: it shows its content now. */
   onContentRendered: (id: NodeId) => void
+  /** An image in a card's content has loaded. */
+  onImageLoaded: (img: HTMLImageElement) => void
   canBuildContent: () => boolean
   /** The board's one queue for PDF page draws (../pdf/drawQueue.ts). */
   pdfDraws: PdfDrawQueue
@@ -325,6 +327,22 @@ export class CardRenderer {
   private readonly pdfCards = new Set<NodeId>()
   /** Watches every mounted bare text for its size; created with the first. */
   private textObserver: ResizeObserver | null = null
+
+  private readonly imageLoaded = (event: Event): void => {
+    const img = event.target as HTMLImageElement | null
+    if (img?.tagName === 'IMG') this.callbacks.onImageLoaded(img)
+  }
+
+  /** The images that loaded before they were in `body` — the renderer
+   * builds a section apart and puts it in whole — whose `load` it never
+   * saw. */
+  private imagesAlreadyLoaded(body: HTMLElement): void {
+    for (const img of Array.from(body.querySelectorAll('img'))) {
+      if (img.complete && img.naturalWidth > 0) {
+        this.callbacks.onImageLoaded(img)
+      }
+    }
+  }
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -661,6 +679,12 @@ export class CardRenderer {
 
     const body = createCardBody(doc)
     el.appendChild(body)
+    // Caught on the body, not the world: a card's content is often rendered
+    // before the card is in the document, and its images load meanwhile.
+    // `load` does not bubble; it is caught on its way down. An image loaded
+    // before it reached the body is found once the render is done
+    // (`imagesAlreadyLoaded`).
+    body.addEventListener('load', this.imageLoaded, true)
 
     // A sheet is a page of its document: named by the number in its corner,
     // the document itself by its title.
@@ -1391,6 +1415,7 @@ export class CardRenderer {
         if (plain) this.releaseTextSize(id)
         runtime.contentRendered = true
         this.dropCardPicture(runtime)
+        this.imagesAlreadyLoaded(bodyEl)
         this.callbacks.onContentRendered(id)
       })
       .catch((error: unknown) => {

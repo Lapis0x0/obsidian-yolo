@@ -132,7 +132,7 @@ import type { MinimapPrefs } from '../host/minimapPrefs'
 import { takePendingFit } from '../host/pendingFit'
 import type { PictureStores } from '../host/pictureStore'
 import type { ReaderPanelPrefs } from '../host/readerPanelPrefs'
-import type { RemoteImageSizes } from '../host/remoteImageSizes'
+import type { RemoteImages } from '../host/remoteImages'
 import { createWhiteboardTranslation } from '../i18n'
 import { imageTargets, isRemoteImage } from '../typeset/images'
 
@@ -236,6 +236,7 @@ import {
   type WantedPicture,
 } from './pictures/pictures'
 import {
+  type CardImages,
   TypesetCards,
   cardRef,
   cardStamp,
@@ -683,7 +684,7 @@ export class WhiteboardCanvas {
   private gpuBoard: GpuBoard | null = null
   /** The own sizes of the images cards embed (./gpu/imageSizes.ts). */
   private imageSizes: ImageSizes | null = null
-  private unsubscribeRemoteSizes: (() => void) | null = null
+  private unsubscribeRemoteImages: (() => void) | null = null
   /** The images GPU cards show near to, decoded at that size. */
   private nearImages: NearImages | null = null
   /** The board's line in the host's activity list while it makes pictures
@@ -711,7 +712,7 @@ export class WhiteboardCanvas {
     private readonly minimapPrefs: MinimapPrefs,
     private readonly boardCameras: BoardCameras,
     documents: BoardDocuments,
-    private readonly remoteImageSizes: RemoteImageSizes,
+    private readonly remoteImages: RemoteImages,
   ) {
     this.sources = new BoardSources({
       documents,
@@ -1603,8 +1604,8 @@ export class WhiteboardCanvas {
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
-    this.unsubscribeRemoteSizes?.()
-    this.unsubscribeRemoteSizes = null
+    this.unsubscribeRemoteImages?.()
+    this.unsubscribeRemoteImages = null
     this.gpuBoard?.destroy()
     this.gpuBoard = null
     this.nearImages?.destroy()
@@ -1669,23 +1670,6 @@ export class WhiteboardCanvas {
     viewport.className = VIEWPORT_CLASS
     const world = doc.createElement('div')
     world.className = WORLD_CLASS
-    // An image on the web a card shows: its size, once the browser has it
-    // (../host/remoteImageSizes.ts). `load` does not bubble; it is caught on
-    // its way down.
-    world.addEventListener(
-      'load',
-      (event) => {
-        const img = event.target as HTMLImageElement | null
-        if (img?.tagName !== 'IMG') return
-        const src = img.currentSrc || img.src
-        if (!isRemoteImage(src)) return
-        this.remoteImageSizes.learn(src, {
-          w: img.naturalWidth,
-          h: img.naturalHeight,
-        })
-      },
-      true,
-    )
 
     // Edges overlay: one SVG covering the whole (unbounded) world layer.
     // `overflow: visible` on a nominally 1x1px element lets paths be drawn
@@ -1858,11 +1842,11 @@ export class WhiteboardCanvas {
           onStale: (path) => this.pictures?.fileChanged(path),
         }),
         new ImageFiles({
-          vault: this.host.vault,
+          read: (path) => this.readImage(path),
           store: this.pictureStores.image,
           doc,
           slices: pictureSlices,
-          mtime: (path) => this.fileMtime(path),
+          mtime: (path) => this.imageVersion(path),
           ready: pictureReady,
         }),
         new TypesetCards({
@@ -1890,17 +1874,7 @@ export class WhiteboardCanvas {
             }
           },
           colorOf: nodeColorFrom(root),
-          imagesOf: async (markdown) => {
-            const sizes = this.imageSizes
-            const out: Record<string, Readonly<{ w: number; h: number }>> = {}
-            if (!sizes) return out
-            for (const target of imageTargets(markdown)) {
-              const path = sizes.resolve(target)
-              const size = path === null ? null : await sizes.sizeOf(path)
-              if (size) out[target] = size
-            }
-            return out
-          },
+          imagesOf: (markdown, widthPx) => this.cardImages(markdown, widthPx),
         }),
       ],
       wanted: () => this.wantedPictures(),
@@ -1952,12 +1926,12 @@ export class WhiteboardCanvas {
     const imageSizes = new ImageSizes({
       vault: this.host.vault,
       sourcePath: () => this.sourcePathForBoard(),
-      remote: this.remoteImageSizes,
+      remote: this.remoteImages,
     })
     this.imageSizes = imageSizes
     const nearImages = new NearImages({
       win: this.context.getWindow(),
-      vault: this.host.vault,
+      read: (path) => this.readImage(path),
       ownWidth: (path) => imageSizes.get(path)?.w ?? null,
       picture: (path) => this.pictures?.get(imageRef(path), false) ?? null,
       onDecoded: () => this.gpuBoard?.markDirty(),
@@ -1991,10 +1965,12 @@ export class WhiteboardCanvas {
         })
       : null
     this.gpuBoard?.setNodes(this.ownCardNodes)
-    this.unsubscribeRemoteSizes?.()
-    this.unsubscribeRemoteSizes = this.remoteImageSizes.subscribe((key) => {
+    this.unsubscribeRemoteImages?.()
+    this.unsubscribeRemoteImages = this.remoteImages.subscribe((key) => {
+      // Its cards are typeset again — drawn, or left to the DOM, by whether
+      // its bytes are kept — and their pictures made again.
       this.gpuBoard?.imageLearned(key)
-      // Its cards' pictures, made without it, are made again.
+      this.nearImages?.fileChanged(key)
       this.pictures?.invalidate()
     })
     // DEBUG(p4): the typesetter checked against the browser, from the
@@ -2212,6 +2188,16 @@ export class WhiteboardCanvas {
       },
       // A card showing its content is one a picture can be taken of.
       onContentRendered: () => this.pictures?.invalidate(),
+      // An image on the web a card shows: remembered once the browser has
+      // shown it, and its bytes fetched (../host/remoteImages.ts).
+      onImageLoaded: (img) => {
+        const src = img.currentSrc || img.src
+        if (!isRemoteImage(src)) return
+        this.remoteImages.shown(src, {
+          w: img.naturalWidth,
+          h: img.naturalHeight,
+        })
+      },
       canBuildContent: () => this.canBuildContent,
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
@@ -4289,7 +4275,7 @@ export class WhiteboardCanvas {
           ...this.pictureKeyOf(node.id),
           width: node.w,
           distance,
-          stamp: cardStamp(signature, look, this.remoteImageSizes.revision),
+          stamp: cardStamp(signature, look, this.remoteImages.revision),
         }
         continue
       }
@@ -4385,6 +4371,52 @@ export class WhiteboardCanvas {
       if (this.nodesById.has(id)) return id
     }
     return null
+  }
+
+  /** The images a card's picture lays out and draws
+   * (./pictures/typesetCards.ts): each one's own size, and those that can
+   * be drawn decoded no wider than `widthPx` — or than they are. */
+  private async cardImages(
+    markdown: string,
+    widthPx: number,
+  ): Promise<CardImages> {
+    const out: CardImages = { sizes: {}, bitmaps: {} }
+    const sizes = this.imageSizes
+    const win = this.context.getWindow()
+    if (!sizes) return out
+    for (const target of imageTargets(markdown)) {
+      const path = sizes.resolve(target)
+      const size = path === null ? null : await sizes.sizeOf(path)
+      if (!path || !size) continue
+      out.sizes[target] = size
+      if (!sizes.drawable(path) || target in out.bitmaps) continue
+      try {
+        const data = await this.readImage(path)
+        out.bitmaps[target] = await win.createImageBitmap(new Blob([data]), {
+          resizeWidth: Math.max(1, Math.min(size.w, widthPx)),
+          resizeQuality: 'medium',
+        })
+      } catch {
+        // Not one this WebView decodes (an SVG among them): its place.
+      }
+    }
+    return out
+  }
+
+  /** An image's bytes: a file's, or those kept of an image on the web
+   * (../host/remoteImages.ts). */
+  private readImage(path: string): Promise<ArrayBuffer> {
+    return isRemoteImage(path)
+      ? this.remoteImages.bytes(path)
+      : this.host.vault.readBinary(path)
+  }
+
+  /** The version of an image's bytes: a file's modification time; for an
+   * image on the web, whether they are kept — once kept they never change.
+   * Null when there are none. */
+  private imageVersion(path: string): number | null {
+    if (!isRemoteImage(path)) return this.fileMtime(path)
+    return this.remoteImages.kept(path) ? 1 : null
   }
 
   private pictureRefOf(node: BoardNode, page?: number): PictureRef | null {

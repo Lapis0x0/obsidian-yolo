@@ -40,12 +40,13 @@ export function imageRef(path: string): PictureRef {
 }
 
 export type ImageFilesDeps = Readonly<{
-  vault: YoloModuleHostApiV1['vault']
+  /** The image's bytes: a file's, or an image on the web's as kept. */
+  read: (path: string) => Promise<ArrayBuffer>
   store: PictureStore
   doc: Document
   slices: IdleSlices
-  /** When the file at `path` was last modified; null when it is not a
-   * file now. */
+  /** The version of the image at `path` — a file's modification time;
+   * null when there is nothing to read now. */
   mtime: (path: string) => number | null
   /** Whether a picture may be started now (./idle.ts's `ready`). */
   ready: () => boolean
@@ -81,7 +82,7 @@ export class ImageFiles implements PictureSource {
     _version: number,
   ): Promise<DrawnPicture | 'unavailable' | null> {
     const path = want.group
-    const data = await this.deps.vault.readBinary(path)
+    const data = await this.deps.read(path)
     const win = this.deps.doc.defaultView
     if (!win) return null
     if (/\.svg$/i.test(path)) return this.drawSvg(data)

@@ -1130,6 +1130,23 @@ export type YoloModulePdfV1 = Readonly<{
   ): Promise<ArrayBuffer>
 }>
 
+export type YoloModuleNetworkResponseV1 = Readonly<{
+  /** The response's `Content-Type`, when it has one. */
+  contentType: string | null
+  body: ArrayBuffer
+}>
+
+/** The web, as far as a module may read it. */
+export type YoloModuleNetworkV1 = Readonly<{
+  /**
+   * GETs `url` (http or https) through Obsidian, which no site's CORS policy
+   * applies to: for a resource the module will read, such as the pixels of
+   * an image another site serves. Rejects on any other address, a failed
+   * request, or a status outside 2xx.
+   */
+  requestBinary(url: string): Promise<YoloModuleNetworkResponseV1>
+}>
+
 export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
   assets: YoloModuleAssetsV1
@@ -1137,6 +1154,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   chat: YoloModuleChatV1
   config: ModuleConfigV1
   i18n: YoloModuleI18nV1
+  network: YoloModuleNetworkV1
   paths: YoloModulePathsV1
   pdf: YoloModulePdfV1
   privateStorage: ModulePrivateStorageV1

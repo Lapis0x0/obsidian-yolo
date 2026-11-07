@@ -136,6 +136,10 @@ export {
   type ModulePathsCapabilityActivationV1,
   type ModulePathsCapabilityProviderV1,
 } from './modulePaths'
+export {
+  ModuleNetworkCapabilityProvider,
+  type ModuleNetworkCapabilityProviderV1,
+} from './moduleNetwork'
 export { ModulePdfCapabilityProvider } from './modulePdf'
 export {
   ModulePrivateStorageCapabilityProvider,
@@ -333,6 +337,8 @@ export type {
   YoloModuleLifecycle,
   YoloModuleOpenViewOptionsV1,
   YoloModulePathsSnapshotV1,
+  YoloModuleNetworkResponseV1,
+  YoloModuleNetworkV1,
   YoloModulePathsV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,

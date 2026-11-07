@@ -2,7 +2,7 @@
 // against a 2D context — the typesetting worker's OffscreenCanvas
 // (./typesetWorker.ts) — so that nothing of it is on the main thread.
 
-import { embedLinks, imageOf, isRemoteImage } from '../../typeset/images'
+import { embedLinks, imageOf } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
 import { paint } from '../../typeset/paint'
 import { parseCard } from '../../typeset/parse'
@@ -145,12 +145,13 @@ export class Typesetter {
 
   /** A card's picture (../pictures/typesetCards.ts): its content drawn
    * over its whole box at `scale` device pixels per world unit, fading out
-   * `fade` above its bottom edge. */
+   * `fade` above its bottom edge, with `images` where they are laid out. */
   picture(
     tokens: TypesetTokens,
     card: TypesetCard,
     scale: number,
     fade: number,
+    images: Readonly<Record<string, ImageBitmap>> = {},
   ): ImageBitmap {
     const canvas = new OffscreenCanvas(
       Math.max(1, Math.round(card.w * scale)),
@@ -164,6 +165,7 @@ export class Typesetter {
       height: card.h,
       fade,
       clip: contentClip(tokens, card.plain),
+      images,
     })
     return canvas.transferToImageBitmap()
   }
@@ -267,11 +269,9 @@ export function needsHost(
   if (markdown.trim() === '') return true
   for (const link of embedLinks(markdown)) {
     const image = imageOf(link)
-    // An image on the web: its pixels are the browser's to show — a page
-    // may not read them — so it is shown where the browser shows it.
-    if (!image || !(image.target in images) || isRemoteImage(image.target)) {
-      return true
-    }
+    // Only an image that can be drawn is in `images` — one on the web once
+    // its bytes are kept (../../host/remoteImages.ts).
+    if (!image || !(image.target in images)) return true
   }
   return (
     DRAWN_FENCES.test(markdown) || MATH.test(markdown) || HTML.test(markdown)

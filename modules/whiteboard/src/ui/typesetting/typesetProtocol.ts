@@ -62,6 +62,9 @@ export type PicturePayload = Readonly<{
   scale: number
   /** How far above its bottom edge it fades out; 0 for not at all. */
   fade: number
+  /** The images it draws, decoded at about the size they show at, by what
+   * the source names each. */
+  images: Readonly<Record<string, ImageBitmap>>
 }>
 
 /**

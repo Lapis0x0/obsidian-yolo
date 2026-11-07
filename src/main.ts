@@ -101,6 +101,7 @@ import {
   ModuleFileTextRendererRegistry,
   ModuleIntentStore,
   ModuleLoader,
+  ModuleNetworkCapabilityProvider,
   ModulePdfCapabilityProvider,
   ModulePrivateStorageCapabilityProvider,
   type ModuleRibbonSlots,
@@ -4590,6 +4591,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             )
           },
         }),
+        network: new ModuleNetworkCapabilityProvider(),
         privateStorage: new ModulePrivateStorageCapabilityProvider({
           synchronized: {
             adapter: this.app.vault.adapter,

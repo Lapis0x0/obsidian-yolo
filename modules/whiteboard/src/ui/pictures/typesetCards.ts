@@ -44,15 +44,16 @@ const MAX_PIXELS = 400_000
 const FADE = 24
 /** Raised whenever a change to the typesetter changes what a picture looks
  * like, so that pictures made before it are made again. */
-const TYPESET_VERSION = 2
+const TYPESET_VERSION = 3
 
 /** A card picture's stamp: its card's signature (./cardSignature.ts) and
  * the look it is typeset in. */
 export function cardStamp(
   signature: string,
   styleHash: string,
-  /** The web images' sizes as known (../../host/remoteImageSizes.ts): a
-   * picture made before one was may have left it out. */
+  /** What is known of the web images (../../host/remoteImages.ts): a
+   * picture made before an image's size or bytes were may have left it
+   * out. */
   imagesRevision: number,
 ): string {
   return `${signature}.${styleHash}.${TYPESET_VERSION}.${imagesRevision}`
@@ -76,11 +77,15 @@ export type TypesetCardsDeps = Readonly<{
   readNote: (path: string) => Promise<string | null>
   /** A node colour as the board paints it (root.css's palette). */
   colorOf: (color: string) => string | null
-  /** The own sizes of the images `markdown` embeds, by what it names
-   * each, as far as they are known (../gpu/imageSizes.ts). */
-  imagesOf: (
-    markdown: string,
-  ) => Promise<Record<string, Readonly<{ w: number; h: number }>>>
+  /** The images `markdown` embeds, by what it names each: their own
+   * sizes, as far as they are known (../gpu/imageSizes.ts), and those
+   * that can be drawn decoded no wider than `widthPx`. */
+  imagesOf: (markdown: string, widthPx: number) => Promise<CardImages>
+}>
+
+export type CardImages = Readonly<{
+  sizes: Record<string, Readonly<{ w: number; h: number }>>
+  bitmaps: Record<string, ImageBitmap>
 }>
 
 export class TypesetCards implements PictureSource {
@@ -144,24 +149,32 @@ export class TypesetCards implements PictureSource {
     )
     const plain = isPlainText(node)
     const clipped = clippedCardMarkdown(node, markdown)
-    // Its images take their room, as the card's do.
-    const images = await deps.imagesOf(clipped)
-    const image = await deps.typesetter.picture(
-      { tokens, hash },
-      {
-        id,
-        markdown: clipped,
-        images,
-        w: node.w,
-        h: node.h,
-        plain,
-        color:
-          plain && node.color !== undefined ? deps.colorOf(node.color) : null,
-      },
-      scale,
-      plain ? 0 : FADE,
+    // Its images take their room, as the card's do, and are drawn there.
+    const { sizes, bitmaps } = await deps.imagesOf(
+      clipped,
+      Math.ceil(node.w * scale),
     )
-    return { image, meta: null }
+    try {
+      const image = await deps.typesetter.picture(
+        { tokens, hash },
+        {
+          id,
+          markdown: clipped,
+          images: sizes,
+          w: node.w,
+          h: node.h,
+          plain,
+          color:
+            plain && node.color !== undefined ? deps.colorOf(node.color) : null,
+        },
+        scale,
+        plain ? 0 : FADE,
+        bitmaps,
+      )
+      return { image, meta: null }
+    } finally {
+      for (const bitmap of Object.values(bitmaps)) bitmap.close()
+    }
   }
 }
 

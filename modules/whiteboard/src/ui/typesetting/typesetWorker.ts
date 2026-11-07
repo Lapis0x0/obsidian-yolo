@@ -76,13 +76,17 @@ scope.addEventListener('message', (event: MessageEvent) => {
     return
   }
   if (message.method === 'picture') {
-    const { tokens, card, scale, fade } = message.payload as PicturePayload
+    const { tokens, card, scale, fade, images } =
+      message.payload as PicturePayload
     fontsReady
       .then(() => {
-        const bitmap = typesetter.picture(tokens, card, scale, fade)
+        const bitmap = typesetter.picture(tokens, card, scale, fade, images)
         scope.postMessage({ id, result: bitmap }, [bitmap])
       })
       .catch(fail)
+      .finally(() => {
+        for (const image of Object.values(images)) image.close()
+      })
     return
   }
   if (message.method === 'typeset') {

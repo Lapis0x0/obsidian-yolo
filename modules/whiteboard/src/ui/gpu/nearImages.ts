@@ -18,7 +18,8 @@ type Decoded = { bitmap: ImageBitmap; width: number; usedAt: number }
 
 export type NearImagesDeps = Readonly<{
   win: Window
-  vault: Pick<YoloModuleHostApiV1['vault'], 'readBinary'>
+  /** The image's bytes: a file's, or an image on the web's as kept. */
+  read: (path: string) => Promise<ArrayBuffer>
   /** An image's own width, when it is known (./imageSizes.ts). */
   ownWidth: (path: string) => number | null
   /** The image's picture, standing in until a decode arrives. */
@@ -74,7 +75,7 @@ export class NearImages {
     this.decoding.set(path, width)
     void (async () => {
       try {
-        const data = await this.deps.vault.readBinary(path)
+        const data = await this.deps.read(path)
         const bitmap = await this.deps.win.createImageBitmap(new Blob([data]), {
           resizeWidth: Math.round(width),
           resizeQuality: 'high',

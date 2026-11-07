@@ -4,18 +4,15 @@
 // header (../../domain/imageSize.ts) once and kept until the file changes.
 
 import { type ImageSize, imageSize } from '../../domain/imageSize'
-import {
-  type RemoteImageSizes,
-  remoteImageKey,
-} from '../../host/remoteImageSizes'
+import { type RemoteImages, remoteImageKey } from '../../host/remoteImages'
 import { isRemoteImage } from '../../typeset/images'
 
 export type ImageSizesDeps = Readonly<{
   vault: Pick<YoloModuleHostApiV1['vault'], 'resolveLink' | 'readBinary'>
   /** The document embeds are resolved against: the board's file. */
   sourcePath: () => string
-  /** The sizes of images on the web, as cards' DOM found them. */
-  remote: Pick<RemoteImageSizes, 'get'>
+  /** Images on the web, as cards' DOM showed them. */
+  remote: Pick<RemoteImages, 'get' | 'kept'>
 }>
 
 export class ImageSizes {
@@ -45,6 +42,12 @@ export class ImageSizes {
       return undefined
     }
     return known instanceof Promise ? undefined : known
+  }
+
+  /** Whether the image can be drawn other than by the browser: a file
+   * always; an image on the web once its bytes are kept. */
+  drawable(path: string): boolean {
+    return !isRemoteImage(path) || this.deps.remote.kept(path)
   }
 
   /** A file's size, once it is read. */

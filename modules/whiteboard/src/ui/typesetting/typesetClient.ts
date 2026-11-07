@@ -70,12 +70,15 @@ export class TypesetClient {
     card: TypesetCard,
     scale: number,
     fade: number,
+    images: Readonly<Record<string, ImageBitmap>> = {},
   ): Promise<ImageBitmap> {
+    // The images are copied over, not moved: the caller closes its own.
     return this.call<ImageBitmap>(look, 'picture', {
       tokens: look.tokens,
       card,
       scale,
       fade,
+      images,
     } satisfies PicturePayload)
   }
 

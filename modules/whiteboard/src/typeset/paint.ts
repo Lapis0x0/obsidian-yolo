@@ -17,6 +17,9 @@ export type PaintOptions = Readonly<{
   /** How far in from the left and right edges it is cut off
    * (./tokens.ts's `contentClip`). */
   clip: Readonly<{ left: number; right: number }>
+  /** The images drawn, by what the source names each; one left out is
+   * drawn as its place. */
+  images?: Readonly<Record<string, CanvasImageSource>>
 }>
 
 export function paint(
@@ -73,11 +76,17 @@ export function paint(
         ctx.lineTo(op.x2, op.y2)
         ctx.stroke()
         break
-      case 'image':
-        // A picture of the card has no image in it: its place, kept.
+      case 'image': {
+        const image = options.images?.[op.target]
+        if (image) {
+          ctx.drawImage(image, op.x, op.y, op.w, op.h)
+          break
+        }
+        // An image there is nothing to draw of: its place, kept.
         ctx.fillStyle = op.color
         ctx.fillRect(op.x, op.y, op.w, op.h)
         break
+      }
       case 'dot':
         ctx.fillStyle = op.color
         ctx.beginPath()

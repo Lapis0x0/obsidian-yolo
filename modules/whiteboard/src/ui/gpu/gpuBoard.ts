@@ -149,8 +149,8 @@ export class GpuBoard implements ContentLayer {
   /** Each typeset card's images: which file, and where in the card. */
   private readonly cardImages = new Map<string, readonly CardImage[]>()
   private drawableRevision = 0
-  /** The cards laid out without an image on the web whose size was not
-   * known, by its address: typeset again once it is (`imageLearned`). */
+  /** The cards that embed an image on the web, by its address: typeset
+   * again when what is known of it changes (`imageLearned`). */
   private readonly remoteWaits = new Map<string, Set<string>>()
   /** Cards whose content changed since they were last typeset: what the
    * scene has of them is out of date, so they are built until it is not.
@@ -219,8 +219,9 @@ export class GpuBoard implements ContentLayer {
     }
   }
 
-  /** An image on the web was seen at its size (`key`, its address): the
-   * cards laid out without it are typeset again. */
+  /** What is known of an image on the web changed (`key`, its address):
+   * its size was learned, or its bytes came or went. The cards that embed
+   * it are typeset again. */
   imageLearned(key: string): void {
     const ids = this.remoteWaits.get(key)
     if (!ids) return
@@ -426,13 +427,15 @@ export class GpuBoard implements ContentLayer {
           const path = this.deps.images.resolve(target)
           if (path === null) continue
           const size = this.deps.images.get(path)
-          if (size === null && isRemoteImage(path)) {
+          // One on the web is typeset again when it is shown or its bytes
+          // come or go; until they are kept the card is the DOM's.
+          if (isRemoteImage(path)) {
             const ids = this.remoteWaits.get(path) ?? new Set<string>()
             ids.add(id)
             this.remoteWaits.set(path, ids)
           }
           if (size === undefined) waiting = true
-          else if (size !== null) {
+          else if (size !== null && this.deps.images.drawable(path)) {
             images[target] = size
             paths[target] = path
           }

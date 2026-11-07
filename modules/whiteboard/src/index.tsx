@@ -26,7 +26,7 @@ import { MinimapPrefs } from './host/minimapPrefs'
 import { OpenBoards } from './host/openBoards'
 import { PictureStore, type PictureStores } from './host/pictureStore'
 import { ReaderPanelPrefs } from './host/readerPanelPrefs'
-import { RemoteImageSizes } from './host/remoteImageSizes'
+import { RemoteImages } from './host/remoteImages'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import {
   contributeWhiteboardSettings,
@@ -74,11 +74,12 @@ yolo.registerModule({
       host.privateStorage.deviceLocal,
       reportError,
     )
-    const remoteImageSizes = new RemoteImageSizes(
+    const remoteImages = new RemoteImages(
       host.privateStorage.deviceLocal,
+      host.network,
       reportError,
     )
-    host.lifecycle.add(() => remoteImageSizes.dispose())
+    host.lifecycle.add(() => remoteImages.dispose())
     // Every board file in memory, once, shared by its own tab and every
     // portal onto it.
     const boardDocuments = new BoardDocuments(host, reportError)
@@ -124,7 +125,7 @@ yolo.registerModule({
         annotationPrefs.load()
         minimapPrefs.load()
         boardCameras.load()
-        remoteImageSizes.load()
+        remoteImages.load()
         if (!staleCardPicturesRemoved) {
           staleCardPicturesRemoved = true
           void host.privateStorage.deviceLocal
@@ -141,7 +142,7 @@ yolo.registerModule({
           minimapPrefs,
           boardCameras,
           boardDocuments,
-          remoteImageSizes,
+          remoteImages,
         )
         const forgetOpenBoard = openBoards.add(canvas)
         // "The current board", for the commands that act on one.
