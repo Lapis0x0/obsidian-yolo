@@ -86,6 +86,8 @@ export type DrawOp =
       h: number
       /** What the source names it by (./model.ts's `InlineImage`). */
       target: string
+      /** Its corners' radius. */
+      radius: number
       /** What stands in for it where it is not drawn (a picture). */
       color: string
     }>
@@ -143,9 +145,15 @@ export function layoutCard(input: LayoutInput): DrawOp[] {
       const own = input.images?.(image.target)
       if (!own || own.w <= 0 || own.h <= 0) return null
       // As wide as written or as itself, never wider than its line
-      // (`max-width: 100%`); as tall as written, or in proportion.
-      const w = Math.min(image.width ?? own.w, maxWidth)
-      return { w, h: image.height ?? (w * own.h) / own.w }
+      // (`max-width: 100%`); as tall as written, or in proportion. Its
+      // frame is inside what is written, around what it is itself
+      // (`border-box`).
+      const b = tokens.image.border.width
+      const w = Math.min(image.width ?? own.w + 2 * b, maxWidth)
+      return {
+        w,
+        h: image.height ?? (Math.max(0, w - 2 * b) * own.h) / own.w + 2 * b,
+      }
     },
     metrics: input.metrics,
     bottom: input.height,
@@ -393,13 +401,29 @@ function drawLine(
     if (piece.icon) return
     if (piece.image) {
       const h = piece.height ?? 0
+      const { border, radius } = tokens.image
+      const b = border.width
+      if (b > 0) {
+        // A stroke centred on its path: half a border in from the edge.
+        ops.push({
+          op: 'frame',
+          x: x + b / 2,
+          y: baseline - h + b / 2,
+          w: piece.width - b,
+          h: h - b,
+          radius: Math.max(0, radius - b / 2),
+          width: b,
+          color: border.color,
+        })
+      }
       ops.push({
         op: 'image',
-        x,
-        y: baseline - h,
-        w: piece.width,
-        h,
+        x: x + b,
+        y: baseline - h + b,
+        w: Math.max(0, piece.width - 2 * b),
+        h: Math.max(0, h - 2 * b),
         target: piece.image.target,
+        radius: Math.max(0, radius - b),
         color: tokens.embed,
       })
       return
@@ -554,7 +578,14 @@ function layoutList(
         color: L.bulletColor,
       })
     }
-    y = Math.max(end, start + lineHeight) + L.padY
+    // A loose item's last paragraph keeps a line below it, but the last
+    // item's (styles/cards/content.css).
+    const last = item.children[item.children.length - 1]?.block
+    const after =
+      list.spread && index < list.items.length - 1 && last?.kind === 'paragraph'
+        ? tokens.body.lineHeight
+        : 0
+    y = Math.max(end, start + lineHeight) + after + L.padY
   })
   return y
 }
@@ -596,13 +627,13 @@ function layoutCallout(
   ctx.ops.push(background)
   const inner = { left: left + c.padX, right: right - c.padX }
   let cursor = y + c.padY
-  const titleStyle: TextStyle = { ...voice.style, weight: c.titleWeight }
+  const titleStyle = c.title
   // The title row: the icon's place, then the title.
-  const icon = titleStyle.size * 1.1
+  const icon = c.icon
   cursor = layoutText(
     ctx,
     callout.title,
-    inner.left + icon + titleStyle.size * 0.4,
+    inner.left + c.titleIndent,
     inner.right,
     cursor,
     { style: titleStyle, color },

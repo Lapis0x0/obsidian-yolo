@@ -79,7 +79,16 @@ export function paint(
       case 'image': {
         const image = options.images?.[op.target]
         if (image) {
-          ctx.drawImage(image, op.x, op.y, op.w, op.h)
+          if (op.radius > 0) {
+            ctx.save()
+            ctx.beginPath()
+            ctx.roundRect(op.x, op.y, op.w, op.h, op.radius)
+            ctx.clip()
+            ctx.drawImage(image, op.x, op.y, op.w, op.h)
+            ctx.restore()
+          } else {
+            ctx.drawImage(image, op.x, op.y, op.w, op.h)
+          }
           break
         }
         // An image there is nothing to draw of: its place, kept.

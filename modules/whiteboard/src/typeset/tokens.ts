@@ -126,7 +126,13 @@ export type TypesetTokens = Readonly<{
     titleGap: number
     /** Below the content's last line, to the callout's bottom edge. */
     padBottom: number
-    titleWeight: number
+    /** The title's type: its own size and line, not the body's. */
+    title: TextStyle
+    /** Where the title's text starts, from the title row's left: past the
+     * icon and the gap after it. */
+    titleIndent: number
+    /** The icon's size, on the title's first line. */
+    icon: number
     /** Per type, its title's colour and its background; `note` stands for
      * any type not listed. */
     types: Readonly<
@@ -181,6 +187,9 @@ export type TypesetTokens = Readonly<{
   rule: Readonly<{ color: string; thickness: number }>
   /** What an embed's placeholder is filled with. */
   embed: string
+  /** An image's frame: its border, inside the size it takes (`border-box`),
+   * and its corners' radius. */
+  image: Readonly<{ border: BorderSide; radius: number }>
   /** An emoji's advance in the text's em: the browser lays an emoji out
    * narrower than a canvas measures it. */
   emoji: number

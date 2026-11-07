@@ -27,6 +27,7 @@ const image: DrawOp = {
   w: 30,
   h: 20,
   target: 'a.png',
+  radius: 0,
   color: '#eee',
 }
 

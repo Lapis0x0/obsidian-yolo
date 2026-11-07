@@ -370,7 +370,9 @@ describe('layoutCard', () => {
       padY: 12,
       titleGap: 4,
       padBottom: 36,
-      titleWeight: 650,
+      title: { ...body, size: 15, lineHeight: 19.5, weight: 650 },
+      titleIndent: 20,
+      icon: 16,
       types: { note: { color: 'blue', background: 'lightblue' } },
     },
     codeBlock: {
@@ -406,6 +408,7 @@ describe('layoutCard', () => {
     },
     rule: { color: 'grey', thickness: 1 },
     embed: 'grey',
+    image: { border: { width: 0, color: 'grey' }, radius: 0 },
     emoji: 1,
   }
   const metrics = (font: string) => {
@@ -488,6 +491,7 @@ describe('images', () => {
         },
         boldWeight: 700,
         embed: 'grey',
+        image: { border: { width: 0, color: 'grey' }, radius: 0 },
       } as TypesetTokens,
       plain: true,
       color: null,

@@ -85,7 +85,14 @@ export class Typesetter {
       const images: PlacedImage[] = []
       for (const op of ops) {
         if (op.op !== 'image') continue
-        images.push({ target: op.target, x: op.x, y: op.y, w: op.w, h: op.h })
+        images.push({
+          target: op.target,
+          x: op.x,
+          y: op.y,
+          w: op.w,
+          h: op.h,
+          radius: op.radius,
+        })
       }
       out.push({
         id: card.id,

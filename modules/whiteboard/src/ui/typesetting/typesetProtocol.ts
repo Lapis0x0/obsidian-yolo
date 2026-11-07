@@ -46,6 +46,8 @@ export type PlacedImage = Readonly<{
   y: number
   w: number
   h: number
+  /** Its corners' radius. */
+  radius: number
 }>
 
 /** `typeset`: cards to lay out in `tokens`' look. */

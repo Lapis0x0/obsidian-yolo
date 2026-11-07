@@ -334,6 +334,27 @@ export function measureSample(
     probe.remove()
     return color
   }
+  /** An embedded image's frame, as the theme draws one: on an image put
+   * where an embed puts it, for the sample has no image of its own. */
+  const imageFrame = (): TypesetTokens['image'] => {
+    const p = doc.createElement('p')
+    const embed = doc.createElement('span')
+    embed.className = 'internal-embed media-embed image-embed is-loaded'
+    const img = doc.createElement('img')
+    embed.appendChild(img)
+    p.appendChild(embed)
+    ;(view.querySelector('.markdown-preview-sizer') ?? view).appendChild(p)
+    const style = cs(img)
+    const frame = {
+      border: {
+        width: style.borderTopStyle === 'none' ? 0 : px(style.borderTopWidth),
+        color: style.borderTopColor,
+      },
+      radius: px(style.borderTopLeftRadius),
+    }
+    p.remove()
+    return frame
+  }
   const textStyle = (el: Element | null, fallback?: TextStyle): TextStyle => {
     if (!el) {
       if (fallback) return fallback
@@ -426,6 +447,8 @@ export function measureSample(
   const callout = q('.callout[data-callout="note"]')
   const calloutTitle = callout?.querySelector('.callout-title') ?? null
   const calloutBody = callout?.querySelector('.callout-content p') ?? null
+  const calloutTitleText =
+    callout?.querySelector('.callout-title-inner') ?? null
   const types: Record<string, { color: string; background: string }> = {}
   for (const type of CALLOUT_TYPES) {
     const el = q(`.callout[data-callout="${type}"]`)
@@ -587,11 +610,17 @@ export function measureSample(
                 calloutTitle.getBoundingClientRect().bottom,
             )
           : 0,
-      titleWeight:
-        Number.parseInt(
-          cs(callout?.querySelector('.callout-title-inner') ?? view).fontWeight,
-          10,
-        ) || 600,
+      title: calloutTitleText
+        ? textStyle(calloutTitleText, body)
+        : { ...body, weight: 600 },
+      titleIndent:
+        calloutTitle && calloutTitleText
+          ? calloutTitleText.getBoundingClientRect().left -
+            calloutTitle.getBoundingClientRect().left
+          : body.size * 1.5,
+      icon:
+        callout?.querySelector('.callout-icon svg')?.getBoundingClientRect()
+          .width || body.size,
       types,
     },
     codeBlock: {
@@ -643,6 +672,7 @@ export function measureSample(
       thickness: hr ? px(cs(hr).borderTopWidth) : 1,
     },
     embed: pre ? cs(pre).backgroundColor : 'transparent',
+    image: imageFrame(),
     emoji: emojiEm(p, body.size),
   }
 }

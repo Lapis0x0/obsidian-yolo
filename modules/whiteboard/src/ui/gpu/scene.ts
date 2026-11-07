@@ -57,6 +57,8 @@ export type CardImage = Readonly<{
   y: number
   w: number
   h: number
+  /** Its corners' radius. */
+  radius: number
 }>
 
 /** An image's picture for showing it `devicePx` wide, as the scene is
@@ -376,6 +378,7 @@ export class GpuScene {
             image.w,
             image.h,
           )
+          gl.uniform1f(g.image.uniforms.radius, image.radius)
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
         }
       }

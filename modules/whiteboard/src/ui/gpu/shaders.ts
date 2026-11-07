@@ -251,12 +251,19 @@ void main() {
 export const IMAGE_FS = `#version 300 es
 precision highp float;
 uniform sampler2D picture;
+uniform vec4 rect;
+uniform float radius;
 in vec2 vUV;
 in vec2 vCard;
 flat in vec4 vClip;
 out vec4 o;
 ${CLIP}
 void main() {
-  o = texture(picture, vUV) * clipped(vCard, vClip);
+  // Its rounded corners, antialiased over a device pixel.
+  vec2 half_ = rect.zw * 0.5;
+  vec2 q = abs(vCard - rect.xy - half_) - half_ + radius;
+  float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+  float corner = radius > 0.0 ? clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0) : 1.0;
+  o = texture(picture, vUV) * clipped(vCard, vClip) * corner;
   if (o.a <= 0.0) discard;
 }`
