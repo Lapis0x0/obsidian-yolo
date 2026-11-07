@@ -186,6 +186,38 @@ export function stripFrontmatter(markdown: string): string {
   return match ? markdown.slice(match[0].length) : markdown
 }
 
+/**
+ * Whether a `*` was left as text that Obsidian may read otherwise: where
+ * CommonMark leaves one unpaired, next to text, Obsidian has been seen to
+ * pair it — `\\n* a \\n*` in emphasis. Such a card is the host's to show.
+ * One with a space on either side (`2 * 3`) is text to both.
+ */
+export function hasStrayEmphasis(sections: readonly Section[]): boolean {
+  const stray = (inlines: readonly Inline[]) =>
+    inlines.some(
+      (inline) => !(inline.flags & CODE) && /\S\*|\*\S/.test(inline.text),
+    )
+  const inSections = (list: readonly Section[]): boolean =>
+    list.some(({ block }) => {
+      switch (block.kind) {
+        case 'paragraph':
+        case 'heading':
+          return stray(block.inlines)
+        case 'list':
+          return block.items.some((item) => inSections(item.children))
+        case 'quote':
+          return inSections(block.children)
+        case 'callout':
+          return stray(block.title) || inSections(block.children)
+        case 'table':
+          return [block.header, ...block.rows].some((row) => row.some(stray))
+        default:
+          return false
+      }
+    })
+  return inSections(sections)
+}
+
 export function parseCard(markdown: string): Section[] {
   const source = quoteParagraphsKept(
     itemSpacesDropped(calloutTitlesApart(stripFrontmatter(markdown))),

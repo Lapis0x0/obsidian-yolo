@@ -4,8 +4,9 @@
 
 import { embedLinks, imageOf } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
+import type { Section } from '../../typeset/model'
 import { paint } from '../../typeset/paint'
-import { parseCard } from '../../typeset/parse'
+import { hasStrayEmphasis, parseCard } from '../../typeset/parse'
 import { type TypesetTokens, contentClip } from '../../typeset/tokens'
 import { fontSize } from '../gpu/glyphs'
 import { cardInstances, packColor } from '../gpu/instances'
@@ -74,7 +75,8 @@ export class Typesetter {
     const out: TypesetResultCard[] = []
     const transfer: ArrayBuffer[] = []
     for (const card of cards) {
-      const ops = this.layout(tokens, card)
+      const sections = parseCard(card.markdown)
+      const ops = this.layout(tokens, card, sections)
       const content = cardInstances(ops, {
         glyphId: (text, font) => keyOf(glyphKey(text, font)),
         iconId: (name, size) => keyOf(iconKey(name, size)),
@@ -102,7 +104,9 @@ export class Typesetter {
         rects,
         glyphs,
         images,
-        host: needsHost(card.markdown, card.images ?? {}),
+        host:
+          needsHost(card.markdown, card.images ?? {}) ||
+          hasStrayEmphasis(sections),
         shown,
         runs,
       })
@@ -137,10 +141,14 @@ export class Typesetter {
   }
 
   /** A card laid out, as ../../typeset/layout.ts's draw ops. */
-  layout(tokens: TypesetTokens, card: TypesetCard): DrawOp[] {
+  layout(
+    tokens: TypesetTokens,
+    card: TypesetCard,
+    sections: readonly Section[] = parseCard(card.markdown),
+  ): DrawOp[] {
     this.useLook(tokens)
     return layoutCard({
-      sections: parseCard(card.markdown),
+      sections,
       width: card.w,
       // What overflows the content shows over the bottom padding too, to
       // the card's edge.

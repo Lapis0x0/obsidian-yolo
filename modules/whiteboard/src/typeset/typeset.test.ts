@@ -10,7 +10,12 @@ import {
   STRIKE,
   TAG,
 } from './model'
-import { calloutTitlesApart, linkText, parseCard } from './parse'
+import {
+  calloutTitlesApart,
+  hasStrayEmphasis,
+  linkText,
+  parseCard,
+} from './parse'
 import type { TextStyle, TypesetTokens } from './tokens'
 
 // Latin 8 units a character, CJK 16: enough to reason about where lines
@@ -126,6 +131,12 @@ describe('parseCard', () => {
     const [section] = parseCard('[a](https://x.y) [[b]] https://z.w')
     if (section.block.kind !== 'paragraph') throw new Error(section.block.kind)
     expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
+  })
+
+  test("a * left as text next to text is the host's to show", () => {
+    expect(hasStrayEmphasis(parseCard('a\\n* \u00a0 b\\n* c'))).toBe(true)
+    expect(hasStrayEmphasis(parseCard('2 * 3 and *em*'))).toBe(false)
+    expect(hasStrayEmphasis(parseCard('files: `*.md`'))).toBe(false)
   })
 
   test("a line of text after a quote's empty line is the quote's", () => {
