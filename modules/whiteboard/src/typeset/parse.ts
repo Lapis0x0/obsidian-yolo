@@ -90,32 +90,42 @@ const LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/
 
 /**
  * A line of nothing but spaces inside a list item, indented as far as the
- * item's content, is the item's to Obsidian, not a blank line: the list
- * stays tight, and a paragraph goes on past it. CommonMark reads it as
- * blank, so it goes — only a line indented less (or empty) parts the items.
+ * item's content, is not a blank line to Obsidian where what comes next
+ * leaves the item — the next item, or the list's end: the items stay
+ * tight. CommonMark reads it as blank, so there it goes. Before more of
+ * the item's own content it is blank to both, and parts that content from
+ * what came before (a loose item). A line indented less, or empty, is
+ * always blank.
  */
 export function itemSpacesDropped(markdown: string): string {
+  const lines = markdown.split('\n')
   const out: string[] = []
   let fence: string | null = null
   // The column the open item's content starts at; null outside a list.
   let item: number | null = null
   let afterBlank = false
-  for (const line of markdown.split('\n')) {
+  const blank = (line: string) => /^[ \t]*$/.test(line)
+  lines.forEach((line, i) => {
     const opened = FENCE.exec(line)
     if (opened) {
       fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
       out.push(line)
-      continue
+      return
     }
     if (fence !== null) {
       out.push(line)
-      continue
+      return
     }
-    if (/^[ \t]*$/.test(line)) {
-      if (line !== '' && item !== null && columns(line) >= item) continue
+    if (blank(line)) {
+      if (line !== '' && item !== null && columns(line) >= item) {
+        const next = lines.slice(i + 1).find((l) => !blank(l))
+        const nextIndent =
+          next === undefined ? 0 : columns(/^[ \t]*/.exec(next)?.[0] ?? '')
+        if (nextIndent < item) return
+      }
       afterBlank = true
       out.push(line)
-      continue
+      return
     }
     const marker = LIST_ITEM.exec(line)
     const indent = columns(/^[ \t]*/.exec(line)?.[0] ?? '')
@@ -127,7 +137,7 @@ export function itemSpacesDropped(markdown: string): string {
     }
     afterBlank = false
     out.push(line)
-  }
+  })
   return out.join('\n')
 }
 
@@ -208,6 +218,7 @@ function blockOf(node: Flow): Block | null {
         kind: 'table',
         header: head ? cellsOf(head) : [],
         rows: rows.map(cellsOf),
+        align: (node.align ?? []).map((a) => a ?? null),
       }
     }
     case 'thematicBreak':

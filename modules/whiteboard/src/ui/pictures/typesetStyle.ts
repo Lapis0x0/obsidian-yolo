@@ -372,6 +372,7 @@ export function measureSample(
       color: style.color,
       lineHeight,
       baseline: baselineOf(el, style),
+      ...(style.whiteSpace === 'break-spaces' ? { breakSpaces: true } : {}),
     }
   }
   /** Where `el`'s first line has its baseline, below its content's top: a

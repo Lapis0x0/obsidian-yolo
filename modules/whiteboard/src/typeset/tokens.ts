@@ -32,6 +32,9 @@ export type TextStyle = FontFace &
      * shares the line's spare height out above and below the text rounds
      * in ways a font's metrics do not tell. */
     baseline: number
+    /** `white-space: break-spaces` (a table cell's): spaces are kept, and
+     * take their room at the end of a line. */
+    breakSpaces?: boolean
   }>
 
 export type Pill = Readonly<{

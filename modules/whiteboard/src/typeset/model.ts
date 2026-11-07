@@ -7,6 +7,8 @@
 // (docs: the whiteboard GPU renderer plan), and everything here is plain
 // data so it can.
 
+import type { TableAlign } from './tokens'
+
 /** How a run of text is set, as bits: a run can be several at once. */
 export const BOLD = 1
 export const ITALIC = 2
@@ -72,6 +74,9 @@ export type Block =
       kind: 'table'
       header: readonly (readonly Inline[])[]
       rows: readonly (readonly (readonly Inline[])[])[]
+      /** Each column's alignment as written (`:---`, `:---:`, `---:`);
+       * null where none is, and the theme's holds. */
+      align: readonly (TableAlign | null)[]
     }>
   | Readonly<{ kind: 'rule' }>
   /** A block that shows nothing but still holds its place among the

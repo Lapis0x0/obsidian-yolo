@@ -245,6 +245,28 @@ function atomize(
   return out
 }
 
+/**
+ * Atoms as `white-space: break-spaces` breaks them (a table cell's): a line
+ * breaks after a space, never before one, so a space keeps to the word it
+ * follows and takes its room at the end of a line rather than hanging; and
+ * spaces are not run together, each one a place to break after.
+ */
+function spacesKept(
+  atoms: readonly { text: string; kind: AtomKind; breakBefore: boolean }[],
+): { text: string; kind: AtomKind; breakBefore: boolean }[] {
+  const out: { text: string; kind: AtomKind; breakBefore: boolean }[] = []
+  for (const atom of atoms) {
+    if (atom.kind !== 'space') {
+      out.push(atom)
+      continue
+    }
+    Array.from(atom.text).forEach((ch, i) => {
+      out.push({ text: ch, kind: 'space', breakBefore: i > 0 })
+    })
+  }
+  return out
+}
+
 /** The paragraph's atoms in order, each knowing whether a line may break
  * before it; null for a hard break. */
 function atomsOf(
@@ -253,6 +275,7 @@ function atomsOf(
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
   imageSize?: ImageSize,
+  keepSpaces = false,
 ): (Atom | null)[] {
   // Where a line may break, over the paragraph's text as a whole: a break
   // depends on what is either side of it, whichever run each is in.
@@ -319,7 +342,8 @@ function atomsOf(
       pill || (marked && !((inlines[run + 1]?.flags ?? 0) & HIGHLIGHT))
         ? style.padX
         : 0
-    const parts = atomize(inline.text, offsets[run], breaks)
+    const atomized = atomize(inline.text, offsets[run], breaks)
+    const parts = keepSpaces ? spacesKept(atomized) : atomized
     parts.forEach((part, i) => {
       // What it adds after the atom before it in the same run, so that the
       // kerning between them is counted, as the browser sets the run whole —
@@ -377,8 +401,16 @@ export function contentWidths(
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
   imageSize?: ImageSize,
+  keepSpaces = false,
 ): Readonly<{ min: number; max: number }> {
-  const atoms = atomsOf(inlines, Infinity, styleOf, measure, imageSize)
+  const atoms = atomsOf(
+    inlines,
+    Infinity,
+    styleOf,
+    measure,
+    imageSize,
+    keepSpaces,
+  )
   let min = 0
   let chunk = 0
   let trailing = 0
@@ -389,7 +421,7 @@ export function contentWidths(
       trailing = 0
     }
     if (atom === null) continue
-    if (atom.kind === 'space') {
+    if (atom.kind === 'space' && !keepSpaces) {
       trailing += atom.width
       continue
     }
@@ -397,12 +429,23 @@ export function contentWidths(
     trailing = 0
   }
   min = Math.max(min, chunk)
-  const lines = breakLines(inlines, Infinity, styleOf, measure, imageSize)
+  const lines = breakLines(
+    inlines,
+    Infinity,
+    styleOf,
+    measure,
+    imageSize,
+    keepSpaces,
+  )
   const max = Math.max(0, ...lines.map((line) => line.width))
   return { min, max: Math.max(min, max) }
 }
 
 type Placed = { atom: Atom; x: number }
+
+/** What a sum of widths may be over and still fit: the floats' error,
+ * no more — a column sized to its widest piece holds it. */
+const FIT_SLACK = 1e-3
 
 export function breakLines(
   inlines: readonly Inline[],
@@ -410,8 +453,17 @@ export function breakLines(
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
   imageSize?: ImageSize,
+  /** `white-space: break-spaces` (`spacesKept`): spaces end a line in it. */
+  keepSpaces = false,
 ): Line[] {
-  const atoms = atomsOf(inlines, maxWidth, styleOf, measure, imageSize)
+  const atoms = atomsOf(
+    inlines,
+    maxWidth,
+    styleOf,
+    measure,
+    imageSize,
+    keepSpaces,
+  )
 
   // A pill (code, a tag) or a highlight broken over two lines is padded at
   // both ends of each (`box-decoration-break: clone`): the line it leaves
@@ -437,7 +489,11 @@ export function breakLines(
   /** The atom placed last, on this line or the one before. */
   let lastPlaced: Atom | null = null
   const finish = (next?: Atom | null) => {
-    while (line.length > 0 && line[line.length - 1].atom.kind === 'space') {
+    while (
+      !keepSpaces &&
+      line.length > 0 &&
+      line[line.length - 1].atom.kind === 'space'
+    ) {
       line.pop()
     }
     const end = line[line.length - 1]
@@ -481,7 +537,7 @@ export function breakLines(
     }
     const chunk = atoms.slice(i, j) as Atom[]
     i = j
-    if (chunk.length === 1 && chunk[0].kind === 'space') {
+    if (!keepSpaces && chunk.length === 1 && chunk[0].kind === 'space') {
       if (line.length > 0) place(chunk[0])
       continue
     }
@@ -498,7 +554,8 @@ export function breakLines(
     // Broken after it, a box it is in pads its end on this line.
     const after = atoms[i]
     const endPad = continues(last, after) ? padOf(last) : 0
-    const fits = (from: number) => from + width + endPad - endTrim <= maxWidth
+    const fits = (from: number) =>
+      from + width + endPad - endTrim <= maxWidth + FIT_SLACK
     if (line.length > 0 && !fits(filled + trailing)) finish(chunk[0])
     if (fits(filled) || line.length > 0) {
       for (const atom of chunk) place(atom)
@@ -506,7 +563,7 @@ export function breakLines(
     }
     // Wider than a line on its own: cut wherever it stops fitting.
     for (const atom of chunk) {
-      if (filled + trailing + atom.width <= maxWidth) {
+      if (filled + trailing + atom.width <= maxWidth + FIT_SLACK) {
         place(atom)
         continue
       }

@@ -356,6 +356,7 @@ function layoutText(
     styler(ctx.tokens, voice),
     ctx.measure,
     ctx.imageSize,
+    voice.style.breakSpaces === true,
   )
   const lineHeight = voice.style.lineHeight
   lines.forEach((line, i) => {
@@ -767,7 +768,7 @@ function layoutTable(
   const borders: DrawOp[] = []
   rows.forEach((row, r) => {
     if (cursor >= ctx.bottom) return
-    const align = r === 0 ? t.headerAlign : t.align
+    const themed = r === 0 ? t.headerAlign : t.align
     const under = ctx.ops.length
     // A row is as tall as its tallest cell.
     let tallest = rowVoice(r).style.lineHeight + t.padY * 2
@@ -782,7 +783,7 @@ function layoutTable(
         top + t.padY,
         rowVoice(r),
         undefined,
-        align,
+        table.align[c] ?? themed,
       )
       tallest = Math.max(tallest, end - top + t.padY)
     })
@@ -1004,7 +1005,13 @@ function columnWidths(
     const least = r === 0 ? t.headerMinWidth : t.minWidth
     row.forEach((cell, c) => {
       if (c >= chrome.length) return
-      const widths = contentWidths(cell, style, ctx.measure, ctx.imageSize)
+      const widths = contentWidths(
+        cell,
+        style,
+        ctx.measure,
+        ctx.imageSize,
+        voiceOf(r).style.breakSpaces === true,
+      )
       min[c] = Math.max(min[c], least, widths.min + chrome[c])
       max[c] = Math.max(max[c], widths.max + chrome[c], min[c])
     })

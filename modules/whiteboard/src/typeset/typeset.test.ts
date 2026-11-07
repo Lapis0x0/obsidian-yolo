@@ -139,6 +139,8 @@ describe('parseCard', () => {
     // Indented less than the item's content, or empty: a blank line.
     expect(spread('- a\n \n- b')).toBe(true)
     expect(spread('- a\n\n- b')).toBe(true)
+    // Before more of the item's own: blank, and the item loose.
+    expect(spread('1. a\n   \n   - b\n2. c')).toBe(true)
   })
 
   test('an image on the web is an image, though its address names no type', () => {
