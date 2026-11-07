@@ -100,10 +100,13 @@ type Chunk = {
   dirty: boolean
   rects: WebGLBuffer | null
   glyphs: WebGLBuffer | null
+  greeks: WebGLBuffer | null
   rectVao: WebGLVertexArrayObject | null
   glyphVao: WebGLVertexArrayObject | null
+  greekVao: WebGLVertexArrayObject | null
   rectCount: number
   glyphCount: number
+  greekCount: number
   glyphIds: Uint32Array
 }
 
@@ -238,11 +241,13 @@ export class GpuScene {
   }
 
   /** Draws the scene at `view`. `settled`: the camera has come to rest, so
-   * glyphs are drawn afresh for the zoom it rests at. */
+   * glyphs are drawn afresh for the zoom it rests at. `greeked`: the type is
+   * too small to read, and each run is drawn as its bar instead. */
   render(
     view: CanvasView,
     settled: boolean,
     picture: ImagePicture = () => null,
+    greeked = false,
   ): RenderResult {
     const g = this.g
     if (!g || this.lost) return { more: false, cards: 0, glyphs: 0 }
@@ -268,7 +273,10 @@ export class GpuScene {
       visible.push(chunk)
     }
 
-    const more = this.drawGlyphs(visible, view.scale * dpr, settled)
+    // No glyph is drawn into the atlas for type too small to show.
+    const more = greeked
+      ? false
+      : this.drawGlyphs(visible, view.scale * dpr, settled)
     this.lookupRows = this.atlas.upload(gl, g.pages, g.lookup, this.lookupRows)
     if (this.tablesDirty) this.uploadTables(g)
 
@@ -313,6 +321,13 @@ export class GpuScene {
       gl.bindVertexArray(chunk.rectVao)
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, chunk.rectCount)
     }
+    if (greeked) {
+      for (const chunk of visible) {
+        if (chunk.greekCount === 0) continue
+        gl.bindVertexArray(chunk.greekVao)
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, chunk.greekCount)
+      }
+    }
     this.drawImages(g, visible, picture, common, view.scale * dpr)
     common(g.glyph)
     gl.uniform1i(g.glyph.uniforms.lookup, 2)
@@ -321,7 +336,7 @@ export class GpuScene {
     gl.uniform1f(g.glyph.uniforms.pageSize, PAGE_SIZE)
     let glyphs = 0
     for (const chunk of visible) {
-      if (chunk.glyphCount === 0) continue
+      if (greeked || chunk.glyphCount === 0) continue
       gl.bindVertexArray(chunk.glyphVao)
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, chunk.glyphCount)
       glyphs += chunk.glyphCount
@@ -475,8 +490,11 @@ export class GpuScene {
         dirty: true,
         rects: null,
         glyphs: null,
+        greeks: null,
         rectVao: null,
         glyphVao: null,
+        greekVao: null,
+        greekCount: 0,
         rectCount: 0,
         glyphCount: 0,
         glyphIds: new Uint32Array(0),
@@ -519,6 +537,7 @@ export class GpuScene {
     const { gl } = g
     let rectCount = 0
     let glyphCount = 0
+    let greekCount = 0
     const bbox: [number, number, number, number] = [
       Infinity,
       Infinity,
@@ -537,12 +556,15 @@ export class GpuScene {
       if (!card.content) continue
       rectCount += card.content.rects.length / RECT_WORDS
       glyphCount += card.content.glyphs.length / GLYPH_WORDS
+      greekCount += card.content.greeks.length / RECT_WORDS
       for (const glyph of card.content.glyphIds) used.add(glyph)
     }
     const rects = new Uint32Array(rectCount * RECT_WORDS)
     const glyphs = new Uint32Array(glyphCount * GLYPH_WORDS)
+    const greeks = new Uint32Array(greekCount * RECT_WORDS)
     let ri = 0
     let gi = 0
+    let ki = 0
     for (const id of chunk.ids) {
       const slot = this.slots.get(id)
       const content = slot?.card.content
@@ -557,20 +579,30 @@ export class GpuScene {
         glyphs[i] = slot.index
       }
       gi += content.glyphs.length
+      greeks.set(content.greeks, ki)
+      for (let i = ki; i < ki + content.greeks.length; i += RECT_WORDS) {
+        greeks[i] = slot.index
+      }
+      ki += content.greeks.length
     }
     if (!chunk.rects) {
       chunk.rects = gl.createBuffer()
       chunk.glyphs = gl.createBuffer()
+      chunk.greeks = gl.createBuffer()
       chunk.rectVao = this.instanceVao(g, chunk.rects, 'rect')
       chunk.glyphVao = this.instanceVao(g, chunk.glyphs, 'glyph')
+      chunk.greekVao = this.instanceVao(g, chunk.greeks, 'rect')
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, chunk.rects)
     gl.bufferData(gl.ARRAY_BUFFER, rects, gl.STATIC_DRAW)
     gl.bindBuffer(gl.ARRAY_BUFFER, chunk.glyphs)
     gl.bufferData(gl.ARRAY_BUFFER, glyphs, gl.STATIC_DRAW)
+    gl.bindBuffer(gl.ARRAY_BUFFER, chunk.greeks)
+    gl.bufferData(gl.ARRAY_BUFFER, greeks, gl.STATIC_DRAW)
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
     chunk.rectCount = rectCount
     chunk.glyphCount = glyphCount
+    chunk.greekCount = greekCount
     chunk.glyphIds = Uint32Array.from(used)
     chunk.bbox = bbox
     chunk.dirty = false
@@ -625,10 +657,14 @@ export class GpuScene {
     const { gl } = g
     gl.deleteBuffer(chunk.rects)
     gl.deleteBuffer(chunk.glyphs)
+    gl.deleteBuffer(chunk.greeks)
     gl.deleteVertexArray(chunk.rectVao)
     gl.deleteVertexArray(chunk.glyphVao)
+    gl.deleteVertexArray(chunk.greekVao)
     chunk.rects = null
     chunk.glyphs = null
+    chunk.greeks = null
+    chunk.greekVao = null
     chunk.rectVao = null
     chunk.glyphVao = null
     chunk.dirty = true

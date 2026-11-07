@@ -1977,7 +1977,10 @@ export class WhiteboardCanvas {
     // development build (./gpu/typesetCheck.ts); a release has none of it.
     if (process.env.NODE_ENV === 'development') {
       const board = this.gpuBoard
-      Object.assign(board.canvas, { gpuBoard: board })
+      Object.assign(board.canvas, {
+        gpuBoard: board,
+        pictures: () => this.pictures,
+      })
       const checkDeps = () => ({
         host: this.host,
         root,
@@ -4267,6 +4270,8 @@ export class WhiteboardCanvas {
         if (look === null || boardPath === '') continue
         if (this.editing.isEditing(node.id)) continue
         if (this.cardGeneration.isGenerating(node.id)) continue
+        // One the GPU scene draws itself, at every zoom, needs none.
+        if (this.gpuBoard?.drawsItself(node.id)) continue
         const signature = cardSignature(
           fileNodeOf(node),
           node.type === 'file' ? this.fileMtime(node.file) : null,

@@ -124,9 +124,9 @@ type Surface = Readonly<{
  */
 export type ContentLayer = Readonly<{
   begin: () => void
-  /** Whether it draws `node`'s content this frame, at `rect` (world units)
-   * and `scale`; a yes is a promise to. */
-  claim: (node: BoardNode, rect: CardRect, scale: number) => boolean
+  /** Whether it draws `node`'s content this frame, at `rect` (world units);
+   * a yes is a promise to. */
+  claim: (node: BoardNode, rect: CardRect) => boolean
 }>
 
 /** A page's annotations as the overview draws them: its highlights one path
@@ -1014,7 +1014,7 @@ export class OverviewLayer {
       // The rest of it is drawn on its own, at its own opacity
       // (`drawMotions`).
       if (moving) continue
-      if (content?.claim(node, rect, view.scale)) continue
+      if (content?.claim(node, rect)) continue
       if (isPlainText(node)) texts.push(item)
       else if (badge && isSpreadTitle(node)) {
         titles.push({

@@ -54,8 +54,8 @@ import {
 const FADE = 24
 /** How long the camera must have been still to count as at rest, ms. */
 const SETTLE_MS = 120
-/** The smallest a card's body type is drawn, in device pixels: below it a
- * card's picture says as much, for far less. */
+/** The smallest a card's body type is drawn, in device pixels: below it
+ * each run is drawn as a bar (./instances.ts's `greekBar`), for far less. */
 const MIN_BODY_DEVICE_PX = 5
 /** A card's corners (styles/cards/card.css), and its border and a
  * selected one's, at least that many CSS pixels wide however far away. */
@@ -222,6 +222,18 @@ export class GpuBoard implements ContentLayer {
   /** Whether a card may be drawn rather than built near to: it is
    * typeset, and holds nothing only the host's renderer shows as it should
    * (../typesetting/typesetter.ts's `needsHost`). */
+  /** Whether the scene draws a card itself, far away as near to, so that
+   * it wants no picture: one not typeset yet will be, unless typesetting
+   * finds it the host's. */
+  drawsItself(id: string): boolean {
+    return (
+      this.deps.typesetter.usable &&
+      this.scene.usable &&
+      this.nodes.has(id) &&
+      (!this.texts.has(id) || this.drawables.has(id))
+    )
+  }
+
   drawable(id: string): boolean {
     return (
       this.drawables.has(id) &&
@@ -259,15 +271,13 @@ export class GpuBoard implements ContentLayer {
     this.dirty = true
   }
 
-  claim(node: BoardNode, rect: CardRect, scale: number): boolean {
+  claim(node: BoardNode, rect: CardRect): boolean {
     const tokens = this.deps.style.tokens
     // Without a worker nothing is claimed: the overview draws pictures as
     // it would without this layer.
     if (!tokens || !this.deps.typesetter.usable || !this.scene.usable) {
       return false
     }
-    const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
-    if (tokens.body.size * scale * dpr < MIN_BODY_DEVICE_PX) return false
     if (!this.nodes.has(node.id)) return false
     if (this.pending.has(node.id) || !this.scene.cardOf(node.id)) {
       this.wanted.add(node.id)
@@ -306,10 +316,12 @@ export class GpuBoard implements ContentLayer {
       this.dirty = true
     }
     if (!this.dirty) return
+    const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
     const result = this.scene.render(
       view,
       settled || this.movedAt === -1,
       this.deps.imagePicture,
+      (tokens?.body.size ?? 16) * view.scale * dpr < MIN_BODY_DEVICE_PX,
     )
     this.dirty = result.more
   }
@@ -547,6 +559,7 @@ export class GpuBoard implements ContentLayer {
         content: {
           rects: new Uint32Array(typeset.rects),
           glyphs,
+          greeks: new Uint32Array(typeset.greeks),
           glyphIds: [...used],
         },
       })

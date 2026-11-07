@@ -86,6 +86,7 @@ export class Typesetter {
       })
       const rects = content.rects.buffer as ArrayBuffer
       const glyphs = content.glyphs.buffer as ArrayBuffer
+      const greeks = content.greeks.buffer as ArrayBuffer
       const { shown, runs } = this.runsOf(ops)
       const images: PlacedImage[] = []
       for (const op of ops) {
@@ -103,6 +104,7 @@ export class Typesetter {
         id: card.id,
         rects,
         glyphs,
+        greeks,
         images,
         host:
           needsHost(card.markdown, card.images ?? {}) ||
@@ -110,7 +112,7 @@ export class Typesetter {
         shown,
         runs,
       })
-      transfer.push(rects, glyphs, runs)
+      transfer.push(rects, glyphs, greeks, runs)
     }
     return { result: { cards: out, keys }, transfer }
   }

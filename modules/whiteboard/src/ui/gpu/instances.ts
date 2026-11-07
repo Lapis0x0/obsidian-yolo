@@ -9,7 +9,7 @@
 
 import type { DrawOp } from '../../typeset/layout'
 
-import { placeRun } from './glyphs'
+import { fontSize, placeRun } from './glyphs'
 
 /** A rectangle: [slot, x, y, w, h, radius, border width, fill, border]. */
 export const RECT_WORDS = 9
@@ -21,6 +21,9 @@ export type CardInstances = Readonly<{
   rects: Uint32Array
   /** GLYPH_WORDS words each. */
   glyphs: Uint32Array
+  /** RECT_WORDS words each: a bar for each run of text, drawn in place of
+   * its glyphs where the type is too small to read (`greekBar`). */
+  greeks: Uint32Array
   /** Each glyph id the card uses, once. */
   glyphIds: readonly number[]
 }>
@@ -50,6 +53,7 @@ export function cardInstances(
 ): CardInstances {
   const rects: number[] = []
   const glyphs: number[] = []
+  const greeks: number[] = []
   const ids = new Set<number>()
   const rect = (
     x: number,
@@ -80,6 +84,20 @@ export function cardInstances(
             op.y,
             deps.glyphId(placed.text, op.font),
             color,
+          )
+        }
+        const bar = greekBar(op.text, op.x, op.y, width, fontSize(op.font))
+        if (bar) {
+          greeks.push(
+            0,
+            bar.x,
+            bar.y,
+            bar.w,
+            bar.h,
+            bar.h / 2,
+            0,
+            faded(color),
+            0,
           )
         }
         break
@@ -138,8 +156,41 @@ export function cardInstances(
   return {
     rects: toWords(rects, RECT_WORDS, [0, 7, 8]),
     glyphs: toWords(glyphs, GLYPH_WORDS, [0, 3, 4]),
+    greeks: toWords(greeks, RECT_WORDS, [0, 7, 8]),
     glyphIds: [...ids],
   }
+}
+
+/** How much of its colour a run's bar keeps: a line of small type reads as
+ * a grey of its colour, not as a solid stroke. */
+const GREEK_ALPHA = 0.4
+
+/**
+ * The bar a run of text is drawn as where its type is too small to read —
+ * over the run's ink, its spaces at either end left out, as tall as a
+ * lowercase letter about the middle of one. Null for a run of spaces.
+ */
+export function greekBar(
+  text: string,
+  x: number,
+  baseline: number,
+  width: number,
+  size: number,
+): Readonly<{ x: number; y: number; w: number; h: number }> | null {
+  const lead = text.length - text.trimStart().length
+  const tail = text.length - text.trimEnd().length
+  if (lead === text.length) return null
+  // Spaces are a third of an em, near enough at this size.
+  const left = x + lead * size * 0.3
+  const w = width - (lead + tail) * size * 0.3
+  if (w <= 0) return null
+  const h = size * 0.5
+  return { x: left, y: baseline - size * 0.62, w, h }
+}
+
+function faded(color: number): number {
+  const alpha = Math.round(((color >>> 24) & 255) * GREEK_ALPHA)
+  return ((color & 0xffffff) | (alpha << 24)) >>> 0
 }
 
 /** Instances as words: the fields at `integers` as they are, the rest as
