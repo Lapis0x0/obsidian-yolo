@@ -123,6 +123,11 @@ export class GpuBoard implements ContentLayer {
 
   /** What the overview's last frame had this layer draw, and where. */
   private claimed = new Map<string, CardRect>()
+  /** The overview claimed afresh since the scene last followed it
+   * (`syncShown`): what it claims only changes when it draws again — the
+   * camera, the selection, a mount, the look — so a board at rest has
+   * nothing to follow. */
+  private claimsChanged = true
   /** What the scene shows now. */
   private shown = new Set<string>()
   /** The board's palette as RGBA8 words, read once a look. */
@@ -268,6 +273,7 @@ export class GpuBoard implements ContentLayer {
 
   begin(): void {
     this.claimed = new Map()
+    this.claimsChanged = true
     this.dirty = true
   }
 
@@ -296,7 +302,10 @@ export class GpuBoard implements ContentLayer {
       if (hash !== this.styleHash) this.newLook(hash)
       this.typeset({ tokens, hash })
     }
-    this.syncShown()
+    if (this.claimsChanged) {
+      this.claimsChanged = false
+      this.syncShown()
+    }
     const view = this.deps.view()
     const last = this.lastView
     if (
@@ -384,6 +393,8 @@ export class GpuBoard implements ContentLayer {
   private newLook(hash: string): void {
     this.styleHash = hash
     this.palette = null
+    // Card frames are in the palette's colours.
+    this.claimsChanged = true
     this.generation += 1
     for (const node of this.nodes.values()) {
       this.pending.set(node.id, { node, text: null, reading: false })
