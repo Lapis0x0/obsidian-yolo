@@ -861,6 +861,13 @@ export class WhiteboardCanvas {
    * parsed board; the `clear` flag itself carries no distinct meaning yet.
    */
   setViewData(data: string, _clear: boolean): void {
+    // Read back empty after this view has read it with content: caught
+    // mid-write by something outside that empties a file before writing it
+    // (`cp`, `git checkout`). Taken as the empty board it parses to, the next
+    // save would write that over the file — measured, a 3000-card board was
+    // lost this way. The board stays as it is until the file is read with
+    // content again; a file new and empty still opens as an empty board.
+    if (!data.trim() && this.lastRawData.trim()) return
     this.ensureDom()
     this.lastRawData = data
     // Before `teardownAllCards`, whose own commit path would land the edit on
