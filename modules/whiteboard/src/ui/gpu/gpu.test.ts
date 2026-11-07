@@ -149,6 +149,9 @@ describe('needsHost', () => {
     expect(needsHost('# Title\n- a **b** [[link]]')).toBe(false)
     expect(needsHost('costs $5 and $10 today')).toBe(false)
     expect(needsHost('```ts\nconst a = 1\n```')).toBe(false)
+    // A line break is the typesetter's; any other tag the host's.
+    expect(needsHost('a<br>b and <br/>c')).toBe(false)
+    expect(needsHost('a<span>b</span>')).toBe(true)
   })
 })
 

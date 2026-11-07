@@ -291,10 +291,24 @@ function blockOf(node: Flow): Block | null {
       return { kind: 'rule' }
     case 'html': {
       if (/^\s*<!--[\s\S]*-->\s*$/.test(node.value)) return { kind: 'nothing' }
-      const text = node.value.replace(/<[^>]*>/g, '').trim()
-      return text === ''
-        ? null
-        : { kind: 'paragraph', inlines: [{ text, flags: 0 }] }
+      // Its text, a line per `<br>` — a last one ends the block rather than
+      // starting a line — and the source's own line ends a space, as HTML
+      // has them. Any other tag keeps the card the host's (`needsHost`).
+      const parts = node.value.split(/<br\s*\/?>/i).map((part) =>
+        part
+          .replace(/<[^>]*>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+      // No line break and no text: nothing to show.
+      if (parts.length === 1 && parts[0] === '') return null
+      if (parts[parts.length - 1] === '') parts.pop()
+      const inlines: Inline[] = []
+      parts.forEach((part, k) => {
+        if (k > 0) inlines.push({ text: '\n', flags: 0 })
+        if (part !== '') inlines.push({ text: part, flags: 0 })
+      })
+      return { kind: 'paragraph', inlines }
     }
     default:
       // Definitions, footnote definitions, YAML: nothing a card shows.

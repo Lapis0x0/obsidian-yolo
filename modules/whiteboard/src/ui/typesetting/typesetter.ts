@@ -285,7 +285,8 @@ const DRAWN_FENCES =
   /^\s*(?:```|~~~)\s*(?:mermaid|dataview|dataviewjs|tasks|query|chart|excalidraw|math|latex|ad-[\w-]+)\b/im
 /** `$$…$$`, or `$…$` hugging what it encloses, as Obsidian reads math. */
 const MATH = /\$\$|(?:^|[^\\$\w])\$(?=\S)[^$\n]*?\S\$(?!\d)/m
-const HTML = /<\/?[a-z][\w-]*(?:\s[^>]*)?>/i
+/** A tag, but a line break, which the typesetter breaks the line at. */
+const HTML = /<\/?(?!br\b)[a-z][\w-]*(?:\s[^>]*)?>/i
 
 /**
  * Whether a card's markdown holds what only the host's renderer shows as it
