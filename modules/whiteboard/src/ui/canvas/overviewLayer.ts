@@ -42,10 +42,9 @@ import {
   isPlainText,
 } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
-import {
-  type AnnotationColor,
-  type PdfAnnotation,
-  displayColor,
+import type {
+  AnnotationColor,
+  PdfAnnotation,
 } from '../../domain/pdfAnnotations'
 import { fileNodeOf, isPortal, portalWeight } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
@@ -76,8 +75,8 @@ import {
   TITLE_BLOCK_WORLD_PADDING,
 } from '../constants'
 import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
-import type { PageBox, PageFrame } from '../pdf/annotationGeometry'
-import { boxesFor, outlinesFor } from '../pdf/annotationLayer'
+import type { PageFrame } from '../pdf/annotationGeometry'
+import { pageMarks, paintPageMarks } from '../pdf/pageMarks'
 import { READER_METRICS } from '../pdf/readerLayout'
 
 import {
@@ -131,16 +130,6 @@ export type ContentLayer = Readonly<{
 
 /** A page's annotations as the overview draws them: its highlights one path
  * per colour, in page fractions, and its framed areas. */
-type PageMarks = Readonly<{
-  highlights: ReadonlyMap<AnnotationColor, Path2D>
-  areas: readonly Readonly<{ color: AnnotationColor; box: PageBox }>[]
-}>
-
-/** By the page's list of annotations, then by where its PDF points land. */
-const pageMarksCache = new WeakMap<
-  readonly PdfAnnotation[],
-  WeakMap<PageFrame, PageMarks>
->()
 
 /**
  * Concrete colour values for one draw.
@@ -1417,18 +1406,18 @@ export class OverviewLayer {
     return true
   }
 
-  /**
-   * A page's annotations over its picture at `page` (screen pixels), as a
-   * reader's annotation layer draws them (styles/pdf/annotations.css): a
-   * highlight one shape over its lines, multiplied into the page — screened
-   * into the inverted one of a dark theme — and a framed area a box with a
-   * faint wash.
-   *
-   * The highlights are one path per colour in page fractions, made once per
-   * list of annotations (`pageMarks`) and drawn through the page's rectangle
-   * as a transform: a board of annotated pages costs a fill per colour per
-   * page, not a path rebuilt point by point every frame.
-   */
+  /** How a PDF page is shown in the theme: inverted in a dark one, and the
+   * colours its annotations are painted in; null before the overview has
+   * read its palette. */
+  pagePalette(): Readonly<{
+    dark: boolean
+    annotations: Readonly<Record<AnnotationColor, string>>
+  }> | null {
+    return this.palette
+  }
+
+  /** A page's annotations over its picture at `page` (screen pixels):
+   * ../pdf/pageMarks.ts's. */
   private drawAnnotations(
     ctx: CanvasRenderingContext2D,
     path: string,
@@ -1439,74 +1428,10 @@ export class OverviewLayer {
     const palette = this.palette
     const shown = this.callbacks.pageAnnotations(path, pageNumber)
     if (!palette || !shown) return
-    const marks = this.pageMarks(shown.annotations, shown.frame)
-    const alpha = ctx.globalAlpha
-    ctx.save()
-    if (marks.highlights.size > 0) {
-      ctx.save()
-      ctx.translate(page.x, page.y)
-      ctx.scale(page.w, page.h)
-      ctx.globalCompositeOperation = dark ? 'screen' : 'multiply'
-      ctx.globalAlpha = alpha * (dark ? 0.4 : 0.45)
-      for (const [color, outline] of marks.highlights) {
-        ctx.fillStyle = palette.annotations[color]
-        ctx.fill(outline)
-      }
-      ctx.restore()
-    }
-    ctx.lineWidth = 1
-    for (const { color, box } of marks.areas) {
-      const x = page.x + box.left * page.w
-      const y = page.y + box.top * page.h
-      const w = (box.right - box.left) * page.w
-      const h = (box.bottom - box.top) * page.h
-      ctx.fillStyle = palette.annotations[color]
-      ctx.globalAlpha = alpha * 0.1
-      ctx.fillRect(x, y, w, h)
-      ctx.strokeStyle = palette.annotations[color]
-      ctx.globalAlpha = alpha
-      ctx.strokeRect(x, y, w, h)
-    }
-    ctx.restore()
-  }
-
-  /** A page's annotations as the overview draws them, made once per list —
-   * a store hands out a new one only when the page's annotations change. */
-  private pageMarks(
-    annotations: readonly PdfAnnotation[],
-    frame: PageFrame,
-  ): PageMarks {
-    let perFrame = pageMarksCache.get(annotations)
-    if (!perFrame) {
-      perFrame = new WeakMap()
-      pageMarksCache.set(annotations, perFrame)
-    }
-    const cached = perFrame.get(frame)
-    if (cached) return cached
     // The view's own window's, like everything else it draws with.
     const win = this.context.getWindow() as Window & typeof globalThis
-    const highlights = new Map<AnnotationColor, Path2D>()
-    const areas: PageMarks['areas'][number][] = []
-    for (const annotation of annotations) {
-      const color = displayColor(annotation.color)
-      if (annotation.type === 'area') {
-        for (const box of boxesFor(annotation, frame))
-          areas.push({ color, box })
-        continue
-      }
-      const outline = highlights.get(color) ?? new win.Path2D()
-      highlights.set(color, outline)
-      for (const points of outlinesFor(annotation, frame)) {
-        points.forEach(([x, y], at) => {
-          if (at === 0) outline.moveTo(x, y)
-          else outline.lineTo(x, y)
-        })
-        outline.closePath()
-      }
-    }
-    const marks = { highlights, areas }
-    perFrame.set(frame, marks)
-    return marks
+    const marks = pageMarks(shown.annotations, shown.frame, win.Path2D)
+    paintPageMarks(ctx, marks, page, palette.annotations, dark)
   }
 
   /** A card's title in the lines its title block would give it. Measured at

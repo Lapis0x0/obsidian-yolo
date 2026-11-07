@@ -68,7 +68,8 @@ export type ImagePicture = (
   devicePx: number,
 ) => ImageBitmap | null
 
-/** Textures kept for images not drawn in a frame, before the oldest go. */
+/** Textures kept for images not drawn in a frame, before the oldest go;
+ * those drawn in it are all kept. */
 const IMAGE_TEXTURES_KEPT = 48
 
 export type SceneCard = Readonly<{
@@ -398,13 +399,16 @@ export class GpuScene {
         }
       }
     }
-    if (this.textures.size > IMAGE_TEXTURES_KEPT) {
-      const oldest = [...this.textures].sort(
-        (a, b) => a[1].drawnAt - b[1].drawnAt,
-      )
-      for (const [path, entry] of oldest.slice(
+    // Those drawn this frame are kept whatever their number — a spread of
+    // pages shows hundreds — and as many more, the latest drawn.
+    const idle = [...this.textures].filter(
+      ([, entry]) => entry.drawnAt !== this.frameCount,
+    )
+    if (idle.length > IMAGE_TEXTURES_KEPT) {
+      idle.sort((a, b) => a[1].drawnAt - b[1].drawnAt)
+      for (const [path, entry] of idle.slice(
         0,
-        this.textures.size - IMAGE_TEXTURES_KEPT,
+        idle.length - IMAGE_TEXTURES_KEPT,
       )) {
         gl.deleteTexture(entry.texture)
         this.textures.delete(path)

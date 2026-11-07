@@ -55,6 +55,7 @@ import {
 import type { ImageSizes } from './imageSizes'
 import { GLYPH_WORDS, packColor } from './instances'
 import type { DrawnText } from './passages'
+import { type PageSize, firstPage, isScenePdf, pdfCardImages } from './pdfCards'
 import {
   type CardImage,
   GpuScene,
@@ -106,9 +107,12 @@ export type GpuBoardDeps = Readonly<{
    * draws. */
   redrawOverview: () => void
   readNote: (path: string) => Promise<string | null>
-  /** An image file's picture (../pictures/imageFiles.ts), null while it
-   * has none. */
+  /** An image file's picture (../pictures/imageFiles.ts), or a PDF page's
+   * (./pdfCards.ts's `pdfPageKey`), null while it has none. */
   imagePicture: ImagePicture
+  /** The size of a PDF page's picture, null while it has none: what a PDF
+   * card's pages are laid out by (./pdfCards.ts). */
+  pagePicture: (file: string, page: number) => PageSize | null
   /** The own sizes of the images cards embed. */
   images: ImageSizes
   /** The board's typesetting worker (../typesetting/typesetClient.ts). */
@@ -139,6 +143,10 @@ type Sent = Readonly<{
   card: TypesetCard
   paths: Record<string, string>
 }>
+
+/** Narrower than this on screen a card shows no picture: the overview's
+ * own threshold (../canvas/overviewLayer.ts). */
+const PICTURE_MIN_SCREEN_PX = 4
 
 export class GpuBoard implements ContentLayer {
   readonly canvas: HTMLCanvasElement
@@ -199,6 +207,9 @@ export class GpuBoard implements ContentLayer {
   /** Each card's formulas, as the worker found them: what it is typeset
    * with once they are laid out. */
   private readonly cardFormulas = new Map<string, Set<string>>()
+  /** The board's PDF cards (./pdfCards.ts): not typeset, their pages drawn
+   * from their pictures far away. */
+  private readonly pdfs = new Map<string, BoardNode>()
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -217,7 +228,14 @@ export class GpuBoard implements ContentLayer {
   setNodes(nodes: readonly BoardNode[]): void {
     const seen = new Set<string>()
     const cards: string[] = []
+    const pdfs = new Set<string>()
     for (const node of nodes) {
+      if (isScenePdf(node)) {
+        pdfs.add(node.id)
+        cards.push(node.id)
+        if (this.pdfs.get(node.id) !== node) this.pdfs.set(node.id, node)
+        continue
+      }
       if (!drawsContent(node)) continue
       seen.add(node.id)
       cards.push(node.id)
@@ -241,6 +259,12 @@ export class GpuBoard implements ContentLayer {
       this.cardImages.delete(id)
       this.scene.setImages(id, [])
       this.dropKept(id)
+    }
+    for (const id of [...this.pdfs.keys()]) {
+      if (pdfs.has(id)) continue
+      this.pdfs.delete(id)
+      this.scene.removeCard(id)
+      this.scene.setImages(id, [])
     }
     this.scene.setOrder(cards)
     this.dirty = true
@@ -334,10 +358,35 @@ export class GpuBoard implements ContentLayer {
     if (!tokens || !this.deps.typesetter.usable || !this.scene.usable) {
       return false
     }
+    if (this.pdfs.has(node.id)) return this.claimPdf(node, rect)
     if (!this.nodes.has(node.id)) return false
     if (this.pending.has(node.id) || !this.scene.cardOf(node.id)) {
       this.wanted.add(node.id)
       return false
+    }
+    this.claimed.set(node.id, rect)
+    return true
+  }
+
+  /** A PDF card, drawn here once the picture of the first page it shows is
+   * there and it is wide enough on screen to show one — as the overview
+   * would draw it with its pictures; until then the overview draws it. */
+  private claimPdf(node: BoardNode, rect: CardRect): boolean {
+    const start = firstPage(node)
+    if (!start || !this.deps.pagePicture(start.file, start.page)) return false
+    if (rect.w * this.deps.view().scale < PICTURE_MIN_SCREEN_PX) return false
+    if (!this.scene.cardOf(node.id)) {
+      this.scene.setCard(node.id, {
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        frame: this.frameOf(node, this.deps.isSelected(node.id)),
+        fade: 0,
+        clip: { left: 0, right: 0 },
+        content: null,
+      })
+      this.scene.setShown(node.id, false)
     }
     this.claimed.set(node.id, rect)
     return true
@@ -406,8 +455,23 @@ export class GpuBoard implements ContentLayer {
     }
     for (const [id, rect] of this.claimed) {
       const card = this.scene.cardOf(id)
-      const node = this.nodes.get(id)
+      const pdf = this.pdfs.get(id)
+      const node = this.nodes.get(id) ?? pdf
       if (!card || !node) continue
+      // A PDF's pages, where they are at its rectangle now — and as far as
+      // their pictures have come.
+      if (pdf) {
+        const start = firstPage(pdf)
+        this.scene.setImages(
+          id,
+          start
+            ? pdfCardImages(pdf, rect.w, rect.h, (page) =>
+                this.deps.pagePicture(start.file, page),
+              )
+            : [],
+        )
+        this.dirty = true
+      }
       const frame = this.frameOf(node, this.deps.isSelected(id))
       if (
         card.x !== rect.x ||

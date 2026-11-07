@@ -78,6 +78,7 @@ import {
   updateEdge,
   updateNode,
 } from '../domain/operations'
+import type { PdfAnnotation } from '../domain/pdfAnnotations'
 import type { HighlightAnchor } from '../domain/pdfAnnotations'
 import {
   type BoardChanges,
@@ -220,9 +221,12 @@ import {
   placeDrawnLines,
   placeDrawnPassage,
 } from './gpu/passages'
+import { pageOfKey } from './gpu/pdfCards'
 import { checkTypeset, showTypeset } from './gpu/typesetCheck'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
+import type { PageFrame } from './pdf/annotationGeometry'
 import { PdfDrawQueue } from './pdf/drawQueue'
+import { pageMarks, withPageMarks } from './pdf/pageMarks'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
 import type {
   PassageEnds,
@@ -521,6 +525,16 @@ export class WhiteboardCanvas {
    * hit stepped to, and their marks on the cards. */
   private find: FindController | null = null
   private findMarks: FindMarks | null = null
+  /** Annotated PDF pages' pictures with their annotations painted in, for
+   * the GPU scene, by the picture they are painted on. */
+  private readonly markedPages = new WeakMap<
+    ImageBitmap,
+    Readonly<{
+      annotations: readonly PdfAnnotation[]
+      colors: Readonly<Record<string, string>>
+      picture: ImageBitmap
+    }>
+  >()
   /** Where a drawn card's glyphs are, for placing a passage among them. */
   private readonly glyphAdvance = canvasGlyphAdvance()
   /** The whole board in the viewport's corner (./canvas/minimap.ts). */
@@ -1938,12 +1952,7 @@ export class WhiteboardCanvas {
       pdfPageLabels: this.pdfPageLabels,
       picture: (node, dark, page) => this.pictureOf(node, dark, page),
       contentLayer: () => this.gpuBoard,
-      pageAnnotations: (path, page) => {
-        const annotations = this.pictureAnnotations?.forPage(path, page)
-        if (!annotations?.length) return null
-        const frame = pageFrame(this.pictures?.meta(pdfPageRef(path, page)))
-        return frame ? { frame, annotations } : null
-      },
+      pageAnnotations: (path, page) => this.pageAnnotationsOf(path, page),
     })
     this.gpuBoard?.destroy()
     this.nearImages?.destroy()
@@ -1992,7 +2001,17 @@ export class WhiteboardCanvas {
         }
       },
       typesetter: typesetClient,
-      imagePicture: (path, devicePx) => nearImages.get(path, devicePx),
+      imagePicture: (path, devicePx) => {
+        const page = pageOfKey(path)
+        return page
+          ? this.scenePagePicture(page.file, page.page)
+          : nearImages.get(path, devicePx)
+      },
+      pagePicture: (file, page) => {
+        const palette = this.overviewLayer?.pagePalette()
+        if (!palette) return null
+        return this.pictures?.get(pdfPageRef(file, page), palette.dark) ?? null
+      },
       images: imageSizes,
       layoutMath: (formulas) => this.host.math.layout(formulas),
       reportError: (stage, error) => this.reportError(stage, error),
@@ -4521,7 +4540,7 @@ export class WhiteboardCanvas {
     key: string | null,
   ): void {
     this.overviewLayer?.markDirty()
-    if (source === 'image') this.gpuBoard?.markDirty()
+    if (source === 'image' || source === 'pdf') this.gpuBoard?.markDirty()
     if (key === null || source !== 'pdf') return
     const page = Number(key)
     for (const node of this.cardNodes) {
@@ -4529,6 +4548,55 @@ export class WhiteboardCanvas {
       if (node.file !== group) continue
       this.cardRenderer.getRuntime(node.id)?.pdfReader?.placeholderReady()
     }
+  }
+
+  /** A PDF page's annotations and where its PDF points land on its
+   * picture; null for a page with none, or no picture to land them on. */
+  private pageAnnotationsOf(
+    path: string,
+    page: number,
+  ): Readonly<{
+    frame: PageFrame
+    annotations: readonly PdfAnnotation[]
+  }> | null {
+    const annotations = this.pictureAnnotations?.forPage(path, page)
+    if (!annotations?.length) return null
+    const frame = pageFrame(this.pictures?.meta(pdfPageRef(path, page)))
+    return frame ? { frame, annotations } : null
+  }
+
+  /** A PDF page's picture as the GPU scene draws it (./gpu/pdfCards.ts):
+   * as the theme shows it, its annotations painted in — once for each
+   * picture and list of them. */
+  private scenePagePicture(file: string, page: number): ImageBitmap | null {
+    const palette = this.overviewLayer?.pagePalette()
+    const picture = palette
+      ? (this.pictures?.get(pdfPageRef(file, page), palette.dark) ?? null)
+      : null
+    if (!palette || !picture) return null
+    const shown = this.pageAnnotationsOf(file, page)
+    if (!shown) return picture
+    const kept = this.markedPages.get(picture)
+    if (
+      kept?.annotations === shown.annotations &&
+      kept.colors === palette.annotations
+    ) {
+      return kept.picture
+    }
+    kept?.picture.close()
+    const win = this.context.getWindow() as Window & typeof globalThis
+    const marked = withPageMarks(
+      picture,
+      pageMarks(shown.annotations, shown.frame, win.Path2D),
+      palette.annotations,
+      palette.dark,
+    )
+    this.markedPages.set(picture, {
+      annotations: shown.annotations,
+      colors: palette.annotations,
+      picture: marked,
+    })
+    return marked
   }
 
   /** The picture standing for `node` (./pictures), as the theme shows it —
