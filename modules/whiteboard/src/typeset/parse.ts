@@ -17,6 +17,7 @@ import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly'
 import { gfm } from 'micromark-extension-gfm'
 
 import { decodedUrl, imageOf } from './images'
+import { mathOut, withMath } from './math'
 import {
   BOLD,
   type Block,
@@ -222,11 +223,12 @@ export function hasStrayEmphasis(sections: readonly Section[]): boolean {
 }
 
 export function parseCard(markdown: string): Section[] {
+  const math = mathOut(stripFrontmatter(markdown))
   const source = quoteParagraphsKept(
-    itemSpacesDropped(calloutTitlesApart(stripFrontmatter(markdown))),
+    itemSpacesDropped(calloutTitlesApart(math.text)),
   )
   const tree = fromMarkdown(source, PARSER)
-  return sectionsOf(tree.children)
+  return withMath(sectionsOf(tree.children), math.formulas)
 }
 
 /** The parser's extensions, made once: they describe syntax and hold no
@@ -591,6 +593,8 @@ function merge(runs: readonly Inline[]): Inline[] {
       !run.image &&
       !last.linkIcon &&
       !run.linkIcon &&
+      !last.math &&
+      !run.math &&
       last.flags === run.flags &&
       last.text !== '\n' &&
       run.text !== '\n' &&

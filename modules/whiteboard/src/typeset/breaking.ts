@@ -8,6 +8,7 @@
 
 import LineBreaker from 'linebreak'
 
+import type { MathLayout, MathSource } from './math'
 import { CODE, HIGHLIGHT, type Inline, type InlineImage, TAG } from './model'
 
 export type Measure = (text: string, font: string) => number
@@ -18,6 +19,14 @@ export type ImageSize = (
   image: InlineImage,
   maxWidth: number,
 ) => Readonly<{ w: number; h: number }> | null
+
+/** What a line holds that is not text: images, by their size, and
+ * formulas, as MathJax lays them out; one with no size or layout is left
+ * out. */
+export type InlineObjects = Readonly<{
+  imageSize?: ImageSize
+  math?: (formula: MathSource) => MathLayout | null
+}>
 
 /** How a run is set: its font, and the room a pill (inline code, a tag)
  * takes on either side of its text. */
@@ -43,6 +52,10 @@ export type Piece = Readonly<{
   /** An image's: what it is, and how tall it stands on the baseline. */
   image?: InlineImage
   height?: number
+  /** A formula's piece: which formula, and which of its pieces. */
+  math?: Readonly<{ formula: MathSource; piece: number }>
+  /** How far it reaches below the baseline: a formula's piece's. */
+  depth?: number
 }>
 
 export type Line = Readonly<{ pieces: readonly Piece[]; width: number }>
@@ -199,6 +212,9 @@ type Atom = {
    * set closer than the mark's own advance, so it ends its piece. */
   trimmed: boolean
   height?: number
+  depth?: number
+  /** Which of its formula's pieces it is. */
+  mathPiece?: number
 }
 
 /** A run's text in atoms — spaces, single CJK characters and marks, and
@@ -277,7 +293,7 @@ function atomsOf(
   maxWidth: number,
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
-  imageSize?: ImageSize,
+  objects: InlineObjects = {},
   keepSpaces = false,
 ): (Atom | null)[] {
   // Where a line may break, over the paragraph's text as a whole: a break
@@ -315,8 +331,47 @@ function atomsOf(
       previous = atom
       return
     }
+    if (inline.math) {
+      const layout = objects.math?.(inline.math)
+      if (!layout) return
+      const em = fontPx(styleOf(inline.flags).font)
+      const last = layout.pieces.length - 1
+      layout.pieces.forEach((piece, k) => {
+        const atom: Atom = {
+          text: inline.text,
+          kind: 'image',
+          run,
+          width: piece.width * em,
+          height: piece.height * em,
+          depth: piece.depth * em,
+          mathPiece: k,
+          // Between its pieces a line may break, where MathJax would.
+          breakBefore: k > 0 || previous === null || breaks.has(offsets[run]),
+          padLeft: 0,
+          trimmed: false,
+        }
+        atoms.push(atom)
+        previous = atom
+        if (k === last) return
+        if (piece.after === 'newline') {
+          atoms.push(null)
+          previous = null
+        } else if (piece.after > 0) {
+          atoms.push({
+            text: ' ',
+            kind: 'space',
+            run,
+            width: piece.after * em,
+            breakBefore: true,
+            padLeft: 0,
+            trimmed: false,
+          })
+        }
+      })
+      return
+    }
     if (inline.image) {
-      const size = imageSize?.(inline.image, maxWidth)
+      const size = objects.imageSize?.(inline.image, maxWidth)
       if (!size) return
       const atom: Atom = {
         text: inline.text,
@@ -407,7 +462,7 @@ export function contentWidths(
   inlines: readonly Inline[],
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
-  imageSize?: ImageSize,
+  objects: InlineObjects = {},
   keepSpaces = false,
 ): Readonly<{ min: number; max: number }> {
   const atoms = atomsOf(
@@ -415,7 +470,7 @@ export function contentWidths(
     Infinity,
     styleOf,
     measure,
-    imageSize,
+    objects,
     keepSpaces,
   )
   let min = 0
@@ -441,7 +496,7 @@ export function contentWidths(
     Infinity,
     styleOf,
     measure,
-    imageSize,
+    objects,
     keepSpaces,
   )
   const max = Math.max(0, ...lines.map((line) => line.width))
@@ -462,7 +517,7 @@ export function breakLines(
   maxWidth: number,
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
-  imageSize?: ImageSize,
+  objects: InlineObjects = {},
   /** `white-space: break-spaces` (`spacesKept`): spaces end a line in it. */
   keepSpaces = false,
 ): Line[] {
@@ -471,7 +526,7 @@ export function breakLines(
     maxWidth,
     styleOf,
     measure,
-    imageSize,
+    objects,
     keepSpaces,
   )
 
@@ -678,6 +733,26 @@ function piecesOf(
   }
   let closed = false
   for (const { atom, x } of placed) {
+    const formula = inlines[atom.run].math
+    if (formula) {
+      // A formula's pieces each stand alone; the room between them is
+      // only room.
+      flush()
+      closed = true
+      if (atom.mathPiece === undefined) continue
+      out.push({
+        text: atom.text,
+        flags: inlines[atom.run].flags,
+        font: styleOf(inlines[atom.run].flags).font,
+        x,
+        width: atom.width,
+        padLeft: 0,
+        height: atom.height,
+        depth: atom.depth,
+        math: { formula, piece: atom.mathPiece },
+      })
+      continue
+    }
     if (current && current.run === atom.run && !closed) {
       current.text += atom.text
       current.end = x + atom.width
@@ -697,4 +772,10 @@ function piecesOf(
   }
   flush()
   return out
+}
+
+/** A font string's size in px (./layout.ts's `fontString`). */
+function fontPx(font: string): number {
+  const match = /(\d+(?:\.\d+)?)px/.exec(font)
+  return match ? Number(match[1]) : 16
 }

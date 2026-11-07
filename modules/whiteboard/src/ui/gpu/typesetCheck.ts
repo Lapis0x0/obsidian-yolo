@@ -275,6 +275,9 @@ function domPlaces(card: HTMLElement, node: BoardNode): Placed[] {
   }
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
     const value = text.nodeValue ?? ''
+    // A formula's characters are MathJax's glyphs, not text the typesetter
+    // set: where it put the formula shows in where the text after it is.
+    if (text.parentElement?.closest('mjx-container')) continue
     let clipLeft = 0
     let clipRight = node.w
     let clipBottom = node.h

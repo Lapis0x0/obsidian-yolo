@@ -1994,6 +1994,7 @@ export class WhiteboardCanvas {
       typesetter: typesetClient,
       imagePicture: (path, devicePx) => nearImages.get(path, devicePx),
       images: imageSizes,
+      layoutMath: (formulas) => this.host.math.layout(formulas),
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.gpuBoard?.setNodes(this.ownCardNodes)

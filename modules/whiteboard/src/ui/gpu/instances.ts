@@ -8,6 +8,8 @@
 // colours RGBA8 packed into one word (`packColor`), glyphs the atlas's ids.
 
 import type { DrawOp } from '../../typeset/layout'
+import { mathTextFont } from '../../typeset/math'
+import type { PathTransform } from '../typesetting/typesetProtocol'
 
 import { fontSize, placeRun } from './glyphs'
 
@@ -33,6 +35,9 @@ export type InstanceDeps = Readonly<{
   glyphId: (text: string, font: string) => number
   /** The atlas's id for an icon `size` world units across. */
   iconId: (name: 'check', size: number) => number
+  /** The atlas's id for an outline (a formula's glyph) drawn with
+   * `transform`, its origin where it is placed. */
+  pathId: (path: string, transform: PathTransform) => number
   /** A CSS colour as RGBA8 (`packColor`). */
   color: (css: string) => number
   /** A run's width, as the typesetter measured it. */
@@ -151,6 +156,62 @@ export function cardInstances(
       case 'check':
         glyph(op.x, op.y, deps.iconId('check', op.size), deps.color(op.color))
         break
+      case 'math': {
+        const { piece, size } = op
+        const own = deps.color(op.color)
+        for (const shape of piece.shapes) {
+          const color = shape.color === null ? own : deps.color(shape.color)
+          if (shape.kind === 'path') {
+            const [a, b, c, d, e, f] = shape.transform
+            glyph(
+              op.x + e * size,
+              op.y + f * size,
+              deps.pathId(op.paths[shape.path], [
+                a * size,
+                b * size,
+                c * size,
+                d * size,
+              ]),
+              color,
+            )
+          } else if (shape.kind === 'rect') {
+            rect(
+              op.x + shape.x * size,
+              op.y + shape.y * size,
+              shape.width * size,
+              shape.height * size,
+              0,
+              0,
+              color,
+              0,
+            )
+          } else {
+            const font = mathTextFont(shape, size)
+            const x = op.x + shape.x * size
+            const y = op.y + shape.y * size
+            const width = deps.measure(shape.text, font)
+            for (const placed of placeRun(shape.text, width, (g) =>
+              deps.advance(g, font),
+            )) {
+              glyph(x + placed.x, y, deps.glyphId(placed.text, font), color)
+            }
+          }
+        }
+        // Far off, a bar over the middle of it, as a run of text is.
+        const h = size * 0.5
+        greeks.push(
+          0,
+          op.x,
+          op.y - size * 0.62,
+          piece.width * size,
+          h,
+          h / 2,
+          0,
+          faded(own),
+          0,
+        )
+        break
+      }
     }
   }
   return {

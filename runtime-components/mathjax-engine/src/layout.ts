@@ -127,21 +127,12 @@ function readNode(
   const color = colorOf(lite, node) ?? outerColor
   switch (kind) {
     case 'g':
-    case 'svg':
-      if (kind === 'svg' && lite.getAttribute(node, 'viewBox')) {
-        // A nested viewport rescales what is in it: not met in TeX output.
-        throw new NotShapes()
-      }
       for (const child of lite.childNodes(node)) {
-        readNode(
-          lite,
-          child,
-          kind === 'svg' ? multiply(at, translate(lite, node)) : at,
-          color,
-          shapes,
-          pathOf,
-        )
+        readNode(lite, child, at, color, shapes, pathOf)
       }
+      return
+    case 'svg':
+      readViewport(lite, node, at, color, shapes)
       return
     case 'path': {
       const d = lite.getAttribute(node, 'd')
@@ -161,6 +152,81 @@ function readNode(
     default:
       throw new NotShapes()
   }
+}
+
+/**
+ * A nested `<svg>`: where a stretched delimiter's extender is cut to the
+ * length it fills — a glyph seen through a window (its `viewBox`) the
+ * size of the part it shows (`width`, `height`), and cut off at its edges.
+ * The TeX font's extenders are bars, so what shows of one is a rectangle:
+ * each path in it must be one, or the formula is not laid out.
+ */
+function readViewport(
+  lite: LiteReader,
+  node: unknown,
+  outer: Matrix,
+  color: string | null,
+  shapes: MathShape[],
+): void {
+  const x = num(lite, node, 'x')
+  const y = num(lite, node, 'y')
+  const width = num(lite, node, 'width')
+  const height = num(lite, node, 'height')
+  const box = (lite.getAttribute(node, 'viewBox') ?? `0 0 ${width} ${height}`)
+    .split(/[\s,]+/)
+    .map(Number)
+  const [vx, vy, vw, vh] = box
+  if (!box.every(Number.isFinite) || !(vw > 0) || !(vh > 0)) {
+    throw new NotShapes()
+  }
+  // The window's own units, into the outer ones.
+  const at = multiply(
+    outer,
+    multiply([width / vw, 0, 0, height / vh, x, y], [1, 0, 0, 1, -vx, -vy]),
+  )
+  for (const child of lite.childNodes(node)) {
+    const kind = lite.kind(child)
+    if (kind === '#text' || kind === '#comment') continue
+    if (kind !== 'path') throw new NotShapes()
+    const corners = rectangleOf(lite.getAttribute(child, 'd') ?? '')
+    if (!corners) throw new NotShapes()
+    // The bar, in the window's units, cut to the window.
+    const own = transformOf(lite, child)
+    const [ax, ay] = apply(own, corners[0], corners[1])
+    const [bx, by] = apply(own, corners[2], corners[3])
+    const left = Math.max(Math.min(ax, bx), vx)
+    const right = Math.min(Math.max(ax, bx), vx + vw)
+    const top = Math.max(Math.min(ay, by), vy)
+    const bottom = Math.min(Math.max(ay, by), vy + vh)
+    if (right <= left || bottom <= top) continue
+    pushRect(
+      shapes,
+      at,
+      left,
+      top,
+      right - left,
+      bottom - top,
+      colorOf(lite, child) ?? color,
+    )
+  }
+}
+
+/** A path that is an upright rectangle (`M L L L Z`): two opposite
+ * corners; null for any other shape. */
+function rectangleOf(
+  d: string,
+): readonly [number, number, number, number] | null {
+  const commands = d.replace(/[^A-Za-z]/g, '')
+  if (commands !== 'MLLLZ' && commands !== 'MLLL') return null
+  const points = [...d.matchAll(/(-?[\d.]+)[\s,]*(-?[\d.]+)/g)].map((m) => [
+    Number(m[1]),
+    Number(m[2]),
+  ])
+  if (points.length !== 4) return null
+  const xs = new Set(points.map((p) => p[0]))
+  const ys = new Set(points.map((p) => p[1]))
+  if (xs.size !== 2 || ys.size !== 2) return null
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
 }
 
 function readRect(
@@ -291,11 +357,6 @@ function transformOf(lite: LiteReader, node: unknown): Matrix {
     out = multiply(out, step)
   }
   return out
-}
-
-/** A nested `<svg>`'s place, as a translation. */
-function translate(lite: LiteReader, node: unknown): Matrix {
-  return [1, 0, 0, 1, num(lite, node, 'x'), num(lite, node, 'y')]
 }
 
 /** `m` after `n`: a point is mapped by `n`, then by `m`. */

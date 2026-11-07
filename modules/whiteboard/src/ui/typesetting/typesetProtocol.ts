@@ -2,6 +2,7 @@
 // (./typesetWorker.ts) say to each other, through the host's worker calls:
 // `{ id, method, payload }` in, `{ id, result }` or `{ id, error }` out.
 
+import type { MathLayout, MathSource } from '../../typeset/math'
 import type { TypesetTokens } from '../../typeset/tokens'
 
 /** The worker's name in the module's package.json `yoloModule.workers`. */
@@ -37,6 +38,10 @@ export type TypesetCard = Readonly<{
   /** The own size of each image it embeds, by what the source names it;
    * one left out is not known (../../domain/imageSize.ts). */
   images?: Readonly<Record<string, Readonly<{ w: number; h: number }>>>
+  /** Its formulas as the host's math engine laid them out, by
+   * ../../typeset/math.ts's `mathKey`: null for one it could not, left out
+   * for one not asked for yet. */
+  math?: Readonly<Record<string, MathLayout | null>>
 }>
 
 /** An image as a card lays it out: where, and which. */
@@ -81,8 +86,12 @@ export type TypesetResultCard = Readonly<{
   /** Its runs' bars, as rectangles (../gpu/instances.ts's `greeks`). */
   greeks: ArrayBuffer
   /** It holds what only the host's renderer shows as it should
-   * (../typesetting/typesetter.ts's `needsHost`): kept in the DOM near to. */
+   * (../typesetting/typesetter.ts's `needsHost`), or a formula not laid
+   * out: kept in the DOM near to. */
   host: boolean
+  /** Formulas it holds that were not asked for: once they are laid out,
+   * it is typeset again with them (../gpu/gpuBoard.ts). */
+  math?: readonly MathSource[]
   /** Its images, where they are in it. */
   images: readonly PlacedImage[]
   /** Its text as drawn, run after run in reading order — what a passage
@@ -100,8 +109,9 @@ export const RUN_FIELDS = 8
 
 export type TypesetResult = Readonly<{
   cards: readonly TypesetResultCard[]
-  /** A glyph's key: `font + '\0' + text`, or an icon's: `'\u0001' + name
-   * + '\0' + size` (`glyphKey`, `iconKey`). */
+  /** A glyph's key: `font + '\0' + text`, an icon's: `'\u0001' + name
+   * + '\0' + size`, or an outline's: `'\u0002' + its linear transform
+   * + '\0' + its path` (`glyphKey`, `iconKey`, `pathKey`). */
   keys: readonly string[]
 }>
 
@@ -111,15 +121,29 @@ export const glyphKey = (text: string, font: string): string =>
 export const iconKey = (name: string, size: number): string =>
   `\u0001${name}\u0000${size}`
 
+/** The linear part of an outline's transform, from its path's units to
+ * world units: `[a, b, c, d]` of SVG's `matrix(a b c d e f)`. */
+export type PathTransform = readonly [number, number, number, number]
+
+/** An outline (a formula's glyph) drawn with `transform`: rounded, so that
+ * the same glyph at the same size is one key. */
+export const pathKey = (path: string, transform: PathTransform): string =>
+  `\u0002${transform.map((n) => Math.round(n * 1e6) / 1e6).join(',')}\u0000${path}`
+
 /** A key as what it names. */
 export function parseKey(
   key: string,
 ):
   | Readonly<{ kind: 'glyph'; font: string; text: string }>
-  | Readonly<{ kind: 'icon'; name: 'check'; size: number }> {
+  | Readonly<{ kind: 'icon'; name: 'check'; size: number }>
+  | Readonly<{ kind: 'path'; path: string; transform: PathTransform }> {
   const split = key.indexOf('\u0000')
   if (key.startsWith('\u0001')) {
     return { kind: 'icon', name: 'check', size: Number(key.slice(split + 1)) }
+  }
+  if (key.startsWith('\u0002')) {
+    const [a, b, c, d] = key.slice(1, split).split(',').map(Number)
+    return { kind: 'path', path: key.slice(split + 1), transform: [a, b, c, d] }
   }
   return {
     kind: 'glyph',

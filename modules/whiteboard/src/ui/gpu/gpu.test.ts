@@ -74,6 +74,7 @@ describe('cardInstances', () => {
       return ids.get(key) ?? -1
     },
     iconId: () => 99,
+    pathId: () => 98,
     color: () => packColor(1, 2, 3, 255),
     measure: (text: string) =>
       Array.from(text).reduce((sum, ch) => sum + advance(ch), 0),
@@ -155,7 +156,6 @@ describe('needsHost', () => {
     expect(needsHost('see ![[pic.png]]')).toBe(true)
     expect(needsHost('![alt](x.png)')).toBe(true)
     expect(needsHost('```mermaid\ngraph TD\n```')).toBe(true)
-    expect(needsHost('energy $E = mc^2$ here')).toBe(true)
     expect(needsHost('a <span>b</span>')).toBe(true)
   })
 

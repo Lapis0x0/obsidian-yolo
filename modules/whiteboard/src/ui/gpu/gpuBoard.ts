@@ -25,6 +25,7 @@ import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
 import type { PictureStore } from '../../host/pictureStore'
 import { imageTargets, isRemoteImage } from '../../typeset/images'
+import { type MathLayout, type MathSource, mathKey } from '../../typeset/math'
 import { contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
@@ -116,6 +117,10 @@ export type GpuBoardDeps = Readonly<{
    * there — its path, empty while it has none (../typesetting/
    * typesetCache.ts); null to keep none. */
   cache: Readonly<{ store: PictureStore; group: () => string }> | null
+  /** Formulas laid out by the host's math engine (`host.math.layout`). */
+  layoutMath: (
+    formulas: readonly MathSource[],
+  ) => Promise<readonly (MathLayout | null)[]>
   reportError: (stage: string, error: unknown) => void
 }>
 
@@ -188,6 +193,12 @@ export class GpuBoard implements ContentLayer {
   private keptGroup: string | null = null
   private keptLoading = false
   private keepTimer: ReturnType<typeof setTimeout> | null = null
+  /** Formulas as the host laid them out, by ../../typeset/math.ts's
+   * `mathKey` — null for one it could not — or asked for and not back. */
+  private readonly formulas = new Map<string, MathLayout | null | 'asked'>()
+  /** Each card's formulas, as the worker found them: what it is typeset
+   * with once they are laid out. */
+  private readonly cardFormulas = new Map<string, Set<string>>()
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -537,12 +548,18 @@ export class GpuBoard implements ContentLayer {
     }
     if (waiting) return null
     const plain = isPlainText(node)
+    const math: Record<string, MathLayout | null> = {}
+    for (const key of this.cardFormulas.get(id) ?? []) {
+      const layout = this.formulas.get(key)
+      if (layout !== undefined && layout !== 'asked') math[key] = layout
+    }
     return {
       paths,
       card: {
         id,
         markdown,
         images,
+        math,
         w: node.w,
         h: node.h,
         plain,
@@ -633,6 +650,8 @@ export class GpuBoard implements ContentLayer {
       const stamp = entry?.pending.stamp
       if (!entry || stamp === undefined) continue
       if (this.nodes.get(card.id) !== entry.pending.node) continue
+      // One still owed its formulas is typeset again once it has them.
+      if (card.math) continue
       this.kept.set(card.id, { stamp, data: encodeTypeset(card, result.keys) })
       this.keptChanged()
     }
@@ -699,7 +718,9 @@ export class GpuBoard implements ContentLayer {
       const parsed = parseKey(key)
       return parsed.kind === 'icon'
         ? atlas.iconId(parsed.name, parsed.size)
-        : atlas.glyphId(parsed.text, parsed.font)
+        : parsed.kind === 'path'
+          ? atlas.pathId(parsed.path, parsed.transform)
+          : atlas.glyphId(parsed.text, parsed.font)
     })
     const sent = new Map(batch.map((b) => [b.card.id, b]))
     const placed: string[] = []
@@ -750,6 +771,59 @@ export class GpuBoard implements ContentLayer {
     // The overview draws their pictures until it asks again.
     this.deps.redrawOverview()
     if (placed.length > 0) this.deps.onTypeset(placed)
+    this.layoutFormulas(batch, result)
+  }
+
+  /**
+   * Asks the host to lay out the formulas the worker found in cards and was
+   * not given, and typesets those cards again once they are back: until
+   * then each is the DOM's (its `host`). A formula is asked for once a
+   * board; one the host could not lay out keeps its cards the DOM's.
+   */
+  private layoutFormulas(batch: readonly Sent[], result: TypesetResult): void {
+    const sent = new Map(batch.map((b) => [b.card.id, b]))
+    const asking = new Map<string, MathSource>()
+    for (const typeset of result.cards) {
+      const entry = sent.get(typeset.id)
+      if (!typeset.math || !entry) continue
+      const keys = this.cardFormulas.get(typeset.id) ?? new Set<string>()
+      for (const formula of typeset.math) {
+        const key = mathKey(formula)
+        keys.add(key)
+        if (!this.formulas.has(key)) asking.set(key, formula)
+      }
+      this.cardFormulas.set(typeset.id, keys)
+    }
+    if (asking.size === 0) return
+    for (const key of asking.keys()) this.formulas.set(key, 'asked')
+    const generation = this.generation
+    const keys = [...asking.keys()]
+    const settle = (layouts: readonly (MathLayout | null)[]) => {
+      keys.forEach((key, i) => this.formulas.set(key, layouts[i] ?? null))
+      // Its cards, typeset again with them — any still as they were.
+      for (const [id, wanted] of this.cardFormulas) {
+        const node = this.nodes.get(id)
+        if (!node) {
+          this.cardFormulas.delete(id)
+          continue
+        }
+        if (!keys.some((key) => wanted.has(key))) continue
+        if (generation !== this.generation || this.pending.has(id)) continue
+        const was = sent.get(id)?.pending
+        this.pending.set(id, {
+          node,
+          text: was?.node === node ? was.text : null,
+          reading: false,
+        })
+      }
+      this.dirty = true
+    }
+    this.deps
+      .layoutMath([...asking.values()])
+      .then(settle, (error: unknown) => {
+        this.deps.reportError('math', error)
+        settle([])
+      })
   }
 
   /**

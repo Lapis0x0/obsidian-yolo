@@ -37,6 +37,8 @@ export type Inline = Readonly<{
   /** The icon a theme puts after an external link: room in the line,
    * drawn as nothing. */
   linkIcon?: true
+  /** A formula (./math.ts): `$…$` in a line, laid out by MathJax. */
+  math?: Readonly<{ tex: string; display: boolean }>
 }>
 
 export type ListItem = Readonly<{
@@ -70,6 +72,8 @@ export type Block =
       children: readonly Section[]
     }>
   | Readonly<{ kind: 'code'; text: string }>
+  /** A display formula (`$$…$$`) that is a paragraph of its own. */
+  | Readonly<{ kind: 'math'; tex: string }>
   | Readonly<{
       kind: 'table'
       header: readonly (readonly Inline[])[]

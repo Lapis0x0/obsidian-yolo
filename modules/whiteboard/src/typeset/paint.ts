@@ -3,6 +3,7 @@
 // world unit.
 
 import type { DrawOp } from './layout'
+import { mathTextFont } from './math'
 
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -102,6 +103,42 @@ export function paint(
         ctx.arc(op.x, op.y, op.r, 0, Math.PI * 2)
         ctx.fill()
         break
+      case 'math': {
+        const { piece, size } = op
+        for (const shape of piece.shapes) {
+          ctx.fillStyle = shape.color ?? op.color
+          if (shape.kind === 'path') {
+            const [a, b, c, d, e, f] = shape.transform
+            ctx.save()
+            ctx.transform(
+              a * size,
+              b * size,
+              c * size,
+              d * size,
+              op.x + e * size,
+              op.y + f * size,
+            )
+            ctx.fill(pathOf(op.paths[shape.path]))
+            ctx.restore()
+          } else if (shape.kind === 'rect') {
+            ctx.fillRect(
+              op.x + shape.x * size,
+              op.y + shape.y * size,
+              shape.width * size,
+              shape.height * size,
+            )
+          } else {
+            font = mathTextFont(shape, size)
+            ctx.font = font
+            ctx.fillText(
+              shape.text,
+              op.x + shape.x * size,
+              op.y + shape.y * size,
+            )
+          }
+        }
+        break
+      }
       case 'check': {
         const s = op.size
         ctx.strokeStyle = op.color
@@ -132,4 +169,17 @@ export function paint(
     ctx.fillRect(0, height - options.fade, width, options.fade)
   }
   ctx.restore()
+}
+
+/** A formula's outlines, each parsed once: the same few glyphs recur. */
+const PATHS = new Map<string, Path2D>()
+
+function pathOf(d: string): Path2D {
+  let path = PATHS.get(d)
+  if (!path) {
+    if (PATHS.size >= 4096) PATHS.clear()
+    path = new Path2D(d)
+    PATHS.set(d, path)
+  }
+  return path
 }

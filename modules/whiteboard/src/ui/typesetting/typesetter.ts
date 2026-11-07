@@ -4,6 +4,7 @@
 
 import { embedLinks, imageOf } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
+import { formulasIn, mathKey } from '../../typeset/math'
 import type { Section } from '../../typeset/model'
 import { paint } from '../../typeset/paint'
 import { hasStrayEmphasis, parseCard } from '../../typeset/parse'
@@ -18,6 +19,7 @@ import {
   type TypesetResultCard,
   glyphKey,
   iconKey,
+  pathKey,
 } from './typesetProtocol'
 
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -96,6 +98,7 @@ export class Typesetter {
       const content = cardInstances(ops, {
         glyphId: glyphOf,
         iconId: (name, size) => keyOf(iconKey(name, size)),
+        pathId: (path, transform) => keyOf(pathKey(path, transform)),
         color: (css) => this.color(css),
         measure: (text, font) => this.measure(text, font),
         advance: (glyph, font) => this.advance(glyph, font),
@@ -116,6 +119,13 @@ export class Typesetter {
           radius: op.radius,
         })
       }
+      // Its formulas are drawn when each is laid out; one that is not yet
+      // is asked for, and the card is the host's until it is.
+      const math = formulasIn(sections)
+      const missing = math.looseDisplay
+        ? []
+        : math.formulas.filter((f) => card.math?.[mathKey(f)] === undefined)
+      const unlaid = math.formulas.some((f) => !card.math?.[mathKey(f)])
       out.push({
         id: card.id,
         rects,
@@ -124,7 +134,10 @@ export class Typesetter {
         images,
         host:
           needsHost(card.markdown, card.images ?? {}) ||
-          hasStrayEmphasis(sections),
+          hasStrayEmphasis(sections) ||
+          math.looseDisplay ||
+          unlaid,
+        ...(missing.length > 0 ? { math: missing } : {}),
         shown,
         runs,
         fonts,
@@ -188,6 +201,7 @@ export class Typesetter {
       measure: (text, font) => this.measure(text, font),
       metrics: (font) => this.metrics(font),
       images: (target) => card.images?.[target] ?? null,
+      math: (formula) => card.math?.[mathKey(formula)] ?? null,
     })
   }
 
@@ -312,15 +326,14 @@ export class Typesetter {
 /** Code blocks a plugin, or Obsidian itself, draws as something else. */
 const DRAWN_FENCES =
   /^\s*(?:```|~~~)\s*(?:mermaid|dataview|dataviewjs|tasks|query|chart|excalidraw|math|latex|ad-[\w-]+)\b/im
-/** `$$…$$`, or `$…$` hugging what it encloses, as Obsidian reads math. */
-const MATH = /\$\$|(?:^|[^\\$\w])\$(?=\S)[^$\n]*?\S\$(?!\d)/m
 /** A tag, but a line break, which the typesetter breaks the line at. */
 const HTML = /<\/?(?!br\b)[a-z][\w-]*(?:\s[^>]*)?>/i
 
 /**
  * Whether a card's markdown holds what only the host's renderer shows as it
  * should — an embed that is not an image, an image whose size is not known
- * (`images`), math, HTML, a block a plugin draws. Such a card keeps its DOM
+ * (`images`), HTML, a block a plugin draws. (Math is the typesetter's once
+ * each formula is laid out: `typeset`.) Such a card keeps its DOM
  * where it can be read; the typesetter only stands in for it far away,
  * where its picture is enough. An empty card is the typesetter's: it shows
  * nothing until it is the one selected or being edited, which have their
@@ -336,7 +349,5 @@ export function needsHost(
     // its bytes are kept (../../host/remoteImages.ts).
     if (!image || !(image.target in images)) return true
   }
-  return (
-    DRAWN_FENCES.test(markdown) || MATH.test(markdown) || HTML.test(markdown)
-  )
+  return DRAWN_FENCES.test(markdown) || HTML.test(markdown)
 }

@@ -8,13 +8,14 @@
 // drawn, so it is never laid out either.
 
 import {
-  type ImageSize,
+  type InlineObjects,
   type Line,
   type Measure,
   type RunStyle,
   breakLines,
   contentWidths,
 } from './breaking'
+import type { MathLayout, MathPiece, MathSource } from './math'
 import {
   BOLD,
   type Block,
@@ -98,6 +99,20 @@ export type DrawOp =
       size: number
       color: string
     }>
+  | Readonly<{
+      /** A piece of a formula, as MathJax laid it out. */
+      op: 'math'
+      /** Its left edge, on the baseline. */
+      x: number
+      y: number
+      /** Its em: what its lengths are in. */
+      size: number
+      piece: MathPiece
+      /** The formula's outlines, which its shapes name by index. */
+      paths: readonly string[]
+      /** What a shape of no colour of its own is drawn in. */
+      color: string
+    }>
 
 export function fontString(face: FontFace): string {
   return `${face.italic ? 'italic ' : ''}${face.weight} ${round(face.size)}px ${face.family}`
@@ -121,13 +136,16 @@ export type LayoutInput = Readonly<{
   /** An image's own size, by what the source names it; null when it is not
    * known, and the image is left out. */
   images?: (target: string) => Readonly<{ w: number; h: number }> | null
+  /** A formula's layout; null when it is not laid out, and the formula is
+   * left out. */
+  math?: (formula: MathSource) => MathLayout | null
 }>
 
 type Ctx = Readonly<{
   ops: DrawOp[]
   tokens: TypesetTokens
   measure: Measure
-  imageSize: ImageSize
+  objects: InlineObjects
   metrics: LayoutInput['metrics']
   bottom: number
 }>
@@ -141,19 +159,22 @@ export function layoutCard(input: LayoutInput): DrawOp[] {
     ops: [],
     tokens,
     measure: input.measure,
-    imageSize: (image, maxWidth) => {
-      const own = input.images?.(image.target)
-      if (!own || own.w <= 0 || own.h <= 0) return null
-      // As wide as written or as itself, never wider than its line
-      // (`max-width: 100%`); as tall as written, or in proportion. Its
-      // frame is inside what is written, around what it is itself
-      // (`border-box`).
-      const b = tokens.image.border.width
-      const w = Math.min(image.width ?? own.w + 2 * b, maxWidth)
-      return {
-        w,
-        h: image.height ?? (Math.max(0, w - 2 * b) * own.h) / own.w + 2 * b,
-      }
+    objects: {
+      math: input.math,
+      imageSize: (image, maxWidth) => {
+        const own = input.images?.(image.target)
+        if (!own || own.w <= 0 || own.h <= 0) return null
+        // As wide as written or as itself, never wider than its line
+        // (`max-width: 100%`); as tall as written, or in proportion. Its
+        // frame is inside what is written, around what it is itself
+        // (`border-box`).
+        const b = tokens.image.border.width
+        const w = Math.min(image.width ?? own.w + 2 * b, maxWidth)
+        return {
+          w,
+          h: image.height ?? (Math.max(0, w - 2 * b) * own.h) / own.w + 2 * b,
+        }
+      },
     },
     metrics: input.metrics,
     bottom: input.height,
@@ -246,6 +267,8 @@ function layoutBlock(
       return layoutCallout(ctx, block, left, right, y, voice)
     case 'code':
       return layoutCode(ctx, block.text, left, right, y)
+    case 'math':
+      return layoutDisplayMath(ctx, block.tex, left, right, y, voice)
     case 'table':
       return layoutTable(ctx, block, left, right, y, voice)
     case 'nothing':
@@ -355,22 +378,25 @@ function layoutText(
     Math.max(1, right - left),
     styler(ctx.tokens, voice),
     ctx.measure,
-    ctx.imageSize,
+    ctx.objects,
     voice.style.breakSpaces === true,
   )
   const lineHeight = voice.style.lineHeight
+  const below = lineHeight - voice.style.baseline
   lines.forEach((line, i) => {
     if (y >= ctx.bottom) return
     const normal = y + voice.style.baseline
     // An image stands on the baseline: one taller than the line above it
-    // pushes the baseline down, and the line with it.
+    // pushes the baseline down, and the line with it; a formula reaching
+    // further below it than the line does pushes the next line down.
     const tallest = Math.max(0, ...line.pieces.map((p) => p.height ?? 0))
+    const deepest = Math.max(0, ...line.pieces.map((p) => p.depth ?? 0))
     const baseline = Math.max(normal, y + tallest)
     if (i === 0) firstLine?.(line, y, baseline)
     const spare = Math.max(0, right - left - line.width)
     const shift = align === 'center' ? spare / 2 : align === 'right' ? spare : 0
     drawLine(ctx, line, left + shift, baseline, lineHeight, voice)
-    y += lineHeight + (baseline - normal)
+    y = baseline + Math.max(below, deepest)
   })
   return y
 }
@@ -387,6 +413,21 @@ function drawLine(
   line.pieces.forEach((piece, index) => {
     const x = left + piece.x
     if (piece.icon) return
+    if (piece.math) {
+      const layout = ctx.objects.math?.(piece.math.formula)
+      const part = layout?.pieces[piece.math.piece]
+      if (!layout || !part) return
+      ops.push({
+        op: 'math',
+        x,
+        y: baseline,
+        size: part.width > 0 ? piece.width / part.width : 0,
+        piece: part,
+        paths: layout.paths,
+        color: colorOf(tokens, voice, piece.flags),
+      })
+      return
+    }
     if (piece.image) {
       const h = piece.height ?? 0
       const { border, radius } = tokens.image
@@ -472,6 +513,46 @@ function drawLine(
       })
     }
   })
+}
+
+/**
+ * A display formula: a block of its own, its margin and padding above and
+ * below, each
+ * piece a line centred in the block — taller than the line where the
+ * formula is, as a line with an inline block in it is (`layoutText`). One
+ * wider than the block starts at its left and runs past its right.
+ */
+function layoutDisplayMath(
+  ctx: Ctx,
+  tex: string,
+  left: number,
+  right: number,
+  y: number,
+  voice: Voice,
+): number {
+  const layout = ctx.objects.math?.({ tex, display: true })
+  if (!layout) return y
+  const { style } = voice
+  const em = style.size
+  // Its container's margin and padding, outside the lines.
+  const margin = (ctx.tokens.math.margin + ctx.tokens.math.padding) * em
+  const below = style.lineHeight - style.baseline
+  let top = y + margin
+  for (const piece of layout.pieces) {
+    const baseline = top + Math.max(style.baseline, piece.height * em)
+    const w = piece.width * em
+    ctx.ops.push({
+      op: 'math',
+      x: left + Math.max(0, (right - left - w) / 2),
+      y: baseline,
+      size: em,
+      piece,
+      paths: layout.paths,
+      color: voice.color,
+    })
+    top = baseline + Math.max(below, piece.depth * em)
+  }
+  return top + margin
 }
 
 function layoutList(
@@ -1009,7 +1090,7 @@ function columnWidths(
         cell,
         style,
         ctx.measure,
-        ctx.imageSize,
+        ctx.objects,
         voiceOf(r).style.breakSpaces === true,
       )
       min[c] = Math.max(min[c], least, widths.min + chrome[c])

@@ -19,6 +19,8 @@
 // When the pages are full the oldest is emptied and its glyphs lose their
 // pictures, to be drawn again when next asked for.
 
+import type { PathTransform } from '../typesetting/typesetProtocol'
+
 import { fontSize, isColorGlyph, resizeFont } from './glyphs'
 
 /** An atlas page's edge, in device pixels. */
@@ -46,6 +48,18 @@ type Glyph = Readonly<{
   size: number
   color: boolean
   icon: 'check' | null
+  /** An outline's: drawn from its path, with its transform. */
+  path: Readonly<{
+    shape: Path2D
+    transform: PathTransform
+    /** Its bounds, in world units from its origin. */
+    bounds: Readonly<{
+      left: number
+      top: number
+      right: number
+      bottom: number
+    }>
+  }> | null
 }>
 
 type Shelf = { y: number; height: number; x: number }
@@ -91,7 +105,25 @@ export class GlyphAtlas {
       size: fontSize(font),
       color: isColorGlyph(text),
       icon: null,
+      path: null,
     }))
+  }
+
+  /** The id of an outline (a formula's glyph) drawn with `transform`, from
+   * its path's units to world units, its origin where it is placed. */
+  pathId(path: string, transform: PathTransform): number {
+    return this.idFor(`\u0002${transform.join(',')}\u0000${path}`, () => {
+      const bounds = pathBounds(path, transform)
+      return {
+        text: '',
+        font: '',
+        // Its em, for how large it is drawn: a thousand of its units.
+        size: Math.max(Math.abs(transform[0]), Math.abs(transform[3])) * 1000,
+        color: false,
+        icon: null,
+        path: { shape: new Path2D(path), transform, bounds },
+      }
+    })
   }
 
   /** The id of an icon `size` world units across, its origin its top-left
@@ -103,6 +135,7 @@ export class GlyphAtlas {
       size,
       color: false,
       icon: name,
+      path: null,
     }))
   }
 
@@ -134,6 +167,12 @@ export class GlyphAtlas {
       top = PAD
       w = Math.ceil(px) + PAD * 2
       h = w
+    } else if (glyph.path) {
+      const { bounds } = glyph.path
+      left = Math.ceil(Math.max(0, -bounds.left * at)) + PAD
+      top = Math.ceil(Math.max(0, -bounds.top * at)) + PAD
+      w = left + Math.ceil(Math.max(0, bounds.right * at)) + PAD
+      h = top + Math.ceil(Math.max(0, bounds.bottom * at)) + PAD
     } else {
       const ctx = this.measuring
       ctx.font = resizeFont(glyph.font, px)
@@ -149,6 +188,20 @@ export class GlyphAtlas {
     ctx.clearRect(spot.x, spot.y, w, h)
     if (glyph.icon) {
       drawCheck(ctx, spot.x + PAD, spot.y + PAD, px)
+    } else if (glyph.path) {
+      const [a, b, c, d] = glyph.path.transform
+      ctx.save()
+      ctx.setTransform(
+        a * at,
+        b * at,
+        c * at,
+        d * at,
+        spot.x + left,
+        spot.y + top,
+      )
+      ctx.fillStyle = '#fff'
+      ctx.fill(glyph.path.shape)
+      ctx.restore()
     } else {
       ctx.font = resizeFont(glyph.font, px)
       ctx.fillStyle = '#fff'
@@ -367,4 +420,74 @@ function drawCheck(
   ctx.lineTo(x + size * 0.74, y + size * 0.34)
   ctx.stroke()
   ctx.restore()
+}
+
+/** Where a path's points reach, through `transform`: its control points
+ * too, so a little more than its ink at a curve, never less. */
+function pathBounds(
+  path: string,
+  transform: PathTransform,
+): Readonly<{ left: number; top: number; right: number; bottom: number }> {
+  const [a, b, c, d] = transform
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
+  const reach = (x: number, y: number) => {
+    const tx = a * x + c * y
+    const ty = b * x + d * y
+    left = Math.min(left, tx)
+    right = Math.max(right, tx)
+    top = Math.min(top, ty)
+    bottom = Math.max(bottom, ty)
+  }
+  let x = 0
+  let y = 0
+  let command = 'M'
+  const tokens =
+    path.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g) ?? []
+  let i = 0
+  const next = (): number => Number(tokens[i++])
+  while (i < tokens.length) {
+    if (/[a-zA-Z]/.test(tokens[i])) command = tokens[i++]
+    const relative = command === command.toLowerCase()
+    const ox = relative ? x : 0
+    const oy = relative ? y : 0
+    switch (command.toUpperCase()) {
+      case 'Z':
+        continue
+      case 'H':
+        x = ox + next()
+        break
+      case 'V':
+        y = oy + next()
+        break
+      case 'A': {
+        i += 5
+        x = ox + next()
+        y = oy + next()
+        break
+      }
+      default: {
+        // M, L, T: a point; Q, S: two; C: three — the last where it ends.
+        const points = { Q: 2, S: 2, C: 3 }[command.toUpperCase()] ?? 1
+        for (let k = 0; k < points; k += 1) {
+          const px = ox + next()
+          const py = oy + next()
+          reach(px, py)
+          if (k === points - 1) {
+            x = px
+            y = py
+          }
+        }
+        if (command === 'M') command = 'L'
+        if (command === 'm') command = 'l'
+        continue
+      }
+    }
+    reach(x, y)
+  }
+  return left <= right
+    ? { left, top, right, bottom }
+    : { left: 0, top: 0, right: 0, bottom: 0 }
 }

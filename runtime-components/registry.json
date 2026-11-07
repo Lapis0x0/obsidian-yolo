@@ -62,8 +62,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.mathjaxEngine.description",
       "impactKey": "settings.modules.runtimeComponents.mathjaxEngine.impact",
       "entry": "runtime-components/mathjax-engine/dist/entry.js",
-      "byteSize": 2906892,
-      "sha256": "05300e8f4c5ad1200c0f81723f9087c12fc77de89076e64bb22e95d47b1696da"
+      "byteSize": 2907834,
+      "sha256": "ec363c67fd0b28f12d847af28566565a6592e9453de80b1c8ad38750e0296856"
     },
     {
       "id": "pdf-engine",

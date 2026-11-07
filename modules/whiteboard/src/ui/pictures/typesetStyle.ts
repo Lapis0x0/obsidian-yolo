@@ -695,5 +695,27 @@ export function measureSample(
     embed: pre ? cs(pre).backgroundColor : 'transparent',
     image: imageFrame(),
     emoji: emojiEm(p, body.size),
+    math: displayMath(p),
   }
+}
+
+/** A display formula's container's margin and padding, in its em: read
+ * off a container like the one MathJax puts one in, under whatever rules
+ * style it — MathJax's own, once it has run, and the app's. */
+function displayMath(p: Element | null): TypesetTokens['math'] {
+  const win = p?.ownerDocument.defaultView
+  if (!p || !win) return { margin: 0, padding: 0 }
+  const probe = p.ownerDocument.createElement('mjx-container')
+  probe.className = 'MathJax'
+  probe.setAttribute('jax', 'CHTML')
+  probe.setAttribute('display', 'true')
+  p.appendChild(probe)
+  const cs = win.getComputedStyle(probe)
+  const em = Math.max(1, px(cs.fontSize))
+  const math = {
+    margin: px(cs.marginTop) / em,
+    padding: px(cs.paddingTop) / em,
+  }
+  probe.remove()
+  return math
 }

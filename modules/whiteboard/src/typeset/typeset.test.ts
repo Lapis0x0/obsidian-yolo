@@ -1,5 +1,6 @@
 import { breakLines, breakOpportunities } from './breaking'
 import { layoutCard } from './layout'
+import { type MathLayout, mathKey } from './math'
 import {
   BOLD,
   CODE,
@@ -456,6 +457,7 @@ describe('layoutCard', () => {
     embed: 'grey',
     image: { border: { width: 0, color: 'grey' }, radius: 0 },
     emoji: 1,
+    math: { margin: 0.7, padding: 0.3 },
   }
   const metrics = (font: string) => {
     const size = Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 15)
@@ -505,6 +507,96 @@ describe('layoutCard', () => {
     expect(ops.some((op) => op.op === 'check')).toBe(true)
     // A done task is struck through.
     expect(ops.some((op) => op.op === 'line')).toBe(true)
+  })
+
+  describe('math', () => {
+    const piece = (
+      width: number,
+      height: number,
+      depth: number,
+      after: number | 'newline' = 0,
+    ) => ({
+      width,
+      height,
+      depth,
+      after,
+      shapes: [
+        {
+          kind: 'rect' as const,
+          x: 0,
+          y: -height,
+          width,
+          height: height + depth,
+          color: null,
+        },
+      ],
+    })
+    const layouts: Record<string, MathLayout> = {
+      // Two pieces a line may break between.
+      Ix: {
+        paths: [],
+        pieces: [piece(2, 1.5, 0.5, 0.222), piece(1, 0.7, 0.2)],
+      },
+      Dy: { paths: [], pieces: [piece(4, 1, 0.6)] },
+    }
+    const runMath = (markdown: string, width = 300) =>
+      layoutCard({
+        sections: parseCard(markdown),
+        width,
+        height: 1000,
+        tokens,
+        plain: false,
+        color: null,
+        measure,
+        metrics,
+        math: (formula) => layouts[mathKey(formula)] ?? null,
+      })
+    const mathOps = (ops: ReturnType<typeof runMath>) =>
+      ops.flatMap((op) => (op.op === 'math' ? [op] : []))
+
+    test('an inline formula sits on the baseline, its pieces its own gaps apart', () => {
+      const ops = runMath('a $x$ b\n\nnext')
+      const [first, second] = mathOps(ops)
+      expect(first.size).toBe(15)
+      expect(second.x - first.x).toBeCloseTo((2 + 0.222) * 15)
+      // Taller than the line: the baseline is pushed down to fit it…
+      const top = tokens.inset.top
+      expect(first.y).toBeCloseTo(top + 1.5 * 15)
+      // …and deeper too: the next block starts below its depth.
+      const next = ops.find((op) => op.op === 'text' && op.text === 'next')
+      expect(next?.op === 'text' && next.y).toBeCloseTo(
+        top + 1.5 * 15 + 0.5 * 15 + 24 + body.baseline,
+      )
+    })
+
+    test('a line breaks between the pieces of a formula, the gap left behind', () => {
+      // Room for the first piece but not the second after it.
+      const ops = runMath('$x$', tokens.inset.left + 2 * 15 + 10 + 21)
+      const [first, second] = mathOps(ops)
+      expect(second.x).toBe(first.x)
+      expect(second.y).toBeGreaterThan(first.y)
+    })
+
+    test('a display formula is a block of its own, centred, its margin around it', () => {
+      const ops = runMath('$$y$$\n\nafter')
+      const [display] = mathOps(ops)
+      const inner = 300 - tokens.inset.left - tokens.inset.right
+      expect(display.x).toBeCloseTo(tokens.inset.left + (inner - 4 * 15) / 2)
+      const margin = (0.7 + 0.3) * 15
+      expect(display.y).toBeCloseTo(tokens.inset.top + margin + body.baseline)
+      const after = ops.find((op) => op.op === 'text' && op.text === 'after')
+      expect(after?.op === 'text' && after.y).toBeCloseTo(
+        display.y +
+          Math.max(24 - body.baseline, 0.6 * 15) +
+          margin +
+          24 +
+          body.baseline,
+      )
+    })
+
+    test('a formula not laid out is left out', () => {
+      expect(mathOps(runMath('$zzz$ text'))).toEqual([])
+    })
   })
 })
 

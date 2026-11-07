@@ -202,6 +202,10 @@ export type TypesetTokens = Readonly<{
   /** An emoji's advance in the text's em: the browser lays an emoji out
    * narrower than a canvas measures it. */
   emoji: number
+  /** Above and below a display formula (`$$…$$`), in its em: its
+   * container's margin and, inside that, its padding, as the stylesheet
+   * gives them. */
+  math: Readonly<{ margin: number; padding: number }>
 }>
 
 /**
