@@ -199,6 +199,14 @@ export const it = {
     linkNotWebHint:
       'Si possono mostrare solo pagine http e https. Questa scheda punta a "{url}".',
   },
+  find: {
+    open: 'Trova nella lavagna',
+    placeholder: 'Trova nelle schede…',
+    previous: 'Precedente (Maiusc+Invio)',
+    next: 'Successivo (Invio)',
+    close: 'Chiudi ricerca (Esc)',
+    noResults: 'Nessun risultato',
+  },
   pdf: {
     loading: 'Apertura del PDF…',
     openFailed: 'Impossibile aprire questo PDF',

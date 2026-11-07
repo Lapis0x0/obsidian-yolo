@@ -27,6 +27,7 @@
 @import './states.css';
 @import './toolbar/creation-bar.css';
 @import './toolbar/controls.css';
+@import './toolbar/find.css';
 @import './canvas/minimap.css';
 @import './toolbar/creation-prompt.css';
 @import './canvas/parked.css';

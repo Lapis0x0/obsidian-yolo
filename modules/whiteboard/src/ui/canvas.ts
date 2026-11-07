@@ -147,6 +147,7 @@ import { DropImport } from './canvas/dropImport'
 import { type CardPassagePlacement, EdgeLayer } from './canvas/edgeLayer'
 import { EditingController } from './canvas/editingController'
 import { ExportController } from './canvas/exportController'
+import { FindController, type FindHit } from './canvas/findController'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -510,6 +511,8 @@ export class WhiteboardCanvas {
   private emptyHintEl: HTMLElement | null = null
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
+  /** The board's find (./canvas/findController.ts). */
+  private find: FindController | null = null
   /** The whole board in the viewport's corner (./canvas/minimap.ts). */
   private minimap: Minimap | null = null
   /** Keeps this board's minimap switch in step with a change made from
@@ -1596,6 +1599,8 @@ export class WhiteboardCanvas {
     this.editing.endRename(true)
     this.dropImport.destroy()
     this.canvasControls?.destroy()
+    this.find?.destroy()
+    this.find = null
     this.canvasControls = null
     this.minimap?.destroy()
     this.minimap = null
@@ -1984,6 +1989,7 @@ export class WhiteboardCanvas {
       Object.assign(board.canvas, {
         gpuBoard: board,
         pictures: () => this.pictures,
+        find: () => this.find,
       })
       const checkDeps = () => ({
         host: this.host,
@@ -2251,6 +2257,7 @@ export class WhiteboardCanvas {
       duplicateSelection: () => this.clipboard.duplicateSelection(),
       nudgeSelection: (x, y) => this.nudgeSelection(x, y),
       armSpacePan: () => this.interaction.armSpacePan(),
+      openFind: () => this.pdf.openReaderSearch() || this.openFind(),
     })
     this.registerBoardKeyLayers()
     this.editing = new EditingController({
@@ -2532,6 +2539,11 @@ export class WhiteboardCanvas {
               this.cameraController.fitCameraToNodes(this.board.nodes),
           },
           {
+            label: `${this.t('find.open')}\n(${mod} F)`,
+            icon: 'search',
+            onSelect: () => this.openFind(),
+          },
+          {
             // The other way to see where you are; its switch sits with it.
             // The icon says which way it is set, struck through when off;
             // the tooltip says what a click will do.
@@ -2562,6 +2574,27 @@ export class WhiteboardCanvas {
         ],
       ],
     )
+    this.find = new FindController({
+      overlay: this.toolbarController.overlay,
+      t: (key) => this.t(key),
+      nodes: () => this.board.nodes,
+      readNote: async (path) => {
+        try {
+          return await this.host.vault.readText(path)
+        } catch {
+          return null
+        }
+      },
+      viewCenter: () => {
+        const view = this.worldViewportRect(0)
+        return {
+          x: (view.left + view.right) / 2,
+          y: (view.top + view.bottom) / 2,
+        }
+      },
+      reveal: (hit) => this.revealFindHit(hit),
+      showHits: () => {},
+    })
     // A freshly built world element carries none of the old one's inline
     // custom properties, so the handle size has to be written again. It is
     // pushed from here rather than hard-coded in the stylesheet so it stays
@@ -2640,6 +2673,7 @@ export class WhiteboardCanvas {
         const path = event.type === 'rename' ? event.oldPath : event.entry.path
         this.pictures?.fileChanged(path)
         this.gpuBoard?.fileChanged(path)
+        this.find?.fileChanged(path)
         this.nearImages?.fileChanged(path)
       }
       if (event.type === 'delete' && this.pdf.onFileDeleted(event.entry.path)) {
@@ -4238,6 +4272,21 @@ export class WhiteboardCanvas {
     return this.engine.mounted.has(id) && this.cardRenderer.showsItself(id)
   }
 
+  /** Mod+F, or the controls' find: the board's find, over whatever is
+   * being edited. */
+  private openFind(): boolean {
+    this.find?.open()
+    return this.find !== null
+  }
+
+  /** Brings a hit of the board's find to view: its card at a size it can
+   * be read at. */
+  private revealFindHit(hit: FindHit): void {
+    const node = this.nodesById.get(hit.id)
+    if (node)
+      this.cameraController.focusNode(node, OVERVIEW_RESTORE_SCALE * 1.25)
+  }
+
   /** Whether a card is drawn by the canvas rather than built, at the size
    * it is seen at (`recomputeVisibility`). Groups keep their DOM at every
    * tier. */
@@ -5160,6 +5209,7 @@ export class WhiteboardCanvas {
           })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
     this.gpuBoard?.setNodes(this.ownCardNodes)
+    this.find?.boardChanged()
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),

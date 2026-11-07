@@ -192,6 +192,14 @@ export const zh = {
     linkNotWeb: '不是网页地址',
     linkNotWebHint: '只能显示 http 和 https 网页，此卡片指向「{url}」。',
   },
+  find: {
+    open: '在白板中查找',
+    placeholder: '在卡片中查找…',
+    previous: '上一个（Shift+Enter）',
+    next: '下一个（Enter）',
+    close: '关闭查找（Esc）',
+    noResults: '无结果',
+  },
   pdf: {
     loading: '正在打开 PDF…',
     openFailed: '无法打开这个 PDF',

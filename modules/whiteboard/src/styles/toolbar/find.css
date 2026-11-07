@@ -1,0 +1,51 @@
+/* --- the board's find (ui/canvas/findController.ts) ----------------------
+ * The PDF reader's find bar (styles/pdf/card.css), over the board: top
+ * middle, clear of the controls column on the right. */
+.yolo-whiteboard-find {
+  position: absolute;
+  top: var(--size-4-2);
+  left: 50%;
+  z-index: var(--layer-cover);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 120px);
+  padding: 2px 2px 2px 4px;
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow:
+    var(--shadow-s),
+    0 0 0 1px var(--background-modifier-border);
+  transform: translateX(-50%);
+  /* The overlay is pointer-transparent; the bar takes events back. */
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-find[hidden] {
+  display: none;
+}
+
+input.yolo-whiteboard-find-input {
+  flex: 1 1 16em;
+  min-width: 6em;
+  width: 16em;
+  height: 26px;
+  padding: 0 6px;
+  font-size: var(--font-ui-small);
+}
+
+.yolo-whiteboard-find-count {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+button.yolo-whiteboard-find-button {
+  --icon-size: 14px;
+  width: auto;
+  height: auto;
+  padding: 3px;
+  box-shadow: none;
+}

@@ -67,6 +67,8 @@ export type KeymapControllerDeps = Readonly<{
   /** Moves the selection by whole grid steps. */
   nudgeSelection: (stepsX: number, stepsY: number) => boolean
   armSpacePan: () => boolean
+  /** Mod+F: the find of the PDF reader being read, else the board's. */
+  openFind: () => boolean
 }>
 
 /** Whether the keyboard is currently typing into something that takes text:
@@ -205,6 +207,11 @@ export class KeymapController implements KeyLayers {
       // Obsidian names Space by its character (measured: both `key` and
       // `vkey` are " "), not by 'Space'.
       { modifiers: [], key: ' ', handler: this.deps.armSpacePan },
+      // Always the board's: a reader's find when one is being read, else the
+      // board's own. One binding, since of two for a key only the first
+      // registered is ever asked — and a card being edited has no find of
+      // its own that Mod+F would otherwise reach (measured).
+      { modifiers: ['Mod'], key: 'F', handler: this.deps.openFind },
     ])
   }
 

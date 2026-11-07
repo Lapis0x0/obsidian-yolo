@@ -123,7 +123,7 @@ export class PdfIntegration {
   private readerPanel: ReaderPanel | null = null
   /** The card the panel is reading, whenever the panel is open. */
   private readerPanelNodeId: NodeId | null = null
-  /** Mod+F, bound only while there is a reader to search (see
+  /** Escape, bound only while there is a reader (see
    * `syncReaderKeymap`). */
   private readerKeymapDisposer: (() => void) | null = null
   /** The PDF annotation toolbar and comment editor, over the whole view
@@ -648,21 +648,17 @@ export class PdfIntegration {
   }
 
   /**
-   * Binds Mod+F while there is a reader to search — the panel, or a focused
-   * PDF card — and only then. A binding on the view's scope that declines
-   * still ends the key's journey there (Obsidian's `Scope.handleKey` returns
-   * on the first binding for a key), so one left armed all the time would
-   * swallow the user's own Mod+F hotkey on every board.
+   * Binds Escape to the layered chain while there is a reader — the panel,
+   * or a focused PDF card — and only then. Mod+F is the board's own binding
+   * (keymapController.ts), which asks `openReaderSearch` first: a binding on
+   * the view's scope that declines still ends the key's journey there
+   * (Obsidian's `Scope.handleKey` returns on the first binding for a key), so
+   * two for one key would leave the later one never asked.
    */
   syncReaderKeymap(): void {
     const wanted = this.readerPanel !== null || this.focusedPdfNodeId() !== null
     if (wanted && !this.readerKeymapDisposer) {
       this.readerKeymapDisposer = this.deps.core.context.registerKeymap([
-        {
-          modifiers: ['Mod'],
-          key: 'F',
-          handler: () => this.openReaderSearch(),
-        },
         { modifiers: [], key: 'Escape', handler: () => this.deps.runEscape() },
       ])
     } else if (!wanted && this.readerKeymapDisposer) {
@@ -672,11 +668,12 @@ export class PdfIntegration {
   }
 
   /**
-   * Mod+F: searches the reader being read. That is the panel when focus is
-   * in it (a press anywhere in the panel gives it focus) or when no PDF card
-   * is focused; otherwise the focused card's reader.
+   * Mod+F: searches the reader being read, if there is one — false when there
+   * is none, and the board's own find opens instead. That is the panel when
+   * focus is in it (a press anywhere in the panel gives it focus) or when no
+   * PDF card is focused; otherwise the focused card's reader.
    */
-  private openReaderSearch(): boolean {
+  openReaderSearch(): boolean {
     const { core } = this.deps
     const active = core.context.getDocument().activeElement
     const panel = this.readerPanel

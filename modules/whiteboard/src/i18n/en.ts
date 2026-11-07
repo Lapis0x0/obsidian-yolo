@@ -202,6 +202,14 @@ export const en = {
     linkNotWebHint:
       'Only http and https pages can be shown. This card points at "{url}".',
   },
+  find: {
+    open: 'Find on board',
+    placeholder: 'Find in cards…',
+    previous: 'Previous (Shift+Enter)',
+    next: 'Next (Enter)',
+    close: 'Close find (Esc)',
+    noResults: 'No results',
+  },
   pdf: {
     loading: 'Opening PDF…',
     openFailed: 'Could not open this PDF',

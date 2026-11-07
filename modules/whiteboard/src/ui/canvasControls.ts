@@ -24,6 +24,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  * ui/cardMenu.ts's, for the same reason: no package dependencies. */
 const ICONS: Readonly<Record<CanvasControlIconName, readonly string[]>> = {
   plus: ['M5 12h14', 'M12 5v14'],
+  search: ['M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0', 'm21 21-4.3-4.3'],
   maximize: [
     'M8 3H5a2 2 0 0 0-2 2v3',
     'M21 8V5a2 2 0 0 0-2-2h-3',
@@ -57,6 +58,7 @@ const ICONS: Readonly<Record<CanvasControlIconName, readonly string[]>> = {
 
 export type CanvasControlIconName =
   | 'plus'
+  | 'search'
   | 'maximize'
   | 'minus'
   | 'undo-2'
