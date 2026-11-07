@@ -1946,6 +1946,10 @@ export class WhiteboardCanvas {
       view: this.core.getView,
       isMounted: (id) => this.shownByDom(id),
       isSelected: (id) => this.selectedIds.has(id),
+      cache: {
+        store: this.pictureStores.typeset,
+        group: () => this.sourcePathForBoard(),
+      },
       onTypeset: (ids) => {
         for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
         // The images in them are wanted now.

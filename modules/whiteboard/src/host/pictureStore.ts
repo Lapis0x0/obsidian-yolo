@@ -411,4 +411,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export type PictureStores = Readonly<{
   pdf: PictureStore
   image: PictureStore
+  /** Not pictures: typeset cards, a board's to a group
+   * (ui/typesetting/typesetCache.ts). */
+  typeset: PictureStore
 }>

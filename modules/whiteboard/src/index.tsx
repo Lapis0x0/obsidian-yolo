@@ -104,6 +104,12 @@ yolo.registerModule({
         'image thumbnail',
         reportError,
       ),
+      typeset: new PictureStore(
+        host.privateStorage.deviceLocal,
+        'card-typesets',
+        'card typeset',
+        reportError,
+      ),
     }
     // Card pictures are typeset now and made again rather than kept
     // (ui/pictures/typesetCards.ts): what earlier versions kept of them on

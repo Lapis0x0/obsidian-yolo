@@ -23,6 +23,7 @@ import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
+import type { PictureStore } from '../../host/pictureStore'
 import { imageTargets, isRemoteImage } from '../../typeset/images'
 import { contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown } from '../canvas/cardContent'
@@ -32,10 +33,21 @@ import {
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
 } from '../constants'
 import type { TypesetStyle } from '../pictures/typesetStyle'
+import {
+  type KeptBytes,
+  TYPESET_GROUP_VERSION,
+  decodePack,
+  decodeTypeset,
+  encodePacks,
+  encodeTypeset,
+  packKey,
+  typesetStamp,
+} from '../typesetting/typesetCache'
 import type { Look, TypesetClient } from '../typesetting/typesetClient'
 import {
   type TypesetCard,
   type TypesetResult,
+  type TypesetResultCard,
   parseKey,
 } from '../typesetting/typesetProtocol'
 
@@ -68,6 +80,9 @@ const SELECTED_BORDER = 2
  * whole board. */
 const BATCH = 32
 const IN_FLIGHT = 2
+/** How long after the cards kept last change they are written back: a
+ * board's cards come in batch after batch, and are written as one. */
+const KEEP_DELAY_MS = 2000
 
 export type GpuBoardDeps = Readonly<{
   /** Where the scene's canvas goes: appended after the overview's, before
@@ -97,11 +112,28 @@ export type GpuBoardDeps = Readonly<{
   images: ImageSizes
   /** The board's typesetting worker (../typesetting/typesetClient.ts). */
   typesetter: TypesetClient
+  /** Where typeset cards are kept on this device, and the board's group
+   * there — its path, empty while it has none (../typesetting/
+   * typesetCache.ts); null to keep none. */
+  cache: Readonly<{ store: PictureStore; group: () => string }> | null
   reportError: (stage: string, error: unknown) => void
 }>
 
 /** A card owed its content: a note's text is read first. */
-type Pending = { node: BoardNode; text: string | null; reading: boolean }
+type Pending = {
+  node: BoardNode
+  text: string | null
+  reading: boolean
+  /** What it is kept under once its input is known (`placeKept`). */
+  stamp?: string
+}
+
+/** A card on its way to be placed, and what it was typeset from. */
+type Sent = Readonly<{
+  pending: Pending
+  card: TypesetCard
+  paths: Record<string, string>
+}>
 
 export class GpuBoard implements ContentLayer {
   readonly canvas: HTMLCanvasElement
@@ -150,6 +182,12 @@ export class GpuBoard implements ContentLayer {
    * scene has of them is out of date, so they are built until it is not.
    * A new look does not count — the old one is near enough meanwhile. */
   private readonly changed = new Set<string>()
+  /** The board's cards as this device keeps them, once read (`keptReady`),
+   * for the group read. */
+  private kept = new Map<string, KeptBytes>()
+  private keptGroup: string | null = null
+  private keptLoading = false
+  private keepTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -191,6 +229,7 @@ export class GpuBoard implements ContentLayer {
       this.texts.delete(id)
       this.cardImages.delete(id)
       this.scene.setImages(id, [])
+      this.dropKept(id)
     }
     this.scene.setOrder(cards)
     this.dirty = true
@@ -384,6 +423,10 @@ export class GpuBoard implements ContentLayer {
   }
 
   destroy(): void {
+    // Not written now: a board closes as the module goes too, when nothing
+    // can be written. What came in the last moments is typeset again.
+    if (this.keepTimer !== null) clearTimeout(this.keepTimer)
+    this.keepTimer = null
     this.scene.dispose()
     this.canvas.remove()
   }
@@ -402,73 +445,27 @@ export class GpuBoard implements ContentLayer {
   }
 
   /** Hands the worker the next cards owed — those the overview asked for
-   * first, then the rest in board order — once their text is there. */
+   * first, then the rest in board order — once their text is there; a card
+   * kept on this device as it would be typeset is placed from there instead
+   * (`placeKept`). */
   private typeset(look: Look): void {
     if (!this.deps.typesetter.usable || this.pending.size === 0) return
+    if (!this.keptReady()) return
+    this.placeKept(look)
     while (this.inFlight < IN_FLIGHT) {
       const order = [
         ...[...this.wanted].filter((id) => this.pending.has(id)),
         ...this.pending.keys(),
       ]
-      const batch: {
-        pending: Pending
-        card: TypesetCard
-        paths: Record<string, string>
-      }[] = []
+      const batch: Sent[] = []
       for (const id of order) {
         if (batch.length >= BATCH) break
         const pending = this.pending.get(id)
-        if (!pending || pending.reading) continue
-        const { node } = pending
-        if (node.type === 'file' && pending.text === null) {
-          this.read(id, pending)
-          continue
-        }
-        const markdown = clippedCardMarkdown(
-          node,
-          node.type === 'text' ? node.text : (pending.text ?? ''),
-        )
-        // The images it embeds are laid out by their own sizes: it waits
-        // for those to be read.
-        const images: Record<string, Readonly<{ w: number; h: number }>> = {}
-        const paths: Record<string, string> = {}
-        let waiting = false
-        for (const target of imageTargets(markdown)) {
-          const path = this.deps.images.resolve(target)
-          if (path === null) continue
-          const size = this.deps.images.get(path)
-          // One on the web is typeset again when it is shown or its bytes
-          // come or go; until they are kept the card is the DOM's.
-          if (isRemoteImage(path)) {
-            const ids = this.remoteWaits.get(path) ?? new Set<string>()
-            ids.add(id)
-            this.remoteWaits.set(path, ids)
-          }
-          if (size === undefined) waiting = true
-          else if (size !== null && this.deps.images.drawable(path)) {
-            images[target] = size
-            paths[target] = path
-          }
-        }
-        if (waiting) continue
+        if (!pending) continue
+        const ready = this.prepared(id, pending)
+        if (!ready) continue
         this.pending.delete(id)
-        const plain = isPlainText(node)
-        batch.push({
-          pending,
-          paths,
-          card: {
-            id,
-            markdown,
-            images,
-            w: node.w,
-            h: node.h,
-            plain,
-            color:
-              plain && node.color !== undefined
-                ? this.nodeColor(node.color)
-                : null,
-          },
-        })
+        batch.push({ pending, ...ready })
       }
       if (batch.length === 0) return
       this.wanted.clear()
@@ -481,9 +478,11 @@ export class GpuBoard implements ContentLayer {
         )
         .then(
           (result) => {
-            if (generation === this.generation) {
-              this.place(look, batch, result)
-            }
+            if (generation !== this.generation) return
+            // Kept before it is placed: placing turns its glyphs' keys into
+            // the atlas's ids, which mean nothing in another session.
+            this.keepTypeset(batch, result)
+            this.place(look, batch, result)
           },
           (error: unknown) => this.deps.reportError('typeset', error),
         )
@@ -492,6 +491,181 @@ export class GpuBoard implements ContentLayer {
           this.dirty = true
         })
     }
+  }
+
+  /**
+   * What a card owed is typeset from, once it is all there: a note's text
+   * read, and the sizes of the images it embeds — null meanwhile, the read
+   * asked for. Its stamp (../typesetting/typesetCache.ts) is worked out the
+   * first time, for the cards kept on this device.
+   */
+  private prepared(
+    id: string,
+    pending: Pending,
+  ): Readonly<{ card: TypesetCard; paths: Record<string, string> }> | null {
+    if (pending.reading) return null
+    const { node } = pending
+    if (node.type === 'file' && pending.text === null) {
+      this.read(id, pending)
+      return null
+    }
+    const markdown = clippedCardMarkdown(
+      node,
+      node.type === 'text' ? node.text : (pending.text ?? ''),
+    )
+    // The images it embeds are laid out by their own sizes: it waits for
+    // those to be read.
+    const images: Record<string, Readonly<{ w: number; h: number }>> = {}
+    const paths: Record<string, string> = {}
+    let waiting = false
+    for (const target of imageTargets(markdown)) {
+      const path = this.deps.images.resolve(target)
+      if (path === null) continue
+      const size = this.deps.images.get(path)
+      // One on the web is typeset again when it is shown or its bytes come
+      // or go; until they are kept the card is the DOM's.
+      if (isRemoteImage(path)) {
+        const ids = this.remoteWaits.get(path) ?? new Set<string>()
+        ids.add(id)
+        this.remoteWaits.set(path, ids)
+      }
+      if (size === undefined) waiting = true
+      else if (size !== null && this.deps.images.drawable(path)) {
+        images[target] = size
+        paths[target] = path
+      }
+    }
+    if (waiting) return null
+    const plain = isPlainText(node)
+    return {
+      paths,
+      card: {
+        id,
+        markdown,
+        images,
+        w: node.w,
+        h: node.h,
+        plain,
+        color:
+          plain && node.color !== undefined ? this.nodeColor(node.color) : null,
+      },
+    }
+  }
+
+  /** Whether what this device keeps of the board's cards is known — read
+   * the first time here, in one go. A board with no store, or no path yet,
+   * keeps nothing. */
+  private keptReady(): boolean {
+    const cache = this.deps.cache
+    const group = cache?.group() ?? ''
+    if (!cache || group === '') return true
+    if (this.keptGroup === group) return true
+    if (this.keptLoading) return false
+    this.keptLoading = true
+    const settle = (kept: Map<string, KeptBytes>) => {
+      this.kept = kept
+      this.keptGroup = group
+      this.keptLoading = false
+      this.dirty = true
+      // What it keeps of cards the board no longer has goes.
+      for (const id of [...kept.keys()]) {
+        if (!this.nodes.has(id)) this.dropKept(id)
+      }
+    }
+    const readPacks = async () => {
+      const kept = new Map<string, KeptBytes>()
+      for (let i = 0; ; i++) {
+        const data = await cache.store.read(
+          group,
+          TYPESET_GROUP_VERSION,
+          packKey(i),
+        )
+        if (!data) return kept
+        for (const [id, card] of decodePack(data)) kept.set(id, card)
+      }
+    }
+    readPacks().then(settle, (error: unknown) => {
+      this.deps.reportError('kept typesets', error)
+      settle(new Map())
+    })
+    return false
+  }
+
+  /** Places every card owed whose input is the one it was kept from, as one
+   * batch; one kept wrong goes to the worker. */
+  private placeKept(look: Look): void {
+    if (this.keptGroup === null) return
+    const cards: TypesetResultCard[] = []
+    const keys: string[] = []
+    const placed: Sent[] = []
+    for (const [id, pending] of this.pending) {
+      if (pending.stamp !== undefined) continue
+      const ready = this.prepared(id, pending)
+      if (!ready) continue
+      pending.stamp = typesetStamp(look.hash, ready.card, ready.paths)
+      const bytes = this.kept.get(id)
+      if (bytes?.stamp !== pending.stamp) continue
+      const entry = decodeTypeset(id, bytes.data)
+      if (!entry) {
+        this.dropKept(id)
+        continue
+      }
+      this.pending.delete(id)
+      // Its own keys, after the batch's so far.
+      const glyphs = new Uint32Array(entry.card.glyphs)
+      for (let g = 3; g < glyphs.length; g += GLYPH_WORDS) {
+        glyphs[g] += keys.length
+      }
+      keys.push(...entry.keys)
+      cards.push(entry.card)
+      placed.push({ pending, ...ready })
+    }
+    if (cards.length > 0) this.place(look, placed, { cards, keys })
+  }
+
+  /** Keeps on this device the cards the worker typeset, each under the
+   * stamp of what it was typeset from — those still as they were sent. */
+  private keepTypeset(batch: readonly Sent[], result: TypesetResult): void {
+    if (this.keptGroup === null) return
+    const sent = new Map(batch.map((b) => [b.card.id, b]))
+    for (const card of result.cards) {
+      const entry = sent.get(card.id)
+      const stamp = entry?.pending.stamp
+      if (!entry || stamp === undefined) continue
+      if (this.nodes.get(card.id) !== entry.pending.node) continue
+      this.kept.set(card.id, { stamp, data: encodeTypeset(card, result.keys) })
+      this.keptChanged()
+    }
+  }
+
+  private dropKept(id: string): void {
+    if (this.kept.delete(id)) this.keptChanged()
+  }
+
+  /** What is kept changed: written back a while after it last does. */
+  private keptChanged(): void {
+    if (this.keepTimer !== null) clearTimeout(this.keepTimer)
+    this.keepTimer = setTimeout(() => this.writeKept(), KEEP_DELAY_MS)
+  }
+
+  private writeKept(): void {
+    if (this.keepTimer !== null) clearTimeout(this.keepTimer)
+    this.keepTimer = null
+    const cache = this.deps.cache
+    const group = this.keptGroup
+    if (!cache || group === null) return
+    const keys = new Set<string>()
+    encodePacks(this.kept).forEach((data, i) => {
+      keys.add(packKey(i))
+      cache.store.write(group, TYPESET_GROUP_VERSION, packKey(i), data, {
+        width: 0,
+        height: 0,
+        stamp: '',
+        meta: null,
+      })
+    })
+    // The entries past the last now written hold nothing current.
+    cache.store.keep(group, TYPESET_GROUP_VERSION, keys)
   }
 
   private setDrawable(id: string, drawable: boolean): void {
@@ -517,11 +691,7 @@ export class GpuBoard implements ContentLayer {
    * glyph keys — for each card still as it was when it was sent. */
   private place(
     look: Look,
-    batch: readonly {
-      pending: Pending
-      card: TypesetCard
-      paths: Record<string, string>
-    }[],
+    batch: readonly Sent[],
     result: TypesetResult,
   ): void {
     const atlas = this.scene.glyphs

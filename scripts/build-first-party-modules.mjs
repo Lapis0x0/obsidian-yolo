@@ -424,6 +424,18 @@ async function buildModule({
       'process.env.NODE_ENV': JSON.stringify(
         options.development ? 'development' : 'production',
       ),
+      // Each worker's source by its hash: what a module keeps of a worker's
+      // results is told apart by the code that made them.
+      'process.env.YOLO_WORKER_HASHES': JSON.stringify(
+        JSON.stringify(
+          Object.fromEntries(
+            inlineWorkers.map(({ name, source }) => [
+              name,
+              createHash('sha256').update(source).digest('hex').slice(0, 16),
+            ]),
+          ),
+        ),
+      ),
     },
     plugins: [sharedRuntimePlugin],
     legalComments: 'none',
