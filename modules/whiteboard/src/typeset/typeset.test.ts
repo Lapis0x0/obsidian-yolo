@@ -272,6 +272,8 @@ describe('breakLines', () => {
       texts(breakLines([{ text, flags: 0 }], 60, plain, measure))
     expect(lines('一二三）')).toEqual(['一二三）'])
     expect(lines('一二三。')).toEqual(['一二', '三。'])
+    // Before a space it does not end the line: the space hangs after it.
+    expect(lines('一二三） 四')[0]).toBe('一二')
   })
 
   test('a pair of marks gives up its room once, though the canvas trims it too', () => {

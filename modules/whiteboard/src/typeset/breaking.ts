@@ -557,14 +557,19 @@ export function breakLines(
     // A full-width closing bracket at the end of a line may give up its
     // blank half to fit there (`text-spacing-trim: normal`, its
     // `allow-end`) — a bracket only, not a full stop or a comma (measured
-    // in Chrome). It is only fitted so: drawn, it keeps its em.
+    // in Chrome), and only one the line would end at: one a space follows
+    // keeps its em, the space hanging after it. It is only fitted so: drawn,
+    // it keeps its em.
     const last = chunk[chunk.length - 1]
+    const after = atoms[i]
     const endTrim =
-      last.kind === 'cjk' && !last.trimmed && CLOSING_BRACKETS.has(last.text)
+      last.kind === 'cjk' &&
+      !last.trimmed &&
+      CLOSING_BRACKETS.has(last.text) &&
+      after?.kind !== 'space'
         ? last.width / 2
         : 0
     // Broken after it, a box it is in pads its end on this line.
-    const after = atoms[i]
     const endPad = continues(last, after) ? padOf(last) : 0
     const fits = (from: number) =>
       unitDown(from + width + endPad - endTrim) <= maxWidth + 1e-6
