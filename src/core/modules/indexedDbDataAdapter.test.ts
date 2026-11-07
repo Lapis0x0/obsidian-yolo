@@ -148,6 +148,32 @@ describe('IndexedDbDataAdapter', () => {
     expect(new Uint8Array(second)[1_000_000]).toBe(16)
   })
 
+  it('reads a file in one go: its content, nothing when absent, an error for a folder or the other type', async () => {
+    const adapter = createAdapter()
+    await createTree(adapter)
+    await adapter.write('private/notes/a.txt', 'hello')
+    await adapter.writeBinary(
+      'private/notes/b.bin',
+      new Uint8Array([1, 2, 3]).buffer,
+    )
+
+    await expect(adapter.readFile('private/notes/a.txt', 'text')).resolves.toBe(
+      'hello',
+    )
+    await expect(
+      adapter.readFile('private/notes/b.bin', 'binary'),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]).buffer)
+    await expect(
+      adapter.readFile('private/notes/none.txt', 'text'),
+    ).resolves.toBeNull()
+    await expect(adapter.readFile('private/notes', 'text')).rejects.toThrow(
+      'missing or has the wrong type',
+    )
+    await expect(
+      adapter.readFile('private/notes/a.txt', 'binary'),
+    ).rejects.toThrow('missing or has the wrong type')
+  })
+
   it('persists records across adapter instances for the same vault identity', async () => {
     const app = new FakeAppLocalStorage()
     const indexedDB = new IDBFactory()

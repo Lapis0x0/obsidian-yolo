@@ -75,6 +75,29 @@ describe('ModulePrivateStorageCapabilityProvider with IndexedDbDataAdapter', () 
     }
   })
 
+  it('reads a blob in one adapter read, without a stat first', async () => {
+    const { adapter, lifecycle, storage } = createStorage()
+    try {
+      await storage.writeText('notes/a.json', '{"a":1}')
+      await storage.writeBinary('notes/b.bin', new Uint8Array([4, 5]).buffer)
+      await storage.mkdir('notes/folder')
+      const stat = jest.spyOn(adapter, 'stat')
+
+      await expect(storage.readJson('notes/a.json')).resolves.toEqual({ a: 1 })
+      await expect(storage.readBinary('notes/b.bin')).resolves.toEqual(
+        new Uint8Array([4, 5]).buffer,
+      )
+      await expect(storage.readText('notes/none.txt')).resolves.toBeNull()
+      await expect(storage.readBinary('notes/folder')).rejects.toThrow(
+        'missing or has the wrong type',
+      )
+      expect(stat).not.toHaveBeenCalled()
+    } finally {
+      lifecycle.dispose()
+      adapter.close()
+    }
+  })
+
   it('preserves both trees when a directory rename conflicts', async () => {
     const { adapter, lifecycle, storage } = createStorage()
     try {

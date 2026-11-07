@@ -137,6 +137,30 @@ export class IndexedDbDataAdapter {
     })
   }
 
+  /**
+   * A file's content in one transaction: null when nothing is at `path`,
+   * and an error for a folder or a file of the other type. A record holds
+   * its type, size and data together, so a stat before the read would load
+   * the same record twice to learn nothing the read does not.
+   */
+  async readFile(path: string, type: 'text'): Promise<string | null>
+  async readFile(path: string, type: 'binary'): Promise<ArrayBuffer | null>
+  async readFile(
+    path: string,
+    type: 'text' | 'binary',
+  ): Promise<string | ArrayBuffer | null> {
+    const normalizedPath = normalizePath(path)
+    return this.readTransaction(async (store) => {
+      const record = parseOptionalRecord(
+        await requestResult(store.get(normalizedPath)),
+        normalizedPath,
+      )
+      if (!record) return null
+      if (record.type !== type) throw unreadableError(normalizedPath)
+      return record.data
+    })
+  }
+
   async write(path: string, data: string): Promise<void> {
     if (typeof data !== 'string') {
       throw new TypeError('IndexedDB file content must be a string')

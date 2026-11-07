@@ -15,7 +15,17 @@ export type ModulePrivateStorageAdapter = Pick<
   | 'mkdir'
   | 'remove'
 > &
-  Partial<Pick<DataAdapter, 'rename'>>
+  Partial<Pick<DataAdapter, 'rename'>> &
+  Partial<{
+    /**
+     * A file's content in one read: null when nothing is there, an error
+     * for a folder or a file of the other type. An adapter that can tell
+     * these apart as it reads offers it; without it a read is a stat, for
+     * those checks, and then the read.
+     */
+    readFile(path: string, type: 'text'): Promise<string | null>
+    readFile(path: string, type: 'binary'): Promise<ArrayBuffer | null>
+  }>
 
 export type ModulePrivateStorageBackend = Readonly<{
   adapter: ModulePrivateStorageAdapter
@@ -170,19 +180,25 @@ function createPrivateStorageScope(
 
   const readText = async (key: string): Promise<string | null> => {
     const { target } = resolveOperation(key)
-    const exists = await assertReadableFile(adapter, target, assertActive)
-    if (!exists) return null
-    const value = await adapter.read(target)
+    const value = adapter.readFile
+      ? await adapter.readFile(target, 'text')
+      : (await assertReadableFile(adapter, target, assertActive))
+        ? await adapter.read(target)
+        : null
     assertActive()
+    if (value === null) return null
     assertBlobSize(textByteLength(value))
     return value
   }
   const readBinary = async (key: string): Promise<ArrayBuffer | null> => {
     const { target } = resolveOperation(key)
-    const exists = await assertReadableFile(adapter, target, assertActive)
-    if (!exists) return null
-    const value = await adapter.readBinary(target)
+    const value = adapter.readFile
+      ? await adapter.readFile(target, 'binary')
+      : (await assertReadableFile(adapter, target, assertActive))
+        ? await adapter.readBinary(target)
+        : null
     assertActive()
+    if (value === null) return null
     assertBlobSize(value.byteLength)
     return copyArrayBuffer(value)
   }
