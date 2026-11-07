@@ -13,6 +13,7 @@ import {
 } from './model'
 import {
   calloutTitlesApart,
+  hasHostHtml,
   hasStrayEmphasis,
   linkText,
   parseCard,
@@ -184,6 +185,48 @@ describe('parseCard', () => {
     expect(linkText('note#one#two')).toBe('note > one > two')
     expect(linkText('#one')).toBe('one')
     expect(linkText('note#^block')).toBe('note > ^block')
+  })
+})
+
+describe('HTML in a card', () => {
+  const shown = (markdown: string): string =>
+    parseCard(markdown)
+      .map(({ block }) =>
+        block.kind === 'paragraph'
+          ? block.inlines.map((i) => i.text).join('')
+          : `[${block.kind}]`,
+      )
+      .join(' | ')
+
+  // As Obsidian 1.15's reading view showed each (2026-11-08).
+  test('the tags of no element are dropped, what is between them kept', () => {
+    expect(shown('x <memory> y')).toBe('x  y')
+    expect(shown('x <memory>inner **b**</memory> y')).toBe('x inner b y')
+    expect(shown('<issue> — <why it matters> — **Fix: <suggestion>**')).toBe(
+      ' —  — Fix: ',
+    )
+    expect(shown('<memory>\nline1 **b**\nline2\n</memory>\n\nafter')).toBe(
+      'line1 **b** line2 | after',
+    )
+    expect(hasHostHtml(parseCard('x <memory>inner</memory> y'))).toBe(false)
+  })
+
+  test('not a tag, or in code, is text', () => {
+    expect(shown('do <issue|PR> now')).toBe('do <issue|PR> now')
+    expect(hasHostHtml(parseCard('`<memory>` and\n\n```\n<div>\n```'))).toBe(
+      false,
+    )
+  })
+
+  test("an element HTML has, or a tag closed in itself, is the host's", () => {
+    expect(hasHostHtml(parseCard('a <sup>2</sup> b'))).toBe(true)
+    expect(hasHostHtml(parseCard('x <span>s</span> y'))).toBe(true)
+    expect(hasHostHtml(parseCard('a <mask/> b'))).toBe(true)
+    expect(
+      hasHostHtml(parseCard('<details>\n<summary>s</summary>\n</details>')),
+    ).toBe(true)
+    // A line break is the typesetter's.
+    expect(hasHostHtml(parseCard('a<br>b and <br/>c'))).toBe(false)
   })
 })
 

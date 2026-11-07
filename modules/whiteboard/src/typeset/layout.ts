@@ -272,6 +272,7 @@ function layoutBlock(
     case 'table':
       return layoutTable(ctx, block, left, right, y, voice)
     case 'nothing':
+    case 'host':
       return y
     case 'rule': {
       const { rule } = tokens

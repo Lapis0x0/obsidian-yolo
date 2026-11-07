@@ -197,24 +197,40 @@ export function stripFrontmatter(markdown: string): string {
  * is too.
  */
 export function hasStrayEmphasis(sections: readonly Section[]): boolean {
-  const stray = (inlines: readonly Inline[]) =>
-    inlines.some(
-      (inline) => !(inline.flags & CODE) && /\S\*+\s/.test(inline.text),
-    )
+  return someInline(
+    sections,
+    (inline) => !(inline.flags & CODE) && /\S\*+\s/.test(inline.text),
+  )
+}
+
+/** Whether a card holds HTML only the host draws (`tagKind`). */
+export function hasHostHtml(sections: readonly Section[]): boolean {
+  return someInline(sections, (inline) => inline.host === true, 'host')
+}
+
+/** Whether any run of text in the sections is `test`'s, or any block is
+ * of kind `kind`. */
+function someInline(
+  sections: readonly Section[],
+  test: (inline: Inline) => boolean,
+  kind?: Block['kind'],
+): boolean {
+  const inlines = (list: readonly Inline[]) => list.some(test)
   const inSections = (list: readonly Section[]): boolean =>
     list.some(({ block }) => {
+      if (block.kind === kind) return true
       switch (block.kind) {
         case 'paragraph':
         case 'heading':
-          return stray(block.inlines)
+          return inlines(block.inlines)
         case 'list':
           return block.items.some((item) => inSections(item.children))
         case 'quote':
           return inSections(block.children)
         case 'callout':
-          return stray(block.title) || inSections(block.children)
+          return inlines(block.title) || inSections(block.children)
         case 'table':
-          return [block.header, ...block.rows].some((row) => row.some(stray))
+          return [block.header, ...block.rows].some((row) => row.some(inlines))
         default:
           return false
       }
@@ -298,9 +314,14 @@ function blockOf(node: Flow): Block | null {
       return { kind: 'rule' }
     case 'html': {
       if (/^\s*<!--[\s\S]*-->\s*$/.test(node.value)) return { kind: 'nothing' }
+      // An element HTML has, drawn as the browser draws it: the host's.
+      for (const tag of node.value.match(HTML_TAG) ?? []) {
+        if (tagKind(tag) === 'host') return { kind: 'host' }
+      }
       // Its text, a line per `<br>` — a last one ends the block rather than
       // starting a line — and the source's own line ends a space, as HTML
-      // has them. Any other tag keeps the card the host's (`needsHost`).
+      // has them; the tags of no element dropped, as Obsidian's sanitizer
+      // drops them.
       const parts = node.value.split(/<br\s*\/?>/i).map((part) =>
         part
           .replace(/<[^>]*>/g, '')
@@ -322,6 +343,44 @@ function blockOf(node: Flow): Block | null {
       return null
   }
 }
+
+/** A tag, or a comment, in HTML a card holds. */
+const HTML_TAG = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>]*>/g
+
+/**
+ * What a tag written in a card is, as Obsidian's reading view shows it
+ * (measured, 2026-11-08): a line break; one of an element HTML has, which
+ * the browser draws (`<sup>`, `<span>`, `<details>`) — the host's to show;
+ * or the tag of no element, which an AI's notes are full of (`<memory>`,
+ * `<issue>`, `<why it matters>`) and the sanitizer drops, keeping what is
+ * between. Not one written `<mask/>`: closed in itself, it takes the text
+ * after it with it — the host's too. A comment shows nothing.
+ */
+function tagKind(tag: string): 'break' | 'host' | 'dropped' {
+  if (tag.startsWith('<!--')) return 'dropped'
+  const name = /^<\/?([A-Za-z][\w-]*)/.exec(tag)?.[1].toLowerCase()
+  if (name === undefined) return 'dropped'
+  if (name === 'br') return 'break'
+  if (HTML_ELEMENTS.has(name) || /\/\s*>$/.test(tag)) return 'host'
+  return 'dropped'
+}
+
+/** HTML's elements, obsolete ones with them, and SVG's and MathML's roots. */
+const HTML_ELEMENTS = new Set(
+  (
+    'a abbr acronym address area article aside audio b base basefont bdi ' +
+    'bdo big blink blockquote body br button canvas caption center cite ' +
+    'code col colgroup data datalist dd del details dfn dialog dir div dl ' +
+    'dt em embed fieldset figcaption figure font footer form frame ' +
+    'frameset h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img ' +
+    'input ins kbd label legend li link main map mark marquee math menu ' +
+    'meta meter nav nobr noembed noframes noscript object ol optgroup ' +
+    'option output p param picture plaintext pre progress q rb rp rt rtc ' +
+    'ruby s samp script search section select slot small source span ' +
+    'strike strong style sub summary sup svg table tbody td template ' +
+    'textarea tfoot th thead time title tr track tt u ul var video wbr xmp'
+  ).split(' '),
+)
 
 const EMPTY_TASK = /^\[([ xX])\]\s*$/
 
@@ -485,10 +544,17 @@ function walk(
       out.push({ text: '\n', flags: 0 })
       return
     case 'html':
-      if (/^<br\s*\/?>$/i.test(node.value.trim())) {
-        out.push({ text: '\n', flags: 0 })
+      switch (tagKind(node.value.trim())) {
+        case 'break':
+          out.push({ text: '\n', flags: 0 })
+          return
+        case 'host':
+          out.push({ text: '', flags, host: true })
+          return
+        default:
+          // A tag of no element (`<memory>`), or a comment: nothing shown.
+          return
       }
-      return
     case 'footnoteReference':
       push(out, `[${node.identifier}]`, flags | LINK, state)
       return
@@ -595,6 +661,8 @@ function merge(runs: readonly Inline[]): Inline[] {
       !run.linkIcon &&
       !last.math &&
       !run.math &&
+      !last.host &&
+      !run.host &&
       last.flags === run.flags &&
       last.text !== '\n' &&
       run.text !== '\n' &&

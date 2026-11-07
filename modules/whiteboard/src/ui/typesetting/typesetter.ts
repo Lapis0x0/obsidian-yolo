@@ -7,7 +7,7 @@ import { type DrawOp, layoutCard } from '../../typeset/layout'
 import { formulasIn, mathKey } from '../../typeset/math'
 import type { Section } from '../../typeset/model'
 import { paint } from '../../typeset/paint'
-import { hasStrayEmphasis, parseCard } from '../../typeset/parse'
+import { hasHostHtml, hasStrayEmphasis, parseCard } from '../../typeset/parse'
 import { type TypesetTokens, contentClip } from '../../typeset/tokens'
 import { fontSize } from '../gpu/glyphs'
 import { cardInstances, packColor } from '../gpu/instances'
@@ -135,6 +135,7 @@ export class Typesetter {
         host:
           needsHost(card.markdown, card.images ?? {}) ||
           hasStrayEmphasis(sections) ||
+          hasHostHtml(sections) ||
           math.looseDisplay ||
           unlaid,
         ...(missing.length > 0 ? { math: missing } : {}),
@@ -326,14 +327,13 @@ export class Typesetter {
 /** Code blocks a plugin, or Obsidian itself, draws as something else. */
 const DRAWN_FENCES =
   /^\s*(?:```|~~~)\s*(?:mermaid|dataview|dataviewjs|tasks|query|chart|excalidraw|math|latex|ad-[\w-]+)\b/im
-/** A tag, but a line break, which the typesetter breaks the line at. */
-const HTML = /<\/?(?!br\b)[a-z][\w-]*(?:\s[^>]*)?>/i
 
 /**
  * Whether a card's markdown holds what only the host's renderer shows as it
  * should — an embed that is not an image, an image whose size is not known
- * (`images`), HTML, a block a plugin draws. (Math is the typesetter's once
- * each formula is laid out: `typeset`.) Such a card keeps its DOM
+ * (`images`), a block a plugin draws. (Math is the typesetter's once each
+ * formula is laid out, and HTML the tags of no element it drops: both are
+ * read off the parsed card, in `typeset`.) Such a card keeps its DOM
  * where it can be read; the typesetter only stands in for it far away,
  * where its picture is enough. An empty card is the typesetter's: it shows
  * nothing until it is the one selected or being edited, which have their
@@ -349,5 +349,5 @@ export function needsHost(
     // its bytes are kept (../../host/remoteImages.ts).
     if (!image || !(image.target in images)) return true
   }
-  return DRAWN_FENCES.test(markdown) || HTML.test(markdown)
+  return DRAWN_FENCES.test(markdown)
 }

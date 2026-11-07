@@ -39,6 +39,9 @@ export type Inline = Readonly<{
   linkIcon?: true
   /** A formula (./math.ts): `$…$` in a line, laid out by MathJax. */
   math?: Readonly<{ tex: string; display: boolean }>
+  /** HTML the browser draws (`<sup>`) where it is: drawn as nothing, and
+   * the card is the host's to show (./parse.ts's `hasHostHtml`). */
+  host?: true
 }>
 
 export type ListItem = Readonly<{
@@ -74,6 +77,9 @@ export type Block =
   | Readonly<{ kind: 'code'; text: string }>
   /** A display formula (`$$…$$`) that is a paragraph of its own. */
   | Readonly<{ kind: 'math'; tex: string }>
+  /** An HTML block the browser draws (`<details>`): drawn as nothing, and
+   * the card is the host's to show. */
+  | Readonly<{ kind: 'host' }>
   | Readonly<{
       kind: 'table'
       header: readonly (readonly Inline[])[]
