@@ -38,6 +38,7 @@ import {
 } from '../typesetting/typesetProtocol'
 
 import { GLYPH_WORDS, packColor } from './instances'
+import type { DrawnText } from './passages'
 import { GpuScene, type SceneFrame } from './scene'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
@@ -85,6 +86,9 @@ export type GpuBoardDeps = Readonly<{
    * layer's drawing, so a mounted card is dropped here. */
   isMounted: (id: string) => boolean
   isSelected: (id: string) => boolean
+  /** Cards were typeset anew: what reaches a passage in them is placed
+   * again (./passages.ts). */
+  onTypeset: (ids: readonly string[]) => void
   /** Has the overview draw again: it asks anew which cards this layer
    * draws. */
   redrawOverview: () => void
@@ -122,6 +126,8 @@ export class GpuBoard implements ContentLayer {
   /** The typeset cards that hold only what the typesetter draws: what may
    * be drawn rather than built at any zoom (`drawable`). */
   private readonly drawables = new Set<string>()
+  /** Each typeset card's text as drawn, for its passages. */
+  private readonly texts = new Map<string, DrawnText>()
   private drawableRevision = 0
   /** Cards whose content changed since they were last typeset: what the
    * scene has of them is out of date, so they are built until it is not.
@@ -167,6 +173,7 @@ export class GpuBoard implements ContentLayer {
       this.scene.removeCard(id)
       this.setDrawable(id, false)
       this.changed.delete(id)
+      this.texts.delete(id)
     }
     this.scene.setOrder(cards)
     this.dirty = true
@@ -193,6 +200,12 @@ export class GpuBoard implements ContentLayer {
       this.scene.usable &&
       !this.changed.has(id)
     )
+  }
+
+  /** The text a typeset card draws and where, for placing a passage in
+   * it while it is drawn (./passages.ts); null before it is typeset. */
+  drawnText(id: string): DrawnText | null {
+    return this.texts.get(id) ?? null
   }
 
   /** Changes whenever `drawable` may answer differently. */
@@ -412,6 +425,7 @@ export class GpuBoard implements ContentLayer {
         : atlas.glyphId(parsed.text, parsed.font)
     })
     const sent = new Map(batch.map((b) => [b.card.id, b]))
+    const placed: string[] = []
     for (const typeset of result.cards) {
       const entry = sent.get(typeset.id)
       if (!entry || this.nodes.get(typeset.id) !== entry.pending.node) continue
@@ -423,6 +437,11 @@ export class GpuBoard implements ContentLayer {
       }
       const { node } = entry.pending
       this.setDrawable(node.id, !typeset.host)
+      this.texts.set(node.id, {
+        shown: typeset.shown,
+        runs: new Float32Array(typeset.runs),
+      })
+      placed.push(node.id)
       if (this.changed.delete(node.id)) this.drawableRevision += 1
       // Not shown until the overview claims it: it draws the surface.
       const before = this.scene.cardOf(node.id)
@@ -443,6 +462,7 @@ export class GpuBoard implements ContentLayer {
     }
     // The overview draws their pictures until it asks again.
     this.deps.redrawOverview()
+    if (placed.length > 0) this.deps.onTypeset(placed)
   }
 
   /**

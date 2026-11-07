@@ -31,6 +31,9 @@ export type DrawOp =
       text: string
       font: string
       color: string
+      /** A list's number: drawn, but not text of the card's — the DOM's is
+       * a CSS marker, in no text node. */
+      marker?: true
     }>
   | Readonly<{
       op: 'rect'
@@ -465,6 +468,7 @@ function layoutList(
         text: label,
         font,
         color: L.numberColor,
+        marker: true,
       })
     } else {
       ctx.ops.push({

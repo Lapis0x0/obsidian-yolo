@@ -1,10 +1,13 @@
+import { textAnchorAt } from '../../domain/textAnchor'
 import { absoluteSrc, splitFamilies } from '../typesetting/fontSources'
 import { glyphKey, iconKey, parseKey } from '../typesetting/typesetProtocol'
 import { needsHost } from '../typesetting/typesetter'
 
+
 import { shelfSpot } from './atlas'
 import { fontSize, placeRun, resizeFont } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'
+import { placeDrawnPassage } from './passages'
 
 const advance = (glyph: string): number =>
   (glyph.codePointAt(0) ?? 0) > 0x2e80 ? 16 : 8
@@ -147,5 +150,41 @@ describe('needsHost', () => {
     expect(needsHost('# Title\n- a **b** [[link]]')).toBe(false)
     expect(needsHost('costs $5 and $10 today')).toBe(false)
     expect(needsHost('```ts\nconst a = 1\n```')).toBe(false)
+  })
+})
+
+describe('placeDrawnPassage', () => {
+  // Two runs on two lines: "Hello world" and "second line".
+  const drawn = {
+    shown: 'Hello worldsecond line',
+    runs: new Float32Array([0, 11, 10, 0, 120, 20, 11, 22, 10, 24, 120, 44]),
+  }
+  const source = '# Hello world\n\nsecond line\n'
+  const anchor = (start: number, end: number) =>
+    textAnchorAt(source, [start, end])
+
+  test('a passage across a run, spread over its characters', () => {
+    // "world" in the first run: characters 6 to 11 of 11.
+    const placed = placeDrawnPassage(drawn, source, anchor(8, 13))
+    expect(placed).toEqual({
+      state: 'visible',
+      top: 0,
+      bottom: 20,
+      left: 10 + (110 * 6) / 11,
+      right: 120,
+    })
+  })
+
+  test('across lines it spans them; one not drawn is below', () => {
+    const both = placeDrawnPassage(drawn, source, anchor(2, 26))
+    expect(both).toMatchObject({ state: 'visible', top: 0, bottom: 44 })
+    const longer = `${source}\nthird part never drawn`
+    expect(
+      placeDrawnPassage(
+        drawn,
+        longer,
+        textAnchorAt(longer, [longer.length - 5, longer.length]),
+      ),
+    ).toEqual({ state: 'below' })
   })
 })

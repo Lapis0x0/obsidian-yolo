@@ -72,10 +72,42 @@ export class Typesetter {
       })
       const rects = content.rects.buffer as ArrayBuffer
       const glyphs = content.glyphs.buffer as ArrayBuffer
-      out.push({ id: card.id, rects, glyphs, host: needsHost(card.markdown) })
-      transfer.push(rects, glyphs)
+      const { shown, runs } = this.runsOf(ops)
+      out.push({
+        id: card.id,
+        rects,
+        glyphs,
+        host: needsHost(card.markdown),
+        shown,
+        runs,
+      })
+      transfer.push(rects, glyphs, runs)
     }
     return { result: { cards: out, keys }, transfer }
+  }
+
+  /** The text a card draws, run by run, and where each run is. */
+  private runsOf(ops: readonly DrawOp[]): {
+    shown: string
+    runs: ArrayBuffer
+  } {
+    let shown = ''
+    const values: number[] = []
+    for (const op of ops) {
+      if (op.op !== 'text' || op.marker) continue
+      const { ascent, descent } = this.metrics(op.font)
+      const start = shown.length
+      shown += op.text
+      values.push(
+        start,
+        shown.length,
+        op.x,
+        op.y - Math.round(ascent),
+        op.x + this.measure(op.text, op.font),
+        op.y + Math.round(descent),
+      )
+    }
+    return { shown, runs: new Float32Array(values).buffer }
   }
 
   /** A card laid out, as ../../typeset/layout.ts's draw ops. */

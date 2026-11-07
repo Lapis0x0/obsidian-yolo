@@ -64,7 +64,15 @@ export type TypesetResultCard = Readonly<{
   /** It holds what only the host's renderer shows as it should
    * (../typesetting/typesetter.ts's `needsHost`): kept in the DOM near to. */
   host: boolean
+  /** Its text as drawn, run after run in reading order — what a passage
+   * in it is found in (../gpu/passages.ts). */
+  shown: string
+  /** Per run, RUN_FIELDS floats: where its text is in `shown` (start,
+   * end), and its box in the card (left, top, right, bottom). */
+  runs: ArrayBuffer
 }>
+
+export const RUN_FIELDS = 6
 
 export type TypesetResult = Readonly<{
   cards: readonly TypesetResultCard[]

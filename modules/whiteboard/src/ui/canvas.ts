@@ -208,6 +208,7 @@ import {
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
 import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
+import { placeDrawnPassage } from './gpu/passages'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
@@ -1912,6 +1913,9 @@ export class WhiteboardCanvas {
           view: this.core.getView,
           isMounted: (id) => this.engine.mounted.has(id),
           isSelected: (id) => this.selectedIds.has(id),
+          onTypeset: (ids) => {
+            for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
+          },
           redrawOverview: () => this.overviewLayer?.markDirty(),
           readNote: async (path) => {
             try {
@@ -4914,7 +4918,13 @@ export class WhiteboardCanvas {
     if (anchor.kind === 'text') {
       const runtime = this.cardRenderer.getRuntime(id)
       const source = this.passageSource(id)
-      if (!runtime?.el || !runtime.bodyEl || source === null) return null
+      if (source === null) return null
+      if (!runtime?.el || !runtime.bodyEl) {
+        // Drawn by the GPU scene rather than built: placed in what it laid
+        // out.
+        const drawn = this.gpuBoard?.drawnText(id)
+        return drawn ? placeDrawnPassage(drawn, source, anchor) : null
+      }
       return inBoardUnits(
         placeTextPassage(runtime.el, runtime.bodyEl, source, anchor),
         runtime.el,
