@@ -1,4 +1,5 @@
 import type { HighlightAnchor } from '../../domain/pdfAnnotations'
+import type { SearchTextItem } from '../../domain/textSearch'
 
 import {
   type PageFrame,
@@ -10,7 +11,6 @@ import {
   rectBox,
   resolveHighlightSelection,
 } from './annotationGeometry'
-import type { SearchTextItem } from './textSearch'
 
 /** A 600 × 800 page with no rotation: y flips, origin at the bottom. */
 const upright: PageFrame = {

@@ -19,14 +19,13 @@ import type {
   PdfRectTuple,
   SelectionTuple,
 } from '../../domain/pdfAnnotations'
-
 import {
   type SearchTextItem,
   UNSPACED_SCRIPT,
   buildPageSearchIndex,
   findInPage,
   normalizeQuery,
-} from './textSearch'
+} from '../../domain/textSearch'
 
 export type PagePoint = readonly [x: number, y: number]
 

@@ -17,14 +17,15 @@
 // kept apart from anything annotations will paint: search owns these two
 // highlights and nothing else.
 
-import { createReaderIconButton } from './icons'
 import {
   type PageSearchIndex,
   type SearchTuple,
   buildPageSearchIndex,
   findInPage,
   normalizeQuery,
-} from './textSearch'
+} from '../../domain/textSearch'
+
+import { createReaderIconButton } from './icons'
 
 type Translate = (key: string) => string
 

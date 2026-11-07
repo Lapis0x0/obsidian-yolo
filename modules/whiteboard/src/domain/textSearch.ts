@@ -1,5 +1,6 @@
-// Pure text matching for the PDF reader's in-document search
-// (./pdfSearch.ts). No DOM, no host: a page arrives as its text items (the
+// Pure text matching: the PDF reader's in-document search
+// (../ui/pdf/pdfSearch.ts), and the board's over its cards' text
+// (./boardFind.ts). No DOM, no host: a page arrives as its text items (the
 // Host API's `page.getTextItems()`, one per text-layer span) and a match
 // leaves as a selection tuple — `[startItem, startOffset, endItem, endOffset]`
 // in the raw item text — which is exactly what the page's text layer turns
@@ -18,7 +19,10 @@
 //   - a line break joins the two lines with a space between Latin text and
 //     with nothing between CJK text — a Chinese sentence wrapped across two
 //     lines is one sentence, an English one is two words. No word boundaries
-//     are assumed anywhere, so a query matches inside a word or a CJK run.
+//     are assumed anywhere, so a query matches inside a word or a CJK run;
+//   - and characters a caller says to ignore (`ignore`) take no part at all,
+//     on either side — a card's Markdown marks, so that "**a** b" is found
+//     as the "a b" it shows.
 
 export type SearchTextItem = Readonly<{ text: string; endsLine: boolean }>
 
@@ -49,10 +53,10 @@ export const UNSPACED_SCRIPT =
 const WHITESPACE = /\s/
 
 /** A query folded the way page text is. Empty when it has nothing to find. */
-export function normalizeQuery(query: string): string {
+export function normalizeQuery(query: string, ignore?: RegExp): string {
   let out = ''
   for (const char of query) {
-    const folded = foldChar(char)
+    const folded = foldChar(char, ignore)
     if (folded === ' ') {
       if (out !== '' && !out.endsWith(' ')) out += ' '
       continue
@@ -64,11 +68,50 @@ export function normalizeQuery(query: string): string {
 
 export function buildPageSearchIndex(
   items: readonly SearchTextItem[],
+  ignore?: RegExp,
 ): PageSearchIndex {
   let text = ''
   const itemAt: number[] = []
   const offsetAt: number[] = []
   const lengthAt: number[] = []
+  foldItems(items, ignore, (chunk, item, offset, length) => {
+    for (let k = 0; k < chunk.length; k += 1) {
+      itemAt.push(item)
+      offsetAt.push(offset)
+      lengthAt.push(length)
+    }
+    text += chunk
+  })
+  return {
+    text,
+    items: Int32Array.from(itemAt),
+    offsets: Int32Array.from(offsetAt),
+    lengths: Int32Array.from(lengthAt),
+  }
+}
+
+/** The text `buildPageSearchIndex` folds the items to, without where each
+ * character came from: what tells whether a query is there at all, for a
+ * fraction of the memory. */
+export function foldSearchText(
+  items: readonly SearchTextItem[],
+  ignore?: RegExp,
+): string {
+  let text = ''
+  foldItems(items, ignore, (chunk) => {
+    text += chunk
+  })
+  return text
+}
+
+/** The items folded, chunk by chunk, each with the item it came from and its
+ * source character's offset and length there. */
+function foldItems(
+  items: readonly SearchTextItem[],
+  ignore: RegExp | undefined,
+  emit: (chunk: string, item: number, offset: number, length: number) => void,
+): void {
+  let any = false
   // A line ended and the next character decides what joins it.
   let lineBreak = false
   let lastChar = ''
@@ -79,22 +122,17 @@ export function buildPageSearchIndex(
     offset: number,
     length: number,
   ): void => {
-    for (let k = 0; k < chunk.length; k += 1) {
-      itemAt.push(item)
-      offsetAt.push(offset)
-      lengthAt.push(length)
-    }
-    text += chunk
+    emit(chunk, item, offset, length)
+    any = true
     lastChar = chunk[chunk.length - 1]
   }
 
   items.forEach((item, index) => {
     let offset = 0
     for (const char of item.text) {
-      const folded = foldChar(char)
+      const folded = foldChar(char, ignore)
       if (folded === ' ') {
-        if (text !== '' && lastChar !== ' ')
-          push(' ', index, offset, char.length)
+        if (any && lastChar !== ' ') push(' ', index, offset, char.length)
         lineBreak = false
       } else if (folded !== '') {
         if (
@@ -115,13 +153,6 @@ export function buildPageSearchIndex(
     }
     if (item.endsLine) lineBreak = true
   })
-
-  return {
-    text,
-    items: Int32Array.from(itemAt),
-    offsets: Int32Array.from(offsetAt),
-    lengths: Int32Array.from(lengthAt),
-  }
 }
 
 /** Every non-overlapping occurrence of an already-normalized query, in
@@ -147,7 +178,8 @@ export function findInPage(
   }
 }
 
-function foldChar(char: string): string {
+function foldChar(char: string, ignore?: RegExp): string {
+  if (ignore?.test(char)) return ''
   if (WHITESPACE.test(char)) return ' '
   const folded = char.normalize('NFKC').toLowerCase()
   // Compatibility decomposition can itself produce a space ("¨" becomes a
