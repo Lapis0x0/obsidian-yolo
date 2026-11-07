@@ -24,6 +24,8 @@ import { RUN_FIELDS } from '../typesetting/typesetProtocol'
 import type { DrawnText } from './passages'
 
 const STAGE_CLASS = 'yolo-whiteboard-typeset-sample'
+/** How long a card's render is waited for before it is passed over. */
+const RENDER_WAIT_MS = 10_000
 const FULL_WIDTH_MARKS = new Set(
   Array.from('，。、；：）」』】》〉〕〗｝（「『【《〈〔〖｛“”‘’·・'),
 )
@@ -130,8 +132,9 @@ export type TypesetDifference = Readonly<{
   /** What the card holds that a difference may come from. */
   kinds: readonly string[]
   /** `text`: the characters differ; `line`: a character is on another
-   * line; `place`: on its line, but somewhere else. */
-  problem: 'text' | 'line' | 'place'
+   * line; `place`: on its line, but somewhere else; `stuck`: the browser's
+   * render of it never finished (`RENDER_WAIT_MS`). */
+  problem: 'text' | 'line' | 'place' | 'stuck'
   /** Where it starts: the character, and both places. */
   at: number
   context: string
@@ -169,7 +172,25 @@ export async function checkTypeset(
         deps.sourcePath,
       )
       try {
-        await render.rendered
+        const done = await Promise.race([
+          render.rendered.then(() => true),
+          new Promise<false>((resolve) =>
+            doc.defaultView?.setTimeout(() => resolve(false), RENDER_WAIT_MS),
+          ),
+        ])
+        if (!done) {
+          differences.push({
+            id: node.id,
+            drawable: deps.drawable(node.id),
+            kinds: kindsOf(body),
+            problem: 'stuck',
+            at: 0,
+            context: '',
+            dom: null,
+            typeset: null,
+          })
+          continue
+        }
         const tokens = deps.style.tokens
         const clip = tokens
           ? contentClip(tokens, isPlainText(node))

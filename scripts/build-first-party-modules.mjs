@@ -402,7 +402,12 @@ async function buildModule({
   const entryPath = path.join(artifactDir, 'entry.js')
   await rm(artifactDir, { recursive: true, force: true })
   await mkdir(artifactDir, { recursive: true })
-  const inlineWorkers = await buildInlineWorkers(id, sourceDir, workers)
+  const inlineWorkers = await buildInlineWorkers(
+    id,
+    sourceDir,
+    workers,
+    options.development,
+  )
   const entryResult = await esbuild.build({
     entryPoints: [path.join(sourceDir, 'index.tsx')],
     outfile: entryPath,
@@ -512,7 +517,7 @@ async function buildModule({
   }
 }
 
-async function buildInlineWorkers(moduleId, sourceDir, workers) {
+async function buildInlineWorkers(moduleId, sourceDir, workers, development) {
   if (!workers || typeof workers !== 'object' || Array.isArray(workers)) {
     throw new Error(`Invalid worker declarations for module: ${moduleId}`)
   }
@@ -537,7 +542,8 @@ async function buildInlineWorkers(moduleId, sourceDir, workers) {
         conditions: ['worker'],
         target: 'es2020',
         external: nodeBuiltins,
-        minify: true,
+        // The dev watcher's keeps its names, for a profile to be read.
+        minify: !development,
         legalComments: 'none',
         metafile: true,
         logLevel: 'silent',
