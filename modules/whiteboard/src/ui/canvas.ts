@@ -207,6 +207,7 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
+import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
@@ -668,6 +669,8 @@ export class WhiteboardCanvas {
   /** How a card looks, as the typesetter that draws card pictures reads
    * it (./pictures/typesetStyle.ts). */
   private typesetStyle: TypesetStyle | null = null
+  /** The GPU scene, behind its development switch (./gpu/gpuBoard.ts). */
+  private gpuBoard: GpuBoard | null = null
   /** The board's line in the host's activity list while it makes pictures
    * (./pictures/activity.ts). */
   private pictureActivity: PictureActivity | null = null
@@ -1582,6 +1585,8 @@ export class WhiteboardCanvas {
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
+    this.gpuBoard?.destroy()
+    this.gpuBoard = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
     this.passagePoints?.destroy()
@@ -1854,6 +1859,24 @@ export class WhiteboardCanvas {
       this.annotationStores,
       () => this.overviewLayer?.markDirty(),
     )
+
+    this.gpuBoard?.destroy()
+    this.gpuBoard = gpuSwitchedOn(this.context.getWindow())
+      ? new GpuBoard({
+          parent: viewport,
+          root,
+          style: typesetStyle,
+          view: this.core.getView,
+          readNote: async (path) => {
+            try {
+              return await this.host.vault.readText(path)
+            } catch {
+              return null
+            }
+          },
+        })
+      : null
+    this.gpuBoard?.setNodes(this.cardNodes)
 
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
@@ -3964,6 +3987,7 @@ export class WhiteboardCanvas {
     // It draws the camera the world layer was just given, and the geometry
     // the queues above have just finished changing.
     this.overviewLayer?.render()
+    this.gpuBoard?.render(now)
     this.minimap?.render(now)
     // Over the cards as this frame draws them, the overview's titles
     // included — see ToolbarController.
@@ -4924,6 +4948,7 @@ export class WhiteboardCanvas {
             return !clip || overlaps(node, clip)
           })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
+    this.gpuBoard?.setNodes(this.cardNodes)
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),

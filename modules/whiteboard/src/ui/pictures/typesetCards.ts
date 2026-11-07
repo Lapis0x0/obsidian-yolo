@@ -45,7 +45,7 @@ const MAX_PIXELS = 400_000
 const FADE = 24
 /** Raised whenever a change to the typesetter changes what a picture looks
  * like, so that pictures made before it are made again. */
-const TYPESET_VERSION = 1
+const TYPESET_VERSION = 2
 /** Widths a measuring context keeps, per font, before it starts afresh. */
 const MEASURES_KEPT = 4096
 

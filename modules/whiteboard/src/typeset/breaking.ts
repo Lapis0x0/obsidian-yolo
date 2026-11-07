@@ -36,6 +36,23 @@ const CLOSING = new Set(
 /** Marks a line may not end with. */
 const OPENING = new Set(Array.from('（「『【《〈〔〖｛‘“([{'))
 
+/** Full-width marks whose ink sits in one half of their em, the other half
+ * blank: closing ones on the left, opening ones on the right. */
+const HALF_CLOSING = new Set(Array.from('，。、；：）」』】》〉〕〗｝'))
+const HALF_OPENING = new Set(Array.from('（「『【《〈〔〖｛'))
+
+/**
+ * Whether a full-width mark followed by `next` gives up the blank half
+ * between them — the browser's `text-spacing-trim: normal`, which sets
+ * "，「" or "」。" in an em and a half rather than two.
+ */
+function trimsBefore(mark: string, next: string): boolean {
+  if (HALF_CLOSING.has(mark)) {
+    return HALF_CLOSING.has(next) || HALF_OPENING.has(next)
+  }
+  return HALF_OPENING.has(mark) && HALF_OPENING.has(next)
+}
+
 function isCjk(cp: number): boolean {
   return (
     (cp >= 0x2e80 && cp <= 0x9fff) ||
@@ -61,6 +78,9 @@ type Atom = {
   /** The room its pill takes before it: only the first atom of a run has
    * any. */
   padLeft: number
+  /** A mark that gave up its blank half (`trimsBefore`): what follows it is
+   * set closer than the mark's own advance, so it ends its piece. */
+  trimmed: boolean
 }
 
 function atomize(text: string): { text: string; kind: AtomKind }[] {
@@ -134,6 +154,18 @@ export function breakLines(
         width,
         breakBefore: previous === null || canBreakBetween(previous, part),
         padLeft: i === 0 ? pill : 0,
+        trimmed: false,
+      }
+      const before: Atom | null = previous
+      if (
+        before !== null &&
+        before.kind === 'cjk' &&
+        part.kind === 'cjk' &&
+        before.padLeft === 0 &&
+        trimsBefore(before.text, part.text)
+      ) {
+        before.width /= 2
+        before.trimmed = true
       }
       atoms.push(atom)
       previous = atom
@@ -278,12 +310,15 @@ function piecesOf(
     })
     current = null
   }
+  let closed = false
   for (const { atom, x } of placed) {
-    if (current && current.run === atom.run) {
+    if (current && current.run === atom.run && !closed) {
       current.text += atom.text
       current.end = x + atom.width
+      closed = atom.trimmed
       continue
     }
+    closed = atom.trimmed
     flush()
     current = {
       run: atom.run,

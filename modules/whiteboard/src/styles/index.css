@@ -32,4 +32,5 @@
 @import './canvas/parked.css';
 @import './canvas/preheat.css';
 @import './canvas/typeset-sample.css';
+@import './canvas/gpu-scene.css';
 @import './canvas/export.css';

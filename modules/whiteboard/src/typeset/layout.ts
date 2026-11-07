@@ -315,8 +315,13 @@ function baselineIn(
   top: number,
   lineHeight: number,
 ): number {
+  // Whole pixels, as the browser keeps a font's ascent and descent: a
+  // baseline placed with the font's own fractions sits a fraction lower
+  // than the card's.
   const { ascent, descent } = ctx.metrics(font)
-  return top + (lineHeight - (ascent + descent)) / 2 + ascent
+  const a = Math.round(ascent)
+  const d = Math.round(descent)
+  return top + (lineHeight - (a + d)) / 2 + a
 }
 
 function drawLine(

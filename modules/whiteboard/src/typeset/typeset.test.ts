@@ -121,6 +121,22 @@ describe('breakLines', () => {
     expect(texts(lines)[0]).toBe('一二')
   })
 
+  test('sets adjacent full-width marks in an em and a half', () => {
+    // "，「" gives up the comma's blank half, as the browser's
+    // text-spacing-trim does, and the opening mark starts a new piece there.
+    const [line] = breakLines(
+      [{ text: '前，「会', flags: 0 }],
+      200,
+      plain,
+      measure,
+    )
+    expect(line.width).toBe(16 * 3.5)
+    expect(line.pieces.map((p) => [p.text, p.x])).toEqual([
+      ['前，', 0],
+      ['「会', 24],
+    ])
+  })
+
   test('cuts a word only when it is wider than the line', () => {
     const lines = breakLines(
       [{ text: 'ab abcdefghij', flags: 0 }],
