@@ -13,6 +13,7 @@
 
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly'
 import { gfm } from 'micromark-extension-gfm'
 
 import { decodedUrl, imageOf } from './images'
@@ -187,15 +188,17 @@ export function stripFrontmatter(markdown: string): string {
 }
 
 /**
- * Whether a `*` was left as text that Obsidian may read otherwise: where
- * CommonMark leaves one unpaired, next to text, Obsidian has been seen to
- * pair it — `\\n* a \\n*` in emphasis. Such a card is the host's to show.
- * One with a space on either side (`2 * 3`) is text to both.
+ * Whether a `*` was left as text that Obsidian reads otherwise: one after
+ * text and before a space can only close emphasis to CommonMark, and left
+ * unpaired is shown as it is; Obsidian has been seen to open emphasis with
+ * it (`\\n* a \\n* b`). Such a card is the host's to show. Any other `*`
+ * left unpaired (`**3.` never closed, `*其次`, `2 * 3`) Obsidian shows as it
+ * is too.
  */
 export function hasStrayEmphasis(sections: readonly Section[]): boolean {
   const stray = (inlines: readonly Inline[]) =>
     inlines.some(
-      (inline) => !(inline.flags & CODE) && /\S\*|\*\S/.test(inline.text),
+      (inline) => !(inline.flags & CODE) && /\S\*+\s/.test(inline.text),
     )
   const inSections = (list: readonly Section[]): boolean =>
     list.some(({ block }) => {
@@ -223,7 +226,9 @@ export function parseCard(markdown: string): Section[] {
     itemSpacesDropped(calloutTitlesApart(stripFrontmatter(markdown))),
   )
   const tree = fromMarkdown(source, {
-    extensions: [gfm()],
+    // Emphasis next to CJK punctuation (`从而**“耗竭”**`), which CommonMark
+    // leaves as text and Obsidian does not.
+    extensions: [gfm(), cjkFriendlyExtension()],
     mdastExtensions: [gfmFromMarkdown()],
   })
   return sectionsOf(tree.children)

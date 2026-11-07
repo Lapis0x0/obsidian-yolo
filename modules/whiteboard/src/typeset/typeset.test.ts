@@ -133,9 +133,17 @@ describe('parseCard', () => {
     expect(section.block.inlines.filter((i) => i.linkIcon).length).toBe(2)
   })
 
+  test('emphasis next to CJK punctuation is emphasis, as Obsidian has it', () => {
+    const [section] = parseCard('从而**“肌醇耗竭”**，导致')
+    if (section.block.kind !== 'paragraph') throw new Error(section.block.kind)
+    const bold = section.block.inlines.find((i) => i.flags & BOLD)
+    expect(bold?.text).toBe('“肌醇耗竭”')
+  })
+
   test("a * left as text next to text is the host's to show", () => {
     expect(hasStrayEmphasis(parseCard('a\\n* \u00a0 b\\n* c'))).toBe(true)
     expect(hasStrayEmphasis(parseCard('2 * 3 and *em*'))).toBe(false)
+    expect(hasStrayEmphasis(parseCard('**3.未闭合\n\n*其次'))).toBe(false)
     expect(hasStrayEmphasis(parseCard('files: `*.md`'))).toBe(false)
   })
 

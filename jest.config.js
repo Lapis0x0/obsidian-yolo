@@ -13,7 +13,7 @@ module.exports = {
   // whiteboard's typesetter parses with) and the ACP SDK (also ESM-only)
   // need transpiling, and linebreak's ES build (see moduleNameMapper); everything else in node_modules stays untransformed.
   transformIgnorePatterns: [
-    '/node_modules/(?!(mdast-util-[a-z-]+|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-[a-z-]+|ccount|escape-string-regexp|markdown-table|longest-streak|zwitch|@agentclientprotocol/sdk|linebreak)/)',
+    '/node_modules/(?!(mdast-util-[a-z-]+|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-[a-z-]+|ccount|escape-string-regexp|markdown-table|longest-streak|zwitch|@agentclientprotocol/sdk|linebreak|get-east-asian-width)/)',
   ],
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],

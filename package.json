@@ -129,6 +129,7 @@
     "lodash.isequal": "^4.5.0",
     "lucide-react": "^0.447.0",
     "mdast-util-from-markdown": "^2.0.1",
+    "micromark-extension-cjk-friendly": "2.0.2",
     "minimatch": "^10.0.1",
     "node-fetch": "^2.6.7",
     "onnxruntime-web": "1.30.0",
