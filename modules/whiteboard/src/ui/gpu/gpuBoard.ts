@@ -23,14 +23,22 @@ import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
-import { layoutCard } from '../../typeset/layout'
-import { parseCard } from '../../typeset/parse'
+import type { TypesetTokens } from '../../typeset/tokens'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
 import type { TypesetStyle } from '../pictures/typesetStyle'
 
-import { cardInstances, packColor } from './instances'
+import { familiesOf, fontSources } from './fontSources'
+import { GLYPH_WORDS } from './instances'
 import { GpuScene } from './scene'
+import {
+  type FontsPayload,
+  TYPESET_WORKER,
+  type TypesetCard,
+  type TypesetPayload,
+  type TypesetResult,
+  parseKey,
+} from './typesetProtocol'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
 
@@ -43,17 +51,33 @@ export function gpuSwitchedOn(win: Window): boolean {
   }
 }
 
+const WORKER_SOURCE = Symbol.for(
+  `yolo.module.inline-worker.v1:whiteboard:${TYPESET_WORKER}`,
+)
+
+/** The typesetting worker's source, which the module's build puts on the
+ * global object (scripts/build-first-party-modules.mjs). */
+export function typesetWorkerSource(): string {
+  const source = (globalThis as Record<symbol, unknown>)[WORKER_SOURCE]
+  if (typeof source !== 'string' || source.length === 0) {
+    throw new Error('the typesetting worker is not in this build')
+  }
+  return source
+}
+
 /** How far above a framed card's bottom edge its content fades out
  * (styles/cards/content.css's mask). */
 const FADE = 24
 /** How long the camera must have been still to count as at rest, ms. */
 const SETTLE_MS = 120
-/** How long a frame may spend typesetting cards, ms. */
-const TYPESET_BUDGET_MS = 4
-const MEASURES_KEPT = 8192
 /** The smallest a card's body type is drawn, in device pixels: below it a
  * card's picture says as much, for far less. */
 const MIN_BODY_DEVICE_PX = 5
+/** Cards a call to the worker typesets, and calls in flight at once: few
+ * enough that what the overview asks for next is not queued behind the
+ * whole board. */
+const BATCH = 32
+const IN_FLIGHT = 2
 
 export type GpuBoardDeps = Readonly<{
   /** Where the scene's canvas goes: appended after the overview's, before
@@ -72,9 +96,13 @@ export type GpuBoardDeps = Readonly<{
    * draws. */
   redrawOverview: () => void
   readNote: (path: string) => Promise<string | null>
+  /** The typesetting worker (./typesetWorker.ts), started. */
+  startWorker: () => YoloModuleHostWorkerV1
+  reportError: (stage: string, error: unknown) => void
 }>
 
-type Pending = { node: BoardNode; text: string | null }
+/** A card owed its content: a note's text is read first. */
+type Pending = { node: BoardNode; text: string | null; reading: boolean }
 
 export class GpuBoard implements ContentLayer {
   readonly canvas: HTMLCanvasElement
@@ -82,13 +110,12 @@ export class GpuBoard implements ContentLayer {
   private readonly nodes = new Map<string, BoardNode>()
   /** Cards whose content is owed, in the order they are typeset. */
   private readonly pending = new Map<string, Pending>()
-  private readonly colors = new Map<string, number>()
-  private readonly widths = new Map<string, Map<string, number>>()
-  private readonly metricsByFont = new Map<
-    string,
-    Readonly<{ ascent: number; descent: number }>
-  >()
-  private readonly parseCtx: CanvasRenderingContext2D
+  /** Null when it could not be started: then nothing is claimed, and the
+   * overview draws pictures as it would without this layer. */
+  private readonly worker: YoloModuleHostWorkerV1 | null
+  private inFlight = 0
+  /** Counts the looks typeset in: a result for an older one is dropped. */
+  private generation = 0
   private lastView: CanvasView | null = null
   private movedAt = 0
   private dirty = true
@@ -108,11 +135,13 @@ export class GpuBoard implements ContentLayer {
     // DEBUG(p4): reachable from the console while the scene is developed.
     Object.assign(this.canvas, { gpuBoard: this })
     this.scene = new GpuScene(this.canvas)
-    const ctx = doc.createElement('canvas').getContext('2d', {
-      willReadFrequently: true,
-    })
-    if (!ctx) throw new Error('no 2D canvas')
-    this.parseCtx = ctx
+    let worker: YoloModuleHostWorkerV1 | null = null
+    try {
+      worker = deps.startWorker()
+    } catch (error) {
+      deps.reportError('typeset worker', error)
+    }
+    this.worker = worker
   }
 
   /** The board's cards, bottom to top. */
@@ -126,7 +155,7 @@ export class GpuBoard implements ContentLayer {
       const before = this.nodes.get(node.id)
       if (before === node) continue
       this.nodes.set(node.id, node)
-      this.pending.set(node.id, { node, text: null })
+      this.pending.set(node.id, { node, text: null, reading: false })
     }
     for (const id of [...this.nodes.keys()]) {
       if (seen.has(id)) continue
@@ -145,7 +174,7 @@ export class GpuBoard implements ContentLayer {
 
   claim(node: BoardNode, rect: CardRect, scale: number): boolean {
     const tokens = this.deps.style.tokens
-    if (!tokens || !this.scene.usable) return false
+    if (!tokens || !this.worker || !this.scene.usable) return false
     const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
     if (tokens.body.size * scale * dpr < MIN_BODY_DEVICE_PX) return false
     if (!this.nodes.has(node.id)) return false
@@ -160,16 +189,10 @@ export class GpuBoard implements ContentLayer {
   /** Called every frame, after the overview's: typesets what is owed, and
    * draws when anything changed. */
   render(now: number): void {
+    const tokens = this.deps.style.tokens
     const hash = this.deps.style.hash
-    if (hash !== this.styleHash && this.deps.style.tokens) {
-      // A new look: every card is typeset again.
-      this.styleHash = hash
-      this.colors.clear()
-      for (const node of this.nodes.values()) {
-        this.pending.set(node.id, { node, text: null })
-      }
-    }
-    if (this.pending.size > 0 && this.deps.style.tokens) this.typeset(now)
+    if (tokens && hash !== this.styleHash) this.newLook(tokens, hash)
+    if (tokens) this.typeset(tokens)
     this.syncShown()
     const view = this.deps.view()
     const last = this.lastView
@@ -239,83 +262,143 @@ export class GpuBoard implements ContentLayer {
   }
 
   destroy(): void {
+    this.worker?.terminate()
     this.scene.dispose()
     this.canvas.remove()
   }
 
-  private typeset(now: number): void {
-    const win = this.canvas.ownerDocument.defaultView
-    const clock = () => win?.performance.now() ?? now
-    const start = clock()
-    // What the overview asked for first, then the rest in board order.
-    const order = [
-      ...[...this.wanted].filter((id) => this.pending.has(id)),
-      ...this.pending.keys(),
-    ]
-    this.wanted.clear()
-    let placed = false
-    for (const id of order) {
-      const pending = this.pending.get(id)
-      if (!pending) continue
-      if (clock() - start > TYPESET_BUDGET_MS) break
-      const { node } = pending
-      if (node.type === 'file' && pending.text === null) {
-        // Read once, then typeset on a later frame.
-        pending.text = ''
-        void this.deps.readNote(node.file).then((text) => {
-          const still = this.pending.get(id)
-          if (still === pending) still.text = text ?? ''
-          this.dirty = true
-        })
-        continue
-      }
-      if (node.type === 'file' && pending.text === '') continue
-      this.pending.delete(id)
-      const markdown = node.type === 'text' ? node.text : (pending.text ?? '')
-      this.place(node, markdown)
-      placed = true
+  /** The look changed — or is read for the first time: its fonts go to the
+   * worker, and every card is typeset again. What is drawn stays until its
+   * replacement comes. */
+  private newLook(tokens: TypesetTokens, hash: string | null): void {
+    this.styleHash = hash
+    this.generation += 1
+    for (const node of this.nodes.values()) {
+      this.pending.set(node.id, { node, text: null, reading: false })
     }
-    // The overview draws their pictures until it asks again.
-    if (placed) this.deps.redrawOverview()
+    const faces = fontSources(this.canvas.ownerDocument, familiesOf(tokens))
+    // Calls are answered in order: whatever is typeset after this is set in
+    // these fonts.
+    this.worker
+      ?.call('fonts', { faces } satisfies FontsPayload)
+      .catch((error: unknown) => this.deps.reportError('typeset fonts', error))
   }
 
-  private place(node: BoardNode, markdown: string): void {
-    const tokens = this.deps.style.tokens
-    if (!tokens) return
-    const plain = isPlainText(node)
-    const inset = plain ? tokens.plainInset : tokens.inset
-    const color =
-      plain && node.color !== undefined ? this.nodeColor(node.color) : null
-    const ops = layoutCard({
-      sections: parseCard(clippedCardMarkdown(node, markdown)),
-      width: node.w,
-      height: node.h - inset.bottom,
-      tokens,
-      plain,
-      color,
-      measure: (text, font) => this.measure(text, font),
-      metrics: (font) => this.metrics(font),
+  /** Hands the worker the next cards owed — those the overview asked for
+   * first, then the rest in board order — once their text is there. */
+  private typeset(tokens: TypesetTokens): void {
+    const worker = this.worker
+    if (!worker || this.pending.size === 0) return
+    while (this.inFlight < IN_FLIGHT) {
+      const order = [
+        ...[...this.wanted].filter((id) => this.pending.has(id)),
+        ...this.pending.keys(),
+      ]
+      const batch: { pending: Pending; card: TypesetCard }[] = []
+      for (const id of order) {
+        if (batch.length >= BATCH) break
+        const pending = this.pending.get(id)
+        if (!pending || pending.reading) continue
+        const { node } = pending
+        if (node.type === 'file' && pending.text === null) {
+          this.read(id, pending)
+          continue
+        }
+        this.pending.delete(id)
+        const markdown = node.type === 'text' ? node.text : (pending.text ?? '')
+        const plain = isPlainText(node)
+        batch.push({
+          pending,
+          card: {
+            id,
+            markdown: clippedCardMarkdown(node, markdown),
+            w: node.w,
+            h: node.h,
+            plain,
+            color:
+              plain && node.color !== undefined
+                ? this.nodeColor(node.color)
+                : null,
+          },
+        })
+      }
+      if (batch.length === 0) return
+      this.wanted.clear()
+      this.inFlight += 1
+      const generation = this.generation
+      worker
+        .call<TypesetResult>('typeset', {
+          tokens,
+          cards: batch.map((b) => b.card),
+        } satisfies TypesetPayload)
+        .then(
+          (result) => {
+            if (generation === this.generation) this.place(batch, result)
+          },
+          (error: unknown) => this.deps.reportError('typeset', error),
+        )
+        .finally(() => {
+          this.inFlight -= 1
+          this.dirty = true
+        })
+    }
+  }
+
+  /** Reads a note's text, for a later batch. */
+  private read(id: string, pending: Pending): void {
+    pending.reading = true
+    if (pending.node.type !== 'file') return
+    void this.deps.readNote(pending.node.file).then((text) => {
+      pending.reading = false
+      pending.text = text ?? ''
+      // Still owed as it was asked for: otherwise asked for anew.
+      if (this.pending.get(id) === pending) this.dirty = true
     })
+  }
+
+  /** What the worker typeset, into the scene — the atlas's ids for its
+   * glyph keys — for each card still as it was when it was sent. */
+  private place(
+    batch: readonly { pending: Pending; card: TypesetCard }[],
+    result: TypesetResult,
+  ): void {
     const atlas = this.scene.glyphs
-    const content = cardInstances(ops, {
-      glyphId: (text, font) => atlas.glyphId(text, font),
-      iconId: (name, size) => atlas.iconId(name, size),
-      color: (css) => this.pack(css),
-      measure: (text, font) => this.measure(text, font),
-      advance: (glyph, font) => atlas.advance(glyph, font),
+    const ids = result.keys.map((key) => {
+      const parsed = parseKey(key)
+      return parsed.kind === 'icon'
+        ? atlas.iconId(parsed.name, parsed.size)
+        : atlas.glyphId(parsed.text, parsed.font)
     })
-    // Not shown until the overview claims it: it draws the card's surface.
-    const before = this.scene.cardOf(node.id)
-    this.scene.setCard(node.id, {
-      x: node.x,
-      y: node.y,
-      w: node.w,
-      h: node.h,
-      frame: null,
-      fade: plain ? 0 : FADE,
-      content,
-    })
-    if (!before) this.scene.setShown(node.id, false)
+    const sent = new Map(batch.map((b) => [b.card.id, b]))
+    for (const typeset of result.cards) {
+      const entry = sent.get(typeset.id)
+      if (!entry || this.nodes.get(typeset.id) !== entry.pending.node) continue
+      const glyphs = new Uint32Array(typeset.glyphs)
+      const used = new Set<number>()
+      for (let i = 3; i < glyphs.length; i += GLYPH_WORDS) {
+        glyphs[i] = ids[glyphs[i]]
+        used.add(glyphs[i])
+      }
+      const { node } = entry.pending
+      // Not shown until the overview claims it: it draws the surface.
+      const before = this.scene.cardOf(node.id)
+      this.scene.setCard(node.id, {
+        x: node.x,
+        y: node.y,
+        w: node.w,
+        h: node.h,
+        frame: null,
+        fade: entry.card.plain ? 0 : FADE,
+        content: {
+          rects: new Uint32Array(typeset.rects),
+          glyphs,
+          glyphIds: [...used],
+        },
+      })
+      if (!before) this.scene.setShown(node.id, false)
+    }
+    // The overview draws their pictures until it asks again.
+    this.deps.redrawOverview()
   }
 
   private nodeColor(color: string): string | null {
@@ -327,54 +410,6 @@ export class GpuBoard implements ContentLayer {
       .getPropertyValue(`--yolo-whiteboard-color-${resolved.preset}`)
       .trim()
     return value ? value : null
-  }
-
-  /** A CSS colour as RGBA8, as the canvas parses it. */
-  private pack(css: string): number {
-    let word = this.colors.get(css)
-    if (word === undefined) {
-      const ctx = this.parseCtx
-      ctx.clearRect(0, 0, 1, 1)
-      ctx.fillStyle = '#000'
-      ctx.fillStyle = css
-      ctx.fillRect(0, 0, 1, 1)
-      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data
-      word = packColor(r, g, b, a)
-      this.colors.set(css, word)
-    }
-    return word
-  }
-
-  private measure(text: string, font: string): number {
-    let known = this.widths.get(font)
-    if (!known) {
-      known = new Map()
-      this.widths.set(font, known)
-    }
-    let width = known.get(text)
-    if (width === undefined) {
-      const ctx = this.parseCtx
-      if (ctx.font !== font) ctx.font = font
-      width = ctx.measureText(text).width
-      if (known.size >= MEASURES_KEPT) known.clear()
-      known.set(text, width)
-    }
-    return width
-  }
-
-  private metrics(font: string): Readonly<{ ascent: number; descent: number }> {
-    let known = this.metricsByFont.get(font)
-    if (!known) {
-      const ctx = this.parseCtx
-      ctx.font = font
-      const m = ctx.measureText('Hg国')
-      known = {
-        ascent: m.fontBoundingBoxAscent,
-        descent: m.fontBoundingBoxDescent,
-      }
-      this.metricsByFont.set(font, known)
-    }
-    return known
   }
 }
 

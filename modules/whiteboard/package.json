@@ -4,7 +4,10 @@
   "private": true,
   "yoloModule": {
     "previewVersion": "0.1.1",
-    "previewTag": "module-whiteboard-v0.1.1"
+    "previewTag": "module-whiteboard-v0.1.1",
+    "workers": {
+      "typeset": "ui/gpu/typesetWorker.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

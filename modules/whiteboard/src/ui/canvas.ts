@@ -207,7 +207,7 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
-import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
+import { GpuBoard, gpuSwitchedOn, typesetWorkerSource } from './gpu/gpuBoard'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
@@ -1904,6 +1904,8 @@ export class WhiteboardCanvas {
               return null
             }
           },
+          startWorker: () => this.host.workers.create(typesetWorkerSource()),
+          reportError: (stage, error) => this.reportError(stage, error),
         })
       : null
     this.gpuBoard?.setNodes(this.ownCardNodes)

@@ -525,6 +525,9 @@ async function buildInlineWorkers(moduleId, sourceDir, workers) {
         write: false,
         format: 'iife',
         platform: 'browser',
+        // A worker has no document: packages that ship a DOM build for
+        // browsers and another for workers resolve to the worker's.
+        conditions: ['worker'],
         target: 'es2020',
         external: nodeBuiltins,
         minify: true,

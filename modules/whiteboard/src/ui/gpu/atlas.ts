@@ -37,8 +37,6 @@ const MIN_GLYPH_PX = 2
 /** How far a picture's scale can be from the one asked for and still count
  * as drawn at it. */
 const SCALE_TOLERANCE = 0.005
-/** Advances a font keeps before they are measured afresh. */
-const ADVANCES_KEPT = 8192
 
 type Glyph = Readonly<{
   text: string
@@ -65,7 +63,6 @@ type Page = {
 export class GlyphAtlas {
   private readonly glyphs: Glyph[] = []
   private readonly ids = new Map<string, number>()
-  private readonly advances = new Map<string, Map<string, number>>()
   private readonly pages: Page[] = []
   /** The page drawn into next. */
   private current = 0
@@ -107,23 +104,6 @@ export class GlyphAtlas {
       color: false,
       icon: name,
     }))
-  }
-
-  /** A glyph's own advance in `font`, world units. */
-  advance(text: string, font: string): number {
-    let known = this.advances.get(font)
-    if (!known) {
-      known = new Map()
-      this.advances.set(font, known)
-    }
-    let width = known.get(text)
-    if (width === undefined) {
-      if (this.measuring.font !== font) this.measuring.font = font
-      width = this.measuring.measureText(text).width
-      if (known.size >= ADVANCES_KEPT) known.clear()
-      known.set(text, width)
-    }
-    return width
   }
 
   /** Whether glyph `id` has a picture drawn at `scale` device pixels per

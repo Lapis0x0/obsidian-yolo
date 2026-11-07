@@ -1,6 +1,8 @@
 import { shelfSpot } from './atlas'
+import { absoluteSrc, splitFamilies } from './fontSources'
 import { fontSize, placeRun, resizeFont } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'
+import { glyphKey, iconKey, parseKey } from './typesetProtocol'
 
 const advance = (glyph: string): number =>
   (glyph.codePointAt(0) ?? 0) > 0x2e80 ? 16 : 8
@@ -95,5 +97,36 @@ describe('cardInstances', () => {
     expect(Array.from(floats.slice(RECT_WORDS + 1, RECT_WORDS + 6))).toEqual([
       3, 3, 4, 4, 2,
     ])
+  })
+})
+
+describe('font sources', () => {
+  test('a family list unquoted, a src made absolute but data left be', () => {
+    expect(splitFamilies(`"Inter Variable", 'A B', serif`)).toEqual([
+      'Inter Variable',
+      'A B',
+      'serif',
+    ])
+    expect(
+      absoluteSrc(
+        `url("./public/Inter.woff2") format("woff2"), url(data:font/woff2;base64,AA==), local(Inter)`,
+        'app://obsidian.md/app.css',
+      ),
+    ).toBe(
+      `url("app://obsidian.md/public/Inter.woff2") format("woff2"), url("data:font/woff2;base64,AA=="), local(Inter)`,
+    )
+  })
+})
+
+test('a glyph or icon key reads back as what it names', () => {
+  expect(parseKey(glyphKey('国', '400 15px Inter'))).toEqual({
+    kind: 'glyph',
+    font: '400 15px Inter',
+    text: '国',
+  })
+  expect(parseKey(iconKey('check', 15))).toEqual({
+    kind: 'icon',
+    name: 'check',
+    size: 15,
   })
 })
