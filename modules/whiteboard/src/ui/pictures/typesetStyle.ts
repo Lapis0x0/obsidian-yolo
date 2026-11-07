@@ -440,6 +440,7 @@ export function measureSample(
   const pre = q('.el-pre:not(.mod-frontmatter) pre')
   const code = pre?.querySelector('code') ?? null
   const codeStyle = code ? textStyle(code) : body
+  const mark = q('mark')
   const table = q('.el-table table')
   const th = q('th')
   const td = q('td')
@@ -507,7 +508,12 @@ export function measureSample(
     boldWeight: Number.parseInt(cs(q('strong') ?? view).fontWeight, 10) || 700,
     linkColor: cs(q('a.external-link') ?? view).color,
     linkIcon: linkIconWidth(q('a.external-link')),
-    highlight: cs(q('mark') ?? view).backgroundColor,
+    highlight: {
+      background: cs(q('mark') ?? view).backgroundColor,
+      padX: mark ? px(cs(mark).paddingLeft) : 0,
+      padY: mark ? px(cs(mark).paddingTop) : 0,
+      radius: mark ? px(cs(mark).borderTopLeftRadius) : 2,
+    },
     muted: resolve('var(--text-muted)'),
     code: pill(q('.el-p p > code')),
     tag: pill(q('a.tag')),

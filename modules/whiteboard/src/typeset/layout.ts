@@ -314,7 +314,13 @@ function styler(
       style = {
         font: fontString(faceOf(tokens, voice, flags)),
         padX:
-          flags & CODE ? tokens.code.padX : flags & TAG ? tokens.tag.padX : 0,
+          flags & CODE
+            ? tokens.code.padX
+            : flags & TAG
+              ? tokens.tag.padX
+              : flags & HIGHLIGHT
+                ? tokens.highlight.padX
+                : 0,
         linkIcon: tokens.linkIcon,
       }
       cache.set(flags, style)
@@ -382,9 +388,9 @@ function drawLine(
   voice: Voice,
 ): void {
   const { tokens, ops } = ctx
-  for (const piece of line.pieces) {
+  line.pieces.forEach((piece, index) => {
     const x = left + piece.x
-    if (piece.icon) continue
+    if (piece.icon) return
     if (piece.image) {
       const h = piece.height ?? 0
       ops.push({
@@ -396,18 +402,27 @@ function drawLine(
         target: piece.image.target,
         color: tokens.embed,
       })
-      continue
+      return
     }
     const { ascent, descent } = ctx.metrics(piece.font)
-    if (piece.flags & HIGHLIGHT) {
+    // A highlight's box runs under every piece of it on the line: drawn
+    // once, at its first.
+    if (
+      piece.flags & HIGHLIGHT &&
+      !(line.pieces[index - 1]?.flags & HIGHLIGHT)
+    ) {
+      let end = index
+      while (line.pieces[end + 1]?.flags & HIGHLIGHT) end += 1
+      const last = line.pieces[end]
+      const h = tokens.highlight
       ops.push({
         op: 'rect',
         x,
-        y: baseline - ascent,
-        w: piece.width,
-        h: ascent + descent,
-        radius: 2,
-        color: tokens.highlight,
+        y: baseline - ascent - h.padY,
+        w: last.x + last.width - piece.x,
+        h: ascent + descent + h.padY * 2,
+        radius: h.radius,
+        color: h.background,
       })
     }
     if (piece.flags & (CODE | TAG)) {
@@ -444,7 +459,7 @@ function drawLine(
         width: Math.max(1, voice.style.size / 14),
       })
     }
-  }
+  })
 }
 
 function layoutList(

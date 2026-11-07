@@ -8,7 +8,7 @@
 
 import LineBreaker from 'linebreak'
 
-import { CODE, type Inline, type InlineImage, TAG } from './model'
+import { CODE, HIGHLIGHT, type Inline, type InlineImage, TAG } from './model'
 
 export type Measure = (text: string, font: string) => number
 
@@ -307,7 +307,18 @@ function atomsOf(
       return
     }
     const style = styleOf(inline.flags)
-    const pill = (inline.flags & (CODE | TAG)) !== 0 ? style.padX : 0
+    // A pill (code, a tag) is padded at both ends; a highlight at the ends
+    // of all of it, which may run over several runs (`==a **b** c==`).
+    const pill = (inline.flags & (CODE | TAG)) !== 0
+    const marked = !pill && (inline.flags & HIGHLIGHT) !== 0
+    const startPad =
+      pill || (marked && !((inlines[run - 1]?.flags ?? 0) & HIGHLIGHT))
+        ? style.padX
+        : 0
+    const endPad =
+      pill || (marked && !((inlines[run + 1]?.flags ?? 0) & HIGHLIGHT))
+        ? style.padX
+        : 0
     const parts = atomize(inline.text, offsets[run], breaks)
     parts.forEach((part, i) => {
       // What it adds after the atom before it in the same run, so that the
@@ -326,14 +337,14 @@ function atomsOf(
           ? measure(part.text, style.font)
           : measure(lead.text + part.text, style.font) -
             measure(lead.text, style.font)
-      if (i === 0) width += pill
-      if (i === parts.length - 1) width += pill
+      if (i === 0) width += startPad
+      if (i === parts.length - 1) width += endPad
       const atom: Atom = {
         ...part,
         run,
         width,
         breakBefore: previous === null || part.breakBefore,
-        padLeft: i === 0 ? pill : 0,
+        padLeft: i === 0 ? startPad : 0,
         trimmed: false,
       }
       const before: Atom | null = previous
@@ -402,22 +413,49 @@ export function breakLines(
 ): Line[] {
   const atoms = atomsOf(inlines, maxWidth, styleOf, measure, imageSize)
 
+  // A pill (code, a tag) or a highlight broken over two lines is padded at
+  // both ends of each (`box-decoration-break: clone`): the line it leaves
+  // ends in its padding, and the line it goes on to starts with it.
+  const boxOf = (run: number): string | null => {
+    const flags = inlines[run].flags
+    if (flags & (CODE | TAG)) return `pill:${run}`
+    return flags & HIGHLIGHT ? 'mark' : null
+  }
+  const padOf = (atom: Atom): number => styleOf(inlines[atom.run].flags).padX
+  const continues = (a: Atom | null, b: Atom | null | undefined): boolean =>
+    a !== null &&
+    b != null &&
+    boxOf(a.run) !== null &&
+    boxOf(a.run) === boxOf(b.run)
+
   const lines: Placed[][] = []
   let line: Placed[] = []
   /** Width of the line up to its last non-space atom. */
   let filled = 0
   /** Width of the spaces after it, which a break drops. */
   let trailing = 0
-  const finish = () => {
+  /** The atom placed last, on this line or the one before. */
+  let lastPlaced: Atom | null = null
+  const finish = (next?: Atom | null) => {
     while (line.length > 0 && line[line.length - 1].atom.kind === 'space') {
       line.pop()
+    }
+    const end = line[line.length - 1]
+    if (end && continues(end.atom, next)) {
+      end.atom = { ...end.atom, width: end.atom.width + padOf(end.atom) }
     }
     lines.push(line)
     line = []
     filled = 0
     trailing = 0
   }
-  const place = (atom: Atom) => {
+  const place = (given: Atom) => {
+    let atom = given
+    if (line.length === 0 && continues(lastPlaced, atom)) {
+      const pad = padOf(atom)
+      atom = { ...atom, padLeft: atom.padLeft + pad, width: atom.width + pad }
+    }
+    lastPlaced = given
     line.push({ atom, x: filled + trailing })
     if (atom.kind === 'space') {
       trailing += atom.width
@@ -433,6 +471,7 @@ export function breakLines(
     const first = atoms[i]
     if (first === null) {
       finish()
+      lastPlaced = null
       i += 1
       continue
     }
@@ -456,8 +495,11 @@ export function breakLines(
       last.kind === 'cjk' && !last.trimmed && CLOSING_BRACKETS.has(last.text)
         ? last.width / 2
         : 0
-    const fits = (from: number) => from + width - endTrim <= maxWidth
-    if (line.length > 0 && !fits(filled + trailing)) finish()
+    // Broken after it, a box it is in pads its end on this line.
+    const after = atoms[i]
+    const endPad = continues(last, after) ? padOf(last) : 0
+    const fits = (from: number) => from + width + endPad - endTrim <= maxWidth
+    if (line.length > 0 && !fits(filled + trailing)) finish(chunk[0])
     if (fits(filled) || line.length > 0) {
       for (const atom of chunk) place(atom)
       continue
@@ -479,7 +521,7 @@ export function breakLines(
           measure,
         )
         if (fit === 0 && line.length > 0) {
-          finish()
+          finish(atom)
           continue
         }
         const take = Math.max(fit, 1)
@@ -493,7 +535,7 @@ export function breakLines(
         restWidth -= headWidth
         place({ ...atom, text: head, width: headWidth })
         atom.padLeft = 0
-        if (rest !== '') finish()
+        if (rest !== '') finish(atom)
       }
     }
   }

@@ -268,6 +268,18 @@ describe('breakLines', () => {
     expect(texts(lines)).toEqual(['a', 'code'])
     expect(lines[1].pieces[0]).toMatchObject({ width: 32 + 8, padLeft: 4 })
   })
+
+  test('a pill broken over two lines is padded at both ends of each', () => {
+    const lines = breakLines(
+      [{ text: 'aaaa bbbb', flags: CODE }],
+      50,
+      (flags) => ({ font: 'f', padX: flags & CODE ? 4 : 0, linkIcon: 0 }),
+      measure,
+    )
+    expect(texts(lines)).toEqual(['aaaa', 'bbbb'])
+    expect(lines[0].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
+    expect(lines[1].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
+  })
 })
 
 describe('layoutCard', () => {
@@ -297,7 +309,7 @@ describe('layoutCard', () => {
     boldWeight: 650,
     linkColor: 'blue',
     linkIcon: 0,
-    highlight: 'yellow',
+    highlight: { background: 'yellow', padX: 0, padY: 0, radius: 2 },
     muted: 'grey',
     code: {
       color: 'black',

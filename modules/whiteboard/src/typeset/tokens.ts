@@ -68,7 +68,14 @@ export type TypesetTokens = Readonly<{
   /** How much wider an external link is than its text: the icon a theme
    * puts after it, and its margin. */
   linkIcon: number
-  highlight: string
+  /** A highlight's box (`<mark>`): its fill, and the padding and corners
+   * a theme gives it, which take room in the line as a pill's do. */
+  highlight: Readonly<{
+    background: string
+    padX: number
+    padY: number
+    radius: number
+  }>
   muted: string
   code: Pill
   tag: Pill
