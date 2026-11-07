@@ -65,6 +65,11 @@ export function paint(
         ctx.lineTo(op.x2, op.y2)
         ctx.stroke()
         break
+      case 'image':
+        // A picture of the card has no image in it: its place, kept.
+        ctx.fillStyle = op.color
+        ctx.fillRect(op.x, op.y, op.w, op.h)
+        break
       case 'dot':
         ctx.fillStyle = op.color
         ctx.beginPath()

@@ -3,7 +3,6 @@ import { absoluteSrc, splitFamilies } from '../typesetting/fontSources'
 import { glyphKey, iconKey, parseKey } from '../typesetting/typesetProtocol'
 import { needsHost } from '../typesetting/typesetter'
 
-
 import { shelfSpot } from './atlas'
 import { fontSize, placeRun, resizeFont } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'

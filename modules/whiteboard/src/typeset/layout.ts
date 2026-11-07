@@ -7,7 +7,13 @@
 // Everything stops at the card's bottom edge: what is below it is never
 // drawn, so it is never laid out either.
 
-import { type Line, type Measure, type RunStyle, breakLines } from './breaking'
+import {
+  type ImageSize,
+  type Line,
+  type Measure,
+  type RunStyle,
+  breakLines,
+} from './breaking'
 import {
   BOLD,
   type Block,
@@ -65,6 +71,17 @@ export type DrawOp =
     }>
   | Readonly<{ op: 'dot'; x: number; y: number; r: number; color: string }>
   | Readonly<{
+      op: 'image'
+      x: number
+      y: number
+      w: number
+      h: number
+      /** What the source names it by (./model.ts's `InlineImage`). */
+      target: string
+      /** What stands in for it where it is not drawn (a picture). */
+      color: string
+    }>
+  | Readonly<{
       op: 'check'
       x: number
       y: number
@@ -91,12 +108,16 @@ export type LayoutInput = Readonly<{
   /** The font's ascent and descent at its size, for placing a baseline in
    * its line box. */
   metrics: (font: string) => Readonly<{ ascent: number; descent: number }>
+  /** An image's own size, by what the source names it; null when it is not
+   * known, and the image is left out. */
+  images?: (target: string) => Readonly<{ w: number; h: number }> | null
 }>
 
 type Ctx = Readonly<{
   ops: DrawOp[]
   tokens: TypesetTokens
   measure: Measure
+  imageSize: ImageSize
   metrics: LayoutInput['metrics']
   bottom: number
 }>
@@ -110,6 +131,14 @@ export function layoutCard(input: LayoutInput): DrawOp[] {
     ops: [],
     tokens,
     measure: input.measure,
+    imageSize: (image, maxWidth) => {
+      const own = input.images?.(image.target)
+      if (!own || own.w <= 0 || own.h <= 0) return null
+      // As wide as written or as itself, never wider than its line
+      // (`max-width: 100%`); as tall as written, or in proportion.
+      const w = Math.min(image.width ?? own.w, maxWidth)
+      return { w, h: image.height ?? (w * own.h) / own.w }
+    },
     metrics: input.metrics,
     bottom: input.height,
   }
@@ -300,14 +329,19 @@ function layoutText(
     Math.max(1, right - left),
     styler(ctx.tokens, voice),
     ctx.measure,
+    ctx.imageSize,
   )
   const lineHeight = voice.style.lineHeight
   lines.forEach((line, i) => {
     if (y >= ctx.bottom) return
-    const baseline = baselineIn(ctx, fontString(voice.style), y, lineHeight)
+    const normal = baselineIn(ctx, fontString(voice.style), y, lineHeight)
+    // An image stands on the baseline: one taller than the line above it
+    // pushes the baseline down, and the line with it.
+    const tallest = Math.max(0, ...line.pieces.map((p) => p.height ?? 0))
+    const baseline = Math.max(normal, y + tallest)
     if (i === 0) firstLine?.(line, y, baseline)
     drawLine(ctx, line, left, baseline, lineHeight, voice)
-    y += lineHeight
+    y += lineHeight + (baseline - normal)
   })
   return y
 }
@@ -338,6 +372,19 @@ function drawLine(
   const { tokens, ops } = ctx
   for (const piece of line.pieces) {
     const x = left + piece.x
+    if (piece.image) {
+      const h = piece.height ?? 0
+      ops.push({
+        op: 'image',
+        x,
+        y: baseline - h,
+        w: piece.width,
+        h,
+        target: piece.image.target,
+        color: tokens.embed,
+      })
+      continue
+    }
     const { ascent, descent } = ctx.metrics(piece.font)
     if (piece.flags & HIGHLIGHT) {
       ops.push({

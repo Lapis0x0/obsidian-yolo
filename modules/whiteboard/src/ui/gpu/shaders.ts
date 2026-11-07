@@ -228,3 +228,34 @@ void main() {
   else { float a = t.a * vColor.a * keep; o = vec4(vColor.rgb * a, a); }
   if (o.a <= 0.0) discard;
 }`
+
+/** An image in a card: one quad, its picture a texture of its own. */
+export const IMAGE_VS = `${HEAD}${CARD_FETCH}
+layout(location = 0) in vec2 corner;
+uniform highp uint slot;
+uniform vec4 rect;
+out vec2 vUV;
+out vec2 vCard;
+flat out vec4 vClip;
+void main() {
+  vec4 box = cardTexel(slot, 0);
+  vec4 depth = cardTexel(slot, 1);
+  vec2 local = rect.xy + corner * rect.zw;
+  vUV = corner;
+  vCard = local;
+  vClip = vec4(box.zw, depth.z, 0.0);
+  gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.y * 2.0 - 1.0, 1.0);
+}`
+
+export const IMAGE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D picture;
+in vec2 vUV;
+in vec2 vCard;
+flat in vec4 vClip;
+out vec4 o;
+${CLIP}
+void main() {
+  o = texture(picture, vUV) * clipped(vCard, vClip);
+  if (o.a <= 0.0) discard;
+}`

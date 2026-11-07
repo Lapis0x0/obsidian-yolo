@@ -70,7 +70,7 @@ describe('parseCard', () => {
 
   test('callouts, quotes, tasks, numbered lists and lone embeds', () => {
     const sections = parseCard(
-      '> [!Tip] Title here\n> body\n\n> quoted\n\n- [ ] todo\n- [x] done\n\n3. three\n\n![[pic.png]]',
+      '> [!Tip] Title here\n> body\n\n> quoted\n\n- [ ] todo\n- [x] done\n\n3. three\n\n![[note]]',
     )
     const [callout, quote, tasks, numbered, embed] = sections.map(
       (s) => s.block,
@@ -84,7 +84,7 @@ describe('parseCard', () => {
     if (tasks.kind !== 'list') throw new Error(tasks.kind)
     expect(tasks.items.map((i) => i.checked)).toEqual([false, true])
     expect(numbered).toMatchObject({ kind: 'list', ordered: true, start: 3 })
-    expect(embed).toEqual({ kind: 'embed', target: 'pic.png' })
+    expect(embed).toEqual({ kind: 'embed', target: 'note' })
   })
 })
 
@@ -304,5 +304,56 @@ describe('layoutCard', () => {
     expect(ops.some((op) => op.op === 'check')).toBe(true)
     // A done task is struck through.
     expect(ops.some((op) => op.op === 'line')).toBe(true)
+  })
+})
+
+describe('images', () => {
+  test('an embed is an image in its line, sized by its own size', () => {
+    const [section] = parseCard('a ![[pic.png|200]] b')
+    if (section.block.kind !== 'paragraph') throw new Error('paragraph')
+    expect(section.block.inlines.find((i) => i.image)?.image).toEqual({
+      target: 'pic.png',
+      width: 200,
+      height: null,
+    })
+    expect(parseCard('![[note]]')[0].block.kind).toBe('embed')
+  })
+
+  test('a line with an image stands on it: the baseline drops by its height', () => {
+    const ops = layoutCard({
+      sections: parseCard('![[pic.png]]\nafter'),
+      width: 300,
+      height: 2000,
+      tokens: {
+        ...({} as TypesetTokens),
+        inset: { top: 0, right: 0, bottom: 0, left: 0 },
+        plainInset: { top: 0, right: 0, bottom: 0, left: 0 },
+        body: {
+          family: 'f',
+          size: 15,
+          weight: 400,
+          italic: false,
+          color: 'black',
+          lineHeight: 24,
+        },
+        boldWeight: 700,
+        embed: 'grey',
+      } as TypesetTokens,
+      plain: true,
+      color: null,
+      measure,
+      metrics: () => ({ ascent: 12, descent: 3 }),
+      images: () => ({ w: 600, h: 300 }),
+    })
+    const image = ops.find((op) => op.op === 'image')
+    // Never wider than its line; in proportion.
+    expect(image).toMatchObject({ x: 0, y: 0, w: 300, h: 150 })
+    const after = ops.find((op) => op.op === 'text' && op.text === 'after')
+    // Its line: the image on the baseline, the line's descent below it.
+    if (after?.op !== 'text') throw new Error('text')
+    expect(after.y).toBeCloseTo(
+      150 + (24 - 15) / 2 + 3 + 24 - 3 - (24 - 15) / 2,
+      0,
+    )
   })
 })

@@ -23,6 +23,7 @@ import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
+import { imageTargets } from '../../typeset/images'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
 import {
@@ -37,9 +38,15 @@ import {
   parseKey,
 } from '../typesetting/typesetProtocol'
 
+import type { ImageSizes } from './imageSizes'
 import { GLYPH_WORDS, packColor } from './instances'
 import type { DrawnText } from './passages'
-import { GpuScene, type SceneFrame } from './scene'
+import {
+  type CardImage,
+  GpuScene,
+  type ImagePicture,
+  type SceneFrame,
+} from './scene'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
 
@@ -93,6 +100,11 @@ export type GpuBoardDeps = Readonly<{
    * draws. */
   redrawOverview: () => void
   readNote: (path: string) => Promise<string | null>
+  /** An image file's picture (../pictures/imageFiles.ts), null while it
+   * has none. */
+  imagePicture: ImagePicture
+  /** The own sizes of the images cards embed. */
+  images: ImageSizes
   /** The board's typesetting worker (../typesetting/typesetClient.ts). */
   typesetter: TypesetClient
   reportError: (stage: string, error: unknown) => void
@@ -114,6 +126,11 @@ export class GpuBoard implements ContentLayer {
   private movedAt = 0
   private dirty = true
   private styleHash: string | null = null
+  /** Has the scene draw again: a picture it shows arrived. */
+  markDirty(): void {
+    this.dirty = true
+  }
+
   /** What the overview's last frame had this layer draw, and where. */
   private claimed = new Map<string, CardRect>()
   /** What the scene shows now. */
@@ -128,6 +145,8 @@ export class GpuBoard implements ContentLayer {
   private readonly drawables = new Set<string>()
   /** Each typeset card's text as drawn, for its passages. */
   private readonly texts = new Map<string, DrawnText>()
+  /** Each typeset card's images: which file, and where in the card. */
+  private readonly cardImages = new Map<string, readonly CardImage[]>()
   private drawableRevision = 0
   /** Cards whose content changed since they were last typeset: what the
    * scene has of them is out of date, so they are built until it is not.
@@ -174,6 +193,8 @@ export class GpuBoard implements ContentLayer {
       this.setDrawable(id, false)
       this.changed.delete(id)
       this.texts.delete(id)
+      this.cardImages.delete(id)
+      this.scene.setImages(id, [])
     }
     this.scene.setOrder(cards)
     this.dirty = true
@@ -182,8 +203,12 @@ export class GpuBoard implements ContentLayer {
   /** A file changed: the note cards showing it are typeset again, and
    * built until they are. */
   fileChanged(path: string): void {
+    this.deps.images.fileChanged(path)
     for (const node of this.nodes.values()) {
-      if (node.type !== 'file' || node.file !== path) continue
+      const embeds = this.cardImages
+        .get(node.id)
+        ?.some((image) => image.path === path)
+      if (!embeds && (node.type !== 'file' || node.file !== path)) continue
       this.pending.set(node.id, { node, text: null, reading: false })
       this.changed.add(node.id)
       this.drawableRevision += 1
@@ -206,6 +231,18 @@ export class GpuBoard implements ContentLayer {
    * it while it is drawn (./passages.ts); null before it is typeset. */
   drawnText(id: string): DrawnText | null {
     return this.texts.get(id) ?? null
+  }
+
+  /** The images the cards drawn now embed, each as wide as it is shown at
+   * its widest, for their pictures to be made (../pictures/imageFiles.ts). */
+  *shownImages(): Iterable<
+    Readonly<{ id: string; path: string; width: number }>
+  > {
+    for (const id of this.shown) {
+      for (const image of this.cardImages.get(id) ?? []) {
+        yield { id, path: image.path, width: image.w }
+      }
+    }
   }
 
   /** Changes whenever `drawable` may answer differently. */
@@ -265,7 +302,11 @@ export class GpuBoard implements ContentLayer {
       this.dirty = true
     }
     if (!this.dirty) return
-    const result = this.scene.render(view, settled || this.movedAt === -1)
+    const result = this.scene.render(
+      view,
+      settled || this.movedAt === -1,
+      this.deps.imagePicture,
+    )
     this.dirty = result.more
   }
 
@@ -342,7 +383,11 @@ export class GpuBoard implements ContentLayer {
         ...[...this.wanted].filter((id) => this.pending.has(id)),
         ...this.pending.keys(),
       ]
-      const batch: { pending: Pending; card: TypesetCard }[] = []
+      const batch: {
+        pending: Pending
+        card: TypesetCard
+        paths: Record<string, string>
+      }[] = []
       for (const id of order) {
         if (batch.length >= BATCH) break
         const pending = this.pending.get(id)
@@ -352,14 +397,35 @@ export class GpuBoard implements ContentLayer {
           this.read(id, pending)
           continue
         }
+        const markdown = clippedCardMarkdown(
+          node,
+          node.type === 'text' ? node.text : (pending.text ?? ''),
+        )
+        // The images it embeds are laid out by their own sizes: it waits
+        // for those to be read.
+        const images: Record<string, Readonly<{ w: number; h: number }>> = {}
+        const paths: Record<string, string> = {}
+        let waiting = false
+        for (const target of imageTargets(markdown)) {
+          const path = this.deps.images.resolve(target)
+          if (path === null) continue
+          const size = this.deps.images.get(path)
+          if (size === undefined) waiting = true
+          else if (size !== null) {
+            images[target] = size
+            paths[target] = path
+          }
+        }
+        if (waiting) continue
         this.pending.delete(id)
-        const markdown = node.type === 'text' ? node.text : (pending.text ?? '')
         const plain = isPlainText(node)
         batch.push({
           pending,
+          paths,
           card: {
             id,
-            markdown: clippedCardMarkdown(node, markdown),
+            markdown,
+            images,
             w: node.w,
             h: node.h,
             plain,
@@ -414,7 +480,11 @@ export class GpuBoard implements ContentLayer {
   /** What the worker typeset, into the scene — the atlas's ids for its
    * glyph keys — for each card still as it was when it was sent. */
   private place(
-    batch: readonly { pending: Pending; card: TypesetCard }[],
+    batch: readonly {
+      pending: Pending
+      card: TypesetCard
+      paths: Record<string, string>
+    }[],
     result: TypesetResult,
   ): void {
     const atlas = this.scene.glyphs
@@ -441,6 +511,13 @@ export class GpuBoard implements ContentLayer {
         shown: typeset.shown,
         runs: new Float32Array(typeset.runs),
       })
+      const images: CardImage[] = []
+      for (const image of typeset.images) {
+        const path = entry.paths[image.target]
+        if (path !== undefined) images.push({ ...image, path })
+      }
+      this.cardImages.set(node.id, images)
+      this.scene.setImages(node.id, images)
       placed.push(node.id)
       if (this.changed.delete(node.id)) this.drawableRevision += 1
       // Not shown until the overview claims it: it draws the surface.

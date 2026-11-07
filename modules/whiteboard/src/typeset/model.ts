@@ -16,8 +16,23 @@ export const LINK = 16
 export const TAG = 32
 export const HIGHLIGHT = 64
 
-/** A run of text set one way. `'\n'` alone is a line break. */
-export type Inline = Readonly<{ text: string; flags: number }>
+/** An image set in a line of text, as the host sets an image embed: on
+ * the baseline, as wide as written (`![[a.png|200]]`, `|200x100`) or as its
+ * own width, never wider than the line. */
+export type InlineImage = Readonly<{
+  /** What the source names it by: a link's text, or a URL. */
+  target: string
+  width: number | null
+  height: number | null
+}>
+
+/** A run of text set one way. `'\n'` alone is a line break; a run with an
+ * `image` is that image. */
+export type Inline = Readonly<{
+  text: string
+  flags: number
+  image?: InlineImage
+}>
 
 export type ListItem = Readonly<{
   /** null for a plain item, a boolean for a task. */

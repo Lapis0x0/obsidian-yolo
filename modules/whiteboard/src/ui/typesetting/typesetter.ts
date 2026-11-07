@@ -2,6 +2,7 @@
 // against a 2D context — the typesetting worker's OffscreenCanvas
 // (./typesetWorker.ts) — so that nothing of it is on the main thread.
 
+import { embedLinks, imageOf } from '../../typeset/images'
 import { type DrawOp, layoutCard } from '../../typeset/layout'
 import { paint } from '../../typeset/paint'
 import { parseCard } from '../../typeset/parse'
@@ -9,6 +10,7 @@ import type { TypesetTokens } from '../../typeset/tokens'
 import { cardInstances, packColor } from '../gpu/instances'
 
 import {
+  type PlacedImage,
   type TypesetCard,
   type TypesetResult,
   type TypesetResultCard,
@@ -73,11 +75,17 @@ export class Typesetter {
       const rects = content.rects.buffer as ArrayBuffer
       const glyphs = content.glyphs.buffer as ArrayBuffer
       const { shown, runs } = this.runsOf(ops)
+      const images: PlacedImage[] = []
+      for (const op of ops) {
+        if (op.op !== 'image') continue
+        images.push({ target: op.target, x: op.x, y: op.y, w: op.w, h: op.h })
+      }
       out.push({
         id: card.id,
         rects,
         glyphs,
-        host: needsHost(card.markdown),
+        images,
+        host: needsHost(card.markdown, card.images ?? {}),
         shown,
         runs,
       })
@@ -122,6 +130,7 @@ export class Typesetter {
       color: card.color,
       measure: (text, font) => this.measure(text, font),
       metrics: (font) => this.metrics(font),
+      images: (target) => card.images?.[target] ?? null,
     })
   }
 
@@ -213,22 +222,26 @@ const DRAWN_FENCES =
   /^\s*(?:```|~~~)\s*(?:mermaid|dataview|dataviewjs|tasks|query|chart|excalidraw|math|latex|ad-[\w-]+)\b/im
 /** `$$…$$`, or `$…$` hugging what it encloses, as Obsidian reads math. */
 const MATH = /\$\$|(?:^|[^\\$\w])\$(?=\S)[^$\n]*?\S\$(?!\d)/m
-const EMBED = /!\[\[|!\[[^\]]*\]\(/
 const HTML = /<\/?[a-z][\w-]*(?:\s[^>]*)?>/i
 
 /**
  * Whether a card's markdown holds what only the host's renderer shows as it
- * should — an embed or an image, math, HTML, a block a plugin draws — or
- * nothing at all, which the card shows its empty state's chips for. Such a
- * card keeps its DOM where it can be read; the typesetter only stands in for
- * it far away, where its picture is enough.
+ * should — an embed that is not an image, an image whose size is not known
+ * (`images`), math, HTML, a block a plugin draws — or nothing at all, which
+ * the card shows its empty state's chips for. Such a card keeps its DOM
+ * where it can be read; the typesetter only stands in for it far away,
+ * where its picture is enough.
  */
-export function needsHost(markdown: string): boolean {
+export function needsHost(
+  markdown: string,
+  images: Readonly<Record<string, unknown>> = {},
+): boolean {
   if (markdown.trim() === '') return true
+  for (const link of embedLinks(markdown)) {
+    const image = imageOf(link)
+    if (!image || !(image.target in images)) return true
+  }
   return (
-    EMBED.test(markdown) ||
-    DRAWN_FENCES.test(markdown) ||
-    MATH.test(markdown) ||
-    HTML.test(markdown)
+    DRAWN_FENCES.test(markdown) || MATH.test(markdown) || HTML.test(markdown)
   )
 }

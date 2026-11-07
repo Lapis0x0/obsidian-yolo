@@ -34,6 +34,18 @@ export type TypesetCard = Readonly<{
   plain: boolean
   /** A bare text's colour, as a colour the canvas paints with. */
   color: string | null
+  /** The own size of each image it embeds, by what the source names it;
+   * one left out is not known (../../domain/imageSize.ts). */
+  images?: Readonly<Record<string, Readonly<{ w: number; h: number }>>>
+}>
+
+/** An image as a card lays it out: where, and which. */
+export type PlacedImage = Readonly<{
+  target: string
+  x: number
+  y: number
+  w: number
+  h: number
 }>
 
 /** `typeset`: cards to lay out in `tokens`' look. */
@@ -64,6 +76,8 @@ export type TypesetResultCard = Readonly<{
   /** It holds what only the host's renderer shows as it should
    * (../typesetting/typesetter.ts's `needsHost`): kept in the DOM near to. */
   host: boolean
+  /** Its images, where they are in it. */
+  images: readonly PlacedImage[]
   /** Its text as drawn, run after run in reading order — what a passage
    * in it is found in (../gpu/passages.ts). */
   shown: string

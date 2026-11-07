@@ -30,6 +30,8 @@ import {
   FRAME_VS,
   GLYPH_FS,
   GLYPH_VS,
+  IMAGE_FS,
+  IMAGE_VS,
   RECT_FS,
   RECT_VS,
   SLOTS_PER_ROW,
@@ -47,6 +49,22 @@ export type SceneFrame = Readonly<{
   borderWidth: number
   radius: number
 }>
+
+/** An image in a card: which file, and where in the card. */
+export type CardImage = Readonly<{
+  path: string
+  x: number
+  y: number
+  w: number
+  h: number
+}>
+
+/** An image's picture, as the scene is handed it: a bitmap, or null while
+ * there is none. */
+export type ImagePicture = (path: string) => ImageBitmap | null
+
+/** Textures kept for images not drawn in a frame, before the oldest go. */
+const IMAGE_TEXTURES_KEPT = 48
 
 export type SceneCard = Readonly<{
   x: number
@@ -87,6 +105,7 @@ type Gl = Readonly<{
   frame: Program
   rect: Program
   glyph: Program
+  image: Program
   corner: WebGLBuffer
   frameVao: WebGLVertexArrayObject
   cards: WebGLTexture
@@ -125,6 +144,14 @@ export class GpuScene {
   /** Each card's place from the bottom. */
   private ranks = new Map<string, number>()
   private g: Gl | null = null
+  /** Each card's images. */
+  private readonly images = new Map<string, readonly CardImage[]>()
+  /** A texture per image file, and the picture it was made from. */
+  private textures = new Map<
+    string,
+    { texture: WebGLTexture; picture: ImageBitmap; drawnAt: number }
+  >()
+  private frameCount = 0
   private lost = false
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -181,7 +208,14 @@ export class GpuScene {
     return this.slots.get(id)?.card ?? null
   }
 
+  /** A card's images, drawn over its rectangles, under its glyphs. */
+  setImages(id: string, images: readonly CardImage[]): void {
+    if (images.length === 0) this.images.delete(id)
+    else this.images.set(id, images)
+  }
+
   removeCard(id: string): void {
+    this.images.delete(id)
     const slot = this.slots.get(id)
     if (!slot) return
     if (slot.chunk !== null) this.leaveChunk(id, slot.chunk)
@@ -198,7 +232,11 @@ export class GpuScene {
 
   /** Draws the scene at `view`. `settled`: the camera has come to rest, so
    * glyphs are drawn afresh for the zoom it rests at. */
-  render(view: CanvasView, settled: boolean): RenderResult {
+  render(
+    view: CanvasView,
+    settled: boolean,
+    picture: ImagePicture = () => null,
+  ): RenderResult {
     const g = this.g
     if (!g || this.lost) return { more: false, cards: 0, glyphs: 0 }
     const { gl } = g
@@ -268,6 +306,7 @@ export class GpuScene {
       gl.bindVertexArray(chunk.rectVao)
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, chunk.rectCount)
     }
+    this.drawImages(g, visible, picture, common)
     common(g.glyph)
     gl.uniform1i(g.glyph.uniforms.lookup, 2)
     gl.uniform1i(g.glyph.uniforms.pages, 3)
@@ -292,6 +331,91 @@ export class GpuScene {
     gl.bindVertexArray(null)
     gl.depthMask(true)
     return { more, cards: visible.reduce((n, c) => n + c.ids.size, 0), glyphs }
+  }
+
+  /** The images of the cards shown in the visible chunks, each with its
+   * picture where it has one; textures for images not drawn lately go. */
+  private drawImages(
+    g: Gl,
+    visible: readonly Chunk[],
+    picture: ImagePicture,
+    common: (p: Program) => void,
+  ): void {
+    const { gl } = g
+    this.frameCount += 1
+    let bound = false
+    for (const chunk of visible) {
+      for (const id of chunk.ids) {
+        const images = this.images.get(id)
+        const slot = this.slots.get(id)
+        if (!images || !slot?.shown) continue
+        for (const image of images) {
+          const bitmap = picture(image.path)
+          if (!bitmap) continue
+          const texture = this.textureOf(g, image.path, bitmap)
+          if (!bound) {
+            common(g.image)
+            gl.uniform1i(g.image.uniforms.picture, 4)
+            gl.activeTexture(gl.TEXTURE4)
+            gl.bindVertexArray(g.frameVao)
+            bound = true
+          }
+          gl.activeTexture(gl.TEXTURE4)
+          gl.bindTexture(gl.TEXTURE_2D, texture)
+          gl.uniform1ui(g.image.uniforms.slot, slot.index)
+          gl.uniform4f(
+            g.image.uniforms.rect,
+            image.x,
+            image.y,
+            image.w,
+            image.h,
+          )
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+        }
+      }
+    }
+    if (this.textures.size > IMAGE_TEXTURES_KEPT) {
+      const oldest = [...this.textures].sort(
+        (a, b) => a[1].drawnAt - b[1].drawnAt,
+      )
+      for (const [path, entry] of oldest.slice(
+        0,
+        this.textures.size - IMAGE_TEXTURES_KEPT,
+      )) {
+        gl.deleteTexture(entry.texture)
+        this.textures.delete(path)
+      }
+    }
+  }
+
+  /** The texture of an image file's picture, made again when the picture
+   * is another (a sharper one arrived). */
+  private textureOf(g: Gl, path: string, bitmap: ImageBitmap): WebGLTexture {
+    const { gl } = g
+    let entry = this.textures.get(path)
+    if (!entry || entry.picture !== bitmap) {
+      const texture = entry?.texture ?? required(gl.createTexture())
+      gl.activeTexture(gl.TEXTURE4)
+      gl.bindTexture(gl.TEXTURE_2D, texture)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        bitmap,
+      )
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      entry = { texture, picture: bitmap, drawnAt: this.frameCount }
+      this.textures.set(path, entry)
+    }
+    entry.drawnAt = this.frameCount
+    return entry.texture
   }
 
   dispose(): void {
@@ -676,6 +800,7 @@ export class GpuScene {
       frame: compile(gl, FRAME_VS, FRAME_FS),
       rect: compile(gl, RECT_VS, RECT_FS),
       glyph: compile(gl, GLYPH_VS, GLYPH_FS),
+      image: compile(gl, IMAGE_VS, IMAGE_FS),
       corner: required(corner),
       frameVao: required(frameVao),
       cards: required(table(gl.NEAREST)),
@@ -705,6 +830,8 @@ export class GpuScene {
       chunk.dirty = true
     }
     this.atlas.forgetPictures()
+    // Textures went with the context.
+    this.textures = new Map()
     this.g = this.init()
   }
 }

@@ -208,6 +208,7 @@ import {
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
 import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
+import { ImageSizes } from './gpu/imageSizes'
 import { placeDrawnPassage } from './gpu/passages'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
@@ -1915,6 +1916,8 @@ export class WhiteboardCanvas {
           isSelected: (id) => this.selectedIds.has(id),
           onTypeset: (ids) => {
             for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
+            // The images in them are wanted now.
+            this.pictures?.invalidate()
           },
           redrawOverview: () => this.overviewLayer?.markDirty(),
           readNote: async (path) => {
@@ -1925,6 +1928,12 @@ export class WhiteboardCanvas {
             }
           },
           typesetter: typesetClient,
+          imagePicture: (path) =>
+            this.pictures?.get(imageRef(path), false) ?? null,
+          images: new ImageSizes({
+            vault: this.host.vault,
+            sourcePath: () => this.sourcePathForBoard(),
+          }),
           reportError: (stage, error) => this.reportError(stage, error),
         })
       : null
@@ -4222,6 +4231,23 @@ export class WhiteboardCanvas {
         yield { ...ref, width: node.w, distance, stamp: '' }
       }
     }
+    // The images in the cards the GPU scene draws: textures there, made
+    // from these pictures.
+    if (this.gpuBoard) {
+      for (const image of this.gpuBoard.shownImages()) {
+        const node = this.nodesById.get(image.id)
+        if (!node) continue
+        yield {
+          ...imageRef(image.path),
+          width: image.width,
+          distance: Math.hypot(
+            node.x + node.w / 2 - cx,
+            node.y + node.h / 2 - cy,
+          ),
+          stamp: '',
+        }
+      }
+    }
   }
 
   /** A picture arrived (`key`), or a group's were dropped (null): the
@@ -4233,6 +4259,7 @@ export class WhiteboardCanvas {
     key: string | null,
   ): void {
     this.overviewLayer?.markDirty()
+    if (source === 'image') this.gpuBoard?.markDirty()
     if (key === null || source !== 'pdf') return
     const page = Number(key)
     for (const node of this.cardNodes) {

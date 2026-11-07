@@ -15,6 +15,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
 
+import { decodedUrl, imageOf } from './images'
 import {
   BOLD,
   type Block,
@@ -203,11 +204,15 @@ const SOLE_EMBED = /^!\[\[([^\]\n]+)\]\]$/
 function soleEmbed(children: readonly PhrasingContent[]): string | null {
   if (children.length !== 1) return null
   const only = children[0]
-  if (only.type === 'image') return only.url
   if (only.type !== 'text') return null
   const match = SOLE_EMBED.exec(only.value.trim())
-  return match ? match[1] : null
+  // An image is set in its line, as the host sets it (`imageOf`).
+  return match && !imageOf(match[1]) ? match[1] : null
 }
+
+/** What an image stands for in a run of text: one object, as the DOM's
+ * `<img>` is one. */
+export const IMAGE_TEXT = '\uFFFC'
 
 /** A highlight is a toggle in the text, not a node: it can open in one run
  * and close in another (`==a **b** c==`). */
@@ -246,7 +251,12 @@ function walk(
     case 'linkReference':
       for (const child of node.children) walk(child, flags | LINK, out, state)
       return
-    case 'image':
+    case 'image': {
+      const image = imageOf(decodedUrl(node.url))
+      if (image) out.push({ text: IMAGE_TEXT, flags, image })
+      else if (node.alt) push(out, node.alt, flags | LINK, state)
+      return
+    }
     case 'imageReference':
       if (node.alt) push(out, node.alt, flags | LINK, state)
       return
@@ -306,6 +316,12 @@ function obsidianText(
     if (match[2] !== undefined) {
       push(out, value.slice(at, index), flags, state)
       const target = match[2]
+      const image = match[1] === '!' ? imageOf(target) : null
+      if (image) {
+        out.push({ text: IMAGE_TEXT, flags, image })
+        at = index + token.length
+        continue
+      }
       const bar = target.indexOf('|')
       const shown = bar === -1 ? target : target.slice(bar + 1)
       push(out, shown, flags | LINK, state)
@@ -339,6 +355,8 @@ function merge(runs: readonly Inline[]): Inline[] {
     const last = out[out.length - 1]
     if (
       last &&
+      !last.image &&
+      !run.image &&
       last.flags === run.flags &&
       last.text !== '\n' &&
       run.text !== '\n' &&

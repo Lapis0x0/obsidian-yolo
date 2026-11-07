@@ -7,9 +7,16 @@
 // Widths come from `measure`, so the same breaker runs against a canvas, in
 // a Worker, or in a test against made-up widths.
 
-import { CODE, type Inline, TAG } from './model'
+import { CODE, type Inline, type InlineImage, TAG } from './model'
 
 export type Measure = (text: string, font: string) => number
+
+/** An image's size in a line at most `maxWidth` wide; null for one whose
+ * size is not known, which is left out. */
+export type ImageSize = (
+  image: InlineImage,
+  maxWidth: number,
+) => Readonly<{ w: number; h: number }> | null
 
 /** How a run is set: its font, and the room a pill (inline code, a tag)
  * takes on either side of its text. */
@@ -25,6 +32,9 @@ export type Piece = Readonly<{
   /** Its whole width, pill padding included. */
   width: number
   padLeft: number
+  /** An image's: what it is, and how tall it stands on the baseline. */
+  image?: InlineImage
+  height?: number
 }>
 
 export type Line = Readonly<{ pieces: readonly Piece[]; width: number }>
@@ -66,7 +76,7 @@ function isCjk(cp: number): boolean {
 
 const isSpace = (ch: string): boolean => ch === ' ' || ch === '\t'
 
-type AtomKind = 'space' | 'cjk' | 'word'
+type AtomKind = 'space' | 'cjk' | 'word' | 'image'
 
 type Atom = {
   text: string
@@ -81,6 +91,7 @@ type Atom = {
   /** A mark that gave up its blank half (`trimsBefore`): what follows it is
    * set closer than the mark's own advance, so it ends its piece. */
   trimmed: boolean
+  height?: number
 }
 
 function atomize(text: string): { text: string; kind: AtomKind }[] {
@@ -119,6 +130,7 @@ function canBreakBetween(
   b: { text: string; kind: AtomKind },
 ): boolean {
   if (a.kind === 'space' || b.kind === 'space') return true
+  if (a.kind === 'image' || b.kind === 'image') return true
   if (CLOSING.has(b.text.charAt(0))) return false
   if (OPENING.has(a.text.charAt(a.text.length - 1))) return false
   return a.kind === 'cjk' || b.kind === 'cjk'
@@ -131,6 +143,7 @@ export function breakLines(
   maxWidth: number,
   styleOf: (flags: number) => RunStyle,
   measure: Measure,
+  imageSize?: ImageSize,
 ): Line[] {
   // Atoms, run by run, each knowing whether a line may break before it.
   const atoms: (Atom | null)[] = [] // null: a hard break
@@ -139,6 +152,23 @@ export function breakLines(
     if (inline.text === '\n') {
       atoms.push(null)
       previous = null
+      return
+    }
+    if (inline.image) {
+      const size = imageSize?.(inline.image, maxWidth)
+      if (!size) return
+      const atom: Atom = {
+        text: inline.text,
+        kind: 'image',
+        run,
+        width: size.w,
+        height: size.h,
+        breakBefore: true,
+        padLeft: 0,
+        trimmed: false,
+      }
+      atoms.push(atom)
+      previous = atom
       return
     }
     const style = styleOf(inline.flags)
@@ -296,6 +326,7 @@ function piecesOf(
     x: number
     end: number
     padLeft: number
+    height?: number
   } | null = null
   const flush = () => {
     if (!current) return
@@ -307,6 +338,7 @@ function piecesOf(
       x: current.x,
       width: current.end - current.x,
       padLeft: current.padLeft,
+      ...(inline.image ? { image: inline.image, height: current.height } : {}),
     })
     current = null
   }
@@ -326,6 +358,7 @@ function piecesOf(
       x,
       end: x + atom.width,
       padLeft: atom.padLeft,
+      height: atom.height,
     }
   }
   flush()
