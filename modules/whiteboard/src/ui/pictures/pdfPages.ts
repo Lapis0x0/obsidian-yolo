@@ -115,7 +115,7 @@ export class PdfPages implements PictureSource {
       // A page far from anything drawn keeps its parsed operations only
       // for the reader that draws it next; there may be none.
       page.cleanup()
-      return { canvas, meta }
+      return { image: canvas, meta }
     } catch (error) {
       emptied(canvas)
       throw error

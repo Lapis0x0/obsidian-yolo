@@ -10,8 +10,10 @@
 // make again. Which is why none is kept on the device: there is nothing to
 // save by reading one back, and nothing to go stale there.
 //
-// Made on the main thread, in idle slices (./idle.ts), with the fonts the
-// document has: a theme's web fonts are the document's alone.
+// Drawn by the board's typesetting worker (../typesetting/), in the fonts
+// the document has — a theme's web fonts included, which the worker is
+// handed — and handed back as a bitmap: nothing of it is on the main thread
+// but reading a note.
 //
 // Only the content is drawn — the card's background, colour, border and
 // selection are drawn around it by whoever shows it — over the card's whole
@@ -22,13 +24,10 @@
 import { resolveColor } from '../../domain/color'
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
-import { type DrawOp, layoutCard } from '../../typeset/layout'
-import { paint } from '../../typeset/paint'
-import { parseCard } from '../../typeset/parse'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import { OVERVIEW_RESTORE_SCALE } from '../constants'
+import type { TypesetClient } from '../typesetting/typesetClient'
 
-import type { IdleSlices } from './idle'
 import type {
   DrawnPicture,
   PictureRef,
@@ -46,8 +45,6 @@ const FADE = 24
 /** Raised whenever a change to the typesetter changes what a picture looks
  * like, so that pictures made before it are made again. */
 const TYPESET_VERSION = 2
-/** Widths a measuring context keeps, per font, before it starts afresh. */
-const MEASURES_KEPT = 4096
 
 /** A card picture's stamp: its card's signature (./cardSignature.ts) and
  * the look it is typeset in. */
@@ -62,7 +59,7 @@ export function cardRef(boardPath: string, id: string): PictureRef {
 
 export type TypesetCardsDeps = Readonly<{
   doc: Document
-  slices: IdleSlices
+  typesetter: TypesetClient
   style: TypesetStyle
   /** Whether a picture may be started now (./idle.ts's `ready`). */
   ready: () => boolean
@@ -78,12 +75,10 @@ export type TypesetCardsDeps = Readonly<{
 export class TypesetCards implements PictureSource {
   readonly id = 'card' as const
   readonly label = 'card picture'
+  /** Made in the worker, which takes them one after another: a few asked
+   * at once so that it is never waiting on the main thread between them. */
+  readonly concurrency = 4
   readonly turn: PictureTurn
-  private readonly widths = new Map<string, Map<string, number>>()
-  private readonly metricsByFont = new Map<
-    string,
-    Readonly<{ ascent: number; descent: number }>
-  >()
 
   constructor(private readonly deps: TypesetCardsDeps) {
     // The scheduler asks once a frame; nothing has to be woken.
@@ -101,7 +96,11 @@ export class TypesetCards implements PictureSource {
   }
 
   canDraw(want: WantedPicture): boolean {
-    return this.deps.idOf(want) !== null && this.deps.style.tokens !== null
+    return (
+      this.deps.idOf(want) !== null &&
+      this.deps.style.tokens !== null &&
+      this.deps.typesetter.usable
+    )
   }
 
   async draw(
@@ -119,7 +118,6 @@ export class TypesetCards implements PictureSource {
       markdown = await deps.readNote(node.file)
     } else return 'unavailable'
     if (markdown === null) return 'unavailable'
-    if (!(await deps.slices.next())) return null
     // Changed while its note was read: asked for again, as it now is.
     if (deps.getNode(id) !== node) return null
     const tokens = deps.style.tokens
@@ -133,69 +131,22 @@ export class TypesetCards implements PictureSource {
       OVERVIEW_RESTORE_SCALE * (win.devicePixelRatio || 1),
       Math.sqrt(MAX_PIXELS / Math.max(1, node.w * node.h)),
     )
-    const canvas = deps.doc.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(node.w * scale))
-    canvas.height = Math.max(1, Math.round(node.h * scale))
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
     const plain = isPlainText(node)
-    const color =
-      plain && node.color !== undefined ? deps.colorOf(node.color) : null
-    const inset = plain ? tokens.plainInset : tokens.inset
-    const ops: DrawOp[] = layoutCard({
-      sections: parseCard(clippedCardMarkdown(node, markdown)),
-      width: node.w,
-      height: node.h - inset.bottom,
-      tokens,
-      plain,
-      color,
-      measure: (text, font) => this.measure(ctx, text, font),
-      metrics: (font) => this.metrics(ctx, font),
-    })
-    paint(ctx, ops, {
+    const image = await deps.typesetter.picture(
+      { tokens, hash },
+      {
+        id,
+        markdown: clippedCardMarkdown(node, markdown),
+        w: node.w,
+        h: node.h,
+        plain,
+        color:
+          plain && node.color !== undefined ? deps.colorOf(node.color) : null,
+      },
       scale,
-      width: node.w,
-      height: node.h,
-      fade: plain ? 0 : FADE,
-    })
-    return { canvas, meta: null }
-  }
-
-  private measure(
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    font: string,
-  ): number {
-    let known = this.widths.get(font)
-    if (!known) {
-      known = new Map()
-      this.widths.set(font, known)
-    }
-    let width = known.get(text)
-    if (width === undefined) {
-      if (ctx.font !== font) ctx.font = font
-      width = ctx.measureText(text).width
-      if (known.size >= MEASURES_KEPT) known.clear()
-      known.set(text, width)
-    }
-    return width
-  }
-
-  private metrics(
-    ctx: CanvasRenderingContext2D,
-    font: string,
-  ): Readonly<{ ascent: number; descent: number }> {
-    let known = this.metricsByFont.get(font)
-    if (!known) {
-      ctx.font = font
-      const m = ctx.measureText('Hg国')
-      known = {
-        ascent: m.fontBoundingBoxAscent,
-        descent: m.fontBoundingBoxDescent,
-      }
-      this.metricsByFont.set(font, known)
-    }
-    return known
+      plain ? 0 : FADE,
+    )
+    return { image, meta: null }
   }
 }
 

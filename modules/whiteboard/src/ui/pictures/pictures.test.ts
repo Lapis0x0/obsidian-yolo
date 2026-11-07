@@ -91,7 +91,7 @@ function setup(
     draw: async (want) => {
       drawn.push(want.key)
       if (state.gate) await state.gate
-      return state.drawResult?.() ?? { canvas: fakeCanvas(100, 80), meta: null }
+      return state.drawResult?.() ?? { image: fakeCanvas(100, 80), meta: null }
     },
   }
   // Time moves on between looks: a moving board is looked over only every

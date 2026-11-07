@@ -54,6 +54,12 @@ const READS_AT_ONCE = 6
  * every page of every open spread, each frame, was the costliest thing a pan
  * across a large spread did. */
 const SCAN_INTERVAL_MOVING_MS = 70
+/** How often they are looked over while the board is still and pictures
+ * are being made: each one that lands asks for a look, and a source that
+ * makes them quickly (a worker's) would have the board looked over after
+ * every one — the costliest thing on the main thread while a board filled
+ * in. Nothing waits on it: each look starts as many as there are slots. */
+const SCAN_INTERVAL_MAKING_MS = 50
 /** How a picture is kept: a few kilobytes each. A WebView that cannot write
  * it gives PNG, which is larger and as good. */
 const ENCODING = 'image/webp'
@@ -83,9 +89,10 @@ export type WantedPicture = PictureRef &
 type Want = WantedPicture & Readonly<{ screen: number }>
 
 /** A picture a source has made, whole: the scheduler holds, keeps and then
- * empties the canvas. */
+ * lets go of the image. */
 export type DrawnPicture = Readonly<{
-  canvas: HTMLCanvasElement
+  /** A canvas drawn here, or a bitmap drawn elsewhere (a worker's). */
+  image: HTMLCanvasElement | ImageBitmap
   meta: unknown
 }>
 
@@ -282,6 +289,13 @@ export class Pictures {
     }
     const now = this.deps.doc.defaultView?.performance.now() ?? 0
     if (!idle && now - this.lastScanAt < SCAN_INTERVAL_MOVING_MS) return
+    if (
+      idle &&
+      this.drawing.size > 0 &&
+      now - this.lastScanAt < SCAN_INTERVAL_MAKING_MS
+    ) {
+      return
+    }
     this.lastScanAt = now
     // Settled as of this look: whatever it starts says when it lands.
     this.complete = true
@@ -643,12 +657,12 @@ export class Pictures {
         this.failed.set(k, want.stamp)
         return
       }
-      const { canvas, meta } = drawn
+      const { image, meta } = drawn
       const win = this.deps.doc.defaultView
       if (!win) return
       if (source.settle && !(await source.settle())) return
       if (this.destroyed || this.groups.get(gk) !== group) return
-      const fullWidth = canvas.width
+      const fullWidth = image.width
       const level = levelFor(want.screen, fullWidth)
       // Past the budget it is only kept, not held: the scan reads it back
       // once it is nearer than the farthest held.
@@ -658,10 +672,8 @@ export class Pictures {
       // again when it is wanted nearer.
       if (!held && !store) return
       const [bitmap, encoded] = await Promise.all([
-        held
-          ? win.createImageBitmap(canvas, resizedTo(level, fullWidth))
-          : null,
-        store ? encode(canvas) : null,
+        held ? win.createImageBitmap(image, resizedTo(level, fullWidth)) : null,
+        store ? encode(image) : null,
       ])
       if (this.destroyed || this.groups.get(gk) !== group) {
         bitmap?.close()
@@ -672,7 +684,7 @@ export class Pictures {
       if (encoded && store) {
         const picture: StoredPicture = {
           width: fullWidth,
-          height: canvas.height,
+          height: image.height,
           stamp: want.stamp,
           meta,
         }
@@ -692,10 +704,7 @@ export class Pictures {
       this.deps.reportError(source.label, error)
       this.failed.set(k, want.stamp)
     } finally {
-      if (drawn !== null && drawn !== 'unavailable') {
-        drawn.canvas.width = 0
-        drawn.canvas.height = 0
-      }
+      if (drawn !== null && drawn !== 'unavailable') release(drawn.image)
     }
   }
 
@@ -825,8 +834,28 @@ export function resizedTo(
 const bitmapBytes = (bitmap: ImageBitmap): number =>
   bitmap.width * bitmap.height * 4
 
-function encode(canvas: HTMLCanvasElement): Promise<Blob | null> {
+function encode(image: HTMLCanvasElement | ImageBitmap): Promise<Blob | null> {
+  // Only the sources that keep pictures on the device encode them, and they
+  // draw on a canvas of their own.
+  if (!isCanvas(image)) return Promise.resolve(null)
   return new Promise((resolve) =>
-    canvas.toBlob(resolve, ENCODING, ENCODING_QUALITY),
+    image.toBlob(resolve, ENCODING, ENCODING_QUALITY),
   )
+}
+
+/** Told apart by shape: a popout's canvas is another window's class. */
+function isCanvas(
+  image: HTMLCanvasElement | ImageBitmap,
+): image is HTMLCanvasElement {
+  return 'toBlob' in image
+}
+
+/** Lets go of a drawn image's memory now rather than at collection. */
+function release(image: HTMLCanvasElement | ImageBitmap): void {
+  if (isCanvas(image)) {
+    image.width = 0
+    image.height = 0
+  } else {
+    image.close()
+  }
 }

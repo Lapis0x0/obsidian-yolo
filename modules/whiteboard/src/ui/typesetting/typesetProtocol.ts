@@ -1,4 +1,4 @@
-// What the board (./gpuBoard.ts) and its typesetting worker
+// What the board (./typesetClient.ts) and its typesetting worker
 // (./typesetWorker.ts) say to each other, through the host's worker calls:
 // `{ id, method, payload }` in, `{ id, result }` or `{ id, error }` out.
 
@@ -42,8 +42,18 @@ export type TypesetPayload = Readonly<{
   cards: readonly TypesetCard[]
 }>
 
+/** `picture`: one card's picture, an ImageBitmap. */
+export type PicturePayload = Readonly<{
+  tokens: TypesetTokens
+  card: TypesetCard
+  /** Device pixels per world unit. */
+  scale: number
+  /** How far above its bottom edge it fades out; 0 for not at all. */
+  fade: number
+}>
+
 /**
- * A card's content as ./instances.ts's instances, except that a glyph's
+ * A card's content as ../gpu/instances.ts's instances, except that a glyph's
  * id word is an index into the result's `keys` — the worker has no atlas;
  * the board turns each key into the atlas's id.
  */

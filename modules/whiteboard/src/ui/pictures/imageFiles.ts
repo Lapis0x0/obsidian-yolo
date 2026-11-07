@@ -97,7 +97,7 @@ export class ImageFiles implements PictureSource {
     }
     try {
       if (!(await this.deps.slices.next())) return null
-      return { canvas: this.paint(bitmap), meta: null }
+      return { image: this.paint(bitmap), meta: null }
     } finally {
       bitmap.close()
     }
@@ -119,7 +119,7 @@ export class ImageFiles implements PictureSource {
       return 'unavailable'
     }
     if (!(await this.deps.slices.next())) return null
-    return { canvas: this.paint(img), meta: null }
+    return { image: this.paint(img), meta: null }
   }
 
   /** `source` on a canvas the picture's width, and no taller than a

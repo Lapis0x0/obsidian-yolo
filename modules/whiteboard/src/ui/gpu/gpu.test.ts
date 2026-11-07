@@ -1,8 +1,10 @@
+import { absoluteSrc, splitFamilies } from '../typesetting/fontSources'
+import { glyphKey, iconKey, parseKey } from '../typesetting/typesetProtocol'
+
 import { shelfSpot } from './atlas'
-import { absoluteSrc, splitFamilies } from './fontSources'
 import { fontSize, placeRun, resizeFont } from './glyphs'
 import { GLYPH_WORDS, RECT_WORDS, cardInstances, packColor } from './instances'
-import { glyphKey, iconKey, parseKey } from './typesetProtocol'
+
 
 const advance = (glyph: string): number =>
   (glyph.codePointAt(0) ?? 0) > 0x2e80 ? 16 : 8

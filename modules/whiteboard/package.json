@@ -6,7 +6,7 @@
     "previewVersion": "0.1.1",
     "previewTag": "module-whiteboard-v0.1.1",
     "workers": {
-      "typeset": "ui/gpu/typesetWorker.ts"
+      "typeset": "ui/typesetting/typesetWorker.ts"
     }
   },
   "scripts": {

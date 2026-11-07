@@ -207,7 +207,7 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
-import { GpuBoard, gpuSwitchedOn, typesetWorkerSource } from './gpu/gpuBoard'
+import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import { PdfDrawQueue } from './pdf/drawQueue'
 import { passageAnchorFromSelection } from './pdf/passageAnchor'
@@ -237,6 +237,7 @@ import {
 } from './pictures/typesetCards'
 import { TypesetStyle } from './pictures/typesetStyle'
 import { applyColorToElement } from './selectionToolbar'
+import { TypesetClient, typesetWorkerSource } from './typesetting/typesetClient'
 
 /**
  * Size of a group created around a selection is derived from that selection
@@ -669,6 +670,9 @@ export class WhiteboardCanvas {
   /** How a card looks, as the typesetter that draws card pictures reads
    * it (./pictures/typesetStyle.ts). */
   private typesetStyle: TypesetStyle | null = null
+  /** The board's typesetting worker, for cards' pictures and the GPU
+   * scene (./typesetting/typesetClient.ts). */
+  private typesetClient: TypesetClient | null = null
   /** The GPU scene, behind its development switch (./gpu/gpuBoard.ts). */
   private gpuBoard: GpuBoard | null = null
   /** The board's line in the host's activity list while it makes pictures
@@ -1599,6 +1603,8 @@ export class WhiteboardCanvas {
     this.pictureSlices = null
     this.typesetStyle?.destroy()
     this.typesetStyle = null
+    this.typesetClient?.destroy()
+    this.typesetClient = null
     this.pictureActivity?.destroy()
     this.pictureActivity = null
     this.pictureAnnotations?.destroy()
@@ -1786,6 +1792,13 @@ export class WhiteboardCanvas {
       reportError: (stage, error) => this.reportError(stage, error),
     })
     this.typesetStyle = typesetStyle
+    this.typesetClient?.destroy()
+    const typesetClient = new TypesetClient({
+      doc,
+      start: () => this.host.workers.create(typesetWorkerSource()),
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
+    this.typesetClient = typesetClient
     this.pictureActivity?.destroy()
     const pictureActivity = new PictureActivity({
       win: pictureWin,
@@ -1819,7 +1832,7 @@ export class WhiteboardCanvas {
         }),
         new TypesetCards({
           doc,
-          slices: pictureSlices,
+          typesetter: typesetClient,
           style: typesetStyle,
           // After the cards on screen: none is waiting to be mounted or
           // built.
@@ -1904,7 +1917,7 @@ export class WhiteboardCanvas {
               return null
             }
           },
-          startWorker: () => this.host.workers.create(typesetWorkerSource()),
+          typesetter: typesetClient,
           reportError: (stage, error) => this.reportError(stage, error),
         })
       : null

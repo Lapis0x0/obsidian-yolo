@@ -2,11 +2,12 @@
 // against a 2D context — the typesetting worker's OffscreenCanvas
 // (./typesetWorker.ts) — so that nothing of it is on the main thread.
 
-import { layoutCard } from '../../typeset/layout'
+import { type DrawOp, layoutCard } from '../../typeset/layout'
+import { paint } from '../../typeset/paint'
 import { parseCard } from '../../typeset/parse'
 import type { TypesetTokens } from '../../typeset/tokens'
+import { cardInstances, packColor } from '../gpu/instances'
 
-import { cardInstances, packColor } from './instances'
 import {
   type TypesetCard,
   type TypesetResult,
@@ -61,17 +62,7 @@ export class Typesetter {
     const out: TypesetResultCard[] = []
     const transfer: ArrayBuffer[] = []
     for (const card of cards) {
-      const inset = card.plain ? tokens.plainInset : tokens.inset
-      const ops = layoutCard({
-        sections: parseCard(card.markdown),
-        width: card.w,
-        height: card.h - inset.bottom,
-        tokens,
-        plain: card.plain,
-        color: card.color,
-        measure: (text, font) => this.measure(text, font),
-        metrics: (font) => this.metrics(font),
-      })
+      const ops = this.layout(tokens, card)
       const content = cardInstances(ops, {
         glyphId: (text, font) => keyOf(glyphKey(text, font)),
         iconId: (name, size) => keyOf(iconKey(name, size)),
@@ -85,6 +76,45 @@ export class Typesetter {
       transfer.push(rects, glyphs)
     }
     return { result: { cards: out, keys }, transfer }
+  }
+
+  /** A card laid out, as ../../typeset/layout.ts's draw ops. */
+  layout(tokens: TypesetTokens, card: TypesetCard): DrawOp[] {
+    const inset = card.plain ? tokens.plainInset : tokens.inset
+    return layoutCard({
+      sections: parseCard(card.markdown),
+      width: card.w,
+      height: card.h - inset.bottom,
+      tokens,
+      plain: card.plain,
+      color: card.color,
+      measure: (text, font) => this.measure(text, font),
+      metrics: (font) => this.metrics(font),
+    })
+  }
+
+  /** A card's picture (../pictures/typesetCards.ts): its content drawn
+   * over its whole box at `scale` device pixels per world unit, fading out
+   * `fade` above its bottom edge. */
+  picture(
+    tokens: TypesetTokens,
+    card: TypesetCard,
+    scale: number,
+    fade: number,
+  ): ImageBitmap {
+    const canvas = new OffscreenCanvas(
+      Math.max(1, Math.round(card.w * scale)),
+      Math.max(1, Math.round(card.h * scale)),
+    )
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('no OffscreenCanvas 2D context')
+    paint(ctx, this.layout(tokens, card), {
+      scale,
+      width: card.w,
+      height: card.h,
+      fade,
+    })
+    return canvas.transferToImageBitmap()
   }
 
   private measure(text: string, font: string): number {

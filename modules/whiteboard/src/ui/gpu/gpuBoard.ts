@@ -23,22 +23,18 @@ import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
 import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
-import type { TypesetTokens } from '../../typeset/tokens'
 import { clippedCardMarkdown } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
 import type { TypesetStyle } from '../pictures/typesetStyle'
-
-import { familiesOf, fontSources } from './fontSources'
-import { GLYPH_WORDS } from './instances'
-import { GpuScene } from './scene'
+import type { Look, TypesetClient } from '../typesetting/typesetClient'
 import {
-  type FontsPayload,
-  TYPESET_WORKER,
   type TypesetCard,
-  type TypesetPayload,
   type TypesetResult,
   parseKey,
-} from './typesetProtocol'
+} from '../typesetting/typesetProtocol'
+
+import { GLYPH_WORDS } from './instances'
+import { GpuScene } from './scene'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
 
@@ -49,20 +45,6 @@ export function gpuSwitchedOn(win: Window): boolean {
   } catch {
     return false
   }
-}
-
-const WORKER_SOURCE = Symbol.for(
-  `yolo.module.inline-worker.v1:whiteboard:${TYPESET_WORKER}`,
-)
-
-/** The typesetting worker's source, which the module's build puts on the
- * global object (scripts/build-first-party-modules.mjs). */
-export function typesetWorkerSource(): string {
-  const source = (globalThis as Record<symbol, unknown>)[WORKER_SOURCE]
-  if (typeof source !== 'string' || source.length === 0) {
-    throw new Error('the typesetting worker is not in this build')
-  }
-  return source
 }
 
 /** How far above a framed card's bottom edge its content fades out
@@ -96,8 +78,8 @@ export type GpuBoardDeps = Readonly<{
    * draws. */
   redrawOverview: () => void
   readNote: (path: string) => Promise<string | null>
-  /** The typesetting worker (./typesetWorker.ts), started. */
-  startWorker: () => YoloModuleHostWorkerV1
+  /** The board's typesetting worker (../typesetting/typesetClient.ts). */
+  typesetter: TypesetClient
   reportError: (stage: string, error: unknown) => void
 }>
 
@@ -110,9 +92,6 @@ export class GpuBoard implements ContentLayer {
   private readonly nodes = new Map<string, BoardNode>()
   /** Cards whose content is owed, in the order they are typeset. */
   private readonly pending = new Map<string, Pending>()
-  /** Null when it could not be started: then nothing is claimed, and the
-   * overview draws pictures as it would without this layer. */
-  private readonly worker: YoloModuleHostWorkerV1 | null
   private inFlight = 0
   /** Counts the looks typeset in: a result for an older one is dropped. */
   private generation = 0
@@ -135,13 +114,6 @@ export class GpuBoard implements ContentLayer {
     // DEBUG(p4): reachable from the console while the scene is developed.
     Object.assign(this.canvas, { gpuBoard: this })
     this.scene = new GpuScene(this.canvas)
-    let worker: YoloModuleHostWorkerV1 | null = null
-    try {
-      worker = deps.startWorker()
-    } catch (error) {
-      deps.reportError('typeset worker', error)
-    }
-    this.worker = worker
   }
 
   /** The board's cards, bottom to top. */
@@ -174,7 +146,11 @@ export class GpuBoard implements ContentLayer {
 
   claim(node: BoardNode, rect: CardRect, scale: number): boolean {
     const tokens = this.deps.style.tokens
-    if (!tokens || !this.worker || !this.scene.usable) return false
+    // Without a worker nothing is claimed: the overview draws pictures as
+    // it would without this layer.
+    if (!tokens || !this.deps.typesetter.usable || !this.scene.usable) {
+      return false
+    }
     const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
     if (tokens.body.size * scale * dpr < MIN_BODY_DEVICE_PX) return false
     if (!this.nodes.has(node.id)) return false
@@ -191,8 +167,10 @@ export class GpuBoard implements ContentLayer {
   render(now: number): void {
     const tokens = this.deps.style.tokens
     const hash = this.deps.style.hash
-    if (tokens && hash !== this.styleHash) this.newLook(tokens, hash)
-    if (tokens) this.typeset(tokens)
+    if (tokens && hash !== null) {
+      if (hash !== this.styleHash) this.newLook(hash)
+      this.typeset({ tokens, hash })
+    }
     this.syncShown()
     const view = this.deps.view()
     const last = this.lastView
@@ -262,33 +240,24 @@ export class GpuBoard implements ContentLayer {
   }
 
   destroy(): void {
-    this.worker?.terminate()
     this.scene.dispose()
     this.canvas.remove()
   }
 
-  /** The look changed — or is read for the first time: its fonts go to the
-   * worker, and every card is typeset again. What is drawn stays until its
-   * replacement comes. */
-  private newLook(tokens: TypesetTokens, hash: string | null): void {
+  /** The look changed — or is read for the first time: every card is
+   * typeset again. What is drawn stays until its replacement comes. */
+  private newLook(hash: string): void {
     this.styleHash = hash
     this.generation += 1
     for (const node of this.nodes.values()) {
       this.pending.set(node.id, { node, text: null, reading: false })
     }
-    const faces = fontSources(this.canvas.ownerDocument, familiesOf(tokens))
-    // Calls are answered in order: whatever is typeset after this is set in
-    // these fonts.
-    this.worker
-      ?.call('fonts', { faces } satisfies FontsPayload)
-      .catch((error: unknown) => this.deps.reportError('typeset fonts', error))
   }
 
   /** Hands the worker the next cards owed — those the overview asked for
    * first, then the rest in board order — once their text is there. */
-  private typeset(tokens: TypesetTokens): void {
-    const worker = this.worker
-    if (!worker || this.pending.size === 0) return
+  private typeset(look: Look): void {
+    if (!this.deps.typesetter.usable || this.pending.size === 0) return
     while (this.inFlight < IN_FLIGHT) {
       const order = [
         ...[...this.wanted].filter((id) => this.pending.has(id)),
@@ -326,11 +295,11 @@ export class GpuBoard implements ContentLayer {
       this.wanted.clear()
       this.inFlight += 1
       const generation = this.generation
-      worker
-        .call<TypesetResult>('typeset', {
-          tokens,
-          cards: batch.map((b) => b.card),
-        } satisfies TypesetPayload)
+      this.deps.typesetter
+        .typeset(
+          look,
+          batch.map((b) => b.card),
+        )
         .then(
           (result) => {
             if (generation === this.generation) this.place(batch, result)

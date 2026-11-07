@@ -1,13 +1,17 @@
 // The typesetting worker (package.json `yoloModule.workers.typeset`): the
-// board's text and note cards laid out and turned into the GPU scene's
-// instances off the main thread (./typesetter.ts), in the fonts the board
-// hands it (`fonts`) — a worker's own FontFaceSet starts with none of the
+// board's text and note cards laid out off the main thread (./typesetter.ts)
+// — into the GPU scene's instances, or drawn into their pictures — in the
+// fonts the board hands it (`fonts`) — a worker's own FontFaceSet starts with none of the
 // document's web fonts.
 //
 // Speaks the host's worker calls: `{ id, method, payload }` in, `{ id,
 // result }` or `{ id, error }` out.
 
-import type { FontsPayload, TypesetPayload } from './typesetProtocol'
+import type {
+  FontsPayload,
+  PicturePayload,
+  TypesetPayload,
+} from './typesetProtocol'
 import { Typesetter } from './typesetter'
 
 type WorkerScope = Readonly<{
@@ -69,6 +73,16 @@ scope.addEventListener('message', (event: MessageEvent) => {
       (count) => scope.postMessage({ id, result: count }),
       fail,
     )
+    return
+  }
+  if (message.method === 'picture') {
+    const { tokens, card, scale, fade } = message.payload as PicturePayload
+    fontsReady
+      .then(() => {
+        const bitmap = typesetter.picture(tokens, card, scale, fade)
+        scope.postMessage({ id, result: bitmap }, [bitmap])
+      })
+      .catch(fail)
     return
   }
   if (message.method === 'typeset') {
