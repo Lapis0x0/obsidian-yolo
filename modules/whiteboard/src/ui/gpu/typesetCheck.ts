@@ -1,11 +1,13 @@
-// DEBUG(p4): checks what the typesetter lays out against what the browser
+// Checks what the typesetter lays out against what the browser
 // does, card by card. Each card is built the way the board builds one
 // (../canvas/cardContent.ts) on a stage that is laid out but never seen, and
 // every character it shows is found there and in the typesetter's runs: a
 // character on another line, or more than a pixel away, is a difference.
 //
-// Reached from the console through the scene's canvas while the GPU scene
-// is developed; it goes when the switch does.
+// A development build's tool, reached from the console through the scene's
+// canvas (`checkTypeset`, `showTypeset`; canvas.ts): a release build drops
+// it with the code that reaches it. The spike scripts beside the GPU plan
+// drive it over a whole board.
 
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { contentClip } from '../../typeset/tokens'

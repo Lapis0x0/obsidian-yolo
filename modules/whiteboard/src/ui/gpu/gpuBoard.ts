@@ -14,9 +14,9 @@
 // is over the surfaces the overview draws and under everything the world
 // holds.
 //
-// Behind a development switch while the scene grows into the board's
-// renderer (docs/plans/…-whiteboard-gpu-renderer/p4-gpu.md): set
-// `localStorage['yolo-whiteboard-gpu'] = '1'` and reopen a board.
+// Where WebGL2 is not there, its context is lost, or the typesetting worker
+// cannot start, it draws nothing and claims nothing: every card shows as it
+// does without it — its DOM near to, its picture far away.
 
 import { resolveColor } from '../../domain/color'
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'
@@ -48,17 +48,6 @@ import {
   type ImagePicture,
   type SceneFrame,
 } from './scene'
-
-export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
-
-/** Whether the development switch is on in this window. */
-export function gpuSwitchedOn(win: Window): boolean {
-  try {
-    return win.localStorage.getItem(GPU_SWITCH_KEY) === '1'
-  } catch {
-    return false
-  }
-}
 
 /** How far above a framed card's bottom edge its content fades out
  * (styles/cards/content.css's fade). */
@@ -162,8 +151,6 @@ export class GpuBoard implements ContentLayer {
     this.canvas = doc.createElement('canvas')
     this.canvas.className = 'yolo-whiteboard-gpu-scene'
     deps.parent.appendChild(this.canvas)
-    // DEBUG(p4): reachable from the console while the scene is developed.
-    Object.assign(this.canvas, { gpuBoard: this })
     this.scene = new GpuScene(this.canvas)
     const ctx = doc.createElement('canvas').getContext('2d', {
       willReadFrequently: true,

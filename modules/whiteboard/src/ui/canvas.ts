@@ -209,7 +209,7 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
-import { GpuBoard, gpuSwitchedOn } from './gpu/gpuBoard'
+import { GpuBoard } from './gpu/gpuBoard'
 import { ImageSizes } from './gpu/imageSizes'
 import { NearImages } from './gpu/nearImages'
 import { placeDrawnPassage } from './gpu/passages'
@@ -680,7 +680,7 @@ export class WhiteboardCanvas {
   /** The board's typesetting worker, for cards' pictures and the GPU
    * scene (./typesetting/typesetClient.ts). */
   private typesetClient: TypesetClient | null = null
-  /** The GPU scene, behind its development switch (./gpu/gpuBoard.ts). */
+  /** The GPU scene (./gpu/gpuBoard.ts). */
   private gpuBoard: GpuBoard | null = null
   /** The own sizes of the images cards embed (./gpu/imageSizes.ts). */
   private imageSizes: ImageSizes | null = null
@@ -1937,33 +1937,33 @@ export class WhiteboardCanvas {
       onDecoded: () => this.gpuBoard?.markDirty(),
     })
     this.nearImages = nearImages
-    this.gpuBoard = gpuSwitchedOn(this.context.getWindow())
-      ? new GpuBoard({
-          parent: viewport,
-          root,
-          style: typesetStyle,
-          view: this.core.getView,
-          isMounted: (id) => this.engine.mounted.has(id),
-          isSelected: (id) => this.selectedIds.has(id),
-          onTypeset: (ids) => {
-            for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
-            // The images in them are wanted now.
-            this.pictures?.invalidate()
-          },
-          redrawOverview: () => this.overviewLayer?.markDirty(),
-          readNote: async (path) => {
-            try {
-              return await this.host.vault.readText(path)
-            } catch {
-              return null
-            }
-          },
-          typesetter: typesetClient,
-          imagePicture: (path, devicePx) => nearImages.get(path, devicePx),
-          images: imageSizes,
-          reportError: (stage, error) => this.reportError(stage, error),
-        })
-      : null
+    // Draws what it can typeset; where WebGL2 or its worker is not there,
+    // nothing, and every card shows as it would without it.
+    this.gpuBoard = new GpuBoard({
+      parent: viewport,
+      root,
+      style: typesetStyle,
+      view: this.core.getView,
+      isMounted: (id) => this.engine.mounted.has(id),
+      isSelected: (id) => this.selectedIds.has(id),
+      onTypeset: (ids) => {
+        for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
+        // The images in them are wanted now.
+        this.pictures?.invalidate()
+      },
+      redrawOverview: () => this.overviewLayer?.markDirty(),
+      readNote: async (path) => {
+        try {
+          return await this.host.vault.readText(path)
+        } catch {
+          return null
+        }
+      },
+      typesetter: typesetClient,
+      imagePicture: (path, devicePx) => nearImages.get(path, devicePx),
+      images: imageSizes,
+      reportError: (stage, error) => this.reportError(stage, error),
+    })
     this.gpuBoard?.setNodes(this.ownCardNodes)
     this.unsubscribeRemoteImages?.()
     this.unsubscribeRemoteImages = this.remoteImages.subscribe((key) => {
@@ -1973,10 +1973,11 @@ export class WhiteboardCanvas {
       this.nearImages?.fileChanged(key)
       this.pictures?.invalidate()
     })
-    // DEBUG(p4): the typesetter checked against the browser, from the
-    // console (./gpu/typesetCheck.ts).
-    if (this.gpuBoard) {
+    // The typesetter checked against the browser, from the console of a
+    // development build (./gpu/typesetCheck.ts); a release has none of it.
+    if (process.env.NODE_ENV === 'development') {
       const board = this.gpuBoard
+      Object.assign(board.canvas, { gpuBoard: board })
       const checkDeps = () => ({
         host: this.host,
         root,

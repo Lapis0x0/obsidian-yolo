@@ -413,6 +413,13 @@ async function buildModule({
     supported: { 'template-literal': false },
     minify: true,
     sourcemap: false,
+    // Code behind `process.env.NODE_ENV === 'development'` is the dev
+    // vault's alone: a release build drops it as dead.
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(
+        options.development ? 'development' : 'production',
+      ),
+    },
     plugins: [sharedRuntimePlugin],
     legalComments: 'none',
     metafile: true,
@@ -593,6 +600,11 @@ function parseOptions(args) {
   const options = {}
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index]
+    // The dev watcher's build: development-only code is kept in it.
+    if (option === '--development') {
+      options.development = true
+      continue
+    }
     if (
       option !== '--module' &&
       option !== '--output-dir' &&

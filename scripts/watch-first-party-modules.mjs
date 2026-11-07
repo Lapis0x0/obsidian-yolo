@@ -53,7 +53,7 @@ function isModuleSource(relativePath) {
 
 function runBuild() {
   running = true
-  const child = spawn(process.execPath, [buildScript], {
+  const child = spawn(process.execPath, [buildScript, '--development'], {
     cwd: repositoryRoot,
     stdio: 'inherit',
   })
