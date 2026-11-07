@@ -1909,7 +1909,7 @@ export class WhiteboardCanvas {
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
-      isMounted: (id) => this.engine.mounted.has(id),
+      isMounted: (id) => this.shownByDom(id),
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
       picture: (node, dark, page) => this.pictureOf(node, dark, page),
@@ -1944,7 +1944,7 @@ export class WhiteboardCanvas {
       root,
       style: typesetStyle,
       view: this.core.getView,
-      isMounted: (id) => this.engine.mounted.has(id),
+      isMounted: (id) => this.shownByDom(id),
       isSelected: (id) => this.selectedIds.has(id),
       onTypeset: (ids) => {
         for (const id of ids) this.edgeLayer.redrawPassageEdges(id)
@@ -2192,6 +2192,10 @@ export class WhiteboardCanvas {
       },
       // A card showing its content is one a picture can be taken of.
       onContentRendered: () => this.pictures?.invalidate(),
+      // The GPU scene goes on drawing a card it draws until its DOM shows
+      // it, so that selecting one never shows its body empty.
+      drawnUnder: (id) => this.gpuBoard?.drawable(id) ?? false,
+      onShown: () => this.overviewLayer?.markDirty(),
       // An image on the web a card shows: remembered once the browser has
       // shown it, and its bytes fetched (../host/remoteImages.ts).
       onImageLoaded: (img) => {
@@ -4220,6 +4224,14 @@ export class WhiteboardCanvas {
     const portal = portalOf(id, portals)
     if (!portal) return null
     return this.drawnPortals.has(portal.id) ? 'drawn' : 'built'
+  }
+
+  /** Whether a card's DOM shows it: mounted, and not waiting for its
+   * content with the GPU scene's drawing standing in for it
+   * (./canvas/cardRenderer.ts's `showsItself`). Until then the overview and
+   * the GPU scene draw it as one that is not mounted. */
+  private shownByDom(id: NodeId): boolean {
+    return this.engine.mounted.has(id) && this.cardRenderer.showsItself(id)
   }
 
   /** Whether a card is drawn by the canvas rather than built, at the size

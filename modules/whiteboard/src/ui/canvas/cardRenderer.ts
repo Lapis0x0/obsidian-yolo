@@ -108,6 +108,9 @@ const CARD_PICTURE_CLASS = 'yolo-whiteboard-card-picture'
 /** A picture of the whole card rather than of what its body shows: a text
  * card's or a note's (`showCardPicture`). */
 const CARD_PICTURE_WHOLE_CLASS = 'yolo-whiteboard-card-picture-whole'
+/** A card the board's own drawing stands in for until its content has
+ * rendered (`showCardPicture`): there, but not shown. */
+const CARD_DRAWN_UNDER_CLASS = 'yolo-whiteboard-card-drawn-under'
 
 /**
  * What a web card's frame is allowed to do.
@@ -198,6 +201,9 @@ export type NodeRuntime = {
    * in its body from its mount until its content has rendered
    * (`showCardPicture`); null the rest of the time. */
   picture: HTMLCanvasElement | null
+  /** In place of a picture, the board's own drawing of it stands in for it
+   * (`showCardPicture`): it is not shown until its content has rendered. */
+  drawnUnder: boolean
 }
 
 /**
@@ -249,6 +255,12 @@ export type CardRendererCallbacks = Readonly<{
   /** The small picture standing for a card (../pictures/pictures.ts) — for
    * a PDF card, the one of its page `page` — or null while it has none. */
   picture: (id: NodeId, page?: number) => ImageBitmap | null
+  /** Whether the board draws the card's content itself, under the world —
+   * the GPU scene (../gpu/gpuBoard.ts) — and can go on doing so until its
+   * DOM has its content. */
+  drawnUnder: (id: NodeId) => boolean
+  /** A card's DOM has started showing it (`showsItself`). */
+  onShown: () => void
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
   getMountedCount: () => number
@@ -620,6 +632,7 @@ export class CardRenderer {
         missingFile: false,
         noteText: null,
         picture: null,
+        drawnUnder: false,
       })
       return
     }
@@ -734,13 +747,10 @@ export class CardRenderer {
       missingFile: false,
       noteText: existing?.noteText ?? null,
       picture: null,
+      drawnUnder: false,
     })
     if (plain) this.observeText(el)
-    // The focused card is the one being read: it gets the whole note at
-    // once, with nothing standing in for it.
-    if (isCardPictured(node) && !this.callbacks.isFocused(id)) {
-      this.showCardPicture(id)
-    }
+    if (isCardPictured(node)) this.showCardPicture(id)
 
     void this.renderCardPreview(id)
   }
@@ -779,6 +789,7 @@ export class CardRenderer {
       missingFile: false,
       noteText: null,
       picture: null,
+      drawnUnder: false,
     })
   }
 
@@ -1309,9 +1320,9 @@ export class CardRenderer {
     const plain = isPlainText(node)
     const scrollable =
       !plain && (this.callbacks.isFocused(id) || runtime.contentView !== null)
-    // The scrollable surface is the card being read, which is shown as it
-    // is or not at all.
-    if (scrollable) this.dropCardPicture(runtime)
+    // The scrollable surface is the card being read, which a picture does
+    // not stand in for (`showCardPicture`).
+    if (scrollable) this.dropPictureCanvas(runtime)
 
     const startLine =
       node && (node.type === 'text' || node.type === 'file')
@@ -1356,12 +1367,14 @@ export class CardRenderer {
       if (runtime.el) this.holdTextSize(runtime.el, node)
       // The card's picture stays over the render arriving under it, and
       // goes once that has landed.
-      const picture = runtime.picture
+      const { picture, drawnUnder } = runtime
       runtime.picture = null
+      runtime.drawnUnder = false
       this.destroyCardContent(runtime)
       if (picture) bodyEl.replaceChildren(picture)
       else bodyEl.replaceChildren()
       runtime.picture = picture
+      runtime.drawnUnder = drawnUnder
     }
     runtime.contentSourcePath = sourcePath
     runtime.contentMarkdown = wanted
@@ -1382,15 +1395,23 @@ export class CardRenderer {
         // — and the window the card was showing has to be found again by
         // scrolling to it.
         bodyEl.classList.add(CARD_BODY_SCROLLS_CLASS)
-        if (startLine || endHandoff) {
-          view.scrollToLine(startLine, endHandoff ?? undefined)
-        }
+        // What stands in for it — the outgoing render, or the board's
+        // drawing — goes once the preview has rendered and found its place.
+        const settled =
+          endHandoff || runtime.drawnUnder
+            ? () => {
+                endHandoff?.()
+                this.dropCardPicture(runtime)
+              }
+            : undefined
+        if (startLine || settled) view.scrollToLine(startLine, settled)
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
-        // Nothing is arriving to settle, so the outgoing render is not being
-        // held over anything: let it go rather than leave it laid over an
-        // empty body, where it would outlive the content it describes.
+        // Nothing is arriving to settle, so what stands in for it is not
+        // being held over anything: let it go rather than leave it laid over
+        // an empty body, where it would outlive the content it describes.
         endHandoff?.()
+        this.dropCardPicture(runtime)
       }
       return
     }
@@ -1916,8 +1937,21 @@ export class CardRenderer {
    */
   private showCardPicture(id: NodeId): void {
     const runtime = this.runtimeByNodeId.get(id)
-    const picture = this.callbacks.picture(id)
-    if (!runtime?.bodyEl || !picture) return
+    if (!runtime?.bodyEl) return
+    // The focused card is the one being read: a picture, which is soft, does
+    // not stand in for it; the board's drawing, which is the card as it is,
+    // does.
+    const picture = this.callbacks.isFocused(id)
+      ? null
+      : this.callbacks.picture(id)
+    if (!picture) {
+      // The board's drawing of it stands in instead: the card is not shown
+      // until it can show its content, and the drawing goes on until then.
+      if (!this.callbacks.drawnUnder(id)) return
+      runtime.drawnUnder = true
+      runtime.el?.classList.add(CARD_DRAWN_UNDER_CLASS)
+      return
+    }
     const canvas = runtime.bodyEl.ownerDocument.createElement('canvas')
     canvas.className = `${CARD_PICTURE_CLASS} ${CARD_PICTURE_WHOLE_CLASS}`
     canvas.width = picture.width
@@ -1927,8 +1961,24 @@ export class CardRenderer {
     runtime.picture = canvas
   }
 
-  /** Takes the card's picture out of its body, if it is there. */
+  /** Whether a mounted card's DOM shows it, rather than the board's drawing
+   * of it still standing in for it (`showCardPicture`). */
+  showsItself(id: NodeId): boolean {
+    return this.runtimeByNodeId.get(id)?.drawnUnder !== true
+  }
+
+  /** Takes what stands in for the card's content away, if anything does. */
   private dropCardPicture(runtime: NodeRuntime): void {
+    if (runtime.drawnUnder) {
+      runtime.drawnUnder = false
+      runtime.el?.classList.remove(CARD_DRAWN_UNDER_CLASS)
+      this.callbacks.onShown()
+    }
+    this.dropPictureCanvas(runtime)
+  }
+
+  /** Takes the card's picture out of its body, if it is there. */
+  private dropPictureCanvas(runtime: NodeRuntime): void {
     const canvas = runtime.picture
     if (!canvas) return
     runtime.picture = null

@@ -94,3 +94,11 @@
   width: 100%;
   height: 100%;
 }
+
+/* A card the board's own drawing stands in for until its content has
+ * rendered (cardRenderer's `showCardPicture`, the GPU scene drawing it
+ * underneath): there to be pointed at, but not shown, so that what shows is
+ * the drawing rather than its empty body. */
+.yolo-whiteboard-card-drawn-under {
+  opacity: 0;
+}
