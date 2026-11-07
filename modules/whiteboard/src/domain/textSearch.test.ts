@@ -1,7 +1,9 @@
 import {
   type SearchTextItem,
   buildPageSearchIndex,
+  findInFolded,
   findInPage,
+  foldSearchText,
   normalizeQuery,
 } from './textSearch'
 
@@ -10,8 +12,13 @@ const item = (text: string, endsLine = false): SearchTextItem => ({
   endsLine,
 })
 
+/** What `findInPage` finds — and, every time, `findInFolded` the same. */
 function find(items: readonly SearchTextItem[], query: string) {
-  return findInPage(buildPageSearchIndex(items), normalizeQuery(query))
+  const found = findInPage(buildPageSearchIndex(items), normalizeQuery(query))
+  expect(
+    findInFolded(items, foldSearchText(items), normalizeQuery(query)),
+  ).toEqual(found)
+  return found
 }
 
 describe('normalizeQuery', () => {

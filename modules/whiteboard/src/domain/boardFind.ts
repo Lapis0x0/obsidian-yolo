@@ -8,14 +8,12 @@
 // shows "**a** b" as "a b", and that is what is looked for.
 //
 // A board holds thousands of cards and the query changes as it is typed, so
-// each card's folded text is kept — only the text, a fraction of what the
-// map from each folded character back to the source costs — and that map is
-// built only for the cards the query is in.
+// each card's folded text is kept, and where a match is in the source is
+// worked out only for the matches found.
 
 import {
   type SearchTextItem,
-  buildPageSearchIndex,
-  findInPage,
+  findInFolded,
   foldSearchText,
   normalizeQuery,
 } from './textSearch'
@@ -49,7 +47,7 @@ export class BoardFind {
       seen.add(card.id)
       const text = this.foldedText(card)
       if (wanted === '' || !text.includes(wanted)) continue
-      hits.push(...hitsIn(card, wanted))
+      hits.push(...hitsIn(card, text, wanted))
     }
     for (const id of [...this.folded.keys()]) {
       if (!seen.has(id)) this.folded.delete(id)
@@ -68,9 +66,9 @@ export class BoardFind {
   }
 }
 
-function hitsIn(card: FindableCard, wanted: string): FindHit[] {
+function hitsIn(card: FindableCard, text: string, wanted: string): FindHit[] {
   const { items, starts } = linesOf(card)
-  return findInPage(buildPageSearchIndex(items, MARKDOWN_MARKS), wanted).map(
+  return findInFolded(items, text, wanted, MARKDOWN_MARKS).map(
     ([startLine, startOffset, endLine, endOffset]) => ({
       id: card.id,
       start: starts[startLine] + startOffset,

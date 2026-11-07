@@ -104,6 +104,44 @@ export function foldSearchText(
   return text
 }
 
+/** Every non-overlapping occurrence of an already-normalized query in
+ * `text`, the items folded by `foldSearchText`, as selection tuples — as
+ * `findInPage` finds them, with only the ends of each found where they came
+ * from, rather than every character of the items. */
+export function findInFolded(
+  items: readonly SearchTextItem[],
+  text: string,
+  normalizedQuery: string,
+  ignore?: RegExp,
+): SearchTuple[] {
+  if (normalizedQuery === '') return []
+  // The folded characters each match starts and ends on, ascending.
+  const wanted: number[] = []
+  for (let from = 0; ; ) {
+    const at = text.indexOf(normalizedQuery, from)
+    if (at < 0) break
+    wanted.push(at, at + normalizedQuery.length - 1)
+    from = at + normalizedQuery.length
+  }
+  if (wanted.length === 0) return []
+  const found: (readonly [number, number, number])[] = []
+  let at = 0
+  foldItems(items, ignore, (chunk, item, offset, length) => {
+    const end = at + chunk.length
+    while (found.length < wanted.length && wanted[found.length] < end) {
+      found.push([item, offset, length])
+    }
+    at = end
+  })
+  const matches: SearchTuple[] = []
+  for (let i = 0; i + 1 < found.length; i += 2) {
+    const [startItem, startOffset] = found[i]
+    const [endItem, endOffset, endLength] = found[i + 1]
+    matches.push([startItem, startOffset, endItem, endOffset + endLength])
+  }
+  return matches
+}
+
 /** The items folded, chunk by chunk, each with the item it came from and its
  * source character's offset and length there. */
 function foldItems(
@@ -178,12 +216,21 @@ export function findInPage(
   }
 }
 
+/** Each character's fold, once worked out: a board's cards fold the same
+ * few thousand characters over and over, and normalizing is most of what
+ * folding one costs. */
+const FOLDED = new Map<string, string>()
+
 function foldChar(char: string, ignore?: RegExp): string {
   if (ignore?.test(char)) return ''
   if (WHITESPACE.test(char)) return ' '
-  const folded = char.normalize('NFKC').toLowerCase()
-  // Compatibility decomposition can itself produce a space ("¨" becomes a
-  // space and a combining diaeresis); a space inside one folded character is
-  // not a word gap anyone typed.
-  return folded.replace(/\s+/g, '')
+  let folded = FOLDED.get(char)
+  if (folded === undefined) {
+    // Compatibility decomposition can itself produce a space ("¨" becomes a
+    // space and a combining diaeresis); a space inside one folded character
+    // is not a word gap anyone typed.
+    folded = char.normalize('NFKC').toLowerCase().replace(/\s+/g, '')
+    FOLDED.set(char, folded)
+  }
+  return folded
 }
