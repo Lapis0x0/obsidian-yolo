@@ -62,7 +62,8 @@ void main() {
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
   uvec4 c = texelFetch(colors, ivec2(int(slot % ${SLOTS_PER_ROW}u), int(slot / ${SLOTS_PER_ROW}u)), 0);
-  if (box.z <= 0.0 || more.y == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+  // Not drawn, or nothing to draw: a card whose frame the overview draws.
+  if (box.z <= 0.0 || more.y == 0.0 || (c.x >> 24) + (c.y >> 24) == 0u) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   // One device pixel out on every side, for the edge's antialiasing.
   float grow = 1.0 / (cam.z * cam.w);
   vec2 local = mix(vec2(-grow), box.zw + grow, corner);

@@ -109,6 +109,23 @@ type Surface = Readonly<{
   height: number
   text: boolean
   selection: boolean
+  /** The board's own screen, whose cards' content `contentLayer` may draw
+   * — not the minimap's. */
+  screen: boolean
+}>
+
+/**
+ * Another layer that draws the content of some of the cards this one draws
+ * the surfaces of: the GPU scene (../gpu/gpuBoard.ts), over this canvas and
+ * under the world. Each frame this layer draws, it starts a pass and asks,
+ * card by card, whether the other draws it; a card it says yes to gets its
+ * surface here and no picture.
+ */
+export type ContentLayer = Readonly<{
+  begin: () => void
+  /** Whether it draws `node`'s content this frame, at `rect` (world units)
+   * and `scale`; a yes is a promise to. */
+  claim: (node: BoardNode, rect: CardRect, scale: number) => boolean
 }>
 
 /** A page's annotations as the overview draws them: its highlights one path
@@ -221,6 +238,9 @@ export type OverviewLayerCallbacks = Readonly<{
    * the theme shows it — for a PDF card, the one of its page `page` — or
    * null while it has none. */
   picture: (node: BoardNode, dark: boolean, page?: number) => ImageBitmap | null
+  /** What draws some cards' content instead of their pictures, if
+   * anything does. */
+  contentLayer: () => ContentLayer | null
   /** The annotations on a page that has a picture, and where its PDF points
    * land on it (../pictures/pdfPages.ts's `pageFrame`); null when there are
    * none to draw. */
@@ -357,6 +377,7 @@ export class OverviewLayer {
     }
     this.motions.clear()
     this.clear()
+    this.callbacks.contentLayer()?.begin()
   }
 
   /** The board, the camera or the selection moved: the next frame redraws.
@@ -401,7 +422,7 @@ export class OverviewLayer {
   ): void {
     this.palette ??= this.readPalette(ctx)
     const live = this.callbacks.getLiveRects()
-    const surface = { ...size, text: false, selection: false }
+    const surface = { ...size, text: false, selection: false, screen: false }
     this.drawGroups(ctx, view, live)
     this.drawBoard(ctx, view, surface, live)
     ctx.globalAlpha = 1
@@ -598,7 +619,9 @@ export class OverviewLayer {
       height: this.height,
       text: true,
       selection: true,
+      screen: true,
     }
+    this.callbacks.contentLayer()?.begin()
     // Recorded as the frame draws them — the board's own and every
     // portal's — so cleared once, before any.
     this.titleRects.clear()
@@ -643,7 +666,9 @@ export class OverviewLayer {
       height: this.height,
       text: true,
       selection: true,
+      screen: true,
     }
+    this.callbacks.contentLayer()?.begin()
     const live = this.callbacks.getLiveRects()
     const mounted = (id: NodeId) => this.callbacks.isMounted(id)
     const ownDrew = this.drawCards(ctx, view, surface, live, mounted)
@@ -945,6 +970,14 @@ export class OverviewLayer {
     }[] = []
     const texts: typeof visible = []
     const titles: TitleLine[] = []
+    // The board's own cards on its own screen may have their content drawn
+    // by the content layer; a portal's, drawn at its scale, never do.
+    const content =
+      surface.screen && unit === 1 && nodes === this.callbacks.getCardNodes()
+        ? this.callbacks.contentLayer()
+        : null
+    /** The cards whose content the content layer draws this frame. */
+    const elsewhere = new Set<NodeId>()
     for (const node of nodes) {
       if (skip?.(node.id)) continue
       const moving = this.motions.has(node.id)
@@ -982,6 +1015,11 @@ export class OverviewLayer {
       // The rest of it is drawn on its own, at its own opacity
       // (`drawMotions`).
       if (moving) continue
+      if (content?.claim(node, rect, view.scale)) {
+        elsewhere.add(node.id)
+        // Bare text has no surface: the content layer draws all of it.
+        if (isPlainText(node)) continue
+      }
       if (isPlainText(node)) texts.push(item)
       else if (badge && isSpreadTitle(node)) {
         titles.push({
@@ -1040,6 +1078,7 @@ export class OverviewLayer {
     //    borders below.
     const pictures = new Map<NodeId, ImageBitmap>()
     for (const card of visible) {
+      if (elsewhere.has(card.node.id)) continue
       const picture = this.pictureOf(card.node, card, palette.dark)
       if (picture) pictures.set(card.node.id, picture)
     }
@@ -1051,7 +1090,7 @@ export class OverviewLayer {
       const bucket = byColor.get(color)
       if (bucket) bucket.push(card)
       else byColor.set(color, [card])
-      const pictured = pictures.has(card.node.id)
+      const pictured = pictures.has(card.node.id) || elsewhere.has(card.node.id)
       if (pictured && own === null) continue
       const alpha = pictured
         ? OVERVIEW_THEMED_CARD_WASH_ALPHA[palette.dark ? 'dark' : 'light']
@@ -1088,7 +1127,7 @@ export class OverviewLayer {
         )
       }
     }
-    const pictured = new Set(pictures.keys())
+    const pictured = new Set([...pictures.keys(), ...elsewhere])
 
     // 3. Borders. An uncoloured card takes the theme's border token at full
     //    strength; a coloured one takes its own colour at the stylesheet's 70%.

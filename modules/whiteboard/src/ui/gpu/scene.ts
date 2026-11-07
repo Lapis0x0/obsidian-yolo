@@ -64,6 +64,7 @@ export type SceneCard = Readonly<{
 type Slot = {
   id: string
   index: number
+  shown: boolean
   card: SceneCard
   chunk: string | null
 }
@@ -116,6 +117,10 @@ export class GpuScene {
   private colorWords = new Uint32Array(SLOTS_PER_ROW * 4)
   private tableRows = 0
   private tablesDirty = true
+  /** The rows of the card tables written since they were last uploaded:
+   * only those go up, for a texture rewritten whole while the frame before
+   * still reads it makes the GPU wait for that frame. */
+  private dirtyRows: [number, number] | null = null
   private lookupRows = 0
   /** Each card's place from the bottom. */
   private ranks = new Map<string, number>()
@@ -129,6 +134,11 @@ export class GpuScene {
     this.g = this.init()
   }
 
+  /** Whether it can draw: WebGL2 is there and its context is not lost. */
+  get usable(): boolean {
+    return this.g !== null && !this.lost
+  }
+
   /** The atlas, whose ids a card's content names (./instances.ts's
    * `InstanceDeps`). */
   get glyphs(): GlyphAtlas {
@@ -139,7 +149,7 @@ export class GpuScene {
     let slot = this.slots.get(id)
     if (!slot) {
       const index = this.free.pop() ?? this.slotCount++
-      slot = { id, index, card, chunk: null }
+      slot = { id, index, shown: true, card, chunk: null }
       this.slots.set(id, slot)
     }
     const before = slot.card
@@ -156,6 +166,19 @@ export class GpuScene {
       this.growChunk(chunk, card)
     }
     this.writeSlot(slot)
+  }
+
+  /** Whether a card is drawn; one that is not keeps all it has. */
+  setShown(id: string, shown: boolean): void {
+    const slot = this.slots.get(id)
+    if (!slot || slot.shown === shown) return
+    slot.shown = shown
+    this.writeSlot(slot)
+  }
+
+  /** The card `id` is, if the scene has it. */
+  cardOf(id: string): SceneCard | null {
+    return this.slots.get(id)?.card ?? null
   }
 
   removeCard(id: string): void {
@@ -499,7 +522,7 @@ export class GpuScene {
         card.fade,
         frame?.radius ?? 0,
         frame?.borderWidth ?? 0,
-        1,
+        slot.shown ? 1 : 0,
         0,
         0,
       ],
@@ -509,6 +532,13 @@ export class GpuScene {
       [frame?.fill ?? 0, frame?.border ?? 0, 0, 0],
       slot.index * 4,
     )
+    this.markRow(slot.index)
+  }
+
+  private markRow(index: number): void {
+    const row = Math.floor(index / SLOTS_PER_ROW)
+    const d = this.dirtyRows
+    this.dirtyRows = d ? [Math.min(d[0], row), Math.max(d[1], row)] : [row, row]
     this.tablesDirty = true
   }
 
@@ -519,7 +549,7 @@ export class GpuScene {
       (index + 1) * CARD_TEXELS * 4,
     )
     this.colorWords.fill(0, index * 4, index * 4 + 4)
-    this.tablesDirty = true
+    this.markRow(index)
   }
 
   private ensureTables(index: number): void {
@@ -536,9 +566,11 @@ export class GpuScene {
 
   private uploadTables(g: Gl): void {
     const { gl } = g
-    const rows = this.geometry.length / (SLOTS_PER_ROW * CARD_TEXELS * 4)
-    gl.bindTexture(gl.TEXTURE_2D, g.cards)
+    const geometryRow = SLOTS_PER_ROW * CARD_TEXELS * 4
+    const colorRow = SLOTS_PER_ROW * 4
+    const rows = this.geometry.length / geometryRow
     if (rows !== this.tableRows) {
+      gl.bindTexture(gl.TEXTURE_2D, g.cards)
       gl.texImage2D(
         gl.TEXTURE_2D,
         0,
@@ -550,21 +582,7 @@ export class GpuScene {
         gl.FLOAT,
         this.geometry,
       )
-    } else {
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        SLOTS_PER_ROW * CARD_TEXELS,
-        rows,
-        gl.RGBA,
-        gl.FLOAT,
-        this.geometry,
-      )
-    }
-    gl.bindTexture(gl.TEXTURE_2D, g.colors)
-    if (rows !== this.tableRows) {
+      gl.bindTexture(gl.TEXTURE_2D, g.colors)
       gl.texImage2D(
         gl.TEXTURE_2D,
         0,
@@ -576,20 +594,36 @@ export class GpuScene {
         gl.UNSIGNED_INT,
         this.colorWords,
       )
-    } else {
+    } else if (this.dirtyRows) {
+      const [r0, r1] = this.dirtyRows
+      const count = r1 - r0 + 1
+      gl.bindTexture(gl.TEXTURE_2D, g.cards)
       gl.texSubImage2D(
         gl.TEXTURE_2D,
         0,
         0,
+        r0,
+        SLOTS_PER_ROW * CARD_TEXELS,
+        count,
+        gl.RGBA,
+        gl.FLOAT,
+        this.geometry.subarray(r0 * geometryRow, (r1 + 1) * geometryRow),
+      )
+      gl.bindTexture(gl.TEXTURE_2D, g.colors)
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
         0,
+        0,
+        r0,
         SLOTS_PER_ROW,
-        rows,
+        count,
         gl.RGBA_INTEGER,
         gl.UNSIGNED_INT,
-        this.colorWords,
+        this.colorWords.subarray(r0 * colorRow, (r1 + 1) * colorRow),
       )
     }
     this.tableRows = rows
+    this.dirtyRows = null
     this.tablesDirty = false
   }
 

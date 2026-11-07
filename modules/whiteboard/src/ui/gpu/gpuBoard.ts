@@ -1,24 +1,36 @@
-// The board's cards handed to the GPU scene (./scene.ts): which cards there
-// are, what each one says — typeset (../../typeset/) in the look read off the
-// host's own card (../pictures/typesetStyle.ts) — and when to draw.
+// The content of the board's text and note cards, drawn by the GPU scene
+// (./scene.ts) wherever the overview canvas (../canvas/overviewLayer.ts)
+// draws those cards — in its tier, and under the world for cards not mounted
+// yet — in place of their pictures: typeset (../../typeset/) in the look read
+// off the host's own card (../pictures/typesetStyle.ts), sharp at the size
+// the card shows at rather than a picture made at one size.
+//
+// The overview layer decides which cards show, as it always has; this layer
+// only answers, card by card, whether it can draw one (`claim`): it cannot
+// while the card is not typeset yet, or where its type would be too small to
+// read, and there the card's picture stands in as before.
+//
+// Its canvas lies between the overview's and the world layer, so the content
+// is over the surfaces the overview draws and under everything the world
+// holds.
 //
 // Behind a development switch while the scene grows into the board's
 // renderer (docs/plans/…-whiteboard-gpu-renderer/p4-gpu.md): set
-// `localStorage['yolo-whiteboard-gpu'] = '1'` and reopen a board to have it
-// drawn over the DOM.
+// `localStorage['yolo-whiteboard-gpu'] = '1'` and reopen a board.
 
 import { resolveColor } from '../../domain/color'
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'
 import { fileNodeKind } from '../../domain/naming'
+import type { CardRect } from '../../domain/resize'
 import type { CanvasView } from '../../domain/virtualization'
 import { layoutCard } from '../../typeset/layout'
 import { parseCard } from '../../typeset/parse'
 import { clippedCardMarkdown } from '../canvas/cardContent'
-import { OVERVIEW_THEMED_CARD_WASH_ALPHA } from '../constants'
+import type { ContentLayer } from '../canvas/overviewLayer'
 import type { TypesetStyle } from '../pictures/typesetStyle'
 
 import { cardInstances, packColor } from './instances'
-import { GpuScene, type SceneFrame } from './scene'
+import { GpuScene } from './scene'
 
 export const GPU_SWITCH_KEY = 'yolo-whiteboard-gpu'
 
@@ -31,9 +43,6 @@ export function gpuSwitchedOn(win: Window): boolean {
   }
 }
 
-/** The card's radius and border (styles/cards/card.css). */
-const CARD_RADIUS = 10
-const CARD_BORDER = 1
 /** How far above a framed card's bottom edge its content fades out
  * (styles/cards/content.css's mask). */
 const FADE = 24
@@ -42,20 +51,32 @@ const SETTLE_MS = 120
 /** How long a frame may spend typesetting cards, ms. */
 const TYPESET_BUDGET_MS = 4
 const MEASURES_KEPT = 8192
+/** The smallest a card's body type is drawn, in device pixels: below it a
+ * card's picture says as much, for far less. */
+const MIN_BODY_DEVICE_PX = 5
 
 export type GpuBoardDeps = Readonly<{
-  /** Where the scene's canvas goes: over everything the board draws. */
+  /** Where the scene's canvas goes: appended after the overview's, before
+   * the world layer is. */
   parent: HTMLElement
   /** Where the board's palette is read (root.css). */
   root: HTMLElement
   style: TypesetStyle
   view: () => CanvasView
+  /** Whether a card has its DOM now. The overview leaves a card it drew
+   * under the world for its DOM to cover when it mounts, and does not draw
+   * again for that; bare text's DOM is transparent and would not cover this
+   * layer's drawing, so a mounted card is dropped here. */
+  isMounted: (id: string) => boolean
+  /** Has the overview draw again: it asks anew which cards this layer
+   * draws. */
+  redrawOverview: () => void
   readNote: (path: string) => Promise<string | null>
 }>
 
 type Pending = { node: BoardNode; text: string | null }
 
-export class GpuBoard {
+export class GpuBoard implements ContentLayer {
   readonly canvas: HTMLCanvasElement
   private readonly scene: GpuScene
   private readonly nodes = new Map<string, BoardNode>()
@@ -72,6 +93,12 @@ export class GpuBoard {
   private movedAt = 0
   private dirty = true
   private styleHash: string | null = null
+  /** What the overview's last frame had this layer draw, and where. */
+  private claimed = new Map<string, CardRect>()
+  /** What the scene shows now. */
+  private shown = new Set<string>()
+  /** Cards asked for that are not typeset yet: typeset first. */
+  private readonly wanted = new Set<string>()
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -111,8 +138,27 @@ export class GpuBoard {
     this.dirty = true
   }
 
-  /** Called every frame: typesets what is owed, and draws when anything
-   * changed. */
+  begin(): void {
+    this.claimed = new Map()
+    this.dirty = true
+  }
+
+  claim(node: BoardNode, rect: CardRect, scale: number): boolean {
+    const tokens = this.deps.style.tokens
+    if (!tokens || !this.scene.usable) return false
+    const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
+    if (tokens.body.size * scale * dpr < MIN_BODY_DEVICE_PX) return false
+    if (!this.nodes.has(node.id)) return false
+    if (this.pending.has(node.id) || !this.scene.cardOf(node.id)) {
+      this.wanted.add(node.id)
+      return false
+    }
+    this.claimed.set(node.id, rect)
+    return true
+  }
+
+  /** Called every frame, after the overview's: typesets what is owed, and
+   * draws when anything changed. */
   render(now: number): void {
     const hash = this.deps.style.hash
     if (hash !== this.styleHash && this.deps.style.tokens) {
@@ -124,6 +170,7 @@ export class GpuBoard {
       }
     }
     if (this.pending.size > 0 && this.deps.style.tokens) this.typeset(now)
+    this.syncShown()
     const view = this.deps.view()
     const last = this.lastView
     if (
@@ -144,7 +191,51 @@ export class GpuBoard {
     }
     if (!this.dirty) return
     const result = this.scene.render(view, settled || this.movedAt === -1)
-    this.dirty = result.more || this.pending.size > 0
+    this.dirty = result.more
+  }
+
+  /** Shows what the overview claimed, where it claimed it — a card a
+   * gesture is moving at its live rectangle — and nothing else. */
+  private syncShown(): void {
+    const view = this.deps.view()
+    const width = this.canvas.clientWidth
+    const height = this.canvas.clientHeight
+    for (const id of this.claimed.keys()) {
+      if (this.deps.isMounted(id)) this.claimed.delete(id)
+    }
+    for (const id of this.shown) {
+      if (this.claimed.has(id)) continue
+      // One gone off screen is out of sight anyway: left as it is, so that
+      // panning changes nothing in the card table.
+      const card = this.scene.cardOf(id)
+      if (card && !onScreen(card, view, width, height)) continue
+      this.scene.setShown(id, false)
+      this.shown.delete(id)
+      this.dirty = true
+    }
+    for (const [id, rect] of this.claimed) {
+      const card = this.scene.cardOf(id)
+      if (!card) continue
+      if (
+        card.x !== rect.x ||
+        card.y !== rect.y ||
+        card.w !== rect.w ||
+        card.h !== rect.h
+      ) {
+        this.scene.setCard(id, {
+          ...card,
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
+        })
+        this.dirty = true
+      }
+      if (this.shown.has(id)) continue
+      this.scene.setShown(id, true)
+      this.shown.add(id)
+      this.dirty = true
+    }
   }
 
   destroy(): void {
@@ -156,7 +247,16 @@ export class GpuBoard {
     const win = this.canvas.ownerDocument.defaultView
     const clock = () => win?.performance.now() ?? now
     const start = clock()
-    for (const [id, pending] of this.pending) {
+    // What the overview asked for first, then the rest in board order.
+    const order = [
+      ...[...this.wanted].filter((id) => this.pending.has(id)),
+      ...this.pending.keys(),
+    ]
+    this.wanted.clear()
+    let placed = false
+    for (const id of order) {
+      const pending = this.pending.get(id)
+      if (!pending) continue
       if (clock() - start > TYPESET_BUDGET_MS) break
       const { node } = pending
       if (node.type === 'file' && pending.text === null) {
@@ -173,7 +273,10 @@ export class GpuBoard {
       this.pending.delete(id)
       const markdown = node.type === 'text' ? node.text : (pending.text ?? '')
       this.place(node, markdown)
+      placed = true
     }
+    // The overview draws their pictures until it asks again.
+    if (placed) this.deps.redrawOverview()
   }
 
   private place(node: BoardNode, markdown: string): void {
@@ -201,41 +304,18 @@ export class GpuBoard {
       measure: (text, font) => this.measure(text, font),
       advance: (glyph, font) => atlas.advance(glyph, font),
     })
+    // Not shown until the overview claims it: it draws the card's surface.
+    const before = this.scene.cardOf(node.id)
     this.scene.setCard(node.id, {
       x: node.x,
       y: node.y,
       w: node.w,
       h: node.h,
-      frame: plain ? null : this.frameOf(node),
+      frame: null,
       fade: plain ? 0 : FADE,
       content,
     })
-  }
-
-  private frameOf(node: BoardNode): SceneFrame {
-    const style = this.canvas.ownerDocument.defaultView?.getComputedStyle(
-      this.deps.root,
-    )
-    const read = (name: string, fallback: string) =>
-      style?.getPropertyValue(name).trim() || fallback
-    const background = read('--yolo-whiteboard-card-background', '#ffffff')
-    let fill = this.pack(background)
-    if (node.color !== undefined) {
-      const tint = this.nodeColor(node.color)
-      if (tint) {
-        const dark = this.deps.root.closest('.theme-dark') !== null
-        const alpha = dark
-          ? OVERVIEW_THEMED_CARD_WASH_ALPHA.dark
-          : OVERVIEW_THEMED_CARD_WASH_ALPHA.light
-        fill = mix(fill, this.pack(tint), alpha)
-      }
-    }
-    return {
-      fill,
-      border: this.pack(read('--yolo-whiteboard-card-border', '#e8e8e8')),
-      borderWidth: CARD_BORDER,
-      radius: CARD_RADIUS,
-    }
+    if (!before) this.scene.setShown(node.id, false)
   }
 
   private nodeColor(color: string): string | null {
@@ -304,12 +384,18 @@ function drawsContent(node: BoardNode): boolean {
   return node.type === 'file' && fileNodeKind(node.file) === 'markdown'
 }
 
-/** `over` laid over `under` at `alpha`, both RGBA8 words. */
-function mix(under: number, over: number, alpha: number): number {
-  const channel = (shift: number) => {
-    const a = (under >>> shift) & 255
-    const b = (over >>> shift) & 255
-    return Math.round(a + (b - a) * alpha)
-  }
-  return packColor(channel(0), channel(8), channel(16), (under >>> 24) & 255)
+function onScreen(
+  card: Readonly<{ x: number; y: number; w: number; h: number }>,
+  view: CanvasView,
+  width: number,
+  height: number,
+): boolean {
+  const x = card.x * view.scale + view.tx
+  const y = card.y * view.scale + view.ty
+  return (
+    x < width &&
+    y < height &&
+    x + card.w * view.scale > 0 &&
+    y + card.h * view.scale > 0
+  )
 }

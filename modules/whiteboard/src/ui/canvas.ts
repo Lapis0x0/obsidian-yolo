@@ -1860,24 +1860,6 @@ export class WhiteboardCanvas {
       () => this.overviewLayer?.markDirty(),
     )
 
-    this.gpuBoard?.destroy()
-    this.gpuBoard = gpuSwitchedOn(this.context.getWindow())
-      ? new GpuBoard({
-          parent: viewport,
-          root,
-          style: typesetStyle,
-          view: this.core.getView,
-          readNote: async (path) => {
-            try {
-              return await this.host.vault.readText(path)
-            } catch {
-              return null
-            }
-          },
-        })
-      : null
-    this.gpuBoard?.setNodes(this.cardNodes)
-
     // The overview canvas goes in *before* the world layer, so everything the
     // world holds paints over it: the group frames and labels that stay in the
     // DOM at every tier, the resize handles, the snap guides, and an
@@ -1898,6 +1880,7 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.interaction.liveNodeRects,
       pdfPageLabels: this.pdfPageLabels,
       picture: (node, dark, page) => this.pictureOf(node, dark, page),
+      contentLayer: () => this.gpuBoard,
       pageAnnotations: (path, page) => {
         const annotations = this.pictureAnnotations?.forPage(path, page)
         if (!annotations?.length) return null
@@ -1905,6 +1888,25 @@ export class WhiteboardCanvas {
         return frame ? { frame, annotations } : null
       },
     })
+    this.gpuBoard?.destroy()
+    this.gpuBoard = gpuSwitchedOn(this.context.getWindow())
+      ? new GpuBoard({
+          parent: viewport,
+          root,
+          style: typesetStyle,
+          view: this.core.getView,
+          isMounted: (id) => this.engine.mounted.has(id),
+          redrawOverview: () => this.overviewLayer?.markDirty(),
+          readNote: async (path) => {
+            try {
+              return await this.host.vault.readText(path)
+            } catch {
+              return null
+            }
+          },
+        })
+      : null
+    this.gpuBoard?.setNodes(this.ownCardNodes)
     viewport.appendChild(world)
     // The empty element a pan captures the pointer on, so that the grabbing
     // cursor comes from it and the viewport's own style never changes during
@@ -4948,7 +4950,7 @@ export class WhiteboardCanvas {
             return !clip || overlaps(node, clip)
           })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
-    this.gpuBoard?.setNodes(this.cardNodes)
+    this.gpuBoard?.setNodes(this.ownCardNodes)
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),
