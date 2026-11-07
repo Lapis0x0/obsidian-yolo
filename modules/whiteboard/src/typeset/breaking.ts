@@ -473,15 +473,29 @@ export function contentWidths(
     objects,
     keepSpaces,
   )
+  // A pill or a highlight broken in two is padded at both ends of each
+  // piece (`box-decoration-break: clone`), as `breakLines` sets them.
+  const boxOf = (run: number): string | null => {
+    const flags = inlines[run].flags
+    if (flags & (CODE | TAG)) return `pill:${run}`
+    return flags & HIGHLIGHT ? 'mark' : null
+  }
+  const continues = (a: Atom | null, b: Atom): boolean =>
+    a !== null && boxOf(a.run) !== null && boxOf(a.run) === boxOf(b.run)
+  const padOf = (atom: Atom): number => styleOf(inlines[atom.run].flags).padX
   let min = 0
   let chunk = 0
   let trailing = 0
+  let previous: Atom | null = null
   for (const atom of atoms) {
     if (atom === null || atom.breakBefore) {
-      min = Math.max(min, chunk)
-      chunk = 0
+      const broken =
+        atom !== null && previous !== null && continues(previous, atom)
+      min = Math.max(min, chunk + (broken && previous ? padOf(previous) : 0))
+      chunk = broken ? padOf(atom) : 0
       trailing = 0
     }
+    previous = atom
     if (atom === null) continue
     if (atom.kind === 'space' && !keepSpaces) {
       trailing += atom.width

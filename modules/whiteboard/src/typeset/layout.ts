@@ -345,13 +345,16 @@ function styler(
   return (flags) => {
     let style = cache.get(flags)
     if (!style) {
+      // A pill's padding is in its own em (a theme's `0.3em`): read off
+      // body text, it is as much larger as the text it is in is.
+      const em = voice.style.size / tokens.body.size
       style = {
         font: fontString(faceOf(tokens, voice, flags)),
         padX:
           flags & CODE
-            ? tokens.code.padX
+            ? tokens.code.padX * em
             : flags & TAG
-              ? tokens.tag.padX
+              ? tokens.tag.padX * em
               : flags & HIGHLIGHT
                 ? tokens.highlight.padX
                 : 0,

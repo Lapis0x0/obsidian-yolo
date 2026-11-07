@@ -1,4 +1,4 @@
-import { breakLines, breakOpportunities } from './breaking'
+import { breakLines, breakOpportunities, contentWidths } from './breaking'
 import { layoutCard } from './layout'
 import { type MathLayout, mathKey } from './math'
 import {
@@ -375,6 +375,23 @@ describe('breakLines', () => {
     expect(texts(lines)).toEqual(['aaaa', 'bbbb'])
     expect(lines[0].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
     expect(lines[1].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
+  })
+})
+
+describe('contentWidths', () => {
+  test('a pill broken in two is padded at both ends of each piece', () => {
+    const styleOf = (flags: number) => ({
+      font: 'f',
+      padX: flags & CODE ? 3 : 0,
+      linkIcon: 0,
+    })
+    // "aaaa" and "bb": the first padded before it and, broken, after it.
+    const { min } = contentWidths(
+      [{ text: 'aaaa bb', flags: CODE }],
+      styleOf,
+      measure,
+    )
+    expect(min).toBe(4 * 8 + 3 + 3)
   })
 })
 
