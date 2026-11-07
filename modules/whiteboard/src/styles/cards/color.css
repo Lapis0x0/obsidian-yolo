@@ -13,10 +13,17 @@
  * carry it. ui/canvas/overviewLayer.ts draws the same two numbers
  * (constants.ts's OVERVIEW_THEMED_*). */
 .yolo-whiteboard-card.yolo-whiteboard-themed {
+  --yolo-whiteboard-card-wash-share: 10%;
   --yolo-whiteboard-card-wash: color-mix(
     in srgb,
-    var(--yolo-whiteboard-color) 10%,
+    var(--yolo-whiteboard-color) var(--yolo-whiteboard-card-wash-share),
     transparent
+  );
+  /* The wash over the background, as one colour (card.css). */
+  --yolo-whiteboard-card-surface: color-mix(
+    in srgb,
+    var(--yolo-whiteboard-color) var(--yolo-whiteboard-card-wash-share),
+    var(--yolo-whiteboard-card-background)
   );
   border-color: color-mix(
     in srgb,
@@ -30,11 +37,7 @@
 }
 
 .theme-dark .yolo-whiteboard-card.yolo-whiteboard-themed {
-  --yolo-whiteboard-card-wash: color-mix(
-    in srgb,
-    var(--yolo-whiteboard-color) 16%,
-    transparent
-  );
+  --yolo-whiteboard-card-wash-share: 16%;
 }
 
 /* A coloured card keeps its own colour when selected instead of turning
@@ -45,6 +48,5 @@
   border-color: var(--yolo-whiteboard-color);
   box-shadow:
     inset 0 0 0 1px var(--yolo-whiteboard-color),
-    0 0 0 1px var(--yolo-whiteboard-color),
-    var(--yolo-whiteboard-card-shadow);
+    0 0 0 1px var(--yolo-whiteboard-color);
 }

@@ -60,7 +60,7 @@ export function gpuSwitchedOn(win: Window): boolean {
 }
 
 /** How far above a framed card's bottom edge its content fades out
- * (styles/cards/content.css's mask). */
+ * (styles/cards/content.css's fade). */
 const FADE = 24
 /** How long the camera must have been still to count as at rest, ms. */
 const SETTLE_MS = 120

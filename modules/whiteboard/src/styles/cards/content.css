@@ -356,17 +356,30 @@
  * hard cut through a line reads as a rendering fault rather than as "more
  * below". The last stretch fades instead. Only where the card is not
  * scrolling (a scrolled card has its own bottom to reach, and would fade its
- * last line there) and not being edited; a card whose text ends above the
- * band has nothing there to fade, so a short note pays nothing. */
+ * last line there) and not being edited.
+ *
+ * Faded by laying the card's own surface over it, from clear to solid, which
+ * looks exactly as fading the text out over that surface would — and not by
+ * a mask: a masked element is drawn apart and composited on its own, and
+ * every card paid that on every frame a pan repainted the board
+ * (ui/gpu/gpuBoard.ts measures it). The preview fills the body and is its
+ * own containing block, so the band sits on the body's bottom edge. */
 .yolo-whiteboard-card-body:not(.yolo-whiteboard-card-body-scrolls):not(
     .yolo-whiteboard-editor-host
   )
-  > .markdown-preview-view {
-  mask-image: linear-gradient(
+  > .markdown-preview-view::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 24px;
+  background: linear-gradient(
     to bottom,
-    #000 calc(100% - 24px),
-    transparent 100%
+    transparent,
+    var(--yolo-whiteboard-card-surface)
   );
+  pointer-events: none;
 }
 
 /* Same inset, on CodeMirror's scroll container rather than on its content:

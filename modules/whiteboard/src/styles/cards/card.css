@@ -11,17 +11,21 @@
   display: flex;
   flex-direction: column;
   /* A sheet on the desk (root.css): the lighter background on the darker
-   * one, a hairline of the text colour round it, and in light themes a
-   * shadow soft enough to lift it without a halo — two layers, a tight one
-   * for the edge and a wide faint one for the lift. Dark themes have no
-   * shadow to cast onto; the hairline does the work there. */
+   * one and a hairline of the text colour round it — in every theme, and
+   * without a shadow at rest. The board is drawn three ways (its DOM, the
+   * overview's canvas, the GPU scene) and a shadow would have to be drawn
+   * the same in all three; on the DOM's side it was most of what a pan
+   * repainted, every frame, for a lift the hairline already gives. Only a
+   * card being dragged casts one (drag.css). */
   border: 1px solid var(--yolo-whiteboard-card-border);
   border-radius: 10px;
   /* background-color rather than the shorthand: a coloured card adds a wash
    * as a background-image layer on top of it (see .yolo-whiteboard-themed
    * below), and the shorthand would reset that layer. */
   background-color: var(--yolo-whiteboard-card-background);
-  box-shadow: var(--yolo-whiteboard-card-shadow);
+  /* What the card looks like through its content: its background with
+   * whatever lies over it, as one opaque colour (content.css's fade). */
+  --yolo-whiteboard-card-surface: var(--yolo-whiteboard-card-background);
   /* `paint` would clip to the border box exactly as overflow did, title
    * included; layout and style containment are what the dense-board budget
    * actually wanted. */
@@ -39,14 +43,11 @@
  * The two states are not told apart by weight because they never were:
  * Obsidian has no separate editing ring either. Editing is already
  * unmistakable from the caret, the live-preview markup and the text cursor,
- * and a second thickness tier only competes with them. The resting shadow
- * stays under the ring. */
+ * and a second thickness tier only competes with them. */
 .yolo-whiteboard-card.yolo-whiteboard-card-editing,
 .yolo-whiteboard-card.yolo-whiteboard-card-selected {
   border-color: var(--interactive-accent);
-  box-shadow:
-    0 0 0 1px var(--interactive-accent),
-    var(--yolo-whiteboard-card-shadow);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-card-editing {

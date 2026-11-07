@@ -70,10 +70,6 @@
    * so clicking into a card or watching it fill does not move its text. */
   --yolo-whiteboard-card-inset: 16px 20px;
   --yolo-whiteboard-card-font-size: 15px;
-  /* A resting card's lift (cards/card.css). A shadow list rather than
-   * `none`, so the rings the card states lay over it can append it. */
-  --yolo-whiteboard-card-shadow: 0 1px 2px rgb(0 0 0 / 4%),
-    0 4px 12px rgb(0 0 0 / 5%);
   background: var(--yolo-whiteboard-board-background);
 
   /* --- node/edge colour palette (JSON Canvas `color`) --------------------
@@ -101,7 +97,6 @@
 .theme-dark .yolo-whiteboard-root {
   --yolo-whiteboard-board-background: var(--background-primary);
   --yolo-whiteboard-card-background: var(--background-secondary);
-  --yolo-whiteboard-card-shadow: 0 0 transparent;
   --yolo-whiteboard-color: #7e7e7e;
 }
 

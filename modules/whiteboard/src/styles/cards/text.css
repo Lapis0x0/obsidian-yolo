@@ -9,9 +9,6 @@
   border: none;
   border-radius: var(--radius-s, 4px);
   background-color: transparent;
-  /* Nothing to lift: the sheet's shadow (card.css) would draw a box round
-   * text that has none. */
-  box-shadow: none;
   /* A coloured card's wash (color.css): bare text is coloured in its ink. */
   background-image: none;
 }
@@ -79,8 +76,8 @@
 
 .yolo-whiteboard-text
   .yolo-whiteboard-card-body:not(.yolo-whiteboard-editor-host)
-  > .markdown-preview-view {
-  mask-image: none;
+  > .markdown-preview-view::after {
+  content: none;
 }
 
 /* A tighter inset than a card's: the text sits where it was written, not
