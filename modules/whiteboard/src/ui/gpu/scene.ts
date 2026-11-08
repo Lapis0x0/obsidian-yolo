@@ -41,6 +41,8 @@ import {
 const CHUNK_WORLD = 2048
 /** How long a frame may spend drawing glyphs into the atlas, ms. */
 const GLYPH_BUDGET_MS = 6
+/** The same, for glyphs drawn ahead of being shown (`warmGlyphs`). */
+const WARM_BUDGET_MS = 3
 
 export type SceneFrame = Readonly<{
   /** RGBA8 words (./instances.ts's `packColor`). */
@@ -243,12 +245,15 @@ export class GpuScene {
 
   /** Draws the scene at `view`. `settled`: the camera has come to rest, so
    * glyphs are drawn afresh for the zoom it rests at. `greeked`: the type is
-   * too small to read, and each run is drawn as its bar instead. */
+   * too small to read, and each run is drawn as its bar instead — and,
+   * resting there, the glyphs are drawn ahead at `readableAt` (device pixels
+   * per world unit), where type first shows (`warmGlyphs`). */
   render(
     view: CanvasView,
     settled: boolean,
     picture: ImagePicture = () => null,
     greeked = false,
+    readableAt = 0,
   ): RenderResult {
     const g = this.g
     if (!g || this.lost) return { more: false, cards: 0, glyphs: 0 }
@@ -274,9 +279,10 @@ export class GpuScene {
       visible.push(chunk)
     }
 
-    // No glyph is drawn into the atlas for type too small to show.
+    // No glyph is drawn into the atlas for type too small to show, but
+    // ahead of it, while the camera rests.
     const more = greeked
-      ? false
+      ? settled && readableAt > 0 && this.warmGlyphs(readableAt)
       : this.drawGlyphs(visible, [x0, y0, x1, y1], view.scale * dpr, settled)
     this.lookupRows = this.atlas.upload(gl, g.pages, g.lookup, this.lookupRows)
     if (this.tablesDirty) this.uploadTables(g)
@@ -508,6 +514,31 @@ export class GpuScene {
         if (card.y > y1 || card.y + card.h < y0) continue
         if (draw(card.content.glyphIds)) return true
       }
+    }
+    return false
+  }
+
+  /**
+   * Draws a picture at `scale` for every glyph the board has that has none,
+   * until the frame's budget is spent; true if some are still missing.
+   *
+   * Without it the first zoom from afar into reading size draws every glyph
+   * it comes to while the camera moves — about a thousand on a large board,
+   * text missing until each is drawn, frames held up meanwhile. Drawn while
+   * the board is far away and still, where frames have time to spare, the
+   * zoom finds a picture for each — small, so stretched as it goes on, and
+   * drawn sharp where it settles, as after any zoom. A board's glyphs are a
+   * few thousand, a fraction of the atlas.
+   */
+  private warmGlyphs(scale: number): boolean {
+    const win = this.canvas.ownerDocument.defaultView
+    const now = () => win?.performance.now() ?? 0
+    const start = now()
+    let drawn = 0
+    for (let id = 0; id < this.atlas.size; id++) {
+      if (this.atlas.hasAnyPicture(id)) continue
+      if ((++drawn & 15) === 0 && now() - start > WARM_BUDGET_MS) return true
+      this.atlas.draw(id, scale)
     }
     return false
   }

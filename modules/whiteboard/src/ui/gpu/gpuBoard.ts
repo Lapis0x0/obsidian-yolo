@@ -425,11 +425,13 @@ export class GpuBoard implements ContentLayer {
     }
     if (!this.dirty) return
     const dpr = this.canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1
+    const body = tokens?.body.size ?? 16
     const result = this.scene.render(
       view,
       settled || this.movedAt === -1,
       this.deps.imagePicture,
-      (tokens?.body.size ?? 16) * view.scale * dpr < MIN_BODY_DEVICE_PX,
+      body * view.scale * dpr < MIN_BODY_DEVICE_PX,
+      MIN_BODY_DEVICE_PX / body,
     )
     this.dirty = result.more
   }
