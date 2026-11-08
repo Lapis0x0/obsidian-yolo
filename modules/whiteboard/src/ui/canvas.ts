@@ -2345,6 +2345,7 @@ export class WhiteboardCanvas {
       core: this.core,
       zoomInToEdit: (id) => this.zoomInToEdit(id),
       editWhenBuilt: (id) => this.editWhenBuilt(id),
+      readByGpu: (id) => this.gpuBoard?.drawable(id) ?? false,
       onEditingChange: () => {
         this.toolbarController.refreshToolbar()
         // A card opened for typing, or closed: its text is drawn by an editor
@@ -2370,15 +2371,10 @@ export class WhiteboardCanvas {
         this.pinsRevision += 1
       },
       syncChips: (id) => this.cardGeneration.syncChips(id),
-      writeReadingWindow: (id, line, markdown) => {
+      writeReadingWindow: (id, line, offset) => {
         // Bare text shows all of itself; it has no window to remember.
         if (isPlainText(this.nodesById.get(id))) return
-        const board = this.boardWithSnappedWindow(
-          this.board,
-          id,
-          line,
-          markdown,
-        )
+        const board = boardWithReadingWindow(this.board, id, line, offset)
         if (board === this.board) return
         this.board = board
         this.syncBoardIndex()

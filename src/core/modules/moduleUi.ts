@@ -521,6 +521,15 @@ export class ObsidianModuleUiCapabilityProvider
             requireFiniteNumber(line, 'Markdown editor scroll line')
             handle.openAtLine(line)
           },
+          getScrollOffset: (line: number) => {
+            requireFiniteNumber(line, 'Markdown editor line')
+            return handle.getScrollOffset(line)
+          },
+          openAt: (line: number, offset: number) => {
+            requireFiniteNumber(line, 'Markdown editor line')
+            requireFiniteNumber(offset, 'Markdown editor scroll offset')
+            handle.openAt(line, offset)
+          },
           destroy: () => {
             editors.delete(handle)
             handle.destroy()

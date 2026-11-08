@@ -33,6 +33,7 @@ import {
   EDIT_PERSIST_THROTTLE_MS,
   GROUP_LABEL_CLASS,
 } from '../constants'
+import { blockStartLine } from '../lod'
 
 import type { CardRenderer } from './cardRenderer'
 import type { CanvasCore } from './core'
@@ -101,7 +102,11 @@ export type EditingControllerDeps = Readonly<{
    * that follows saves it). `line` is in `markdown`, the text about to be
    * committed — not the board's copy, which the throttled writes may have
    * left behind. */
-  writeReadingWindow: (id: NodeId, line: number, markdown: string) => void
+  writeReadingWindow: (id: NodeId, line: number, offset: number) => void
+  /** Whether the GPU scene is what a card is read in, rather than its DOM
+   * preview (canvas.ts's `gpuBoard.drawable`): where it was being read is
+   * then on its node, not in that preview. */
+  readByGpu: (id: NodeId) => boolean
   /** Bare text left empty is taken off the board: it has nothing to show,
    * so it would be an invisible box. `historyKey` is the session's, for the
    * text that was already recorded with something in it. */
@@ -401,15 +406,11 @@ export class EditingController {
     // Enter and Escape from the editor — the keys they mean most.
     this.core.clearSelection()
 
-    // Where the editor opens, read before anything below has touched the card.
-    //
-    // Asked of the reading surface the editor is about to go over, and only of
-    // the node when there is none — a card edited straight out of a clipped
-    // render has no finer position to offer. What the node carries is snapped
-    // to a block start, because a clipped card cannot begin mid block; the
-    // surface the user is looking at is not, and opening the editor on the
-    // node's number would step the card back to the top of whatever block the
-    // reader's top edge was inside.
+    // Where the editor opens, read before anything below has touched the card:
+    // where the card was being read. A card the GPU scene reads keeps that on
+    // its node — a block and how far into it — in the units the editor opens
+    // at; its DOM preview, if it has one, is one kept from an earlier reading
+    // and says where that was. A card read in its preview is asked there.
     //
     // The node is re-read here rather than taken from `node` above: clearing
     // the selection is what commits where the card was being read, and a board
@@ -417,11 +418,13 @@ export class EditingController {
     // so the one this method opened with still carries the window before this
     // reading.
     const current = this.core.getNode(id)
-    const nodeLine =
+    const read =
       current && (current.type === 'text' || current.type === 'file')
-        ? (current.startLine ?? 0)
-        : 0
-    const startLine = this.deps.cards.getContentScrollLine(id) ?? nodeLine
+        ? { line: current.startLine ?? 0, offset: current.startOffset ?? 0 }
+        : { line: 0, offset: 0 }
+    const previewLine = this.deps.readByGpu(id)
+      ? null
+      : this.deps.cards.getContentScrollLine(id)
 
     const initialText =
       node.type === 'text' ? node.text : (runtime.noteText ?? '')
@@ -500,11 +503,13 @@ export class EditingController {
     this.deps.cards.releaseTextSize(id)
     this.deps.onEditingChange()
     editor.focus()
-    // Open where the card was being read. Both surfaces speak the same
-    // fractional source line, so nothing is mapped between them; what is left
-    // is how the two lay a block out, which is bounded by that block and
-    // measured, not estimated (obsidianMarkdownEditor.ts's `openAtLine`).
-    if (startLine > 0) editor.openAtLine(startLine)
+    // Open where the card was being read: the same block, as far into it.
+    // What is left is how the two lay a block out, bounded by that block.
+    if (previewLine !== null) {
+      if (previewLine > 0) editor.openAtLine(previewLine)
+    } else if (read.line > 0 || read.offset > 0) {
+      editor.openAt(read.line, read.offset)
+    }
     // A card opened while still empty keeps its chips beside the caret: the
     // main way one gets made — dragging an arrow into empty space — opens the
     // editor on the spot, and chips that waited for it to close would never
@@ -569,8 +574,15 @@ export class EditingController {
     // `enterEditMode`, and the same shape as Obsidian's own embed leaving edit
     // mode: read once, carried across once, unconditionally. Read before
     // `destroy()`, which is what makes the editor unable to answer.
+    // The block the top edge is in, and how far into it, as the editor lays
+    // it out.
     const line = editing.editor.getScrollLine()
-    this.deps.writeReadingWindow(id, line, text)
+    const block = blockStartLine(text, line)
+    this.deps.writeReadingWindow(
+      id,
+      block,
+      editing.editor.getScrollOffset(block),
+    )
     const runtime = this.deps.cards.getRuntime(id)
     if (runtime?.el) {
       this.deps.cards.holdTextSize(runtime.el, this.core.getNode(id))

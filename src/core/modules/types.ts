@@ -632,6 +632,20 @@ export type YoloModuleMarkdownEditorV1 = {
    * of the document, the first keystroke scrolls the view back there.
    */
   openAtLine(line: number): void
+  /**
+   * How far the view's top edge is below where `line` (0-based) starts, in
+   * the editor's own CSS pixels — not scaled by any transform an ancestor
+   * draws it at. Read with the first line of the block that edge is in, it
+   * is a reading position as a module keeps one: a block, and how far into
+   * it. Since 1.13.0.
+   */
+  getScrollOffset(line: number): number
+  /**
+   * Opens the editor `offset` of its own CSS pixels below where `line`
+   * (0-based) starts — the position `getScrollOffset` reads — with the caret
+   * on the line shown at the top, as `openAtLine` puts it. Since 1.13.0.
+   */
+  openAt(line: number, offset: number): void
   destroy(): void
 }
 

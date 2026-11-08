@@ -105,6 +105,8 @@ export type ObsidianMarkdownEditorHandle = {
   hasFocus(): boolean
   getScrollLine(): number
   openAtLine(line: number): void
+  getScrollOffset(line: number): number
+  openAt(line: number, offset: number): void
   destroy(): void
 }
 
@@ -320,14 +322,64 @@ function openAtLine(cm: EditorView, line: number): void {
   const doc = cm.state.doc
   const target = Math.max(0, Math.min(line, doc.lines - 1))
   const from = doc.line(Math.floor(target) + 1).from
-  const above = (): number => {
+  scrollOpen(cm, Math.floor(target), () => {
     const block = cm.lineBlockAt(from)
     const first = doc.lineAt(block.from).number - 1
     const lines = doc.lineAt(block.to).number - first
     return ((target - first) / lines) * block.height
-  }
-  let caret = from
-  for (let n = Math.floor(target) + 1; n <= doc.lines; n += 1) {
+  })
+}
+
+/**
+ * How far the view's top edge is below where `line` (0-based) starts, in the
+ * editor's own CSS pixels: the screen pixels of `readScrollLine`, over the
+ * scale an ancestor's transform draws the editor at. With the line a block
+ * starts on, a reading position another surface of the same document can be
+ * put back at (`openAt`).
+ */
+function readScrollOffset(cm: EditorView, line: number): number {
+  const doc = cm.state.doc
+  const target = Math.max(0, Math.min(Math.floor(line), doc.lines - 1))
+  const edge = cm.scrollDOM.getBoundingClientRect().top - cm.documentTop
+  return (edge - cm.lineBlockAt(doc.line(target + 1).from).top) / cm.scaleY
+}
+
+/**
+ * Opens the view `offset` of its own CSS pixels below where `line` (0-based)
+ * starts — what `readScrollOffset` reads — the caret on the line shown at the
+ * top edge, as `openAtLine` puts it.
+ */
+function openAt(cm: EditorView, line: number, offset: number): void {
+  const doc = cm.state.doc
+  const target = Math.max(0, Math.min(Math.floor(line), doc.lines - 1))
+  const from = doc.line(target + 1).from
+  const above = () => Math.max(0, offset) * cm.scaleY
+  const shown = cm.lineBlockAtHeight(cm.lineBlockAt(from).top + above())
+  scrollOpen(cm, doc.lineAt(shown.from).number - 1, above, from)
+}
+
+/**
+ * Scrolls the view to `above` screen pixels below where line `from` starts
+ * (by default line `caretLine`'s start), and puts the caret on the first line
+ * at or below `caretLine` that no block widget replaces.
+ *
+ * The scroll is CodeMirror's own `scrollIntoView`, which keeps re-measuring
+ * until the target is where it was asked to be: every line between here and
+ * there is an estimate until it has been laid out. `above` rides along as a
+ * negative margin, sized from heights as currently known — possibly
+ * estimates too — so once the scroll has been measured the remainder is
+ * applied from the measured heights, in the same frame, before anything is
+ * painted.
+ */
+function scrollOpen(
+  cm: EditorView,
+  caretLine: number,
+  above: () => number,
+  from = cm.state.doc.line(caretLine + 1).from,
+): void {
+  const doc = cm.state.doc
+  let caret = doc.line(caretLine + 1).from
+  for (let n = caretLine + 1; n <= doc.lines; n += 1) {
     const candidate = doc.line(n)
     const block = cm.lineBlockAt(candidate.from)
     if (block.from === candidate.from && block.to === candidate.to) {
@@ -530,6 +582,11 @@ export function createObsidianMarkdownEditor(
     getScrollLine: () => (destroyed ? 0 : readScrollLine(instance.cm)),
     openAtLine: (line: number) => {
       if (!destroyed) openAtLine(instance.cm, line)
+    },
+    getScrollOffset: (line: number) =>
+      destroyed ? 0 : readScrollOffset(instance.cm, line),
+    openAt: (line: number, offset: number) => {
+      if (!destroyed) openAt(instance.cm, line, offset)
     },
     destroy: () => {
       if (destroyed) return
