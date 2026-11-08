@@ -375,7 +375,9 @@ export class EditingController {
     const node = this.core.getNode(id)
     if (!node || !this.isEditableNode(node)) return
     const runtime = this.deps.cards.getRuntime(id)
-    if (!runtime) {
+    // One the GPU scene draws has no element, or a hidden one an editor
+    // could not take focus in: it is shown first.
+    if (!runtime || this.deps.cards.isParked(id)) {
       this.deps.editWhenBuilt(id)
       return
     }

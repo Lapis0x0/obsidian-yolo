@@ -369,6 +369,12 @@ export class CardRenderer {
   // through, now that this class owns `runtimeByNodeId`.
   // -----------------------------------------------------------------------
 
+  /** Whether a card's element is parked in the hidden pool: kept, but out
+   * of sight, and nothing in it can take focus. */
+  isParked(id: NodeId): boolean {
+    return this.parkedCards.has(id)
+  }
+
   getRuntime(id: NodeId): NodeRuntime | undefined {
     return this.runtimeByNodeId.get(id)
   }

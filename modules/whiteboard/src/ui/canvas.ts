@@ -4056,7 +4056,7 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Edit, asked of a card the GPU scene draws: it is built, and the editor
+   * Edit, asked of a card the GPU scene draws: it is built (or unparked), and the editor
    * opens once it is (`openPendingEdit`). It leaves the selection first, as
    * any card opened to edit does — which writes where it was read, so it is
    * built from there.
@@ -4081,7 +4081,7 @@ export class WhiteboardCanvas {
     }
     if (this.overview) return
     const runtime = this.cardRenderer.getRuntime(pending.id)
-    if (!runtime?.el) return
+    if (!runtime?.el || this.cardRenderer.isParked(pending.id)) return
     // A note card's editor needs the file's text first (enterEditMode).
     const node = this.nodesById.get(pending.id)
     if (node?.type === 'file' && isMarkdownPath(node.file)) {
