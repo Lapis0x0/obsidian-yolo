@@ -554,7 +554,11 @@ export class GpuBoard implements ContentLayer {
     }
     if (this.pdfs.has(node.id)) return this.claimPdf(node, rect)
     if (!this.nodes.has(node.id)) return false
-    if (this.pending.has(node.id) || !this.scene.cardOf(node.id)) {
+    if (this.pending.has(node.id)) this.wanted.add(node.id)
+    // One typeset again shows what it has until that comes — its window
+    // while its whole note does, the old look while the new one does — unless
+    // what it holds changed: that is out of date.
+    if (!this.scene.cardOf(node.id) || this.changed.has(node.id)) {
       this.wanted.add(node.id)
       return false
     }
@@ -1004,6 +1008,11 @@ export class GpuBoard implements ContentLayer {
       const full = entry.card.reach === Infinity
       const reading = this.reading?.id === typeset.id ? this.reading : null
       if (full ? !reading : reading?.full) continue
+      // A whole note still owed formulas past its window waits for them
+      // (`layoutFormulas`): placed now, it would be the host's until they
+      // come, and the card read would be built for that long and then drawn
+      // again. Its window shows meanwhile.
+      if (full && typeset.math) continue
       const glyphs = new Uint32Array(typeset.glyphs)
       const used = new Set<number>()
       for (let i = 3; i < glyphs.length; i += GLYPH_WORDS) {
