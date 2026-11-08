@@ -502,3 +502,15 @@
   font-size: 12px;
   color: var(--text-faint);
 }
+
+/* A clipped card read part-way into the block its window starts at
+ * (ui/canvas/cardContent.ts's `readClippedInto`): its content moved up by as
+ * much, and cut off at its top inset — the sizer's own top, before it is
+ * moved — as the GPU scene draws the same card. Only on such a card: a clip
+ * on every card is paint every card would pay for. */
+.yolo-whiteboard-card-read-into > .markdown-preview-sizer {
+  translate: 0 calc(-1 * var(--yolo-whiteboard-card-read-into));
+  clip-path: inset(
+    var(--yolo-whiteboard-card-read-into) -100vmax -100vmax -100vmax
+  );
+}

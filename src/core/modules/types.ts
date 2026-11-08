@@ -536,21 +536,18 @@ export type YoloModuleMarkdownContentViewV1 = {
    */
   getScrollLine(): number
   /**
-   * The source line of the block the view's top edge is in: the first line
-   * of a top-level block, or of an item of a list that is one — 0 at the
-   * document's top. A line `scrollToLine` brings back exactly, that block's
-   * top at the top edge, which is also how a render of the document from
-   * that line begins. Where a view showing one surface has to be shown again
-   * as another that can only begin at a block, this is the position the two
-   * agree on; `getScrollLine` is the finer one, for a surface that can begin
-   * anywhere.
+   * Where the view is read: the first source line of the top-level block its
+   * top edge is in (0 at the document's top), and how far that edge is below
+   * the block's start, in the view's own CSS pixels — not scaled by any
+   * transform an ancestor draws it at. A render of the document from that
+   * line, moved up by that much, shows what the view shows; `scrollTo` brings
+   * the view back to it. Since 1.13.0.
    */
-  getBlockLine(): number
+  getReadingPosition(): Readonly<{ line: number; offset: number }>
   /**
-   * A line that starts a top-level block or an item of a top-level list
-   * lands exactly: the start of that block at the top edge. Any other line,
-   * a fraction included, is placed in proportion within its block, as
-   * Obsidian places it.
+   * A line that starts a top-level block lands exactly: the start of that
+   * block at the top edge. Any other line, a fraction included, is placed in
+   * proportion within its block, as Obsidian places it.
    *
    * `onSettled` runs when the view is actually showing that line, which is
    * not when this returns: a preview that has not rendered yet has no
@@ -561,6 +558,13 @@ export type YoloModuleMarkdownContentViewV1 = {
    * is how it knows the gap is over.
    */
   scrollToLine(line: number, onSettled?: () => void): void
+  /**
+   * Brings the view to a position `getReadingPosition` reads: the top-level
+   * block starting at `line` (or the last one starting above it), `offset`
+   * of the view's own CSS pixels below its start at the top edge.
+   * `onSettled` as `scrollToLine`'s. Since 1.13.0.
+   */
+  scrollTo(line: number, offset: number, onSettled?: () => void): void
   destroy(): void
 }
 

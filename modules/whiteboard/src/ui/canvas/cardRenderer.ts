@@ -58,6 +58,8 @@ import {
   createCardBody,
   createNodeElement,
   nodeElementScale,
+  readClippedInto,
+  readingOffset,
   renderClippedMarkdown,
   scaleNodeElement,
 } from './cardContent'
@@ -1334,7 +1336,11 @@ export class CardRenderer {
       node && (node.type === 'text' || node.type === 'file')
         ? (node.startLine ?? 0)
         : 0
+    const startOffset = readingOffset(node)
     const wanted = scrollable ? markdown : clippedCardMarkdown(node, markdown)
+    // A clipped render shows its window as far into its first block as the
+    // card is read: a move of that alone renders nothing anew.
+    if (!scrollable) readClippedInto(bodyEl, startOffset)
     // Nothing to do when neither the visible source, what it resolves against,
     // nor which of the two surfaces should hold it has changed — which is
     // every edit made below an unfocused card's fold.
@@ -1410,7 +1416,9 @@ export class CardRenderer {
                 this.dropCardPicture(runtime)
               }
             : undefined
-        if (startLine || settled) view.scrollToLine(startLine, settled)
+        if (startLine || startOffset || settled) {
+          view.scrollTo(startLine, startOffset, settled)
+        }
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
         // Nothing is arriving to settle, so what stands in for it is not
@@ -1430,6 +1438,7 @@ export class CardRenderer {
         wanted,
         sourcePath,
       ))
+      readClippedInto(bodyEl, startOffset)
     } catch (error) {
       this.dropCardPicture(runtime)
       this.callbacks.reportError('markdown render', error)
@@ -1490,28 +1499,29 @@ export class CardRenderer {
   }
 
   /**
-   * The block the card's preview is being read at, as the source line it
-   * starts on — what the card's window is kept as, because a card that is
-   * not the focused one is drawn from where a block starts and the preview
-   * comes back to exactly that place (`alignContent`). Null with no
-   * preview, as `getContentScrollLine`.
+   * Where the card's preview is being read, as its window is kept
+   * (fileFormat.ts's `startLine` and `startOffset`): the block its top edge
+   * is in, and how far down it. Null with no preview, as
+   * `getContentScrollLine`.
    */
-  getContentBlockLine(id: NodeId): number | null {
+  getContentReadingPosition(
+    id: NodeId,
+  ): Readonly<{ line: number; offset: number }> | null {
     const view = this.runtimeByNodeId.get(id)?.contentView
     if (!view) return null
-    const line = view.getBlockLine()
-    return Number.isFinite(line) ? line : null
+    const read = view.getReadingPosition()
+    return Number.isFinite(read.line) && Number.isFinite(read.offset)
+      ? read
+      : null
   }
 
   /**
    * Puts a card's preview, kept from when it was read before, back at the
-   * window the card is drawn with while it is not focused: so the card
-   * shows the same lines the moment it is focused again. The preview went
-   * on being where it was left, part-way into a block, while the window was
-   * kept as that block's start.
+   * window the card has been shown at since: so it shows the same lines the
+   * moment it is focused again.
    */
-  alignContent(id: NodeId, line: number): void {
-    this.runtimeByNodeId.get(id)?.contentView?.scrollToLine(line)
+  alignContent(id: NodeId, line: number, offset: number): void {
+    this.runtimeByNodeId.get(id)?.contentView?.scrollTo(line, offset)
   }
 
   scrollCardContent(id: NodeId, deltaX: number, deltaY: number): boolean {

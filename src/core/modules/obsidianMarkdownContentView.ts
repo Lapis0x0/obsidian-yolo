@@ -125,8 +125,9 @@ export type ObsidianMarkdownContentViewOptions = {
 export type ObsidianMarkdownContentViewHandle = {
   setValue(text: string): void
   getScrollLine(): number
-  getBlockLine(): number
+  getReadingPosition(): Readonly<{ line: number; offset: number }>
   scrollToLine(line: number, onSettled?: () => void): void
+  scrollTo(line: number, offset: number, onSettled?: () => void): void
   destroy(): void
 }
 
@@ -204,16 +205,13 @@ export function assertMarkdownRendererInstance(
 }
 
 /**
- * The places a preview can be brought to exactly, in source order: the first
- * line of each top-level block, and of each item of a list that is one —
- * each with the element that shows it.
+ * The top-level blocks a preview has mounted, in source order: the first line
+ * of each, with the element that shows it. Only blocks mounted now: the top
+ * edge is always in one.
  *
  * Obsidian's own `applyScroll` knows a block only as a height and a count of
- * lines, and places a line inside one in proportion: an item halfway down a
- * list's source lands wherever halfway down its height is, rarely where the
- * item begins. The items' elements carry their line (`data-line`, from the
- * block's first), so these are found where they are rather than estimated.
- * Only blocks mounted now: the top edge is always in one.
+ * lines, and places a line inside one in proportion; a block's start, and a
+ * distance below it, are where its element is.
  */
 function blockAnchors(
   renderer: ObsidianMarkdownPreviewRenderer,
@@ -221,17 +219,7 @@ function blockAnchors(
   const anchors: { line: number; el: HTMLElement }[] = []
   for (const section of renderer.sections) {
     if (!section.start || !section.el.isConnected) continue
-    const first = section.start.line
-    anchors.push({ line: first, el: section.el })
-    const items = section.el.querySelectorAll<HTMLElement>(
-      ':scope > ul > li[data-line], :scope > ol > li[data-line]',
-    )
-    for (const item of Array.from(items)) {
-      const offset = Number(item.dataset.line)
-      if (Number.isInteger(offset) && offset > 0) {
-        anchors.push({ line: first + offset, el: item })
-      }
-    }
+    anchors.push({ line: section.start.line, el: section.el })
   }
   return anchors
 }
@@ -436,19 +424,21 @@ export function createObsidianMarkdownContentView(
       instance.renderer.set(text)
     },
     getScrollLine: () => (destroyed ? 0 : instance.renderer.getScroll()),
-    getBlockLine: () => {
-      if (destroyed) return 0
+    getReadingPosition: () => {
+      if (destroyed) return { line: 0, offset: 0 }
       const { previewEl } = renderer
+      const scrolled = previewEl.scrollTop
       // At the very top, the document's start, whatever block it is.
-      if (previewEl.scrollTop <= 0) return 0
-      let line = 0
+      if (scrolled <= 0) return { line: 0, offset: 0 }
+      let at = { line: 0, top: 0 }
       for (const anchor of blockAnchors(renderer)) {
         // The last one starting at or above the top edge (a pixel's grace,
         // for the rounding of where it was put).
-        if (scrollTopFor(previewEl, anchor.el) > previewEl.scrollTop + 1) break
-        line = anchor.line
+        const top = scrollTopFor(previewEl, anchor.el)
+        if (top > scrolled + 1) break
+        at = { line: anchor.line, top }
       }
-      return line
+      return { line: at.line, offset: Math.max(0, scrolled - at.top) }
     },
     scrollToLine: (line: number, onSettled?: () => void) => {
       if (destroyed) return
@@ -465,6 +455,24 @@ export function createObsidianMarkdownContentView(
             renderer.previewEl,
             anchor.el,
           )
+        }
+        onSettled?.()
+      })
+    },
+    scrollTo: (line: number, offset: number, onSettled?: () => void) => {
+      if (destroyed) return
+      instance.renderer.applyScrollDelayed(line, undefined, () => {
+        if (destroyed) return
+        // Obsidian has put the block in view; its start, and as far below
+        // it, are then put at the top edge exactly.
+        let anchor: { line: number; el: HTMLElement } | null = null
+        for (const candidate of blockAnchors(renderer)) {
+          if (candidate.line > line) break
+          anchor = candidate
+        }
+        if (anchor) {
+          renderer.previewEl.scrollTop =
+            scrollTopFor(renderer.previewEl, anchor.el) + Math.max(0, offset)
         }
         onSettled?.()
       })

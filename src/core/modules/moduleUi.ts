@@ -422,7 +422,7 @@ export class ObsidianModuleUiCapabilityProvider
             handle.setValue(text)
           },
           getScrollLine: () => handle.getScrollLine(),
-          getBlockLine: () => handle.getBlockLine(),
+          getReadingPosition: () => handle.getReadingPosition(),
           scrollToLine: (line: number, onSettled?: () => void) => {
             requireFiniteNumber(line, 'Markdown content view scroll line')
             requireOptionalFunction(
@@ -430,6 +430,15 @@ export class ObsidianModuleUiCapabilityProvider
               'Markdown content view scroll callback',
             )
             handle.scrollToLine(line, onSettled)
+          },
+          scrollTo: (line: number, offset: number, onSettled?: () => void) => {
+            requireFiniteNumber(line, 'Markdown content view line')
+            requireFiniteNumber(offset, 'Markdown content view scroll offset')
+            requireOptionalFunction(
+              onSettled,
+              'Markdown content view scroll callback',
+            )
+            handle.scrollTo(line, offset, onSettled)
           },
           destroy: () => {
             contentViews.delete(handle)

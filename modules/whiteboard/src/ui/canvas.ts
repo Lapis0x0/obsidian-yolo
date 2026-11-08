@@ -2849,13 +2849,12 @@ export class WhiteboardCanvas {
   }
 
   /** Where a card is being read: as the GPU scene has it for one it draws,
-   * as its preview has it for one built (`getContentBlockLine`). */
+   * as its preview has it for one built. */
   private readingWindowOf(
     id: NodeId,
   ): Readonly<{ line: number; offset: number }> | null {
     if (this.gpuDraws(id)) return this.gpuBoard?.readingPosition(id) ?? null
-    const line = this.cardRenderer.getContentBlockLine(id)
-    return line === null ? null : { line, offset: 0 }
+    return this.cardRenderer.getContentReadingPosition(id)
   }
 
   /**
@@ -3306,7 +3305,11 @@ export class WhiteboardCanvas {
       // it is seen.
       const node = this.nodesById.get(next)
       if (node?.type === 'text' || node?.type === 'file') {
-        this.cardRenderer.alignContent(next, node.startLine ?? 0)
+        this.cardRenderer.alignContent(
+          next,
+          node.startLine ?? 0,
+          node.startOffset ?? 0,
+        )
       }
     }
     // Focus decides how much of a card's note is built, because the focused

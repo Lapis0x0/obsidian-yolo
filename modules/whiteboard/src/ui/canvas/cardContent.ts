@@ -116,6 +116,27 @@ export function readingOffset(node: BoardNode | undefined): number {
     : 0
 }
 
+/** On a clipped render read part-way into its first block. */
+const READ_INTO_CLASS = 'yolo-whiteboard-card-read-into'
+
+/**
+ * Moves a clipped render's content up by `offset` — how far into the block
+ * its window starts at the card is read (`readingOffset`) — cut off where its
+ * top inset begins, as the GPU scene draws the same card. 0 puts it back.
+ */
+export function readClippedInto(bodyEl: HTMLElement, offset: number): void {
+  const view = bodyEl.querySelector<HTMLElement>(
+    ':scope > .markdown-preview-view',
+  )
+  if (!view) return
+  view.classList.toggle(READ_INTO_CLASS, offset > 0)
+  if (offset > 0) {
+    view.style.setProperty('--yolo-whiteboard-card-read-into', `${offset}px`)
+  } else {
+    view.style.removeProperty('--yolo-whiteboard-card-read-into')
+  }
+}
+
 /**
  * Renders `markdown` once into `bodyEl`, inside the wrapper Obsidian's own
  * reading view is styled by. `rendered` resolves once the render is done
