@@ -188,7 +188,9 @@ export class CardGeneration {
 
   // ---- chips -------------------------------------------------------------
 
-  private wantsChips(id: NodeId): boolean {
+  /** Whether a card offers its chips now: they are in its DOM, so it has
+   * one (canvas.ts's `gpuDraws`). */
+  wantsChips(id: NodeId): boolean {
     if (!this.callbacks.isAvailable()) return false
     if (this.generations.has(id)) return false
     const node = this.callbacks.getNode(id)

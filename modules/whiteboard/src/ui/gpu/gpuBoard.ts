@@ -32,6 +32,7 @@ import type { ContentLayer } from '../canvas/overviewLayer'
 import {
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
+  WHEEL_PAN_GLIDE_TAU_MS,
 } from '../constants'
 import type { TypesetStyle } from '../pictures/typesetStyle'
 import {
@@ -126,7 +127,36 @@ export type GpuBoardDeps = Readonly<{
     formulas: readonly MathSource[],
   ) => Promise<readonly (MathLayout | null)[]>
   reportError: (stage: string, error: unknown) => void
+  /** The card being read moved under its frame (`scrollBy`): what is
+   * placed in it is placed again. */
+  onScroll: (id: string) => void
 }>
+
+/** The card being read (`setReading`): its whole note typeset, and moved
+ * up under its frame by the wheel. */
+type Reading = {
+  id: string
+  /** How far its content is moved up now, and where the wheel is taking
+   * it. */
+  scroll: number
+  target: number
+  /** Whether what it has placed is its whole note rather than its window:
+   * until then it moves within its window. */
+  full: boolean
+  /** When the glide last stepped, 0 while it is at rest. */
+  lastTime: number
+}
+
+/** Where a placed card's blocks are (../../typeset/layout.ts's `blocks`),
+ * their lines counted from `from`, the line it was typeset from; and where
+ * its content ends. */
+type Placed = Readonly<{ from: number; blocks: readonly number[]; end: number }>
+
+/** The thumb of the card being read: 8 units of gutter with the thumb 2 in
+ * from each side, as styles/cards/content.css draws the DOM preview's. */
+const THUMB_GUTTER = 8
+const THUMB_INSET = 2
+const THUMB_MIN = 18
 
 /** A card owed its content: a note's text is read first. */
 type Pending = {
@@ -210,12 +240,22 @@ export class GpuBoard implements ContentLayer {
   /** The board's PDF cards (./pdfCards.ts): not typeset, their pages drawn
    * from their pictures far away. */
   private readonly pdfs = new Map<string, BoardNode>()
+  private reading: Reading | null = null
+  private readonly placed = new Map<string, Placed>()
+  /** The scrollbar thumb of the card being read, over this canvas and
+   * under the world layer, positioned in world units. */
+  private readonly thumb: HTMLElement
+  private thumbKey = ''
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
     this.canvas = doc.createElement('canvas')
     this.canvas.className = 'yolo-whiteboard-gpu-scene'
     deps.parent.appendChild(this.canvas)
+    this.thumb = doc.createElement('div')
+    this.thumb.className = 'yolo-whiteboard-gpu-thumb'
+    this.thumb.hidden = true
+    deps.parent.appendChild(this.thumb)
     this.scene = new GpuScene(this.canvas)
     const ctx = doc.createElement('canvas').getContext('2d', {
       willReadFrequently: true,
@@ -256,6 +296,8 @@ export class GpuBoard implements ContentLayer {
       this.setDrawable(id, false)
       this.changed.delete(id)
       this.texts.delete(id)
+      this.placed.delete(id)
+      if (this.reading?.id === id) this.reading = null
       this.cardImages.delete(id)
       this.scene.setImages(id, [])
       this.dropKept(id)
@@ -311,6 +353,158 @@ export class GpuBoard implements ContentLayer {
       this.nodes.has(id) &&
       (!this.texts.has(id) || this.drawables.has(id))
     )
+  }
+
+  /**
+   * Reads a card — the one selected — or none: its whole note is typeset,
+   * and the wheel moves it under its frame (`scrollBy`) from where its
+   * window shows it, as far as its note goes. The card it leaves is typeset
+   * from its window again, and shows the same until that comes: what was
+   * read is written to its node first (`readingPosition`).
+   */
+  setReading(id: string | null): void {
+    if (this.reading?.id === id) return
+    const was = this.reading
+    this.reading = null
+    if (was) {
+      const node = this.nodes.get(was.id)
+      if (node) this.pending.set(was.id, { node, text: null, reading: false })
+    }
+    const node = id === null ? undefined : this.nodes.get(id)
+    this.dirty = true
+    if (id === null || !node || isPlainText(node)) return
+    const scroll = this.scene.cardOf(id)?.scroll ?? readingOffset(node)
+    this.reading = { id, scroll, target: scroll, full: false, lastTime: 0 }
+    this.pending.set(id, { node, text: null, reading: false })
+    this.wanted.add(id)
+    this.moved(this.reading)
+  }
+
+  /**
+   * Moves the card being read by a wheel's `deltaY`, in its own units, as
+   * the DOM preview scrolls (../wheelScroll.ts): eased toward a target
+   * clamped to how far its note goes. False when it is not the card being
+   * read, or all of it shows: the wheel is the board's then.
+   */
+  scrollBy(id: string, deltaY: number): boolean {
+    const reading = this.reading
+    if (reading?.id !== id) return false
+    const max = this.maxScroll(id)
+    if (max === null || max <= 0) return false
+    reading.target = Math.max(0, Math.min(max, reading.target + deltaY))
+    const win = this.canvas.ownerDocument.defaultView
+    if (!win || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      reading.scroll = reading.target
+      this.moved(reading)
+    } else if (reading.lastTime === 0) {
+      reading.lastTime = win.performance.now()
+    }
+    return true
+  }
+
+  /**
+   * Where a card is read, as fileFormat.ts's reading window has it: the
+   * line of the block its top edge is in, and how far down that block it
+   * is. Null for a card with nothing placed.
+   */
+  readingPosition(
+    id: string,
+  ): Readonly<{ line: number; offset: number }> | null {
+    const placed = this.placed.get(id)
+    const card = this.scene.cardOf(id)
+    if (!placed || !card || placed.blocks.length === 0) return null
+    const scroll =
+      this.reading?.id === id ? this.reading.scroll : (card.scroll ?? 0)
+    const { blocks, from } = placed
+    const top = blocks[1]
+    let at = 0
+    for (let i = 2; i < blocks.length; i += 2) {
+      if (blocks[i + 1] - top > scroll) break
+      at = i
+    }
+    return { line: from + blocks[at], offset: scroll - (blocks[at + 1] - top) }
+  }
+
+  /** How far a card's content can be moved up: until its end, and the
+   * bottom inset under it, meet its bottom edge. Null before it is placed. */
+  private maxScroll(id: string): number | null {
+    const placed = this.placed.get(id)
+    const node = this.nodes.get(id)
+    const tokens = this.deps.style.tokens
+    if (!placed || !node || !tokens) return null
+    return placed.end + tokens.inset.bottom - node.h
+  }
+
+  /** The card being read is where it is moved to: its row in the card
+   * table, and what is placed in it. */
+  private moved(reading: Reading): void {
+    const card = this.scene.cardOf(reading.id)
+    const node = this.nodes.get(reading.id)
+    const tokens = this.deps.style.tokens
+    if (!card || !node || !tokens) return
+    this.scene.setCard(reading.id, {
+      ...card,
+      fade: 0,
+      scroll: reading.scroll,
+      clipTop: tokens.inset.top,
+    })
+    const text = this.texts.get(reading.id)
+    if (text) {
+      this.texts.set(reading.id, {
+        ...text,
+        view: { scroll: reading.scroll, top: tokens.inset.top, bottom: node.h },
+      })
+    }
+    this.dirty = true
+    this.deps.onScroll(reading.id)
+  }
+
+  /** A step of the wheel's glide (`scrollBy`), at `now`. */
+  private glide(now: number): void {
+    const reading = this.reading
+    if (!reading || reading.lastTime === 0) return
+    const dt = Math.max(0, now - reading.lastTime)
+    reading.lastTime = now
+    const k = 1 - Math.exp(-dt / WHEEL_PAN_GLIDE_TAU_MS)
+    reading.scroll += (reading.target - reading.scroll) * k
+    if (Math.abs(reading.target - reading.scroll) < 0.5) {
+      reading.scroll = reading.target
+      reading.lastTime = 0
+    }
+    this.moved(reading)
+  }
+
+  /** The thumb of the card being read, where its card is on screen, and
+   * none while all of it shows. Written only when it changes. */
+  private syncThumb(view: CanvasView): void {
+    const reading = this.reading
+    const node = reading ? this.nodes.get(reading.id) : undefined
+    const max = reading ? this.maxScroll(reading.id) : null
+    if (
+      !reading ||
+      !node ||
+      max === null ||
+      max <= 0 ||
+      !this.shown.has(node.id)
+    ) {
+      if (this.thumbKey !== '') {
+        this.thumbKey = ''
+        this.thumb.hidden = true
+      }
+      return
+    }
+    const track = node.h - 2 * THUMB_INSET
+    const length = Math.max(THUMB_MIN, (track * node.h) / (node.h + max))
+    const top = node.y + THUMB_INSET + (reading.scroll / max) * (track - length)
+    const left = node.x + node.w - THUMB_GUTTER + THUMB_INSET
+    const width = THUMB_GUTTER - 2 * THUMB_INSET
+    const key = `${left},${top},${length},${view.scale},${view.tx},${view.ty}`
+    if (key === this.thumbKey) return
+    this.thumbKey = key
+    this.thumb.hidden = false
+    this.thumb.style.width = `${width}px`
+    this.thumb.style.height = `${length}px`
+    this.thumb.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale}) translate(${left}px, ${top}px)`
   }
 
   drawable(id: string): boolean {
@@ -405,7 +599,9 @@ export class GpuBoard implements ContentLayer {
       this.claimsChanged = false
       this.syncShown()
     }
+    this.glide(now)
     const view = this.deps.view()
+    this.syncThumb(view)
     const last = this.lastView
     if (
       !last ||
@@ -506,6 +702,7 @@ export class GpuBoard implements ContentLayer {
     this.keepTimer = null
     this.scene.dispose()
     this.canvas.remove()
+    this.thumb.remove()
   }
 
   /** The look changed — or is read for the first time: every card is
@@ -586,10 +783,10 @@ export class GpuBoard implements ContentLayer {
       this.read(id, pending)
       return null
     }
-    const markdown = clippedCardMarkdown(
-      node,
-      node.type === 'text' ? node.text : (pending.text ?? ''),
-    )
+    // The card being read is typeset whole; any other from its window.
+    const full = this.reading?.id === id
+    const text = node.type === 'text' ? node.text : (pending.text ?? '')
+    const markdown = full ? text : clippedCardMarkdown(node, text)
     // The images it embeds are laid out by their own sizes: it waits for
     // those to be read.
     const images: Record<string, Readonly<{ w: number; h: number }>> = {}
@@ -614,7 +811,7 @@ export class GpuBoard implements ContentLayer {
     }
     if (waiting) return null
     const plain = isPlainText(node)
-    const offset = readingOffset(node)
+    const offset = full ? 0 : readingOffset(node)
     const math: Record<string, MathLayout | null> = {}
     for (const key of this.cardFormulas.get(id) ?? []) {
       const layout = this.formulas.get(key)
@@ -629,8 +826,13 @@ export class GpuBoard implements ContentLayer {
         math,
         w: node.w,
         h: node.h,
-        // Moved up by its window's offset, it shows that much further down.
-        ...(offset > 0 ? { reach: node.h + offset } : {}),
+        // Moved up by its window's offset, it shows that much further down;
+        // the card being read, as far as its note goes.
+        ...(full
+          ? { reach: Infinity }
+          : offset > 0
+            ? { reach: node.h + offset }
+            : {}),
         plain,
         color:
           plain && node.color !== undefined ? this.nodeColor(node.color) : null,
@@ -685,7 +887,8 @@ export class GpuBoard implements ContentLayer {
     const keys: string[] = []
     const placed: Sent[] = []
     for (const [id, pending] of this.pending) {
-      if (pending.stamp !== undefined) continue
+      // A whole note is typeset afresh: it is not kept.
+      if (pending.stamp !== undefined || this.reading?.id === id) continue
       const ready = this.prepared(id, pending)
       if (!ready) continue
       pending.stamp = typesetStamp(look.hash, ready.card, ready.paths)
@@ -796,6 +999,11 @@ export class GpuBoard implements ContentLayer {
     for (const typeset of result.cards) {
       const entry = sent.get(typeset.id)
       if (!entry || this.nodes.get(typeset.id) !== entry.pending.node) continue
+      // A whole note for a card no longer read, or a window for one whose
+      // whole note is placed, is out of date.
+      const full = entry.card.reach === Infinity
+      const reading = this.reading?.id === typeset.id ? this.reading : null
+      if (full ? !reading : reading?.full) continue
       const glyphs = new Uint32Array(typeset.glyphs)
       const used = new Set<number>()
       for (let i = 3; i < glyphs.length; i += GLYPH_WORDS) {
@@ -804,7 +1012,15 @@ export class GpuBoard implements ContentLayer {
       }
       const { node } = entry.pending
       this.setDrawable(node.id, !typeset.host)
-      const scroll = scrollOf(node, look.tokens)
+      if (reading && full) this.readWhole(reading, node, typeset)
+      this.placed.set(node.id, {
+        from: full ? 0 : windowLine(node),
+        blocks: typeset.blocks,
+        end: typeset.end,
+      })
+      const scroll = reading
+        ? { scroll: reading.scroll, clipTop: look.tokens.inset.top }
+        : scrollOf(node, look.tokens)
       this.texts.set(node.id, {
         shown: typeset.shown,
         runs: new Float32Array(typeset.runs),
@@ -836,7 +1052,7 @@ export class GpuBoard implements ContentLayer {
         w: node.w,
         h: node.h,
         frame: before?.frame ?? null,
-        fade: entry.card.plain ? 0 : FADE,
+        fade: entry.card.plain || reading ? 0 : FADE,
         clip: contentClip(look.tokens, entry.card.plain),
         ...scroll,
         content: {
@@ -852,6 +1068,31 @@ export class GpuBoard implements ContentLayer {
     this.deps.redrawOverview()
     if (placed.length > 0) this.deps.onTypeset(placed)
     this.layoutFormulas(batch, result)
+  }
+
+  /**
+   * The whole note of the card being read came: where it is moved to in it
+   * is where it was in what it had — its window, its block moved down by
+   * as far as that block is into the note — so what shows does not change.
+   * Clamped to where the note ends.
+   */
+  private readWhole(
+    reading: Reading,
+    node: BoardNode,
+    typeset: TypesetResultCard,
+  ): void {
+    const was = this.placed.get(node.id)
+    const shift = was
+      ? blockTop(typeset.blocks, was.from + (was.blocks[0] ?? 0)) -
+        (was.blocks[1] ?? 0)
+      : 0
+    reading.full = true
+    const max = Math.max(
+      0,
+      typeset.end + (this.deps.style.tokens?.inset.bottom ?? 0) - node.h,
+    )
+    reading.scroll = Math.min(max, Math.max(0, reading.scroll + shift))
+    reading.target = Math.min(max, Math.max(0, reading.target + shift))
   }
 
   /**
@@ -1015,6 +1256,25 @@ function scrollOf(
 ): Readonly<{ scroll: number; clipTop: number }> {
   const scroll = readingOffset(node)
   return { scroll, clipTop: scroll > 0 ? tokens.inset.top : 0 }
+}
+
+/** The line a card's window starts at (fileFormat.ts's `startLine`). */
+function windowLine(node: BoardNode): number {
+  if (isPlainText(node)) return 0
+  return node.type === 'text' || node.type === 'file'
+    ? (node.startLine ?? 0)
+    : 0
+}
+
+/** Where the block at `line` starts in `blocks` (../../typeset/layout.ts's
+ * `blocks`) — or, when no block starts there, the last one before it. */
+function blockTop(blocks: readonly number[], line: number): number {
+  let top = blocks[1] ?? 0
+  for (let i = 0; i < blocks.length; i += 2) {
+    if (blocks[i] > line) break
+    top = blocks[i + 1]
+  }
+  return top
 }
 
 /** What of a card its typeset content is made from: a move keeps it; an

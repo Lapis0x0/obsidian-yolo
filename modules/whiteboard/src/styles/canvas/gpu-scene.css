@@ -9,3 +9,17 @@ canvas.yolo-whiteboard-gpu-scene {
   height: 100%;
   pointer-events: none;
 }
+
+/* The scrollbar thumb of the card being read where the scene draws it: as
+   the DOM preview's (styles/cards/content.css), in world units — sized and
+   moved by ui/gpu/gpuBoard.ts's `syncThumb`, which writes its transform from
+   the board's origin. Over the scene, under the world layer. */
+.yolo-whiteboard-gpu-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  pointer-events: none;
+}

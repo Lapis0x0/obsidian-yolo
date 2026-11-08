@@ -1266,6 +1266,34 @@ export class WhiteboardCanvas {
   }
 
   /**
+   * The wheel over the card being read, which the GPU scene draws and so has
+   * no DOM to be the event's target: found by where the cursor is, under any
+   * card that has DOM over it. False when it is not over it, or all of it
+   * shows.
+   */
+  private scrollReadCardBy(
+    target: EventTarget | null,
+    deltaY: number,
+    cursor: ScreenPoint,
+  ): boolean {
+    const id = this.focusedNodeId
+    const node = id === null ? undefined : this.nodesById.get(id)
+    if (id === null || !node || !this.gpuBoard) return false
+    const over = nodeIdFromEventTarget(target)
+    if (over !== null && over !== id) return false
+    const point = screenToWorld(this.cameraController.view, cursor)
+    if (
+      point.x < node.x ||
+      point.y < node.y ||
+      point.x > node.x + node.w ||
+      point.y > node.y + node.h
+    ) {
+      return false
+    }
+    return this.gpuBoard.scrollBy(id, deltaY)
+  }
+
+  /**
    * Ctrl+wheel, or a trackpad pinch, over the selected portal's frame zooms
    * what it shows about the cursor, as the same gesture zooms the board
    * anywhere else — within the board's bounds, as seen on screen. A run of
@@ -1550,9 +1578,14 @@ export class WhiteboardCanvas {
       board = { ...board, camera }
     }
     if (this.focusedNodeId !== null) {
-      const line = this.cardRenderer.getContentBlockLine(this.focusedNodeId)
-      if (line !== null) {
-        board = boardWithReadingWindow(board, this.focusedNodeId, line)
+      const read = this.readingWindowOf(this.focusedNodeId)
+      if (read !== null) {
+        board = boardWithReadingWindow(
+          board,
+          this.focusedNodeId,
+          read.line,
+          read.offset,
+        )
       }
       const page = this.cardRenderer.getPdfPosition(this.focusedNodeId)
       if (page !== null) {
@@ -2015,6 +2048,10 @@ export class WhiteboardCanvas {
       images: imageSizes,
       layoutMath: (formulas) => this.host.math.layout(formulas),
       reportError: (stage, error) => this.reportError(stage, error),
+      onScroll: (id) => {
+        this.passagesMoved(id)
+        this.findMarks?.cardMoved(id)
+      },
     })
     this.gpuBoard?.setNodes(this.ownCardNodes)
     this.unsubscribeRemoteImages?.()
@@ -2102,9 +2139,10 @@ export class WhiteboardCanvas {
         isParseFailed: this.core.isParseFailed,
         isEditingWheelTarget: (target) =>
           this.editing.isEditing(nodeIdFromEventTarget(target)),
-        scrollFocusedCardBy: (target, deltaX, deltaY) =>
+        scrollFocusedCardBy: (target, deltaX, deltaY, cursor) =>
           this.focusedNodeId !== null &&
           (this.panPortalBy(target, deltaX, deltaY) ||
+            this.scrollReadCardBy(target, deltaY, cursor) ||
             (nodeIdFromEventTarget(target) === this.focusedNodeId &&
               this.cardRenderer.scrollCardContent(
                 this.focusedNodeId,
@@ -2306,6 +2344,7 @@ export class WhiteboardCanvas {
     this.editing = new EditingController({
       core: this.core,
       zoomInToEdit: (id) => this.zoomInToEdit(id),
+      editWhenBuilt: (id) => this.editWhenBuilt(id),
       onEditingChange: () => {
         this.toolbarController.refreshToolbar()
         // A card opened for typing, or closed: its text is drawn by an editor
@@ -2800,17 +2839,27 @@ export class WhiteboardCanvas {
    * holds, which is the board as it was — the same deal the camera has.
    */
   private commitReadingWindow(id: NodeId): void {
-    const line = this.cardRenderer.getContentBlockLine(id)
+    const read = this.readingWindowOf(id)
     const page = this.cardRenderer.getPdfPosition(id)
     // A PDF card's window is a page rather than a line — the same field
     // idea (fileFormat.ts's `startPage`), in the unit the document speaks.
     const next =
-      line !== null
-        ? boardWithReadingWindow(this.board, id, line)
+      read !== null
+        ? boardWithReadingWindow(this.board, id, read.line, read.offset)
         : page !== null
           ? boardWithPageWindow(this.board, id, page)
           : this.board
     this.commitWithoutHistory(next)
+  }
+
+  /** Where a card is being read: as the GPU scene has it for one it draws,
+   * as its preview has it for one built (`getContentBlockLine`). */
+  private readingWindowOf(
+    id: NodeId,
+  ): Readonly<{ line: number; offset: number }> | null {
+    if (this.gpuDraws(id)) return this.gpuBoard?.readingPosition(id) ?? null
+    const line = this.cardRenderer.getContentBlockLine(id)
+    return line === null ? null : { line, offset: 0 }
   }
 
   /**
@@ -3249,6 +3298,11 @@ export class WhiteboardCanvas {
         ?.el?.classList.remove(CARD_FOCUSED_CLASS)
     }
     this.focusedNodeId = next
+    // The card selected is read where the GPU scene draws it: scrolled
+    // there, its whole note typeset.
+    this.gpuBoard?.setReading(
+      next !== null && this.gpuDraws(next) ? next : null,
+    )
     if (next !== null) {
       this.cardRenderer.getRuntime(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
       // A preview kept from an earlier reading is still where it was left;
@@ -4001,6 +4055,21 @@ export class WhiteboardCanvas {
     }
   }
 
+  /**
+   * Edit, asked of a card the GPU scene draws: it is built, and the editor
+   * opens once it is (`openPendingEdit`). It leaves the selection first, as
+   * any card opened to edit does — which writes where it was read, so it is
+   * built from there.
+   */
+  private editWhenBuilt(id: NodeId): void {
+    this.setSelection([])
+    this.pendingEdit = {
+      id,
+      until: this.context.getWindow().performance.now() + PENDING_EDIT_WAIT_MS,
+    }
+    this.recomputeVisibility()
+  }
+
   /** Opens the card `zoomInToEdit` is waiting on, once it can be — or drops
    * the wait, if it has taken too long or the card has gone. */
   private openPendingEdit(now: number): void {
@@ -4454,14 +4523,14 @@ export class WhiteboardCanvas {
    * Whether the GPU scene draws a card near to as well as far away, rather
    * than its DOM being built: a card it can typeset whole (./gpu/gpuBoard.ts's
    * `drawable`) that nothing needs the DOM of — not being typed or generated
-   * in, not under a gesture (pinned), and not the one card selected, which is
-   * how a card is opened to select and copy its text.
+   * in, not under a gesture (pinned), not offering the chips an empty card
+   * selected does. The card selected is read there too (`setReading`).
    */
   private gpuDraws(id: NodeId): boolean {
     if (!this.gpuBoard?.drawable(id)) return false
     if (this.pinnedIds.has(id)) return false
-    if (this.selectedIds.size === 1 && this.selectedIds.has(id)) return false
-    if (this.editing.isEditing(id)) return false
+    if (this.cardGeneration.wantsChips(id)) return false
+    if (this.editing.isEditing(id) || this.pendingEdit?.id === id) return false
     return !this.cardGeneration.isGenerating(id)
   }
 

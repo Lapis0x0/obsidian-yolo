@@ -78,6 +78,7 @@ export type CameraControllerCallbacks = Readonly<{
     target: EventTarget | null,
     deltaX: number,
     deltaY: number,
+    cursor: ScreenPoint,
   ) => boolean
   /** Zooms what the selected portal shows by a wheel delta, about `cursor`
    * (viewport coordinates), when the cursor is in its frame; reports
@@ -276,7 +277,14 @@ export class CameraController {
     // to get the browser's scrolling would also hand back every link, checkbox
     // and callout fold the mask exists to cover. This scrolls the element
     // directly and leaves the mask absolute.
-    if (this.callbacks.scrollFocusedCardBy(e.target, deltaX, deltaY)) {
+    if (
+      this.callbacks.scrollFocusedCardBy(
+        e.target,
+        deltaX,
+        deltaY,
+        this.viewportPointFromEvent(e),
+      )
+    ) {
       e.preventDefault()
       return
     }

@@ -84,6 +84,9 @@ export type EditingControllerDeps = Readonly<{
    * bring the camera in to it and open it once it is there (canvas.ts's
    * `zoomInToEdit`). */
   zoomInToEdit: (id: NodeId) => void
+  /** Asked to edit a card the GPU scene draws, which has no element: build
+   * it and open it once it is there (canvas.ts's `editWhenBuilt`). */
+  editWhenBuilt: (id: NodeId) => void
   /** An editor opened or closed: the selection toolbar follows the card
    * being edited, which is not a selection change it would otherwise hear
    * about. */
@@ -372,7 +375,11 @@ export class EditingController {
     const node = this.core.getNode(id)
     if (!node || !this.isEditableNode(node)) return
     const runtime = this.deps.cards.getRuntime(id)
-    if (!runtime?.bodyEl || runtime.missingFile) return
+    if (!runtime) {
+      this.deps.editWhenBuilt(id)
+      return
+    }
+    if (!runtime.bodyEl || runtime.missingFile) return
     // A file card's initial content is read asynchronously on mount
     // (renderCardPreview); if the user clicks to edit before that first
     // read resolves, there's no known draft to seed the editor with yet —
