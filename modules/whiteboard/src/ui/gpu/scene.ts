@@ -277,7 +277,7 @@ export class GpuScene {
     // No glyph is drawn into the atlas for type too small to show.
     const more = greeked
       ? false
-      : this.drawGlyphs(visible, view.scale * dpr, settled)
+      : this.drawGlyphs(visible, [x0, y0, x1, y1], view.scale * dpr, settled)
     this.lookupRows = this.atlas.upload(gl, g.pages, g.lookup, this.lookupRows)
     if (this.tablesDirty) this.uploadTables(g)
 
@@ -459,9 +459,16 @@ export class GpuScene {
 
   /** Draws the pictures the glyphs on screen are missing — at the zoom the
    * camera rests at when it does, any picture at all while it moves —
-   * until the frame's budget is spent. True if some are still missing. */
+   * until the frame's budget is spent. True if some are still missing.
+   *
+   * Only the glyphs of the cards on screen (`bounds`, world units): a chunk
+   * reaches well past the viewport at a reading zoom, and drawing all of it
+   * on every settle would draw about twice the glyphs. A card that comes on
+   * screen later shows the picture its glyphs have until then, stretched,
+   * and is drawn sharp at the next settle, as any move draws. */
   private drawGlyphs(
     visible: readonly Chunk[],
+    bounds: readonly [number, number, number, number],
     scale: number,
     settled: boolean,
   ): boolean {
@@ -469,8 +476,10 @@ export class GpuScene {
     const now = () => win?.performance.now() ?? 0
     const start = now()
     let checked = 0
-    for (const chunk of visible) {
-      for (const id of chunk.glyphIds) {
+    /** Draws what `ids` miss; true once the budget is spent. */
+    const draw = (ids: ArrayLike<number>): boolean => {
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i]
         const has = settled
           ? this.atlas.hasPicture(id, scale)
           : this.atlas.hasAnyPicture(id)
@@ -480,6 +489,24 @@ export class GpuScene {
           return true
         }
         this.atlas.draw(id, scale)
+      }
+      return false
+    }
+    const [x0, y0, x1, y1] = bounds
+    for (const chunk of visible) {
+      const b = chunk.bbox
+      // A chunk all on screen has its glyphs listed once already.
+      if (b[0] >= x0 && b[1] >= y0 && b[2] <= x1 && b[3] <= y1) {
+        if (draw(chunk.glyphIds)) return true
+        continue
+      }
+      for (const id of chunk.ids) {
+        const slot = this.slots.get(id)
+        const card = slot?.card
+        if (!slot?.shown || !card?.content) continue
+        if (card.x > x1 || card.x + card.w < x0) continue
+        if (card.y > y1 || card.y + card.h < y0) continue
+        if (draw(card.content.glyphIds)) return true
       }
     }
     return false

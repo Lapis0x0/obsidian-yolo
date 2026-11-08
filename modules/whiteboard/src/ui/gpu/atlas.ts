@@ -39,6 +39,12 @@ const MIN_GLYPH_PX = 2
 /** How far a picture's scale can be from the one asked for and still count
  * as drawn at it. */
 const SCALE_TOLERANCE = 0.005
+/** The sizes a glyph's ink is measured at, once, px per em: its bounds at
+ * any size are the larger of the two in proportion. Not one: the system
+ * font changes its shapes with its size (optical sizes; a "…" reaches
+ * 0.18em further below 32px than above), and a picture's box must never
+ * be smaller than its ink. */
+const INK_PX = [12, 96] as const
 
 type Glyph = Readonly<{
   text: string
@@ -64,18 +70,27 @@ type Glyph = Readonly<{
 
 type Shelf = { y: number; height: number; x: number }
 
+/** What was drawn on one shelf since the GPU last had the page: a shelf
+ * fills from the left, so what one frame adds to it is one span. */
+type Span = { x0: number; x1: number; y: number; height: number }
+
 type Page = {
   canvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
   shelves: Shelf[]
-  /** Rows drawn into since the GPU last had the page. */
-  dirty: [number, number] | null
+  /** Drawn since the GPU last had the page, by shelf. Only these go up:
+   * read back whole rows, a frame's few glyphs cost a page's width each. */
+  dirty: Map<number, Span>
   /** Glyph ids whose pictures are on this page. */
   holds: Set<number>
 }
 
 export class GlyphAtlas {
   private readonly glyphs: Glyph[] = []
+  /** A text glyph's ink, per px of its size: [left, ascent, right,
+   * descent] as `measureText` has them. Measured the first time it is drawn,
+   * not every time: a settled zoom redraws every glyph on screen. */
+  private readonly inks: (readonly [number, number, number, number])[] = []
   private readonly ids = new Map<string, number>()
   private readonly pages: Page[] = []
   /** The page drawn into next. */
@@ -174,13 +189,13 @@ export class GlyphAtlas {
       w = left + Math.ceil(Math.max(0, bounds.right * at)) + PAD
       h = top + Math.ceil(Math.max(0, bounds.bottom * at)) + PAD
     } else {
-      const ctx = this.measuring
-      ctx.font = resizeFont(glyph.font, px)
-      const m = ctx.measureText(glyph.text)
-      left = Math.ceil(Math.max(0, m.actualBoundingBoxLeft)) + PAD
-      top = Math.ceil(Math.max(0, m.actualBoundingBoxAscent)) + PAD
-      w = left + Math.ceil(Math.max(0, m.actualBoundingBoxRight)) + PAD
-      h = top + Math.ceil(Math.max(0, m.actualBoundingBoxDescent)) + PAD
+      const [inkLeft, ascent, inkRight, descent] = glyph.color
+        ? this.measure(glyph, px).map((v) => v / px)
+        : this.inkOf(id)
+      left = Math.ceil(Math.max(0, inkLeft * px)) + PAD
+      top = Math.ceil(Math.max(0, ascent * px)) + PAD
+      w = left + Math.ceil(Math.max(0, inkRight * px)) + PAD
+      h = top + Math.ceil(Math.max(0, descent * px)) + PAD
     }
     const spot = this.place(w, h)
     const page = this.pages[spot.page]
@@ -210,10 +225,19 @@ export class GlyphAtlas {
       ctx.fillText(glyph.text, spot.x + left, spot.y + top)
     }
     page.holds.add(id)
-    const d = page.dirty
-    page.dirty = d
-      ? [Math.min(d[0], spot.y), Math.max(d[1], spot.y + h)]
-      : [spot.y, spot.y + h]
+    const span = page.dirty.get(spot.y)
+    if (span) {
+      span.x0 = Math.min(span.x0, spot.x)
+      span.x1 = Math.max(span.x1, spot.x + w)
+      span.height = Math.max(span.height, h)
+    } else {
+      page.dirty.set(spot.y, {
+        x0: spot.x,
+        x1: spot.x + w,
+        y: spot.y,
+        height: h,
+      })
+    }
     this.setLookup(id, [
       spot.x,
       spot.y,
@@ -227,8 +251,8 @@ export class GlyphAtlas {
   }
 
   /**
-   * Hands what changed to the GPU: the rows of each page drawn into, and
-   * the lookup's rows that changed. The lookup texture is re-made, larger,
+   * Hands what changed to the GPU: what was drawn on each page, and the
+   * lookup's rows that changed. The lookup texture is re-made, larger,
    * when there are more ids than it has room for.
    */
   upload(
@@ -241,23 +265,23 @@ export class GlyphAtlas {
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, pages)
     for (let i = 0; i < this.pages.length; i++) {
       const page = this.pages[i]
-      if (!page.dirty) continue
-      const [y0, y1] = page.dirty
-      const rows = page.ctx.getImageData(0, y0, PAGE_SIZE, y1 - y0)
-      gl.texSubImage3D(
-        gl.TEXTURE_2D_ARRAY,
-        0,
-        0,
-        y0,
-        i,
-        PAGE_SIZE,
-        y1 - y0,
-        1,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        rows,
-      )
-      page.dirty = null
+      for (const { x0, x1, y, height } of page.dirty.values()) {
+        const pixels = page.ctx.getImageData(x0, y, x1 - x0, height)
+        gl.texSubImage3D(
+          gl.TEXTURE_2D_ARRAY,
+          0,
+          x0,
+          y,
+          i,
+          x1 - x0,
+          height,
+          1,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          pixels,
+        )
+      }
+      page.dirty.clear()
     }
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
     const rowsNeeded = Math.ceil(
@@ -312,6 +336,40 @@ export class GlyphAtlas {
     return Math.min(Math.max(scale, MIN_GLYPH_PX / size), MAX_GLYPH_PX / size)
   }
 
+  /** A text glyph's ink per px of its size, for any size (`INK_PX`). A
+   * colour glyph (an emoji) is not asked: its pictures are bitmaps chosen by
+   * size, and are measured at the size they are drawn. */
+  private inkOf(id: number): readonly [number, number, number, number] {
+    let ink = this.inks[id]
+    if (!ink) {
+      const glyph = this.glyphs[id]
+      const [small, large] = INK_PX.map((px) =>
+        this.measure(glyph, px).map((v) => v / px),
+      )
+      ink = [
+        Math.max(small[0], large[0]),
+        Math.max(small[1], large[1]),
+        Math.max(small[2], large[2]),
+        Math.max(small[3], large[3]),
+      ]
+      this.inks[id] = ink
+    }
+    return ink
+  }
+
+  /** A text glyph's ink at `px`: [left, ascent, right, descent]. */
+  private measure(glyph: Glyph, px: number): number[] {
+    const ctx = this.measuring
+    ctx.font = resizeFont(glyph.font, px)
+    const m = ctx.measureText(glyph.text)
+    return [
+      m.actualBoundingBoxLeft,
+      m.actualBoundingBoxAscent,
+      m.actualBoundingBoxRight,
+      m.actualBoundingBoxDescent,
+    ]
+  }
+
   private idFor(key: string, make: () => Glyph): number {
     let id = this.ids.get(key)
     if (id === undefined) {
@@ -356,10 +414,13 @@ export class GlyphAtlas {
     throw new Error(`a ${w}×${h} glyph is larger than an atlas page`)
   }
 
+  /** Empties a page here; on the GPU it keeps its old pictures, which
+   * nothing reads once their ids point nowhere, and each new one goes up
+   * over them with the clear space around it. */
   private emptyPage(page: Page): void {
     page.ctx.clearRect(0, 0, PAGE_SIZE, PAGE_SIZE)
     page.shelves = []
-    page.dirty = [0, PAGE_SIZE]
+    page.dirty.clear()
     for (const id of page.holds) this.setLookup(id, [0, 0, 0, 0, 0, 0, 0, 0])
     page.holds.clear()
   }
@@ -372,7 +433,7 @@ export class GlyphAtlas {
     // GPU, where every read would wait for it.
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) throw new Error('no 2D canvas')
-    return { canvas, ctx, shelves: [], dirty: null, holds: new Set() }
+    return { canvas, ctx, shelves: [], dirty: new Map(), holds: new Set() }
   }
 }
 
