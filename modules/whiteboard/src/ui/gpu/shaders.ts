@@ -12,7 +12,7 @@
 // anything translucent has to be.
 
 /** Texels of the card table a slot takes, and slots a row of it holds. */
-export const CARD_TEXELS = 3
+export const CARD_TEXELS = 4
 export const SLOTS_PER_ROW = 512
 export const LOOKUP_TEXELS = 2
 
@@ -122,27 +122,31 @@ out vec2 vLocal;
 out vec2 vCard;
 flat out vec4 vRect;
 flat out vec4 vClip;
+flat out float vTop;
 flat out vec4 vFill;
 flat out vec4 vBorder;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
+  vec4 view = cardTexel(slot, 3);
   if (more.y == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float grow = 1.0 / (cam.z * cam.w);
   vec2 local = mix(rect.xy - grow, rect.xy + rect.zw + grow, corner);
   vLocal = local - rect.xy;
-  vCard = local;
+  // Where it shows in the card: moved up by the card's scroll.
+  vCard = local - vec2(0.0, view.x);
   vRect = vec4(rect.zw, shape);
   vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
+  vTop = view.y;
   vFill = fill;
   vBorder = border;
-  gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.y * 2.0 - 1.0, 1.0);
+  gl_Position = vec4(toClip(toDevice(box.xy + vCard)), depth.y * 2.0 - 1.0, 1.0);
 }`
 
 const CLIP = /* glsl */ `
-float clipped(vec2 card, vec4 clip) {
-  if (card.x < clip.w || card.y < 0.0 || card.x > clip.x || card.y > clip.y) return 0.0;
+float clipped(vec2 card, vec4 clip, float top) {
+  if (card.x < clip.w || card.y < top || card.x > clip.x || card.y > clip.y) return 0.0;
   return clip.z > 0.0 ? clamp((clip.y - card.y) / clip.z, 0.0, 1.0) : 1.0;
 }
 `
@@ -154,6 +158,7 @@ in vec2 vLocal;
 in vec2 vCard;
 flat in vec4 vRect;
 flat in vec4 vClip;
+flat in float vTop;
 flat in vec4 vFill;
 flat in vec4 vBorder;
 out vec4 o;
@@ -168,7 +173,7 @@ void main() {
   vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a);
   vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a);
   vec4 res = (border + fill * (1.0 - border.a)) * (outer - inner) + fill * inner;
-  res *= clipped(vCard, vClip);
+  res *= clipped(vCard, vClip, vTop);
   if (res.a <= 0.0) discard;
   o = res;
 }`
@@ -186,26 +191,31 @@ uniform float pageSize;
 out vec3 vUV;
 out vec2 vCard;
 flat out vec4 vClip;
+flat out float vTop;
 flat out vec4 vColor;
 flat out float vOwnColors;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
+  vec4 view = cardTexel(slot, 3);
   ivec2 at = ivec2(int(glyph % 1024u) * ${LOOKUP_TEXELS}, int(glyph / 1024u));
   vec4 l0 = texelFetch(lookup, at, 0);
   vec4 l1 = texelFetch(lookup, at + ivec2(1, 0), 0);
   if (l1.z == 0.0 || more.y == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float ratio = cam.z * cam.w / l1.z;
-  vec2 o = toDevice(box.xy + origin);
+  // Moved up by the card's scroll, before it is put on whole pixels.
+  vec2 shown = origin - vec2(0.0, view.x);
+  vec2 o = toDevice(box.xy + shown);
   // Drawn at the size it shows: on whole pixels, as the DOM sets text.
   if (snap > 0.5 && abs(ratio - 1.0) < 0.001) o = floor(o + 0.5);
   vec2 offset = l1.xy + corner * l0.zw;
   gl_Position = vec4(toClip(o + offset * ratio), depth.y * 2.0 - 1.0, 1.0);
   float page = mod(l1.w, 16.0);
   vUV = vec3((l0.xy + corner * l0.zw) / pageSize, page);
-  vCard = origin + offset / l1.z;
+  vCard = shown + offset / l1.z;
   vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
+  vTop = view.y;
   vColor = color;
   vOwnColors = l1.w >= 16.0 ? 1.0 : 0.0;
 }`
@@ -217,12 +227,13 @@ uniform sampler2DArray pages;
 in vec3 vUV;
 in vec2 vCard;
 flat in vec4 vClip;
+flat in float vTop;
 flat in vec4 vColor;
 flat in float vOwnColors;
 out vec4 o;
 ${CLIP}
 void main() {
-  float keep = clipped(vCard, vClip);
+  float keep = clipped(vCard, vClip, vTop);
   vec4 t = texture(pages, vUV);
   if (vOwnColors > 0.5) { o = t * keep; }
   else { float a = t.a * vColor.a * keep; o = vec4(vColor.rgb * a, a); }
@@ -236,16 +247,22 @@ uniform highp uint slot;
 uniform vec4 rect;
 out vec2 vUV;
 out vec2 vCard;
+out vec2 vShown;
 flat out vec4 vClip;
+flat out float vTop;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
+  vec4 view = cardTexel(slot, 3);
   vec2 local = rect.xy + corner * rect.zw;
   vUV = corner;
   vCard = local;
+  // Where it shows in the card: moved up by the card's scroll.
+  vShown = local - vec2(0.0, view.x);
   vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
-  gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.y * 2.0 - 1.0, 1.0);
+  vTop = view.y;
+  gl_Position = vec4(toClip(toDevice(box.xy + vShown)), depth.y * 2.0 - 1.0, 1.0);
 }`
 
 export const IMAGE_FS = `#version 300 es
@@ -255,7 +272,9 @@ uniform vec4 rect;
 uniform float radius;
 in vec2 vUV;
 in vec2 vCard;
+in vec2 vShown;
 flat in vec4 vClip;
+flat in float vTop;
 out vec4 o;
 ${CLIP}
 void main() {
@@ -264,6 +283,6 @@ void main() {
   vec2 q = abs(vCard - rect.xy - half_) - half_ + radius;
   float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
   float corner = radius > 0.0 ? clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0) : 1.0;
-  o = texture(picture, vUV) * clipped(vCard, vClip) * corner;
+  o = texture(picture, vUV) * clipped(vShown, vClip, vTop) * corner;
   if (o.a <= 0.0) discard;
 }`

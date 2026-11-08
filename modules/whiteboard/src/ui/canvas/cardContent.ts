@@ -87,7 +87,9 @@ export function createCardBody(doc: Document): HTMLElement {
 
 /** What a card that does not scroll shows of `markdown`: all of it for bare
  * text, which is as tall as what it holds; otherwise as much as its height
- * shows from where it starts (`cardMarkdownWindow`). */
+ * shows from where it starts (`cardMarkdownWindow`) — the block its window
+ * starts at, and as much more as its content is moved up by
+ * (`readingOffset`). */
 export function clippedCardMarkdown(
   node: BoardNode | undefined,
   markdown: string,
@@ -97,7 +99,21 @@ export function clippedCardMarkdown(
     node && (node.type === 'text' || node.type === 'file')
       ? (node.startLine ?? 0)
       : 0
-  return cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
+  return cardMarkdownWindow(
+    markdown,
+    (node?.h ?? 0) + readingOffset(node),
+    startLine,
+  )
+}
+
+/** How far down the block its window starts at a card's top edge is
+ * (fileFormat.ts's `startOffset`); 0 for bare text, which shows all of
+ * itself. */
+export function readingOffset(node: BoardNode | undefined): number {
+  if (isPlainText(node)) return 0
+  return node && (node.type === 'text' || node.type === 'file')
+    ? (node.startOffset ?? 0)
+    : 0
 }
 
 /**

@@ -417,10 +417,14 @@ describe('boardWithPageWindow', () => {
 })
 
 describe('boardWithReadingWindow', () => {
-  it('records where a card is being read, to two decimals', () => {
+  it('records the block a card is read at and how far down it, to two decimals', () => {
     const board = boardWith([textCard('a')])
-    const next = boardWithReadingWindow(board, 'a', 119.8675595238)
-    expect((next.nodes[0] as TextNode).startLine).toBe(119.87)
+    const next = boardWithReadingWindow(board, 'a', 119, 48.123456)
+    expect((next.nodes[0] as TextNode).startLine).toBe(119)
+    expect((next.nodes[0] as TextNode).startOffset).toBe(48.12)
+    // Back at the block's own top: no offset kept.
+    const top = boardWithReadingWindow(next, 'a', 119)
+    expect('startOffset' in top.nodes[0]).toBe(false)
   })
 
   it('drops the field for a card back at the top', () => {
@@ -430,8 +434,8 @@ describe('boardWithReadingWindow', () => {
   })
 
   it('returns the same board when nothing moved, so nothing re-renders', () => {
-    const board = boardWith([textCard('a', { startLine: 12.5 })])
-    expect(boardWithReadingWindow(board, 'a', 12.5)).toBe(board)
+    const board = boardWith([textCard('a', { startLine: 12, startOffset: 30 })])
+    expect(boardWithReadingWindow(board, 'a', 12, 30)).toBe(board)
     expect(boardWithReadingWindow(boardWith([textCard('b')]), 'b', 0)).toEqual(
       boardWith([textCard('b')]),
     )

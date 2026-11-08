@@ -26,8 +26,8 @@ import type { CanvasView } from '../../domain/virtualization'
 import type { PictureStore } from '../../host/pictureStore'
 import { imageTargets, isRemoteImage } from '../../typeset/images'
 import { type MathLayout, type MathSource, mathKey } from '../../typeset/math'
-import { contentClip } from '../../typeset/tokens'
-import { clippedCardMarkdown } from '../canvas/cardContent'
+import { type TypesetTokens, contentClip } from '../../typeset/tokens'
+import { clippedCardMarkdown, readingOffset } from '../canvas/cardContent'
 import type { ContentLayer } from '../canvas/overviewLayer'
 import {
   OVERVIEW_THEMED_BORDER_ALPHA,
@@ -614,6 +614,7 @@ export class GpuBoard implements ContentLayer {
     }
     if (waiting) return null
     const plain = isPlainText(node)
+    const offset = readingOffset(node)
     const math: Record<string, MathLayout | null> = {}
     for (const key of this.cardFormulas.get(id) ?? []) {
       const layout = this.formulas.get(key)
@@ -628,6 +629,8 @@ export class GpuBoard implements ContentLayer {
         math,
         w: node.w,
         h: node.h,
+        // Moved up by its window's offset, it shows that much further down.
+        ...(offset > 0 ? { reach: node.h + offset } : {}),
         plain,
         color:
           plain && node.color !== undefined ? this.nodeColor(node.color) : null,
@@ -801,10 +804,20 @@ export class GpuBoard implements ContentLayer {
       }
       const { node } = entry.pending
       this.setDrawable(node.id, !typeset.host)
+      const scroll = scrollOf(node, look.tokens)
       this.texts.set(node.id, {
         shown: typeset.shown,
         runs: new Float32Array(typeset.runs),
         fonts: typeset.fonts,
+        ...(scroll.scroll > 0
+          ? {
+              view: {
+                scroll: scroll.scroll,
+                top: scroll.clipTop,
+                bottom: node.h,
+              },
+            }
+          : {}),
       })
       const images: CardImage[] = []
       for (const image of typeset.images) {
@@ -825,6 +838,7 @@ export class GpuBoard implements ContentLayer {
         frame: before?.frame ?? null,
         fade: entry.card.plain ? 0 : FADE,
         clip: contentClip(look.tokens, entry.card.plain),
+        ...scroll,
         content: {
           rects: new Uint32Array(typeset.rects),
           glyphs,
@@ -989,6 +1003,18 @@ function onScreen(
     x + card.w * view.scale > 0 &&
     y + card.h * view.scale > 0
   )
+}
+
+/** How far a card's content is moved up (its window's offset,
+ * ../canvas/cardContent.ts's `readingOffset`), and the line above which
+ * what is moved up is cut off: the inner edge of the card's top inset, so
+ * the inset stays clear. */
+function scrollOf(
+  node: BoardNode,
+  tokens: TypesetTokens,
+): Readonly<{ scroll: number; clipTop: number }> {
+  const scroll = readingOffset(node)
+  return { scroll, clipTop: scroll > 0 ? tokens.inset.top : 0 }
 }
 
 /** What of a card its typeset content is made from: a move keeps it; an

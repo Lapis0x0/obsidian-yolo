@@ -14,6 +14,8 @@
 //   [x, y, w, h]                          its box, world units
 //   [frame depth, content depth, fade, radius]
 //   [border width, shown, clip left, clip right]
+//   [scroll, clip top, 0, 0]               its content moved up by scroll,
+//                                          cut off above clip top
 // and the colour table one texel: [fill, border, 0, 0] as RGBA8 words.
 //
 // Knows nothing of boards or nodes: whoever shows the board tells it what
@@ -85,6 +87,11 @@ export type SceneCard = Readonly<{
   fade: number
   /** How far in from its left and right edges its content is cut off. */
   clip: Readonly<{ left: number; right: number }>
+  /** How far its content is moved up (its reading window's offset), and
+   * how far down from its top edge what is moved up is cut off; none when
+   * left out. */
+  scroll?: number
+  clipTop?: number
   /** Null while it has none (or never will: an image, a PDF). */
   content: CardInstances | null
 }>
@@ -756,6 +763,10 @@ export class GpuScene {
         slot.shown ? 1 : 0,
         card.clip.left,
         card.clip.right,
+        card.scroll ?? 0,
+        card.clipTop ?? 0,
+        0,
+        0,
       ],
       at,
     )

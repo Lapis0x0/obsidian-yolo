@@ -20,11 +20,15 @@ import { RUN_FIELDS } from '../typesetting/typesetProtocol'
 import { runOffsetX } from './glyphs'
 
 /** A card's runs: its shown text, per run RUN_FIELDS floats, and the fonts
- * they name. */
+ * they name — laid out from the top of the block its window starts at.
+ * `view` is what of that shows in the card: its content moved up by
+ * `scroll`, seen from `top` (below the top inset, once moved) to `bottom`
+ * (the card's height); all of it when left out. */
 export type DrawnText = Readonly<{
   shown: string
   runs: Float32Array
   fonts: readonly string[]
+  view?: Readonly<{ scroll: number; top: number; bottom: number }>
 }>
 
 /** A glyph's advance in a font. */
@@ -79,6 +83,10 @@ export function placeDrawnLines(
   const [start, end] = found
   const lines: PassageBox[] = []
   const { runs } = drawn
+  const scroll = drawn.view?.scroll ?? 0
+  // Of the passage's lines, some above what the card shows, some below.
+  let above = 0
+  let below = 0
   for (let i = 0; i < runs.length; i += RUN_FIELDS) {
     const runStart = runs[i]
     const runEnd = runs[i + 1]
@@ -97,9 +105,17 @@ export function placeDrawnLines(
         (glyph) => advance(glyph, font),
         offset - runStart,
       )
-    const top = runs[i + 3]
-    const bottom = runs[i + 5]
+    const top = runs[i + 3] - scroll
+    const bottom = runs[i + 5] - scroll
     if (!(top < bottom)) continue
+    if (drawn.view && bottom <= drawn.view.top) {
+      above += 1
+      continue
+    }
+    if (drawn.view && top >= drawn.view.bottom) {
+      below += 1
+      continue
+    }
     lines.push({
       top,
       bottom,
@@ -107,7 +123,11 @@ export function placeDrawnLines(
       right: at(Math.min(end, runEnd)),
     })
   }
-  if (lines.length === 0) return null
+  if (lines.length === 0) {
+    if (above > 0 && below === 0) return { state: 'above' }
+    if (below > 0 && above === 0) return { state: 'below' }
+    return null
+  }
   return { state: 'visible', lines }
 }
 

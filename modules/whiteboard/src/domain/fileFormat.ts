@@ -76,12 +76,15 @@ export type BoardNodeBase = Readonly<{
  * way its position and size are. It travels with the board for the reason
  * `camera` does.
  *
- * Fractional, because it is the coordinate both the rendered preview and the
- * live editor speak (the host's `getScrollLine`/`scrollToLine`): 12.5 is line
- * 12, half of it above the top edge. Absent — the common case — means the
- * card starts at the top of its document.
+ * Two numbers, both written and read by whatever draws the card
+ * (docs: p6-reading.md): `startLine` is the source line a block of the
+ * document itself starts on — where the card is laid out from, and shows
+ * it as the whole document would — and `startOffset` how far down that
+ * block the card's top edge is, in world units at the width it was read
+ * at. Absent — the common case — means the top of the document; no offset
+ * means the block's own top.
  */
-type ReadingWindow = Readonly<{ startLine?: number }>
+type ReadingWindow = Readonly<{ startLine?: number; startOffset?: number }>
 
 /**
  * Where a PDF card is being read: the same window as `startLine`, in the
@@ -500,6 +503,7 @@ const TEXT_NODE_KEYS = [
   ...NODE_COMMON_KEYS,
   'text',
   'startLine',
+  'startOffset',
   'plain',
   'autoWidth',
 ] as const
@@ -507,6 +511,7 @@ const FILE_NODE_KEYS = [
   ...NODE_COMMON_KEYS,
   'file',
   'startLine',
+  'startOffset',
   'startPage',
   'spread',
   'view',
@@ -647,10 +652,14 @@ function parseNode(
  */
 function parseReadingWindow(entry: Record<string, unknown>): {
   startLine?: number
+  startOffset?: number
 } {
-  const value = entry.startLine
-  if (!isFiniteNumber(value) || value <= 0) return {}
-  return { startLine: value }
+  const line = entry.startLine
+  const offset = entry.startOffset
+  return {
+    ...(isFiniteNumber(line) && line > 0 ? { startLine: line } : {}),
+    ...(isFiniteNumber(offset) && offset > 0 ? { startOffset: offset } : {}),
+  }
 }
 
 /** Bare text is written `true` or not at all; anything else is a card. */
@@ -780,6 +789,7 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         ...common,
         text: node.text,
         startLine: node.startLine,
+        startOffset: node.startOffset,
         plain: node.plain === true ? true : undefined,
         autoWidth:
           node.plain === true && node.autoWidth === true ? true : undefined,
@@ -790,6 +800,7 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
         ...common,
         file: node.file,
         startLine: node.startLine,
+        startOffset: node.startOffset,
         startPage: node.startPage,
         spread: serializeSpread(node.spread),
         view: node.view

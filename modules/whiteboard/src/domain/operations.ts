@@ -90,34 +90,40 @@ export function updateNode(board: Board, id: NodeId, patch: NodePatch): Board {
 }
 
 /**
- * Moves a card's reading window (fileFormat.ts's `startLine`).
+ * Moves a card's reading window (fileFormat.ts's `startLine`,
+ * `startOffset`): the block it is laid out from and how far down it the
+ * card's top is.
  *
  * A card read from the top carries no field at all rather than a
  * `startLine: 0`: the common case is a card nobody has scrolled, and the file
- * should not grow a key for every one of them.
- *
- * Kept to two decimals. The fraction is not noise — Obsidian's coordinate
- * interpolates within a *section*, and a section can be a forty-line
- * paragraph — but nothing downstream can tell 119.87 from 119.8675595238.
+ * should not grow a key for every one of them. Likewise an offset of 0.
+ * The offset is kept to two decimals: nothing downstream can tell more.
  */
 export function boardWithReadingWindow(
   board: Board,
   id: NodeId,
   line: number,
+  offset = 0,
 ): Board {
   const index = board.nodes.findIndex((node) => node.id === id)
   if (index === -1) return board
   const current = board.nodes[index]
   if (current.type !== 'text' && current.type !== 'file') return board
   const startLine =
-    Number.isFinite(line) && line >= 1
-      ? Math.round(line * 100) / 100
+    Number.isFinite(line) && line >= 1 ? Math.floor(line) : undefined
+  const startOffset =
+    Number.isFinite(offset) && offset > 0
+      ? Math.round(offset * 100) / 100
       : undefined
-  if (current.startLine === startLine) return board
+  if (current.startLine === startLine && current.startOffset === startOffset) {
+    return board
+  }
 
-  const next = { ...current } as { startLine?: number }
+  const next = { ...current } as { startLine?: number; startOffset?: number }
   if (startLine === undefined) delete next.startLine
   else next.startLine = startLine
+  if (startOffset === undefined) delete next.startOffset
+  else next.startOffset = startOffset
 
   const nodes = board.nodes.slice()
   nodes[index] = next as BoardNode
