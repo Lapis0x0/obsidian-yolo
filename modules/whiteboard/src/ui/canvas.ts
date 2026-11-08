@@ -2284,7 +2284,7 @@ export class WhiteboardCanvas {
       // A card showing its content is one a picture can be taken of.
       onContentRendered: () => this.pictures?.invalidate(),
       // The GPU scene goes on drawing a card it draws until its DOM shows
-      // it, so that selecting one never shows its body empty.
+      // it, so that one built to be edited never shows its body empty.
       drawnUnder: (id) => this.gpuBoard?.drawable(id) ?? false,
       onShown: () => this.overviewLayer?.markDirty(),
       // An image on the web a card shows: remembered once the browser has
@@ -2824,10 +2824,10 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   /**
-   * Records where a card is being read, as a source line on the node itself:
-   * the block its preview's top edge is in, as the preview finds it
-   * (`getContentBlockLine`) — a line the preview comes back to exactly and
-   * the card is drawn from when it is not focused, so the two agree.
+   * Records where a card is being read on the node itself: the block its top
+   * edge is in and how far down it, as the one surface reading it has it
+   * (`readingWindowOf`) — what the card is drawn from when it is not
+   * focused, so it shows the same.
    *
    * Written straight to `this.board` rather than through `applyBoardChange`,
    * the way the camera is: moving a window is not a step anyone wants to undo
@@ -2953,17 +2953,10 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Puts a reading window on a card, snapped to where a block starts.
-   *
-   * Snapped here, at the one moment it is written, because the card's surfaces
-   * cannot all honour an arbitrary line. The scrollable preview and the editor
-   * can begin mid block — they have a scroll offset to hide the top of one
-   * with — but a card that is not selected is a clipped one-pass render of
-   * just the slice it can show, and a slice can only begin flush at a block.
-   * Snapping there instead would leave that card sitting a block away from
-   * what the same card shows the moment it is selected. One quantum, one
-   * place: what is stored is already a block start, so every surface reads the
-   * same number and lands in the same spot.
+   * Puts a reading window on a card at the block `line` is in, from the text
+   * alone (../lod.ts's `blockStartLine`): for a window moved where no surface
+   * reading the card can say where its blocks start. A card is drawn from
+   * where a block starts, so a window begins at one.
    */
   private boardWithSnappedWindow(
     board: Board,
