@@ -146,12 +146,16 @@ type Reading = {
   /** Whether its whole note holds what only the host's renderer shows: it
    * is read in its DOM preview then, not here (`drawable`). */
   host: boolean
-  /** A source line it was asked to be turned to before its whole note came
-   * (`readAt`): the block that line is in goes to its top then. */
-  goto: number | null
+  /** Where it was asked to be turned to before its whole note came
+   * (`readAt`): found in that, once it is placed. */
+  goto: Locate | null
   /** When the glide last stepped, 0 while it is at rest. */
   lastTime: number
 }
+
+/** Where in a card's drawn text — laid out from its top, not moved — what
+ * is to be brought to its top edge starts; null where it is not drawn. */
+export type Locate = (drawn: DrawnText) => number | null
 
 /** Where a placed card's blocks are (../../typeset/layout.ts's `blocks`),
  * their lines counted from `from`, the line it was typeset from; and where
@@ -417,31 +421,34 @@ export class GpuBoard implements ContentLayer {
   }
 
   /**
-   * Turns the card being read to the block source line `line` is in, that
-   * block's start at its top edge — at once if its whole note is placed,
-   * once that comes otherwise. False when it is not the card being read
-   * here: its window is the board's to move then.
+   * Turns the card being read to what `locate` finds in its whole note,
+   * that at its top edge, under its inset — at once if its whole note is
+   * placed, once that comes otherwise. False when it is not the card being
+   * read here: its window is the board's to move then.
    */
-  readAt(id: string, line: number): boolean {
+  readAt(id: string, locate: Locate): boolean {
     const reading = this.reading
     if (reading?.id !== id || reading.host) return false
-    const placed = this.placed.get(id)
-    if (!reading.full || !placed) {
-      reading.goto = line
-      return true
-    }
-    reading.scroll = this.clampScroll(
-      id,
-      blockTop(placed.blocks, line) - (placed.blocks[1] ?? 0),
-    )
-    reading.target = reading.scroll
-    reading.lastTime = 0
-    this.moved(reading)
+    if (reading.full) this.turn(reading, locate)
+    else reading.goto = locate
     return true
   }
 
-  private clampScroll(id: string, scroll: number): number {
-    return Math.max(0, Math.min(this.maxScroll(id) ?? 0, scroll))
+  private turn(reading: Reading, locate: Locate): void {
+    const drawn = this.texts.get(reading.id)
+    const tokens = this.deps.style.tokens
+    if (!drawn || !tokens) return
+    const top = locate({
+      shown: drawn.shown,
+      runs: drawn.runs,
+      fonts: drawn.fonts,
+    })
+    if (top === null) return
+    const max = this.maxScroll(reading.id) ?? 0
+    reading.scroll = Math.max(0, Math.min(max, top - tokens.inset.top))
+    reading.target = reading.scroll
+    reading.lastTime = 0
+    this.moved(reading)
   }
 
   /**
@@ -1123,6 +1130,12 @@ export class GpuBoard implements ContentLayer {
         },
       })
       if (!before) this.scene.setShown(node.id, false)
+      // Turned somewhere while its whole note came (`readAt`): there.
+      if (reading && full && reading.goto) {
+        const locate = reading.goto
+        reading.goto = null
+        this.turn(reading, locate)
+      }
     }
     // The overview draws their pictures until it asks again.
     this.deps.redrawOverview()
@@ -1151,19 +1164,8 @@ export class GpuBoard implements ContentLayer {
       0,
       typeset.end + (this.deps.style.tokens?.inset.bottom ?? 0) - node.h,
     )
-    // Turned somewhere while it came (`readAt`): there, rather than where
-    // it was.
-    const goto = reading.goto
-    reading.goto = null
-    const scroll =
-      goto === null
-        ? reading.scroll + shift
-        : blockTop(typeset.blocks, goto) - (typeset.blocks[1] ?? 0)
-    reading.scroll = Math.min(max, Math.max(0, scroll))
-    reading.target =
-      goto === null
-        ? Math.min(max, Math.max(0, reading.target + shift))
-        : reading.scroll
+    reading.scroll = Math.min(max, Math.max(0, reading.scroll + shift))
+    reading.target = Math.min(max, Math.max(0, reading.target + shift))
   }
 
   /**

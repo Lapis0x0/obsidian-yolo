@@ -280,6 +280,34 @@ describe('blockStartLine', () => {
   it('clamps a line past the end of the note to its last block', () => {
     expect(blockStartLine(markdown, 999)).toBe(10)
   })
+  it('never lands inside a list a blank line does not end', () => {
+    const list = [
+      'intro', // 0
+      '', // 1
+      '1. first', // 2
+      '', // 3
+      '2. second', // 4
+      '', // 5
+      '    more of the second', // 6
+      '', // 7
+      'after the list', // 8
+    ].join('\n')
+    expect(blockStartLine(list, 4)).toBe(2)
+    expect(blockStartLine(list, 6)).toBe(2)
+    expect(blockStartLine(list, 8)).toBe(8)
+  })
+
+  it('takes a list that interrupts a paragraph as part of it', () => {
+    const list = ['para', '- one', '', '- two'].join('\n')
+    expect(blockStartLine(list, 3)).toBe(0)
+  })
+
+  it('never lands inside a $$ formula, blank line or not', () => {
+    const math = ['text', '', '$$', 'a', '', 'b', '$$', '', 'after'].join('\n')
+    expect(blockStartLine(math, 5)).toBe(2)
+    expect(blockStartLine(math, 8)).toBe(8)
+    expect(blockStartLine(['$$x$$', '', 'next'].join('\n'), 2)).toBe(2)
+  })
 })
 
 describe('wrapTitleLines', () => {

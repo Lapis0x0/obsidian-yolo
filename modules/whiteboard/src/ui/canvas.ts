@@ -3488,8 +3488,7 @@ export class WhiteboardCanvas {
 
   /**
    * Brings what an edge end reaches into its card's view, when it is not in
-   * it already. A text passage moves the card's reading window to the block
-   * it is in; a PDF passage or page is gone to by the card's reader, or —
+   * it already. A text passage is turned to (`turnTextTo`); a PDF passage or page is gone to by the card's reader, or —
    * with no reader drawn yet — becomes the page the reader will open at.
    * Moving a window is reading, not editing: no history step, as scrolling
    * a card is none (`commitReadingWindow`).
@@ -3503,7 +3502,7 @@ export class WhiteboardCanvas {
       if (this.placePassage(node.id, anchor)?.state === 'visible') return
       const source = this.passageSource(node.id)
       const span = source === null ? null : resolveTextAnchor(source, anchor)
-      if (source !== null && span) this.turnTextTo(node.id, source, span[0])
+      if (source !== null && span) this.turnTextTo(node.id, source, span)
       return
     }
     const target = anchor?.kind === 'pdf' ? anchor.page : page
@@ -3524,12 +3523,29 @@ export class WhiteboardCanvas {
     this.commitWithoutHistory(boardWithPageWindow(this.board, node.id, target))
   }
 
-  /** Turns a card to the block that `offset` in its `source` is in: the
-   * card the GPU scene is reading scrolls there; any other has its reading
-   * window moved there. */
-  private turnTextTo(id: NodeId, source: string, offset: number): void {
-    const line = source.slice(0, offset).split('\n').length - 1
-    if (this.gpuBoard?.readAt(id, line)) return
+  /**
+   * Turns a card to `span` of its `source`. One the GPU scene draws is
+   * opened to read (selected) and scrolled there: its whole note shows where
+   * the span is, to the line. Any other has its reading window moved to the
+   * block the span starts in, and a preview it has already follows.
+   */
+  private turnTextTo(
+    id: NodeId,
+    source: string,
+    span: readonly [number, number],
+  ): void {
+    if (this.gpuBoard?.drawable(id)) {
+      if (this.focusedNodeId !== id) this.setSelection([id])
+      const anchor = textAnchorAt(source, span)
+      const located = this.gpuBoard.readAt(id, (drawn) => {
+        const placed = placeDrawnLines(drawn, source, anchor, this.glyphAdvance)
+        return placed?.state === 'visible'
+          ? Math.min(...placed.lines.map((line) => line.top))
+          : null
+      })
+      if (located) return
+    }
+    const line = source.slice(0, span[0]).split('\n').length - 1
     this.commitWithoutHistory(
       this.boardWithSnappedWindow(this.board, id, line, source),
     )
@@ -4430,8 +4446,8 @@ export class WhiteboardCanvas {
   /** Brings a hit of the board's find to view: its card at a size it can
    * be read at, and the hit in the middle of the viewport where the card
    * shows it. A hit past what a long card shows opens the card to read
-   * (selects it) at the block the hit is in, as an edge's end is turned to
-   * (`turnToEnd`) — and the card keeps that as where it is read from. */
+   * (selects it) where the hit is, as an edge's end is turned to
+   * (`turnTextTo`) — and the card keeps that as where it is read from. */
   private revealFindHit(hit: FindHit, source: string): void {
     const node = this.nodesById.get(hit.id)
     if (!node) return
@@ -4443,7 +4459,7 @@ export class WhiteboardCanvas {
     const placed = this.placeFindHit(hit, source)
     if (placed && placed.state !== 'visible') {
       this.setSelection([hit.id])
-      this.turnTextTo(hit.id, source, hit.start)
+      this.turnTextTo(hit.id, source, [hit.start, hit.end])
       // Met at its top, where the hit's block now is.
       const size = this.getViewportSize()
       const half = size.height / 2 / this.cameraController.view.scale

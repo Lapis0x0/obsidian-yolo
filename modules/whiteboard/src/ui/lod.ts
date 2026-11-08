@@ -255,20 +255,34 @@ export function cardMarkdownWindow(
   return lastBreak > 0 ? hardCut.slice(0, lastBreak) : hardCut
 }
 
+/** A line that opens an item of a list. */
+const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/
+
+/** The marker a fenced block — code, or a `$$` formula — is opened and
+ * closed by, if `text` (trimmed) is one. */
+function fenceOf(text: string): string | null {
+  if (text.startsWith('```')) return '```'
+  if (text.startsWith('~~~')) return '~~~'
+  if (text.startsWith('$$')) return '$$'
+  return null
+}
+
 /**
- * The last line at or before `line` that a block starts on — the first
- * non-blank line after a blank one, ignoring anything inside a fenced code
- * block, where a blank line separates nothing.
+ * The last line at or before `line` that a top-level block starts on — a
+ * card's window can only begin at one and lay out as the card would from its
+ * top (../typeset/layout.ts's `blocks` are those).
  *
- * A reading window moved where there is no preview to say where its blocks
- * start — out of the editor, to a find hit or an edge's end — is snapped
- * here, from the text alone: a clipped card can only begin flush at a
- * block, having no scroll offset to hide the top of one with. Where a
- * preview is read, it says (canvas.ts's `commitReadingWindow`), finer than
- * this: an item of a list, a paragraph right after a heading.
+ * From the text alone, and on the safe side: a block starts at the first
+ * non-blank line after a blank one, except inside a fence (code or `$$`),
+ * where a blank line separates nothing, and inside a list, which a blank line
+ * does not end — the next item, or what is indented under one, is still the
+ * list. A list interrupting a paragraph without a blank line is taken as part
+ * of it. Where this backs up further than a block's start, the window begins
+ * a block earlier and its offset says how far below: only ever a block too
+ * far up, never inside one.
  *
  * Scanned from the top rather than backwards from `line`, because whether a
- * line is inside a fence is only knowable by counting the fences before it.
+ * line is inside a fence or a list is only knowable from what is before it.
  */
 export function blockStartLine(
   source: string | readonly string[],
@@ -279,31 +293,39 @@ export function blockStartLine(
   const target = Math.floor(line)
   let openFence: string | null = null
   let previousBlank = true
+  let inList = false
   let candidate = 0
   const last = Math.min(target, lines.length - 1)
   for (let i = 0; i <= last; i += 1) {
-    const text = lines[i].trim()
-    const fence = text.startsWith('```')
-      ? '```'
-      : text.startsWith('~~~')
-        ? '~~~'
-        : null
+    const raw = lines[i]
+    const text = raw.trim()
+    const fence = fenceOf(text)
     if (openFence !== null) {
       // Only the marker that opened this block can close it: a `~~~` inside a
-      // ``` block is content, not a fence.
+      // ``` block is content, not a fence. A `$$` opened and closed on one
+      // line opens nothing.
       if (fence === openFence) openFence = null
       previousBlank = false
       continue
     }
-    if (fence !== null) {
-      if (previousBlank) candidate = i
-      openFence = fence
-      previousBlank = false
+    if (text === '') {
+      previousBlank = true
       continue
     }
-    const blank = text === ''
-    if (!blank && previousBlank) candidate = i
-    previousBlank = blank
+    const item = LIST_ITEM.test(raw)
+    const continues = inList && (item || /^\s/.test(raw))
+    if (previousBlank && !continues) {
+      candidate = i
+      inList = false
+    }
+    if (item) inList = true
+    if (
+      fence !== null &&
+      !(fence === '$$' && text.length > 2 && text.endsWith('$$'))
+    ) {
+      openFence = fence
+    }
+    previousBlank = false
   }
   return candidate
 }
