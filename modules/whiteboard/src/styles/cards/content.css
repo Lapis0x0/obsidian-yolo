@@ -394,18 +394,32 @@
   background: transparent;
 }
 
+/* Shown on the focused card only, the one the wheel scrolls. A card keeps
+ * the scrollable preview it was given once opened (cardRenderer's
+ * `renderMarkdownInto`), so a card read and left still scrolls — but nothing
+ * reaches it until it is opened again, and a thumb on it would say otherwise.
+ * Its gutter stays, for its lines to wrap where they always do. */
 .yolo-whiteboard-card
   :is(
     .markdown-preview-view,
     .markdown-source-view .cm-scroller
   )::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  background: transparent;
   border: 2px solid transparent;
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-.yolo-whiteboard-card
+.yolo-whiteboard-card.yolo-whiteboard-card-focused
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  background-clip: padding-box;
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-card-focused
   :is(
     .markdown-preview-view,
     .markdown-source-view .cm-scroller
