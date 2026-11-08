@@ -3524,13 +3524,18 @@ export class WhiteboardCanvas {
     this.commitWithoutHistory(boardWithPageWindow(this.board, node.id, target))
   }
 
-  /** Moves a card's reading window to the block that `offset` in its
-   * `source` is in. */
+  /** Turns a card to the block that `offset` in its `source` is in: the
+   * card the GPU scene is reading scrolls there; any other has its reading
+   * window moved there. */
   private turnTextTo(id: NodeId, source: string, offset: number): void {
     const line = source.slice(0, offset).split('\n').length - 1
+    if (this.gpuBoard?.readAt(id, line)) return
     this.commitWithoutHistory(
       this.boardWithSnappedWindow(this.board, id, line, source),
     )
+    // A preview it already has stays where it was otherwise: its text is
+    // the same, so the window moving builds nothing anew.
+    this.cardRenderer.alignContent(id, line, 0)
     this.contentSyncQueue.add(id)
   }
 

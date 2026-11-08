@@ -146,6 +146,9 @@ type Reading = {
   /** Whether its whole note holds what only the host's renderer shows: it
    * is read in its DOM preview then, not here (`drawable`). */
   host: boolean
+  /** A source line it was asked to be turned to before its whole note came
+   * (`readAt`): the block that line is in goes to its top then. */
+  goto: number | null
   /** When the glide last stepped, 0 while it is at rest. */
   lastTime: number
 }
@@ -383,6 +386,7 @@ export class GpuBoard implements ContentLayer {
       target: scroll,
       full: false,
       host: false,
+      goto: null,
       lastTime: 0,
     }
     this.pending.set(id, { node, text: null, reading: false })
@@ -410,6 +414,34 @@ export class GpuBoard implements ContentLayer {
       reading.lastTime = win.performance.now()
     }
     return true
+  }
+
+  /**
+   * Turns the card being read to the block source line `line` is in, that
+   * block's start at its top edge — at once if its whole note is placed,
+   * once that comes otherwise. False when it is not the card being read
+   * here: its window is the board's to move then.
+   */
+  readAt(id: string, line: number): boolean {
+    const reading = this.reading
+    if (reading?.id !== id || reading.host) return false
+    const placed = this.placed.get(id)
+    if (!reading.full || !placed) {
+      reading.goto = line
+      return true
+    }
+    reading.scroll = this.clampScroll(
+      id,
+      blockTop(placed.blocks, line) - (placed.blocks[1] ?? 0),
+    )
+    reading.target = reading.scroll
+    reading.lastTime = 0
+    this.moved(reading)
+    return true
+  }
+
+  private clampScroll(id: string, scroll: number): number {
+    return Math.max(0, Math.min(this.maxScroll(id) ?? 0, scroll))
   }
 
   /**
@@ -1119,8 +1151,19 @@ export class GpuBoard implements ContentLayer {
       0,
       typeset.end + (this.deps.style.tokens?.inset.bottom ?? 0) - node.h,
     )
-    reading.scroll = Math.min(max, Math.max(0, reading.scroll + shift))
-    reading.target = Math.min(max, Math.max(0, reading.target + shift))
+    // Turned somewhere while it came (`readAt`): there, rather than where
+    // it was.
+    const goto = reading.goto
+    reading.goto = null
+    const scroll =
+      goto === null
+        ? reading.scroll + shift
+        : blockTop(typeset.blocks, goto) - (typeset.blocks[1] ?? 0)
+    reading.scroll = Math.min(max, Math.max(0, scroll))
+    reading.target =
+      goto === null
+        ? Math.min(max, Math.max(0, reading.target + shift))
+        : reading.scroll
   }
 
   /**
