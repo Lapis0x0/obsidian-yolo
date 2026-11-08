@@ -143,6 +143,9 @@ type Reading = {
   /** Whether what it has placed is its whole note rather than its window:
    * until then it moves within its window. */
   full: boolean
+  /** Whether its whole note holds what only the host's renderer shows: it
+   * is read in its DOM preview then, not here (`drawable`). */
+  host: boolean
   /** When the glide last stepped, 0 while it is at rest. */
   lastTime: number
 }
@@ -374,7 +377,14 @@ export class GpuBoard implements ContentLayer {
     this.dirty = true
     if (id === null || !node || isPlainText(node)) return
     const scroll = this.scene.cardOf(id)?.scroll ?? readingOffset(node)
-    this.reading = { id, scroll, target: scroll, full: false, lastTime: 0 }
+    this.reading = {
+      id,
+      scroll,
+      target: scroll,
+      full: false,
+      host: false,
+      lastTime: 0,
+    }
     this.pending.set(id, { node, text: null, reading: false })
     this.wanted.add(id)
     this.moved(this.reading)
@@ -388,7 +398,7 @@ export class GpuBoard implements ContentLayer {
    */
   scrollBy(id: string, deltaY: number): boolean {
     const reading = this.reading
-    if (reading?.id !== id) return false
+    if (reading?.id !== id || reading.host) return false
     const max = this.maxScroll(id)
     if (max === null || max <= 0) return false
     reading.target = Math.max(0, Math.min(max, reading.target + deltaY))
@@ -510,6 +520,7 @@ export class GpuBoard implements ContentLayer {
   drawable(id: string): boolean {
     return (
       this.drawables.has(id) &&
+      !(this.reading?.id === id && this.reading.host) &&
       this.deps.typesetter.usable &&
       this.scene.usable &&
       !this.changed.has(id)
@@ -1013,6 +1024,14 @@ export class GpuBoard implements ContentLayer {
       // come, and the card read would be built for that long and then drawn
       // again. Its window shows meanwhile.
       if (full && typeset.math) continue
+      // One whose whole note the host has to render is read in its DOM
+      // preview: it is left as it was here, its window, until it is read no
+      // more and typeset from its window again (`setReading`).
+      if (reading && full && typeset.host) {
+        reading.host = true
+        this.drawableRevision += 1
+        continue
+      }
       const glyphs = new Uint32Array(typeset.glyphs)
       const used = new Set<number>()
       for (let i = 3; i < glyphs.length; i += GLYPH_WORDS) {
