@@ -1550,9 +1550,9 @@ export class WhiteboardCanvas {
       board = { ...board, camera }
     }
     if (this.focusedNodeId !== null) {
-      const line = this.cardRenderer.getContentScrollLine(this.focusedNodeId)
+      const line = this.cardRenderer.getContentBlockLine(this.focusedNodeId)
       if (line !== null) {
-        board = this.boardWithSnappedWindow(board, this.focusedNodeId, line)
+        board = boardWithReadingWindow(board, this.focusedNodeId, line)
       }
       const page = this.cardRenderer.getPdfPosition(this.focusedNodeId)
       if (page !== null) {
@@ -2789,7 +2789,10 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   /**
-   * Records where a card is being read, as a source line on the node itself.
+   * Records where a card is being read, as a source line on the node itself:
+   * the block its preview's top edge is in, as the preview finds it
+   * (`getContentBlockLine`) — a line the preview comes back to exactly and
+   * the card is drawn from when it is not focused, so the two agree.
    *
    * Written straight to `this.board` rather than through `applyBoardChange`,
    * the way the camera is: moving a window is not a step anyone wants to undo
@@ -2797,13 +2800,13 @@ export class WhiteboardCanvas {
    * holds, which is the board as it was — the same deal the camera has.
    */
   private commitReadingWindow(id: NodeId): void {
-    const line = this.cardRenderer.getContentScrollLine(id)
+    const line = this.cardRenderer.getContentBlockLine(id)
     const page = this.cardRenderer.getPdfPosition(id)
     // A PDF card's window is a page rather than a line — the same field
     // idea (fileFormat.ts's `startPage`), in the unit the document speaks.
     const next =
       line !== null
-        ? this.boardWithSnappedWindow(this.board, id, line)
+        ? boardWithReadingWindow(this.board, id, line)
         : page !== null
           ? boardWithPageWindow(this.board, id, page)
           : this.board
@@ -3248,6 +3251,13 @@ export class WhiteboardCanvas {
     this.focusedNodeId = next
     if (next !== null) {
       this.cardRenderer.getRuntime(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
+      // A preview kept from an earlier reading is still where it was left;
+      // the card has been drawn from its window since. Back to that, before
+      // it is seen.
+      const node = this.nodesById.get(next)
+      if (node?.type === 'text' || node?.type === 'file') {
+        this.cardRenderer.alignContent(next, node.startLine ?? 0)
+      }
     }
     // Focus decides how much of a card's note is built, because the focused
     // card is the one that can be scrolled (cardRenderer's

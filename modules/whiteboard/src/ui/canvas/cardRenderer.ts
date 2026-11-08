@@ -1483,6 +1483,31 @@ export class CardRenderer {
     return Number.isFinite(line) ? line : null
   }
 
+  /**
+   * The block the card's preview is being read at, as the source line it
+   * starts on — what the card's window is kept as, because a card that is
+   * not the focused one is drawn from where a block starts and the preview
+   * comes back to exactly that place (`alignContent`). Null with no
+   * preview, as `getContentScrollLine`.
+   */
+  getContentBlockLine(id: NodeId): number | null {
+    const view = this.runtimeByNodeId.get(id)?.contentView
+    if (!view) return null
+    const line = view.getBlockLine()
+    return Number.isFinite(line) ? line : null
+  }
+
+  /**
+   * Puts a card's preview, kept from when it was read before, back at the
+   * window the card is drawn with while it is not focused: so the card
+   * shows the same lines the moment it is focused again. The preview went
+   * on being where it was left, part-way into a block, while the window was
+   * kept as that block's start.
+   */
+  alignContent(id: NodeId, line: number): void {
+    this.runtimeByNodeId.get(id)?.contentView?.scrollToLine(line)
+  }
+
   scrollCardContent(id: NodeId, deltaX: number, deltaY: number): boolean {
     const runtime = this.runtimeByNodeId.get(id)
     if (runtime?.pdfReader) return runtime.pdfReader.scrollBy(deltaX, deltaY)

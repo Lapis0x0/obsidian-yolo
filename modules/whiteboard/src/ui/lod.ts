@@ -223,8 +223,11 @@ function longestFit(
  * it is, which is exactly what the card was going to show of it anyway. The
  * *start* cannot be so casual: begin inside a fenced block and its closing
  * fence reads as an opening one, so the rest of the card renders as code.
- * `blockStartAtOrBefore` therefore backs the start up to the nearest block
- * boundary, which is also the more honest place to begin reading.
+ * `outsideFence` therefore backs a start inside one up to its opening fence.
+ * Nothing else moves it: the window is kept as a line the card's preview
+ * starts a block at (canvas.ts's `commitReadingWindow`), which may be an
+ * item of a list or a paragraph straight after a heading, and the card is
+ * drawn from that line so it shows what the preview shows.
  */
 export function cardMarkdownWindow(
   markdown: string,
@@ -235,7 +238,7 @@ export function cardMarkdownWindow(
     Math.ceil(Math.max(bodyHeightWorldPx, 0) / CARD_CONTENT_MIN_LINE_WORLD_PX) +
     CARD_CONTENT_EXTRA_LINES
   const lines = markdown.split('\n')
-  const start = blockStartLine(lines, startLine)
+  const start = outsideFence(lines, startLine)
   let counted = 0
   let end = lines.length
   for (let i = start; i < lines.length; i += 1) {
@@ -257,19 +260,15 @@ export function cardMarkdownWindow(
  * non-blank line after a blank one, ignoring anything inside a fenced code
  * block, where a blank line separates nothing.
  *
- * This is the quantum a reading window moves in, and every surface has to
- * agree on it. A clipped card can only begin flush at a block: it has no
- * scroll offset to hide the top of one with. So the position is snapped when
- * it is *recorded* (canvas.ts's `commitReadingWindow`) rather than when it is
- * rendered — snap at render and the scrollable preview, which does begin mid
- * block, would sit a block away from what the same card shows when it is not
- * selected. Applied again here anyway: `startLine` comes out of a file a
- * person can edit, and beginning inside a fence renders the rest of the card
- * as code.
+ * A reading window moved where there is no preview to say where its blocks
+ * start — out of the editor, to a find hit or an edge's end — is snapped
+ * here, from the text alone: a clipped card can only begin flush at a
+ * block, having no scroll offset to hide the top of one with. Where a
+ * preview is read, it says (canvas.ts's `commitReadingWindow`), finer than
+ * this: an item of a list, a paragraph right after a heading.
  *
  * Scanned from the top rather than backwards from `line`, because whether a
  * line is inside a fence is only knowable by counting the fences before it.
- * That is the same one pass over the lines the budget above already costs.
  */
 export function blockStartLine(
   source: string | readonly string[],
@@ -307,4 +306,33 @@ export function blockStartLine(
     previousBlank = blank
   }
   return candidate
+}
+
+/**
+ * `line`, or the opening fence of the fenced block it is inside — a window
+ * that begins inside one renders its closing fence as an opening one, and
+ * the rest of the card as code. A `startLine` comes out of a file a person
+ * can edit, so it is checked where it is used.
+ */
+export function outsideFence(lines: readonly string[], line: number): number {
+  if (!(line > 0)) return 0
+  const target = Math.min(Math.floor(line), lines.length - 1)
+  let openFence: string | null = null
+  let openedAt = 0
+  for (let i = 0; i < target; i += 1) {
+    const text = lines[i].trim()
+    const fence = text.startsWith('```')
+      ? '```'
+      : text.startsWith('~~~')
+        ? '~~~'
+        : null
+    if (openFence !== null) {
+      // Only the marker that opened this block can close it.
+      if (fence === openFence) openFence = null
+    } else if (fence !== null) {
+      openFence = fence
+      openedAt = i
+    }
+  }
+  return openFence === null ? target : openedAt
 }

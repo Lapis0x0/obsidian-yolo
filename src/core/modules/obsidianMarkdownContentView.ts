@@ -62,6 +62,8 @@ type ObsidianMarkdownPreviewRenderer = {
    * document are sections too, without positions.
    */
   sections: ObsidianPreviewSection[]
+  /** The scroll container: the preview element the caller styles. */
+  previewEl: HTMLElement
   frontmatter: unknown
   text: string
   parseSync(): void
@@ -123,6 +125,7 @@ export type ObsidianMarkdownContentViewOptions = {
 export type ObsidianMarkdownContentViewHandle = {
   setValue(text: string): void
   getScrollLine(): number
+  getBlockLine(): number
   scrollToLine(line: number, onSettled?: () => void): void
   destroy(): void
 }
@@ -192,6 +195,68 @@ export function assertMarkdownRendererInstance(
       'the preview renderer keeps no sections',
     )
   }
+  // Not `instanceof HTMLElement`: a popout's elements are another window's.
+  if (typeof renderer.previewEl?.getBoundingClientRect !== 'function') {
+    throw new ObsidianMarkdownContentViewUnavailableError(
+      'the preview renderer has no preview element',
+    )
+  }
+}
+
+/**
+ * The places a preview can be brought to exactly, in source order: the first
+ * line of each top-level block, and of each item of a list that is one —
+ * each with the element that shows it.
+ *
+ * Obsidian's own `applyScroll` knows a block only as a height and a count of
+ * lines, and places a line inside one in proportion: an item halfway down a
+ * list's source lands wherever halfway down its height is, rarely where the
+ * item begins. The items' elements carry their line (`data-line`, from the
+ * block's first), so these are found where they are rather than estimated.
+ * Only blocks mounted now: the top edge is always in one.
+ */
+function blockAnchors(
+  renderer: ObsidianMarkdownPreviewRenderer,
+): { line: number; el: HTMLElement }[] {
+  const anchors: { line: number; el: HTMLElement }[] = []
+  for (const section of renderer.sections) {
+    if (!section.start || !section.el.isConnected) continue
+    const first = section.start.line
+    anchors.push({ line: first, el: section.el })
+    const items = section.el.querySelectorAll<HTMLElement>(
+      ':scope > ul > li[data-line], :scope > ol > li[data-line]',
+    )
+    for (const item of Array.from(items)) {
+      const offset = Number(item.dataset.line)
+      if (Number.isInteger(offset) && offset > 0) {
+        anchors.push({ line: first + offset, el: item })
+      }
+    }
+  }
+  return anchors
+}
+
+/** Where an element's top is in the preview's scrolled content, in the
+ * preview's own pixels — not the screen's, which a scaled ancestor (a
+ * zoomed board) makes another size. */
+function contentTop(previewEl: HTMLElement, el: HTMLElement): number {
+  const box = previewEl.getBoundingClientRect()
+  const scale =
+    previewEl.offsetHeight > 0 ? box.height / previewEl.offsetHeight : 1
+  return (
+    (el.getBoundingClientRect().top - box.top) / (scale || 1) +
+    previewEl.scrollTop
+  )
+}
+
+/** The scroll position that puts an element's top at the preview's top
+ * edge: where its content starts, inside its padding. */
+function scrollTopFor(previewEl: HTMLElement, el: HTMLElement): number {
+  const padding =
+    parseFloat(
+      getNodeWindow(previewEl).getComputedStyle(previewEl).paddingTop,
+    ) || 0
+  return Math.max(0, contentTop(previewEl, el) - padding)
 }
 
 /**
@@ -371,12 +436,37 @@ export function createObsidianMarkdownContentView(
       instance.renderer.set(text)
     },
     getScrollLine: () => (destroyed ? 0 : instance.renderer.getScroll()),
+    getBlockLine: () => {
+      if (destroyed) return 0
+      const { previewEl } = renderer
+      // At the very top, the document's start, whatever block it is.
+      if (previewEl.scrollTop <= 0) return 0
+      let line = 0
+      for (const anchor of blockAnchors(renderer)) {
+        // The last one starting at or above the top edge (a pixel's grace,
+        // for the rounding of where it was put).
+        if (scrollTopFor(previewEl, anchor.el) > previewEl.scrollTop + 1) break
+        line = anchor.line
+      }
+      return line
+    },
     scrollToLine: (line: number, onSettled?: () => void) => {
       if (destroyed) return
       instance.renderer.applyScrollDelayed(line, undefined, () => {
         // A view destroyed while the render it was waiting on was still in
         // flight is not a view that arrived anywhere.
-        if (!destroyed) onSettled?.()
+        if (destroyed) return
+        // Obsidian has put the line's block in view, the line within it by
+        // proportion; a line that starts a block or an item is then put
+        // exactly where it starts.
+        const anchor = blockAnchors(renderer).find((a) => a.line === line)
+        if (anchor) {
+          renderer.previewEl.scrollTop = scrollTopFor(
+            renderer.previewEl,
+            anchor.el,
+          )
+        }
+        onSettled?.()
       })
     },
     destroy: () => {

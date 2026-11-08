@@ -536,6 +536,22 @@ export type YoloModuleMarkdownContentViewV1 = {
    */
   getScrollLine(): number
   /**
+   * The source line of the block the view's top edge is in: the first line
+   * of a top-level block, or of an item of a list that is one — 0 at the
+   * document's top. A line `scrollToLine` brings back exactly, that block's
+   * top at the top edge, which is also how a render of the document from
+   * that line begins. Where a view showing one surface has to be shown again
+   * as another that can only begin at a block, this is the position the two
+   * agree on; `getScrollLine` is the finer one, for a surface that can begin
+   * anywhere.
+   */
+  getBlockLine(): number
+  /**
+   * A line that starts a top-level block or an item of a top-level list
+   * lands exactly: the start of that block at the top edge. Any other line,
+   * a fraction included, is placed in proportion within its block, as
+   * Obsidian places it.
+   *
    * `onSettled` runs when the view is actually showing that line, which is
    * not when this returns: a preview that has not rendered yet has no
    * measured sections to find the line among, so it stays where it is and

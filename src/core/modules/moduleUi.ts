@@ -422,6 +422,7 @@ export class ObsidianModuleUiCapabilityProvider
             handle.setValue(text)
           },
           getScrollLine: () => handle.getScrollLine(),
+          getBlockLine: () => handle.getBlockLine(),
           scrollToLine: (line: number, onSettled?: () => void) => {
             requireFiniteNumber(line, 'Markdown content view scroll line')
             requireOptionalFunction(

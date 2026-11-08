@@ -188,11 +188,13 @@ describe('cardMarkdownWindow', () => {
     expect(cardMarkdownWindow(markdown, 200, 4)).toBe('gamma\n\ndelta')
   })
 
-  it('backs a start inside a block up to where that block begins', () => {
-    const markdown = 'alpha\n\nbeta one\nbeta two\nbeta three\n\ngamma'
-    expect(cardMarkdownWindow(markdown, 200, 4)).toBe(
-      'beta one\nbeta two\nbeta three\n\ngamma',
-    )
+  it('starts at the line it is given, where the preview starts a block', () => {
+    // An item of a tight list, and a paragraph straight after a heading:
+    // blocks the preview starts, with no blank line before them.
+    const list = '- one\n- two\n- three'
+    expect(cardMarkdownWindow(list, 200, 1)).toBe('- two\n- three')
+    const headed = '# Title\nbody\n\nmore'
+    expect(cardMarkdownWindow(headed, 200, 1)).toBe('body\n\nmore')
   })
 
   it('never begins inside a fenced block, where the closing fence would open one', () => {
