@@ -31,7 +31,6 @@ import {
 import type { IdleSlices } from './idle'
 
 const STAGE_CLASS = 'yolo-whiteboard-typeset-sample'
-const SCROLLBAR_PROBE_CLASS = 'yolo-whiteboard-scrollbar-probe'
 
 /** The callout types Obsidian colours apart. */
 const CALLOUT_TYPES = [
@@ -101,11 +100,6 @@ export class TypesetStyle {
   private current: Readonly<{ tokens: TypesetTokens; hash: string }> | null =
     null
   private readonly observers: MutationObserver[] = []
-  /** Watches the scrollbar's width (`SCROLLBAR_PROBE_CLASS`). */
-  private probe: Readonly<{
-    el: HTMLElement
-    observer: ResizeObserver
-  }> | null = null
   private refreshing = false
   private again = false
   private destroyed = false
@@ -137,22 +131,6 @@ export class TypesetStyle {
         subtree: true,
       })
       this.observers.push(head, body, own)
-      // A card's lines wrap short of the gutter its preview keeps for a
-      // scrollbar, and how wide that is changes with no stylesheet changing:
-      // the system shows scrollbars over content or beside it, and switches
-      // when a mouse comes and goes. A box that keeps the same gutter
-      // narrows or widens with it.
-      const el = doc.createElement('div')
-      el.className = SCROLLBAR_PROBE_CLASS
-      deps.root.appendChild(el)
-      let width: number | null = null
-      const observer = new win.ResizeObserver(() => {
-        const next = el.clientWidth
-        if (width !== null && next !== width) this.refresh()
-        width = next
-      })
-      observer.observe(el)
-      this.probe = { el, observer }
     }
     this.refresh()
   }
@@ -171,9 +149,6 @@ export class TypesetStyle {
     this.destroyed = true
     for (const observer of this.observers) observer.disconnect()
     this.observers.length = 0
-    this.probe?.observer.disconnect()
-    this.probe?.el.remove()
-    this.probe = null
   }
 
   private refresh(): void {
@@ -396,7 +371,8 @@ export function measureSample(
 
   /** From a card's edge to its content: border and padding, and the gutter
    * the preview keeps for a scrollbar (`scrollbar-gutter`), which the text
-   * wraps short of. */
+   * wraps short of — a width of the board's own, never the system's
+   * (styles/cards/content.css). */
   const insetOf = (outer: HTMLElement, preview: HTMLElement) => {
     const outerBox = outer.getBoundingClientRect()
     const box = preview.getBoundingClientRect()

@@ -11,19 +11,3 @@
   pointer-events: none;
   contain: layout style;
 }
-
-/* A box with the gutter a card's preview keeps for a scrollbar
- * (ui/pictures/typesetStyle.ts): it narrows when scrollbars take room
- * beside content and widens when they go over it, and the card's look is
- * read again. */
-.yolo-whiteboard-scrollbar-probe {
-  position: absolute;
-  left: -99999px;
-  top: 0;
-  width: 100px;
-  height: 1px;
-  overflow: hidden;
-  scrollbar-gutter: stable;
-  visibility: hidden;
-  pointer-events: none;
-}

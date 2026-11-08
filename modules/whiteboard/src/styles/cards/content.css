@@ -353,6 +353,67 @@
   overflow: hidden;
 }
 
+/* A card's scrollbar is ours, at a width of our own. Obsidian keeps a gutter
+ * for one beside the preview's text and the editor's (`scrollbar-gutter:
+ * stable`), and a native scrollbar's width is the system's: beside the
+ * content or over it, switching as a mouse comes and goes. The GPU's
+ * typesetting wraps lines short of that gutter, so every switch changed how
+ * every card is laid out and threw away all the board kept of its layout. A
+ * styled scrollbar is never laid over content: its gutter is this width,
+ * always. Its look is the one the settings and the model list wear.
+ *
+ * `scrollbar-color` is inherited, and a theme sets it on the body; Chrome
+ * ignores every `::-webkit-scrollbar` rule on an element where it is not
+ * `auto` and draws the system's scrollbar again. */
+.yolo-whiteboard-card
+  :is(.markdown-preview-view, .markdown-source-view .cm-scroller) {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+.yolo-whiteboard-card
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+.yolo-whiteboard-card
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar-track,
+.yolo-whiteboard-card
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.yolo-whiteboard-card
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+.yolo-whiteboard-card
+  :is(
+    .markdown-preview-view,
+    .markdown-source-view .cm-scroller
+  )::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 50%, transparent);
+  background-clip: padding-box;
+}
+
 /* Never the render on its way out: it holds a slice, not the document, and a
  * scrollbar appearing on it for the frames a handover lasts is one more thing
  * moving in a card that should look still. */
