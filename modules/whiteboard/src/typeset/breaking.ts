@@ -402,7 +402,10 @@ function atomsOf(
         : 0
     const atomized = atomize(inline.text, offsets[run], breaks)
     const parts = keepSpaces ? spacesKept(atomized) : atomized
+    let at = offsets[run]
     parts.forEach((part, i) => {
+      const start = at
+      at += part.text.length
       // What it adds after the atom before it in the same run, so that the
       // kerning between them is counted, as the browser sets the run whole —
       // but not across a pair of marks that give up room (`trimBetween`):
@@ -418,8 +421,17 @@ function atomsOf(
         part.kind === 'cjk' &&
         (trimBetween(lead.text, part.text) !== null ||
           (CJK_LETTER.test(lead.text) && CJK_LETTER.test(part.text)))
+      // Nor after a quote or a dot set among CJK: a mark of no script of
+      // its own takes the one before it, and Chrome shapes "断“" apart from
+      // the "AI" after it, unkerned (measured: “A 1.5 px wider than the
+      // pair measured together).
+      const apart =
+        lead !== null &&
+        QUOTES_AND_DOTS.has(lead.text) &&
+        part.kind !== 'cjk' &&
+        isEastAsian(text[start - lead.text.length - 1])
       let width =
-        lead === null || pair
+        lead === null || pair || apart
           ? measure(part.text, style.font)
           : measure(lead.text + part.text, style.font) -
             measure(lead.text, style.font)
@@ -645,10 +657,12 @@ export function breakLines(
       after?.kind !== 'space'
         ? last.width / 2
         : 0
-    // Broken after it, a box it is in pads its end on this line.
-    const endPad = continues(last, after) ? padOf(last) : 0
+    // Broken after it, a box it is in pads its end on this line
+    // (`finish`) — over the line's end: Chrome fits the text, not the
+    // padding the break repeats (measured: a pill's line ending 1.6 px past
+    // its block, inside its 3.9 px padding).
     const fits = (from: number) =>
-      unitDown(from + width + endPad - endTrim) <= maxWidth + 1e-6
+      unitDown(from + width - endTrim) <= maxWidth + 1e-6
     if (line.length > 0 && !fits(startOf(chunk[0]))) finish(chunk[0])
     if (fits(filled) || line.length > 0) {
       for (const atom of chunk) place(atom)

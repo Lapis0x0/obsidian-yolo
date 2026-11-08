@@ -21,6 +21,7 @@ import type { TypesetStyle } from '../pictures/typesetStyle'
 import type { TypesetClient } from '../typesetting/typesetClient'
 import { RUN_FIELDS } from '../typesetting/typesetProtocol'
 
+import { runOffsetX } from './glyphs'
 import type { DrawnText } from './passages'
 
 const STAGE_CLASS = 'yolo-whiteboard-typeset-sample'
@@ -328,20 +329,26 @@ function typesetPlaces(
 ): Placed[] {
   const out: Placed[] = []
   const { runs, shown } = drawn
+  // Each character where the GPU scene puts it (./glyphs.ts's
+  // `runOffsetX`), by its own advance in its run's font: shared out evenly,
+  // a Latin letter after two CJK ones lands half a character off, on the
+  // wrong side of a clip.
+  const ctx = new OffscreenCanvas(1, 1).getContext('2d')
   for (let r = 0; r + RUN_FIELDS <= runs.length; r += RUN_FIELDS) {
-    const [start, end, left, , right, , baseline] = runs.subarray(
+    const [start, end, left, , right, , baseline, font] = runs.subarray(
       r,
       r + RUN_FIELDS,
     )
-    // Where each character starts, near enough to tell whether the clip
-    // cuts it off: the run's width shared out evenly.
-    const chars = Array.from(shown.slice(start, end))
-    const each = (right - left) / Math.max(1, chars.length)
+    const text = shown.slice(start, end)
+    if (ctx) ctx.font = drawn.fonts[font] ?? ''
+    const advance = (glyph: string) => ctx?.measureText(glyph).width ?? 0
     // Its left edge is its first character's only when that is not a
     // space.
     let first = true
-    chars.forEach((ch, i) => {
-      const x = left + each * i
+    let offset = 0
+    Array.from(text).forEach((ch) => {
+      const x = left + runOffsetX(text, right - left, advance, offset)
+      offset += ch.length
       if (
         /\s/.test(ch) ||
         x < clipLeft - TOLERANCE ||

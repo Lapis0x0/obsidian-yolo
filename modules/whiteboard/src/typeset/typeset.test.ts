@@ -407,6 +407,31 @@ describe('breakLines', () => {
     expect(lines[0].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
     expect(lines[1].pieces[0]).toMatchObject({ width: 40, padLeft: 4 })
   })
+
+  test('a pill broken at a line end fits its text, its padding past the end', () => {
+    // "aaaa" with its start padding is 36 of 38; padded at the break too it
+    // is 40, which Chrome lets run past the line rather than cut the word.
+    const lines = breakLines(
+      [{ text: 'aaaa bbbb', flags: CODE }],
+      38,
+      (flags) => ({ font: 'f', padX: flags & CODE ? 4 : 0, linkIcon: 0 }),
+      measure,
+    )
+    expect(texts(lines)).toEqual(['aaaa', 'bbbb'])
+    expect(lines[0].pieces[0]).toMatchObject({ width: 40 })
+  })
+
+  test('a quote after CJK is not kerned against the Latin after it', () => {
+    // "“A" kerns 2 units closer, measured together.
+    const kerned = (text: string) =>
+      measure(text) - (text.includes('“A') ? 2 : 0)
+    const widths = (text: string) =>
+      breakLines([{ text, flags: 0 }], 100, plain, kerned).map((l) => l.width)
+    // Set among CJK, the quote is shaped with it and apart from "AI".
+    expect(widths('断“AI')).toEqual([16 + 8 + 16])
+    // After Latin, one run: kerned.
+    expect(widths('x“AI')).toEqual([8 + 8 + 16 - 2])
+  })
 })
 
 describe('contentWidths', () => {
