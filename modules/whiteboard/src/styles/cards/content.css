@@ -305,6 +305,16 @@
   padding-block: 1lh;
 }
 
+/* Text in an SVG a card holds (a Mermaid diagram's labels) is laid out by
+ * Blink at a font size scaled to how large it shows on screen, so every
+ * zoom frame changes it and lays out and shapes all of it again — 12–20 ms
+ * a frame with three diagrams in view. Geometric precision lays it out at
+ * its own size and scales the glyphs, which on screen looks the same
+ * (measured on a Mermaid Gantt chart: no visible difference). */
+.yolo-whiteboard-card svg {
+  text-rendering: geometricPrecision;
+}
+
 /* Items of a loose list — written with a blank line between them — hold
  * paragraphs, and Obsidian takes the margin off an item's last one, running
  * the items together; the editor shows the blank line. Not after the last
