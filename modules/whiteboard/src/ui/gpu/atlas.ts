@@ -83,6 +83,8 @@ type Page = {
   dirty: Map<number, Span>
   /** Glyph ids whose pictures are on this page. */
   holds: Set<number>
+  /** Drawn into since it was last painted (`rasterize`). */
+  unpainted: boolean
 }
 
 export class GlyphAtlas {
@@ -199,6 +201,7 @@ export class GlyphAtlas {
     }
     const spot = this.place(w, h)
     const page = this.pages[spot.page]
+    page.unpainted = true
     const ctx = page.ctx
     ctx.clearRect(spot.x, spot.y, w, h)
     if (glyph.icon) {
@@ -248,6 +251,23 @@ export class GlyphAtlas {
       at,
       spot.page + (glyph.color ? 16 : 0),
     ])
+  }
+
+  /**
+   * Paints what was drawn into the pages since they were last painted. A 2D
+   * canvas only records its drawing and paints it when it is read, so the
+   * glyphs a frame draws cost little until `upload` reads them back — and
+   * there the painting is most of the cost (measured 2026-11-08: ~25ms for
+   * ~370 glyphs after a zoom into reading size). Called by a budget that
+   * draws glyphs (../gpu/scene.ts) before it reads the clock, so that what
+   * it measures is what the frame pays.
+   */
+  rasterize(): void {
+    for (const page of this.pages) {
+      if (!page.unpainted) continue
+      page.unpainted = false
+      page.ctx.getImageData(0, 0, 1, 1)
+    }
   }
 
   /**
@@ -433,7 +453,14 @@ export class GlyphAtlas {
     // GPU, where every read would wait for it.
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) throw new Error('no 2D canvas')
-    return { canvas, ctx, shelves: [], dirty: new Map(), holds: new Set() }
+    return {
+      canvas,
+      ctx,
+      shelves: [],
+      dirty: new Map(),
+      holds: new Set(),
+      unpainted: false,
+    }
   }
 }
 

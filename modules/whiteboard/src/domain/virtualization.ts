@@ -233,13 +233,22 @@ export class VirtualizationEngine {
    * Drains up to `mountQuota`/`unmountQuota` ids off the front of each
    * queue and marks them mounted/unmounted immediately (the caller is
    * expected to perform the matching DOM mount/unmount synchronously, or at
-   * least start it, bounding how many *start* per frame).
+   * least start it, bounding how many *start* per frame). A card `admit`
+   * turns away stays queued, where it was, for a later frame; it is asked
+   * only while the quota has room.
    */
   drain(
     mountQuota: number,
     unmountQuota: number,
+    admit: (id: string) => boolean = () => true,
   ): { toMount: string[]; toUnmount: string[] } {
-    const toMount = this.mountQueue.splice(0, mountQuota)
+    const toMount: string[] = []
+    const waiting: string[] = []
+    for (const id of this.mountQueue) {
+      if (toMount.length < mountQuota && admit(id)) toMount.push(id)
+      else waiting.push(id)
+    }
+    this.mountQueue.splice(0, this.mountQueue.length, ...waiting)
     for (const id of toMount) {
       this.mountQueueSet.delete(id)
       this.mountedIds.add(id)

@@ -497,9 +497,12 @@ export class GpuScene {
           ? this.atlas.hasPicture(id, scale)
           : this.atlas.hasAnyPicture(id)
         if (has) continue
-        // Time is read only every few glyphs: a glyph costs microseconds.
-        if ((++checked & 15) === 0 && now() - start > GLYPH_BUDGET_MS) {
-          return true
+        // Time is read only every few glyphs, once they are painted: drawn,
+        // a glyph costs microseconds, and painting it tens of them
+        // (`rasterize`).
+        if ((++checked & 15) === 0) {
+          this.atlas.rasterize()
+          if (now() - start > GLYPH_BUDGET_MS) return true
         }
         this.atlas.draw(id, scale)
       }
@@ -544,7 +547,10 @@ export class GpuScene {
     let drawn = 0
     for (let id = 0; id < this.atlas.size; id++) {
       if (this.atlas.hasAnyPicture(id)) continue
-      if ((++drawn & 15) === 0 && now() - start > WARM_BUDGET_MS) return true
+      if ((++drawn & 15) === 0) {
+        this.atlas.rasterize()
+        if (now() - start > WARM_BUDGET_MS) return true
+      }
       this.atlas.draw(id, scale)
     }
     return false

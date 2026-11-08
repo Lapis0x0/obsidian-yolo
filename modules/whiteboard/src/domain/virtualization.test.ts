@@ -105,6 +105,25 @@ describe('VirtualizationEngine', () => {
     expect(engine.isPendingMount('edge')).toBe(true)
   })
 
+  it('leaves a card the drain turns away queued in its place, and stops asking once the quota is full', () => {
+    const engine = new VirtualizationEngine()
+    engine.recompute(
+      [card('a', 0, 0), card('b', 0, 0), card('c', 0, 0), card('d', 0, 0)],
+      viewport,
+      NO_PINS,
+    )
+    const asked: string[] = []
+    const first = engine.drain(2, 10, (id) => {
+      asked.push(id)
+      return id !== 'b'
+    })
+    expect(first.toMount).toEqual(['a', 'c'])
+    expect(asked).toEqual(['a', 'b', 'c'])
+    expect(engine.mounted.has('b')).toBe(false)
+    expect(engine.isPendingMount('b')).toBe(true)
+    expect(engine.drain(10, 10).toMount).toEqual(['b', 'd'])
+  })
+
   it('queues a mounted card for unmount once it leaves the viewport', () => {
     const engine = new VirtualizationEngine()
     engine.recompute([card('a', 0, 0)], viewport, NO_PINS)

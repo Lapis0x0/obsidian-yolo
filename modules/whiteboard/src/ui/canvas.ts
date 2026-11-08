@@ -150,6 +150,7 @@ import { EditingController } from './canvas/editingController'
 import { ExportController } from './canvas/exportController'
 import { FindController, type FindHit } from './canvas/findController'
 import { FindMarks } from './canvas/findMarks'
+import { FramePace } from './canvas/framePace'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -185,12 +186,14 @@ import {
   CAMERA_GLIDE_TAU_MS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
+  CONTENT_BUILDS_PER_MOVING_FRAME,
   CONTENT_BUILD_START_CAP_PER_FRAME,
   EDGE_HIDDEN_CLASS,
   FIT_CAMERA_PADDING_PX,
-  FRAME_ON_TIME_MS,
+  FRAME_ON_TIME_PERIODS,
   GRID_WORLD_STEP_PX,
   GROUP_LABEL_WORLD_FONT_PX,
+  INTERACTING_TIMEOUT_MS,
   MIN_SCALE_FIT_MARGIN,
   MOUNT_QUOTA_PER_FRAME,
   NODE_ENTER_WINDOW_MS,
@@ -672,13 +675,21 @@ export class WhiteboardCanvas {
   private readonly contentSyncQueue = new Set<NodeId>()
 
   /**
-   * Whether card content may be built right now: either nothing is moving, or
-   * the last frame arrived on time (FRAME_ON_TIME_MS). Re-derived once per
-   * frame; read wherever a build is about to start, including the builds that
-   * only reach that point after reading a file, a frame or more later.
+   * How many cards may still have their content built this frame
+   * (`takeContentBuild`): any number while nothing moves; while the camera
+   * does, CONTENT_BUILDS_PER_MOVING_FRAME after a frame that arrived on time
+   * (FRAME_ON_TIME_PERIODS) and none after one that did not. Re-derived once
+   * per frame; taken wherever a build is about to start, including the
+   * builds that only reach that point after reading a file, a frame or more
+   * later.
    */
-  private canBuildContent = true
+  private contentBuildsLeft = Infinity
   private lastFrameAt: number | null = null
+  private readonly framePace = new FramePace(FRAME_ON_TIME_PERIODS)
+  /** The zoom the last frame drew, and when the zoom last changed: while it
+   * is changing no card content is built (`frame`). */
+  private lastFrameScale = 0
+  private zoomChangedAt = -Infinity
 
   /** Whether the camera is moving (see CameraController.markInteracting).
    * While it is, building is paced by whether frames are keeping up; at rest
@@ -2297,7 +2308,8 @@ export class WhiteboardCanvas {
           h: img.naturalHeight,
         })
       },
-      canBuildContent: () => this.canBuildContent,
+      canBuildContent: () => this.contentBuildsLeft > 0,
+      takeContentBuild: () => this.takeContentBuild(),
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
       picture: (id, page) => {
@@ -4274,14 +4286,30 @@ export class WhiteboardCanvas {
       }
       this.lastRecomputeTime = now
     }
-    // Whether this frame builds card content. While the camera moves, only
-    // frames that follow an on-time one do: the work is priced by its effect
-    // on the frame it lands in, and that is the only place it can be read.
+    // How much card content this frame builds. While the camera moves, only
+    // frames that follow an on-time one do, one card each: the work is priced
+    // by its effect on the frame it lands in, and that is the only place it
+    // can be read. While it zooms, none do: where a zoom lands is not known
+    // until it does — what it brings on screen on the way it mostly takes
+    // off again (measured 2026-11-08: four of seven cards shown again during
+    // a zoom were parked again within 100ms) — and the cards built here
+    // cost a frame each (CONTENT_BUILDS_PER_MOVING_FRAME). The board's
+    // drawing stands in for them until it stops.
     const sinceLastFrame =
       this.lastFrameAt === null ? 0 : now - this.lastFrameAt
     this.lastFrameAt = now
-    this.canBuildContent =
-      !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
+    const onTime = this.framePace.onTime(sinceLastFrame)
+    const scale = this.cameraController.view.scale
+    if (scale !== this.lastFrameScale) {
+      this.lastFrameScale = scale
+      this.zoomChangedAt = now
+    }
+    const zooming = now - this.zoomChangedAt < INTERACTING_TIMEOUT_MS
+    this.contentBuildsLeft = !this.interacting
+      ? Infinity
+      : onTime && !zooming
+        ? CONTENT_BUILDS_PER_MOVING_FRAME
+        : 0
     this.drainQueues()
     this.pdfDraws.pump()
     this.pictures?.pump()
@@ -4963,10 +4991,21 @@ export class WhiteboardCanvas {
     )
   }
 
+  /** One of this frame's content builds, if any is left (`contentBuildsLeft`). */
+  private takeContentBuild(): boolean {
+    if (this.contentBuildsLeft <= 0) return false
+    this.contentBuildsLeft -= 1
+    return true
+  }
+
   private drainQueues(): void {
+    // A parked card shown again pays for its content's style and layout at
+    // once, so it waits for a build of its own; until then the board's
+    // drawing goes on standing in for it.
     const { toMount, toUnmount } = this.engine.drain(
       MOUNT_QUOTA_PER_FRAME,
       UNMOUNT_QUOTA_PER_FRAME,
+      (id) => !this.cardRenderer.isParked(id) || this.takeContentBuild(),
     )
     const now =
       this.entering.size > 0 ? this.context.getWindow().performance.now() : 0
@@ -5004,7 +5043,7 @@ export class WhiteboardCanvas {
   private drainContentSync(): void {
     let started = 0
     for (const id of this.contentSyncQueue) {
-      if (!this.canBuildContent) return
+      if (this.contentBuildsLeft <= 0) return
       if (started >= CONTENT_BUILD_START_CAP_PER_FRAME) return
       this.contentSyncQueue.delete(id)
       started += 1

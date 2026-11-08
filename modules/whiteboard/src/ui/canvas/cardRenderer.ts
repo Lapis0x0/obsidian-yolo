@@ -248,7 +248,10 @@ export type CardRendererCallbacks = Readonly<{
   onContentRendered: (id: NodeId) => void
   /** An image in a card's content has loaded. */
   onImageLoaded: (img: HTMLImageElement) => void
+  /** Whether this frame may still start work on a card's content. */
   canBuildContent: () => boolean
+  /** One of this frame's card-content builds, taken if any is left. */
+  takeContentBuild: () => boolean
   /** The board's one queue for PDF page draws (../pdf/drawQueue.ts). */
   pdfDraws: PdfDrawQueue
   /** How far a card is from the middle of the viewport, for the order its
@@ -1299,7 +1302,7 @@ export class CardRenderer {
     // Same for a card that is being generated into: the stream owns the body,
     // and the text in it is not on the board yet.
     if (this.callbacks.isGenerating(id)) return
-    if (!this.callbacks.canBuildContent()) {
+    if (!this.callbacks.takeContentBuild()) {
       this.callbacks.queueContentSync(id)
       return
     }
@@ -1601,7 +1604,7 @@ export class CardRenderer {
     // thumbnail copied in, while held back it is a blank page over the
     // overview's picture of it. The file is opened and drawn later either
     // way — the reader asks `canStartWork` before each draw.
-    if (sheet === undefined && !this.callbacks.canBuildContent()) {
+    if (sheet === undefined && !this.callbacks.takeContentBuild()) {
       this.callbacks.queueContentSync(id)
       return
     }

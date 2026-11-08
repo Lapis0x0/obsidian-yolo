@@ -127,7 +127,7 @@ export const RECOMPUTE_INTERVAL_MS = 70
  * makes a count an honest budget for them.
  *
  * Building a card's **content** is not in here — that has a budget of its own
- * (CONTENT_BUILD_START_CAP_PER_FRAME) and a gate of its own (FRAME_ON_TIME_MS),
+ * (CONTENT_BUILDS_PER_MOVING_FRAME) and a gate of its own (FRAME_ON_TIME_PERIODS),
  * because its cost is a property of the note behind the card rather than of
  * the card.
  */
@@ -154,14 +154,30 @@ export const UNMOUNT_QUOTA_PER_FRAME = 40
  * A cap on *starts*, not on builds in flight. A note card reads its file
  * before it can render, and the read is nearly free; each build re-checks the
  * frame gate when it lands (`renderMarkdownInto`), so this only has to be
- * finite, not tight.
+ * finite, not tight. While the camera moves, the builds themselves are
+ * counted too (CONTENT_BUILDS_PER_MOVING_FRAME).
  */
 export const CONTENT_BUILD_START_CAP_PER_FRAME = 3
 
 /**
- * Frame interval, in milliseconds, above which the canvas treats the last
- * frame as having overrun and stops starting new content builds *while the
- * camera is moving*.
+ * How many cards may have their content built — or, parked, be shown again —
+ * in one frame while the camera moves.
+ *
+ * One. Since the GPU scene draws every card it can (../gpu/), the cards
+ * still built here are the ones it cannot: a diagram, an embed, HTML, an
+ * image not kept yet. Those are the heaviest — one costs ~25ms of render,
+ * style and layout, and a diagram ~20ms more in Obsidian's own renderer the
+ * frame after (measured 2026-11-08, first zoom into a 3000-card board) — so
+ * three at once was a 60–70ms frame. A parked card shown again is the same
+ * bill smaller: its whole content's style and layout, ~4ms. Until its turn
+ * the scene, or its picture, stands in for it.
+ */
+export const CONTENT_BUILDS_PER_MOVING_FRAME = 1
+
+/**
+ * How many display periods a frame may take before the canvas treats it as
+ * having overrun and stops building card content on the next *while the
+ * camera is moving* (./canvas/framePace.ts reads the period).
  *
  * A count cannot bound content building the way it bounds the quotas above,
  * because what a card costs to build is a property of the note behind it:
@@ -179,18 +195,19 @@ export const CONTENT_BUILD_START_CAP_PER_FRAME = 3
  * every frame qualifies and nothing changes; on a heavy one the canvas builds
  * on the frames it can afford and skips the ones it cannot.
  *
- * 20ms is the same bar the benchmark counts dropped frames at: comfortably
- * above a 120Hz frame (8.3ms) and a 60Hz one (16.7ms), so an on-time frame at
- * either rate qualifies, and nothing slower than 50fps does.
+ * A period and a half: a frame that came in on its vsync qualifies, one that
+ * missed it does not — at any refresh rate. A fixed 20ms bar, which this
+ * was, fits 60Hz only: at 120Hz a frame could run two and a half periods
+ * and still qualify.
  *
  * Only while the camera moves. At rest a long frame costs nothing visible and
  * the only thing waiting is the content itself, so building runs at full rate
  * — a board opening fills as fast as it can.
  */
-export const FRAME_ON_TIME_MS = 20
+export const FRAME_ON_TIME_PERIODS = 1.5
 
 /** How long the camera counts as "interacting" (which paces content
- * building — see FRAME_ON_TIME_MS) after the last pan/zoom input. */
+ * building — see FRAME_ON_TIME_PERIODS) after the last pan/zoom input. */
 export const INTERACTING_TIMEOUT_MS = 250
 
 /** How long the camera must sit idle after the last pan/zoom input before
