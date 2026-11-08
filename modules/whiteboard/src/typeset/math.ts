@@ -36,13 +36,17 @@ const FENCE = /^(?:[ \t]*>)*[ \t]*(```|~~~)/
  * left as. */
 export type Formulas = ReadonlyMap<string, MathSource>
 
-/** `markdown` with each formula in it a character of its own, and the
- * formulas. */
-export function mathOut(
-  markdown: string,
-): Readonly<{ text: string; formulas: Formulas }> {
+/** `markdown` with each formula in it a character of its own, the
+ * formulas, and where in `markdown` each was taken from (`cut`, from and
+ * to): a formula over lines takes them with it. */
+export function mathOut(markdown: string): Readonly<{
+  text: string
+  formulas: Formulas
+  cut: readonly (readonly [number, number])[]
+}> {
   const formulas = new Map<string, MathSource>()
-  if (!markdown.includes('$')) return { text: markdown, formulas }
+  const cut: [number, number][] = []
+  if (!markdown.includes('$')) return { text: markdown, formulas, cut }
   // The characters the card uses itself are not a formula's.
   const taken = PRIVATE_USE.test(markdown)
     ? new Set(Array.from(markdown).filter((ch) => PRIVATE_USE.test(ch)))
@@ -117,9 +121,10 @@ export function mathOut(
     out += mark
     formulas.set(mark, found.formula)
     // A formula that ran over lines takes them with it.
+    cut.push([i, found.end])
     i = found.end
   }
-  return { text: out, formulas }
+  return { text: out, formulas, cut }
 }
 
 /** `$$…$$` from `at`: to the next `$$` not escaped. */

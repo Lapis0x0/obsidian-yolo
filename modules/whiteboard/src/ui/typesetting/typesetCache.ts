@@ -20,7 +20,7 @@ import {
 
 /** The group version a board's cards are kept under: raised when the shape
  * they are kept in changes, and a group of another is let go of whole. */
-export const TYPESET_GROUP_VERSION = 3
+export const TYPESET_GROUP_VERSION = 4
 
 /** The typesetting worker's code, as built: whatever it changes, a card
  * kept by another is not used. The build names each worker's source by its
@@ -45,6 +45,7 @@ export function typesetStamp(
       card.color,
       card.images ?? {},
       paths,
+      card.reach ?? null,
     ]),
     `${WORKER_HASH}|${look}`,
   )
@@ -75,6 +76,8 @@ type Header = Readonly<{
   fonts: readonly number[]
   /** Byte lengths of rects, glyphs, greeks and runs, in that order. */
   lengths: readonly [number, number, number, number]
+  blocks: TypesetResultCard['blocks']
+  end: number
 }>
 
 /** A card as the worker typeset it, its glyphs' keys among `batchKeys`, as
@@ -119,6 +122,8 @@ export function encodeTypeset(
     heads,
     keys: split,
     fonts: card.fonts.map(headOf),
+    blocks: card.blocks,
+    end: card.end,
     lengths: [
       buffers[0].byteLength,
       buffers[1].byteLength,
@@ -168,6 +173,8 @@ export function decodeTypeset(id: string, data: ArrayBuffer): KeptCard | null {
         shown: header.shown,
         images: header.images,
         fonts: header.fonts.map((head) => header.heads[head]),
+        blocks: header.blocks,
+        end: header.end,
       },
       keys: header.keys.map(
         ([head, rest]) => `${header.heads[head]}${SEPARATOR}${rest}`,

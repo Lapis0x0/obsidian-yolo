@@ -154,6 +154,20 @@ type Ctx = Readonly<{
 type Voice = Readonly<{ style: TextStyle; color: string }>
 
 export function layoutCard(input: LayoutInput): DrawOp[] {
+  return layoutCardWith(input).ops
+}
+
+/** A card laid out: its draw ops; where each of the document's own blocks
+ * starts (`blocks`: its source line, then its top, pair after pair) — the
+ * places it can be laid out from again and show the same; and where its
+ * content ends (`end`), above the bottom inset. */
+export type CardLayout = Readonly<{
+  ops: DrawOp[]
+  blocks: number[]
+  end: number
+}>
+
+export function layoutCardWith(input: LayoutInput): CardLayout {
   const { tokens } = input
   const ctx: Ctx = {
     ops: [],
@@ -182,7 +196,8 @@ export function layoutCard(input: LayoutInput): DrawOp[] {
   const inset = input.plain ? tokens.plainInset : tokens.inset
   const left = inset.left
   const right = input.width - inset.right
-  layoutSections(
+  const blocks: number[] = []
+  const end = layoutSections(
     ctx,
     input.sections,
     left,
@@ -190,14 +205,16 @@ export function layoutCard(input: LayoutInput): DrawOp[] {
     inset.top,
     { style: tokens.body, color: input.color ?? tokens.body.color },
     null,
+    (line, y) => blocks.push(line, round(y)),
   )
-  return ctx.ops
+  return { ops: ctx.ops, blocks, end: round(end) }
 }
 
 /**
  * Lays out a run of blocks from `y`, returning where the last one ends.
  * `between` is the gap between blocks inside a container (a quote's, a loose
  * item's); null spaces them by their blank lines, as the card itself does.
+ * `placed` hears where each block that knows its source line starts.
  */
 function layoutSections(
   ctx: Ctx,
@@ -207,10 +224,12 @@ function layoutSections(
   y: number,
   voice: Voice,
   between: number | null,
+  placed?: (line: number, y: number) => void,
 ): number {
   const line = ctx.tokens.body.lineHeight
   sections.forEach((section, i) => {
     if (y >= ctx.bottom) return
+    if (section.line !== undefined) placed?.(section.line, y)
     y = layoutBlock(ctx, section.block, left, right, y, voice)
     if (i < sections.length - 1) {
       y += between ?? section.blankAfter * line

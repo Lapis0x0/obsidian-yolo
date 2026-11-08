@@ -42,6 +42,8 @@ describe('typesetCache', () => {
       images: [{ target: 'a.png', x: 1, y: 2, w: 10, h: 20, radius: 4 }],
       // One its glyphs are in, one only a blank run is.
       fonts: [font, bold],
+      blocks: [0, 17, 3, 65.5],
+      end: 120.25,
     }
     const key = (text: string) => `${font}${String.fromCharCode(0)}${text}`
     const batchKeys = ['k0', 'k1', key('二'), 'k3', 'k4', 'k5', 'k6', key('七')]
@@ -65,6 +67,8 @@ describe('typesetCache', () => {
     expect(kept.card.shown).toBe('标题正文')
     expect(kept.card.images).toEqual(typeset.images)
     expect(kept.card.host).toBe(false)
+    expect(kept.card.blocks).toEqual([0, 17, 3, 65.5])
+    expect(kept.card.end).toBe(120.25)
     // What was kept is not changed by keeping it.
     expect(new Uint32Array(typeset.glyphs)[3]).toBe(7)
   })

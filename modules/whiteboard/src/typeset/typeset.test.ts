@@ -1,5 +1,5 @@
 import { breakLines, breakOpportunities, contentWidths } from './breaking'
-import { layoutCard } from './layout'
+import { layoutCard, layoutCardWith } from './layout'
 import { type MathLayout, mathKey } from './math'
 import {
   BOLD,
@@ -32,6 +32,37 @@ const texts = (lines: ReturnType<typeof breakLines>) =>
   lines.map((line) => line.pieces.map((p) => p.text).join(''))
 
 describe('parseCard', () => {
+  test("knows the source line each of the document's blocks starts on", () => {
+    const lines = (markdown: string) =>
+      parseCard(markdown).map((section) => section.line)
+    // Frontmatter taken off, a callout's title kept apart by a line the
+    // parser is given and the source does not have, a formula over lines
+    // left as one, a line of spaces inside a list item dropped.
+    const markdown = [
+      '---', // 0
+      'a: 1',
+      '---',
+      '> [!note] Title', // 3
+      '> body',
+      '',
+      '$$', // 6
+      'x^2',
+      '$$',
+      '',
+      '- one', // 10
+      '   ',
+      '- two',
+      '',
+      'last', // 14
+    ].join('\n')
+    expect(lines(markdown)).toEqual([3, 6, 10, 14])
+    // A block inside another has no line of its own.
+    const [quote] = parseCard('> a\n>\n> b')
+    expect(quote.block.kind === 'quote' && quote.block.children[0].line).toBe(
+      undefined,
+    )
+  })
+
   test('drops front matter and spaces blocks by the blank lines after them', () => {
     const sections = parseCard('---\na: 1\n---\n# Title\nbody\n\n\nnext')
     expect(sections.map((s) => s.block.kind)).toEqual([
@@ -553,6 +584,27 @@ describe('layoutCard', () => {
     // paragraph's 24.
     expect(one.y - title.y).toBe(27 + 18 - 21.5)
     expect(two.y - one.y).toBe(24 * 2)
+  })
+
+  test('says where each block starts and where the content ends', () => {
+    const laid = layoutCardWith({
+      sections: parseCard('# Title\none\n\ntwo'),
+      width: 300,
+      height: 1000,
+      tokens,
+      plain: false,
+      color: null,
+      measure,
+      metrics,
+    })
+    // The heading and the paragraph after it, with no blank line between,
+    // are two blocks; each starts where the one before ended.
+    expect(laid.blocks.filter((_, i) => i % 2 === 0)).toEqual([0, 1, 3])
+    const tops = laid.blocks.filter((_, i) => i % 2 === 1)
+    expect(tops[0]).toBe(17)
+    expect(tops[1]).toBe(17 + 27)
+    expect(tops[2]).toBe(17 + 27 + 24 * 2)
+    expect(laid.end).toBe(17 + 27 + 24 * 3)
   })
 
   test('stops at the bottom edge', () => {

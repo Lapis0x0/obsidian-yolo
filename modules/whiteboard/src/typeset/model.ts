@@ -96,5 +96,12 @@ export type Block =
 
 /** A block and the blank source lines written after it — what a card spaces
  * its blocks by (styles/cards/content.css: the preview laid out on the
- * editor's lines). */
-export type Section = Readonly<{ block: Block; blankAfter: number }>
+ * editor's lines). A block of the document itself, not one inside another,
+ * knows the source line it starts on (`line`, from the markdown's first,
+ * 0): where a card can be laid out from and show it the same
+ * (docs: p6-reading.md). */
+export type Section = Readonly<{
+  block: Block
+  blankAfter: number
+  line?: number
+}>

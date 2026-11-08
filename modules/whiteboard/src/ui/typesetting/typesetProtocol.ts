@@ -42,6 +42,10 @@ export type TypesetCard = Readonly<{
    * ../../typeset/math.ts's `mathKey`: null for one it could not, left out
    * for one not asked for yet. */
   math?: Readonly<Record<string, MathLayout | null>>
+  /** How far down it is laid out, from its top: its height unless given —
+   * more for a card whose content is moved up (its reading window's
+   * offset), Infinity for one being scrolled through. */
+  reach?: number
 }>
 
 /** An image as a card lays it out: where, and which. */
@@ -103,6 +107,12 @@ export type TypesetResultCard = Readonly<{
   runs: ArrayBuffer
   /** The fonts its runs are set in, each once. */
   fonts: readonly string[]
+  /** Where each of its document's own blocks starts: its source line in
+   * the markdown typeset, then its top, pair after pair
+   * (../../typeset/layout.ts's `CardLayout`). */
+  blocks: readonly number[]
+  /** Where its content ends, as far down as it was laid out. */
+  end: number
 }>
 
 export const RUN_FIELDS = 8

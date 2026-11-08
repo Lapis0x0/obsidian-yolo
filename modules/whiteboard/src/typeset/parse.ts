@@ -52,6 +52,18 @@ const FENCE = /^(?:[ \t]*>)*[ \t]*(```|~~~)/
 const BLOCK_ID = /[ \t]\^[A-Za-z0-9-]+[ \t]*$/
 
 /**
+ * Lines on their way to the parser, each with the line of the markdown it
+ * came from: the steps below add lines and take some away, and a block the
+ * parser finds is placed by the line it starts on in what it was given.
+ */
+type Lines = Readonly<{ lines: string[]; origin: number[] }>
+
+const linesOf = (markdown: string): Lines => {
+  const lines = markdown.split('\n')
+  return { lines, origin: lines.map((_, i) => i) }
+}
+
+/**
  * Two things Obsidian reads off lines that CommonMark does not, outside
  * code, where such a line is only text:
  * - a callout's title is its first line alone; CommonMark would run the
@@ -61,11 +73,16 @@ const BLOCK_ID = /[ \t]\^[A-Za-z0-9-]+[ \t]*$/
  * - a block's id at the end of the block is not shown.
  */
 export function calloutTitlesApart(markdown: string): string {
-  const lines = markdown.split('\n')
+  return calloutTitlesApartIn(linesOf(markdown)).lines.join('\n')
+}
+
+function calloutTitlesApartIn({ lines, origin }: Lines): Lines {
   const out: string[] = []
+  const from: number[] = []
   let fence: string | null = null
   lines.forEach((line, i) => {
     out.push(line)
+    from.push(origin[i])
     const opened = FENCE.exec(line)
     if (opened) {
       fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
@@ -83,9 +100,10 @@ export function calloutTitlesApart(markdown: string): string {
     const quote = callout[1]
     if (next.startsWith(quote) && next.slice(quote.length).trim() !== '') {
       out.push(quote)
+      from.push(origin[i])
     }
   })
-  return out.join('\n')
+  return { lines: out, origin: from }
 }
 
 const LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/
@@ -100,8 +118,16 @@ const LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/
  * always blank.
  */
 export function itemSpacesDropped(markdown: string): string {
-  const lines = markdown.split('\n')
+  return itemSpacesDroppedIn(linesOf(markdown)).lines.join('\n')
+}
+
+function itemSpacesDroppedIn({ lines, origin }: Lines): Lines {
   const out: string[] = []
+  const from: number[] = []
+  const push = (line: string, i: number) => {
+    out.push(line)
+    from.push(origin[i])
+  }
   let fence: string | null = null
   // The column the open item's content starts at; null outside a list.
   let item: number | null = null
@@ -111,11 +137,11 @@ export function itemSpacesDropped(markdown: string): string {
     const opened = FENCE.exec(line)
     if (opened) {
       fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
-      out.push(line)
+      push(line, i)
       return
     }
     if (fence !== null) {
-      out.push(line)
+      push(line, i)
       return
     }
     if (blank(line)) {
@@ -126,7 +152,7 @@ export function itemSpacesDropped(markdown: string): string {
         if (nextIndent < item) return
       }
       afterBlank = true
-      out.push(line)
+      push(line, i)
       return
     }
     const marker = LIST_ITEM.exec(line)
@@ -138,9 +164,9 @@ export function itemSpacesDropped(markdown: string): string {
       item = null
     }
     afterBlank = false
-    out.push(line)
+    push(line, i)
   })
-  return out.join('\n')
+  return { lines: out, origin: from }
 }
 
 const EMPTY_QUOTE = /^((?:[ \t]*>)+)[ \t]*$/
@@ -155,21 +181,24 @@ const BLOCK_START =
  * its own (a heading, a list) is outside it to both.
  */
 export function quoteParagraphsKept(markdown: string): string {
-  const lines = markdown.split('\n')
+  return quoteParagraphsKeptIn(linesOf(markdown)).lines.join('\n')
+}
+
+/** Line for line: only what a line holds changes. */
+function quoteParagraphsKeptIn({ lines, origin }: Lines): Lines {
   let fence: string | null = null
-  return lines
-    .map((line, i) => {
-      const opened = FENCE.exec(line)
-      if (opened) {
-        fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
-        return line
-      }
-      if (fence !== null || i === 0 || line.trim() === '') return line
-      if (BLOCK_START.test(line)) return line
-      const quote = EMPTY_QUOTE.exec(lines[i - 1])
-      return quote ? `${quote[1]} ${line}` : line
-    })
-    .join('\n')
+  const out = lines.map((line, i) => {
+    const opened = FENCE.exec(line)
+    if (opened) {
+      fence = fence === null ? opened[1] : fence === opened[1] ? null : fence
+      return line
+    }
+    if (fence !== null || i === 0 || line.trim() === '') return line
+    if (BLOCK_START.test(line)) return line
+    const quote = EMPTY_QUOTE.exec(lines[i - 1])
+    return quote ? `${quote[1]} ${line}` : line
+  })
+  return { lines: out, origin }
 }
 
 /** How many columns leading whitespace takes, a tab to the next stop of
@@ -238,13 +267,43 @@ function someInline(
   return inSections(sections)
 }
 
+/** A card's blocks; each of the document's own knows the line of
+ * `markdown` it starts on (model.ts's `Section`). */
 export function parseCard(markdown: string): Section[] {
-  const math = mathOut(stripFrontmatter(markdown))
-  const source = quoteParagraphsKept(
-    itemSpacesDropped(calloutTitlesApart(math.text)),
+  const body = stripFrontmatter(markdown)
+  const skipped = lineCount(markdown) - lineCount(body)
+  const math = mathOut(body)
+  const source = quoteParagraphsKeptIn(
+    itemSpacesDroppedIn(
+      calloutTitlesApartIn({
+        lines: math.text.split('\n'),
+        origin: linesLeft(body, math.cut).map((line) => line + skipped),
+      }),
+    ),
   )
-  const tree = fromMarkdown(source, PARSER)
-  return withMath(sectionsOf(tree.children), math.formulas)
+  const tree = fromMarkdown(source.lines.join('\n'), PARSER)
+  return withMath(sectionsOf(tree.children, source.origin), math.formulas)
+}
+
+const lineCount = (text: string): number => text.split('\n').length
+
+/** For each line of `text` with the `cut` spans taken out, the line of
+ * `text` it starts as: a span over lines takes its line breaks with it. */
+function linesLeft(
+  text: string,
+  cut: readonly (readonly [number, number])[],
+): number[] {
+  const out = [0]
+  let line = 0
+  let span = 0
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== '\n') continue
+    line += 1
+    while (span < cut.length && cut[span][1] <= i) span += 1
+    if (span < cut.length && cut[span][0] <= i) continue
+    out.push(line)
+  }
+  return out
 }
 
 /** The parser's extensions, made once: they describe syntax and hold no
@@ -257,16 +316,25 @@ const PARSER = {
   mdastExtensions: [gfmFromMarkdown()],
 }
 
-function sectionsOf(nodes: readonly Flow[]): Section[] {
+/** Blocks as sections; given where the parsed lines came from (`origin`),
+ * the document's own, each with the line it starts on. */
+function sectionsOf(
+  nodes: readonly Flow[],
+  origin: readonly number[] | null = null,
+): Section[] {
   const out: Section[] = []
   for (let i = 0; i < nodes.length; i += 1) {
     const block = blockOf(nodes[i])
     if (!block) continue
+    const start = nodes[i].position?.start.line
     const end = nodes[i].position?.end.line
     const next = nodes[i + 1]?.position?.start.line
     const blankAfter =
       end !== undefined && next !== undefined ? Math.max(0, next - end - 1) : 1
-    out.push({ block, blankAfter })
+    const line = origin && start !== undefined ? origin[start - 1] : undefined
+    out.push(
+      line === undefined ? { block, blankAfter } : { block, blankAfter, line },
+    )
   }
   return out
 }

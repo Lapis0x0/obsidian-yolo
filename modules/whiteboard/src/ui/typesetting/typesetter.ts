@@ -3,7 +3,11 @@
 // (./typesetWorker.ts) — so that nothing of it is on the main thread.
 
 import { embedLinks, imageOf } from '../../typeset/images'
-import { type DrawOp, layoutCard } from '../../typeset/layout'
+import {
+  type CardLayout,
+  type DrawOp,
+  layoutCardWith,
+} from '../../typeset/layout'
 import { formulasIn, mathKey } from '../../typeset/math'
 import type { Section } from '../../typeset/model'
 import { paint } from '../../typeset/paint'
@@ -94,7 +98,8 @@ export class Typesetter {
     const transfer: ArrayBuffer[] = []
     for (const card of cards) {
       const sections = parseCard(card.markdown)
-      const ops = this.layout(tokens, card, sections)
+      const laid = this.laidOut(tokens, card, sections)
+      const ops = laid.ops
       const content = cardInstances(ops, {
         glyphId: glyphOf,
         iconId: (name, size) => keyOf(iconKey(name, size)),
@@ -142,6 +147,8 @@ export class Typesetter {
         shown,
         runs,
         fonts,
+        blocks: laid.blocks,
+        end: laid.end,
       })
       transfer.push(rects, glyphs, greeks, runs)
     }
@@ -189,13 +196,22 @@ export class Typesetter {
     card: TypesetCard,
     sections: readonly Section[] = parseCard(card.markdown),
   ): DrawOp[] {
+    return this.laidOut(tokens, card, sections).ops
+  }
+
+  /** A card laid out, with where its blocks start and its content ends. */
+  private laidOut(
+    tokens: TypesetTokens,
+    card: TypesetCard,
+    sections: readonly Section[],
+  ): CardLayout {
     this.useLook(tokens)
-    return layoutCard({
+    return layoutCardWith({
       sections,
       width: card.w,
       // What overflows the content shows over the bottom padding too, to
-      // the card's edge.
-      height: card.h,
+      // the card's edge — or as far as it is asked to reach.
+      height: card.reach ?? card.h,
       tokens,
       plain: card.plain,
       color: card.color,
