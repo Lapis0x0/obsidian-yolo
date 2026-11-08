@@ -95,14 +95,54 @@ export class TypesetCards implements PictureSource {
    * at once so that it is never waiting on the main thread between them. */
   readonly concurrency = 4
   readonly turn: PictureTurn
+  /** Who to tell once the board is ready for a picture `begin` refused, and
+   * the frame that looks next. */
+  private waiting: (() => void) | null = null
+  private look: number | null = null
 
   constructor(private readonly deps: TypesetCardsDeps) {
-    // The scheduler asks once a frame; nothing has to be woken.
     this.turn = {
-      begin: () => deps.ready(),
+      begin: (_next, wake) => {
+        if (deps.ready()) return true
+        this.wakeWhenReady(wake)
+        return false
+      },
       end: () => undefined,
-      withdraw: () => undefined,
+      withdraw: () => this.stopWaiting(),
     }
+  }
+
+  /**
+   * Calls `wake` once the board is ready. Being ready is not an event — the
+   * camera at rest, the cards on screen built — so it is looked at once a
+   * frame until it is. The scheduler does not ask again by itself: a look
+   * that changed nothing is not repeated (`Pictures.pump`), which left the
+   * pictures refused while cards were still being built unmade, and the
+   * board's activity line up, until the camera next moved (2026-11-08).
+   */
+  private wakeWhenReady(wake: () => void): void {
+    this.waiting = wake
+    const win = this.deps.doc.defaultView
+    if (this.look !== null || !win) return
+    const look = () => {
+      this.look = null
+      const waiting = this.waiting
+      if (!waiting) return
+      if (!this.deps.ready()) {
+        this.look = win.requestAnimationFrame(look)
+        return
+      }
+      this.waiting = null
+      waiting()
+    }
+    this.look = win.requestAnimationFrame(look)
+  }
+
+  private stopWaiting(): void {
+    this.waiting = null
+    if (this.look === null) return
+    this.deps.doc.defaultView?.cancelAnimationFrame(this.look)
+    this.look = null
   }
 
   /** A board's cards are one group for as long as it is the board: each
