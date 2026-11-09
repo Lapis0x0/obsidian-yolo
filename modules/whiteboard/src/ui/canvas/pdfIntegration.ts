@@ -29,13 +29,13 @@ import type { ScreenPoint } from '../../domain/camera'
 import { type PdfLinkTarget, parsePdfLink } from '../../domain/excerpt'
 import type {
   BoardNode,
+  EdgeAnchor,
   FileNode,
   NodeId,
   TextNode,
 } from '../../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
 import { addNode } from '../../domain/operations'
-import type { HighlightAnchor } from '../../domain/pdfAnnotations'
 import type { Rect } from '../../domain/placement'
 import { isMostlyInView } from '../../domain/virtualization'
 import type { AnnotationPrefs } from '../../host/annotationPrefs'
@@ -106,9 +106,10 @@ export type PdfIntegrationDeps = Readonly<{
     reader: PdfReader,
     selection: ReaderTextSelection | null,
   ) => void
-  /** A highlight was opened in a PDF card on the board, or let go (null):
-   * its passage stands for the connection points as a selection's does. */
-  onPassageHighlight: (nodeId: NodeId, anchor: HighlightAnchor | null) => void
+  /** An annotation — a highlight or a framed area — was opened in a PDF card
+   * on the board, or let go (null): what it marks stands for the connection
+   * points as a selection's passage does. */
+  onPassageHighlight: (nodeId: NodeId, anchor: EdgeAnchor | null) => void
   /** Whether a node is one of a passage's connection points: a press there
    * pulls an edge from the open highlight, and must not close it first. */
   isPassagePoint: (target: Node | null) => boolean

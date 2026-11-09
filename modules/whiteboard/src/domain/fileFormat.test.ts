@@ -630,6 +630,24 @@ describe('edge anchors', () => {
       quote: pdfAnchor.quote,
     })
   })
+
+  it('round-trips a PDF anchor without text: a framed area', () => {
+    const area = { kind: 'pdf', page: 2, quadPoints: pdfAnchor.quadPoints }
+    const raw = boardWith({ fromPage: 2, fromAnchor: area })
+    const result = parseBoard(raw)
+    if (!result.ok) throw new Error('parse failed')
+    expect(result.board.edges[0].fromAnchor).toEqual(area)
+    const again = parseBoard(serializeBoard(result.board))
+    if (!again.ok) throw new Error('reparse failed')
+    expect(again.board.edges[0]).toEqual(result.board.edges[0])
+  })
+
+  it('drops a text anchor without its words', () => {
+    const raw = boardWith({ toAnchor: { kind: 'text', offset: 0 } })
+    const result = parseBoard(raw)
+    if (!result.ok) throw new Error('parse failed')
+    expect(result.board.edges[0].toAnchor).toBeUndefined()
+  })
 })
 
 describe('portals', () => {

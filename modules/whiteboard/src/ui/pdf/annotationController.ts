@@ -45,10 +45,10 @@ import {
   type TextExcerpt,
   excerptQuoteText,
 } from '../../domain/excerpt'
+import type { EdgeAnchor } from '../../domain/fileFormat'
 import {
   ANNOTATION_COLORS,
   type AnnotationColor,
-  type HighlightAnchor,
   type HighlightAnnotation,
   type PdfAnnotation,
   type PdfRectTuple,
@@ -68,6 +68,7 @@ import {
 import { quoteContext, resolveHighlightSelection } from './annotationGeometry'
 import { annotationColorClass } from './annotationLayer'
 import { createReaderIconButton } from './icons'
+import { passageAnchorFromAnnotation } from './passageAnchor'
 import { generatePdfLink, pdfLinkAlias } from './pdfLink'
 import type {
   PdfReader,
@@ -163,9 +164,10 @@ export type AnnotationControllerOptions = Readonly<{
     bindings: readonly YoloModuleHostKeymapBindingV1[],
   ) => () => void
   excerpts: ExcerptSink
-  /** A highlight was opened — its menu or its comment — on a reader, or the
-   * one opened was let go (null). */
-  onActiveHighlight: (reader: PdfReader, anchor: HighlightAnchor | null) => void
+  /** An annotation was opened — its menu or its comment — on a reader, or the
+   * one opened was let go (null): what it marks, as the passage an edge
+   * pulled from it reaches — a highlight's text, or a framed area. */
+  onActiveHighlight: (reader: PdfReader, anchor: EdgeAnchor | null) => void
   /** Whether a press is on what the open highlight puts out on the board —
    * its passage's connection points — and so goes on with it rather than
    * leaving it. */
@@ -245,10 +247,10 @@ export class AnnotationController {
   private mode: Mode | null = null
   /** What `onToolbarShown` last said. */
   private toolbarShown = false
-  /** The highlight last told of (`onActiveHighlight`). */
+  /** The annotation last told of (`onActiveHighlight`). */
   private announced: Readonly<{
     reader: PdfReader
-    annotation: HighlightAnnotation
+    annotation: PdfAnnotation
   }> | null = null
   private editor: HTMLTextAreaElement | null = null
   private editorKeymapDisposer: (() => void) | null = null
@@ -585,27 +587,25 @@ export class AnnotationController {
     this.options.onToolbarShown(shown)
   }
 
-  /** Tells of the highlight open now, if that changed. */
+  /** Tells of the annotation open now, if that changed. */
   private announceHighlight(): void {
     const mode = this.mode
     const open =
       mode?.kind === 'annotation' || mode?.kind === 'comment'
         ? mode.reader.getAnnotationStore()?.get(mode.id)
         : undefined
-    const highlight =
-      mode && open?.type === 'highlight'
-        ? { reader: mode.reader, annotation: open }
-        : null
+    const announced =
+      mode && open ? { reader: mode.reader, annotation: open } : null
     const previous = this.announced
-    if (previous?.annotation === highlight?.annotation) return
-    this.announced = highlight
-    if (previous && previous.reader !== highlight?.reader) {
+    if (previous?.annotation === announced?.annotation) return
+    this.announced = announced
+    if (previous && previous.reader !== announced?.reader) {
       this.options.onActiveHighlight(previous.reader, null)
     }
-    if (highlight) {
+    if (announced) {
       this.options.onActiveHighlight(
-        highlight.reader,
-        highlight.annotation.anchor,
+        announced.reader,
+        passageAnchorFromAnnotation(announced.annotation),
       )
     }
   }

@@ -426,11 +426,13 @@ export class PdfReader {
   private areaMode = false
   private areaDraft: AreaDraft | null = null
   private pendingArea: PendingArea | null = null
-  /** A link's selection waiting for its page's text layer (`revealLocation`). */
-  private pendingReveal: Readonly<{
-    page: number
-    selection: SelectionTuple
-  }> | null = null
+  /** What is to be marked once its page can show it: a link's selection,
+   * waiting for the page's text layer (`revealLocation`), or a passage's
+   * quads, waiting only for the page (`revealPassage`). */
+  private pendingReveal: Readonly<
+    | { page: number; selection: SelectionTuple }
+    | { page: number; quadPoints: readonly number[] }
+  > | null = null
   private press: Press | null = null
   /** A selection was reported and has not been reported gone. */
   private selectionReported = false
@@ -925,6 +927,20 @@ export class PdfReader {
   }
 
   /**
+   * Goes to a passage an edge end reaches (`quadPoints` on `page`, as a
+   * highlight's), marked for a moment. Placed by the page's geometry rather
+   * than its text, so a framed area of a scanned page is gone to as a
+   * passage of text is.
+   */
+  revealPassage(page: number, quadPoints: readonly number[]): void {
+    if (this.destroyed) return
+    if (this.sheet !== null && Math.floor(page) !== this.sheet) return
+    if (this.sheet === null) this.goToPage(page)
+    this.pendingReveal = { page, quadPoints }
+    this.finishReveal()
+  }
+
+  /**
    * Where a passage on one of this reader's pages is (`quadPoints` in PDF
    * user space, as a highlight's), measured down from the reader's top edge
    * in its layout pixels — on screen, or scrolled past its top or bottom.
@@ -1037,10 +1053,11 @@ export class PdfReader {
   /**
    * Where a passage's first and last characters are on screen — the start
    * of its first line and the end of its last — for the handles that move
-   * them; null while its page is not drawn.
+   * them; null while its page is not drawn, and for a passage without the
+   * text-layer tuple `adjustPassage` moves an end by (a framed area).
    */
   passageEnds(anchor: EdgeAnchor): PassageEnds | null {
-    if (anchor.kind !== 'pdf') return null
+    if (anchor.kind !== 'pdf' || !anchor.selection) return null
     const slot = this.slotFor(anchor.page)
     if (!slot?.frame) return null
     const boxes = quadBoxes(anchor.quadPoints, slot.frame)
@@ -1914,14 +1931,20 @@ export class PdfReader {
       this.goToPage(pageIndex + 1)
       return
     }
+    const rect = range.getBoundingClientRect()
+    this.scrollIntoReading(rect.top, rect.bottom)
+  }
+
+  /** Scrolls a span of the pages, given by its client top and bottom, to a
+   * third of the way down — unless it is well in view already. */
+  private scrollIntoReading(clientTop: number, clientBottom: number): void {
     const scroller = this.scrollerEl
     const box = scroller.getBoundingClientRect()
-    const rect = range.getBoundingClientRect()
     const height = scroller.clientHeight
     if (!(box.height > 0) || !(height > 0)) return
     const factor = height / box.height
-    const top = (rect.top - box.top) * factor
-    const bottom = (rect.bottom - box.top) * factor
+    const top = (clientTop - box.top) * factor
+    const bottom = (clientBottom - box.top) * factor
     if (top >= height * 0.1 && bottom <= height * 0.9) return
     const room = scroller.scrollHeight - height
     this.pendingPosition = null
@@ -1934,6 +1957,20 @@ export class PdfReader {
   private finishReveal(): void {
     const reveal = this.pendingReveal
     if (!reveal) return
+    if ('quadPoints' in reveal) {
+      const slot = this.slotFor(reveal.page)
+      if (!slot?.frame) return
+      this.pendingReveal = null
+      const boxes = quadBoxes(reveal.quadPoints, slot.frame)
+      if (boxes.length === 0) return
+      const rect = slot.el.getBoundingClientRect()
+      this.scrollIntoReading(
+        rect.top + Math.min(...boxes.map((box) => box.top)) * rect.height,
+        rect.top + Math.max(...boxes.map((box) => box.bottom)) * rect.height,
+      )
+      this.flash(slot, boxes)
+      return
+    }
     const slot = this.slotFor(reveal.page)
     const layer = slot?.textLayer
     if (!slot || !layer || !slot.frame) return
@@ -1982,6 +2019,7 @@ export class PdfReader {
     this.renderMarks(slot)
     this.renderPassageMarks(slot)
     this.options.onPassagesMove?.()
+    if (this.pendingReveal?.page === slot.number) this.finishReveal()
   }
 
   /** Marks again the passages edges reach (`getPassageMarks`): an edge

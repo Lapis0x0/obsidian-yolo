@@ -79,7 +79,6 @@ import {
   updateNode,
 } from '../domain/operations'
 import type { PdfAnnotation } from '../domain/pdfAnnotations'
-import type { HighlightAnchor } from '../domain/pdfAnnotations'
 import {
   type BoardChanges,
   type ComposedPortal,
@@ -3519,10 +3518,11 @@ export class WhiteboardCanvas {
     if (placement?.state === 'visible') return
     const reader = this.cardRenderer.getRuntime(node.id)?.pdfReader
     if (reader) {
-      reader.revealLocation(
-        target,
-        anchor?.kind === 'pdf' ? (anchor.selection ?? null) : null,
-      )
+      if (anchor?.kind === 'pdf') {
+        reader.revealPassage(anchor.page, anchor.quadPoints)
+      } else {
+        reader.revealLocation(target, null)
+      }
       return
     }
     this.commitWithoutHistory(boardWithPageWindow(this.board, node.id, target))
@@ -5391,10 +5391,11 @@ export class WhiteboardCanvas {
     this.pdf.markPassage(passage.reader, passage.selection)
   }
 
-  /** A highlight opened in a PDF card, or the one opened let go: its
-   * passage is what the connection points pull an edge from, as a
-   * selection's is — the same anchor, the highlight already marking it. */
-  private selectHighlight(id: NodeId, anchor: HighlightAnchor | null): void {
+  /** An annotation opened in a PDF card — a highlight or a framed area — or
+   * the one opened let go: what it marks is what the connection points pull
+   * an edge from, as a selection's passage is, the annotation already
+   * marking it. */
+  private selectHighlight(id: NodeId, anchor: EdgeAnchor | null): void {
     if (!anchor) {
       if (!this.highlightSelected) return
       this.highlightSelected = false
@@ -5405,10 +5406,7 @@ export class WhiteboardCanvas {
     this.passageSelection += 1
     this.textPassageSelected = false
     this.highlightSelected = true
-    this.passagePoints?.setSource({
-      nodeId: id,
-      anchor: { kind: 'pdf', ...anchor },
-    })
+    this.passagePoints?.setSource({ nodeId: id, anchor })
   }
 
   /** Text selected in a PDF card, or the selection gone: the passage it

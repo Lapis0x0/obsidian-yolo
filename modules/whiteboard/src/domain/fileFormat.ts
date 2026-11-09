@@ -276,9 +276,11 @@ export type EdgeAnchorQuote = Readonly<{
  *   highlight in its annotation file (domain/pdfAnnotations.ts's
  *   `HighlightAnchor`) — PDF user space, one quad of eight numbers per line —
  *   so it is placed without a text layer, and the text layer's selection
- *   tuple is a hint. An end on a PDF's card also names the anchor's page in
- *   `fromPage`/`toPage`, so the end lands on that page's sheet when the
- *   document is spread out.
+ *   tuple is a hint. A passage of text carries its words; a framed area
+ *   (an `AreaAnchor`'s rectangle, one quad) has none, which is how a scanned
+ *   page, with no text to select, is connected from. An end on a PDF's card
+ *   also names the anchor's page in `fromPage`/`toPage`, so the end lands on
+ *   that page's sheet when the document is spread out.
  * - `text`: a passage of a text or note card's Markdown source, by its words
  *   and their context; `offset` is where in the source it was last found.
  */
@@ -288,7 +290,8 @@ export type EdgeAnchor =
       /** 1-based. */
       page: number
       quadPoints: readonly number[]
-      quote: EdgeAnchorQuote
+      /** The text there; absent for a framed area. */
+      quote?: EdgeAnchorQuote
       selection?: readonly [number, number, number, number]
     }>
   | Readonly<{
@@ -985,7 +988,6 @@ function parseEdgePage(value: unknown): number | undefined {
 function parseEdgeAnchor(value: unknown): EdgeAnchor | undefined {
   if (!isPlainObject(value)) return undefined
   const quote = parseAnchorQuote(value.quote)
-  if (!quote) return undefined
   if (value.kind === 'pdf') {
     const { page, quadPoints, selection } = value
     if (!(Number.isInteger(page) && (page as number) >= 1)) return undefined
@@ -1007,11 +1009,12 @@ function parseEdgeAnchor(value: unknown): EdgeAnchor | undefined {
       kind: 'pdf',
       page: page as number,
       quadPoints: quadPoints,
-      quote,
+      ...(quote === undefined ? {} : { quote }),
       ...(hint === undefined ? {} : { selection: hint }),
     }
   }
   if (value.kind === 'text') {
+    if (!quote) return undefined
     const { offset } = value
     if (!(Number.isInteger(offset) && (offset as number) >= 0)) return undefined
     return { kind: 'text', quote, offset: offset as number }
