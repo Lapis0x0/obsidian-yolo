@@ -87,8 +87,8 @@ const ContextUsageRing = forwardRef<HTMLButtonElement, ContextUsageRingProps>(
         {...rest}
         className={
           className
-            ? `yolo-context-usage-ring ${className}`
-            : 'yolo-context-usage-ring'
+            ? `clickable-icon yolo-context-usage-ring ${className}`
+            : 'clickable-icon yolo-context-usage-ring'
         }
         data-tone={tone}
         data-has-max={hasMax ? 'true' : 'false'}

@@ -47,7 +47,7 @@ export function SubmitButton({
     return (
       <button
         type="button"
-        className="yolo-chat-user-input-submit-button-circle is-stop"
+        className="clickable-icon yolo-chat-user-input-submit-button-circle is-stop"
         onClick={() => onAbort?.()}
         aria-label={stopLabel}
       >
@@ -64,7 +64,7 @@ export function SubmitButton({
   return (
     <button
       type="button"
-      className={`yolo-chat-user-input-submit-button-circle${
+      className={`clickable-icon yolo-chat-user-input-submit-button-circle${
         isGenerating && canQueue ? ' is-queueing' : ''
       }`}
       disabled={!isGenerating && disabled}

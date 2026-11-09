@@ -315,7 +315,13 @@ button.yolo-runtime-selector[data-compact='true']
   white-space: nowrap;
 }
 
-.yolo-context-usage-ring {
+/* The ring is an icon-only button, so it carries `.clickable-icon`: Obsidian
+ * core and themes style text buttons through `button:not(.clickable-icon)`
+ * (Primary, for one, adds `padding: 8px 12px`, which crushes a 16px ring to
+ * nothing and leaves only a filled square). What remains to reset is
+ * `.clickable-icon`'s own padding, radius, color and hover tint, which the
+ * `button.` selectors below outrank. */
+button.yolo-context-usage-ring {
   --yolo-context-usage-ring-color: var(--interactive-accent);
   position: relative;
   display: inline-flex;
@@ -325,12 +331,6 @@ button.yolo-runtime-selector[data-compact='true']
   height: 16px;
   flex-shrink: 0;
   color: var(--yolo-context-usage-ring-color);
-  /* Reset Obsidian's default `button` styles. Need all of: transparent
-   * background (Obsidian sets `background-color: var(--interactive-normal)`),
-   * no box-shadow (themes may set `--input-shadow`), no border, and explicit
-   * border-radius so the visible bounding box doesn't leak a rounded square
-   * tint behind the SVG ring. Without these you see a subtle pill/shadow
-   * around the ring in light mode and a darker square in dark mode. */
   padding: 0;
   margin: 0;
   border: 0;
@@ -353,10 +353,11 @@ button.yolo-runtime-selector[data-compact='true']
 /* Cursor-style hover: track switches to `--text-muted` (a clearly darker /
  * brighter tone than the idle border-modifier color), and the whole ring
  * gets a small brightness lift so the accent-colored progress also pops. */
-.yolo-context-usage-ring:hover,
-.yolo-context-usage-ring:focus,
-.yolo-context-usage-ring:active,
-.yolo-context-usage-ring[data-state='open'] {
+button.yolo-context-usage-ring:hover,
+button.yolo-context-usage-ring:focus,
+button.yolo-context-usage-ring:active,
+button.yolo-context-usage-ring[data-state='open'] {
+  color: var(--yolo-context-usage-ring-color);
   background: transparent;
   background-color: transparent;
   box-shadow: none;
@@ -367,7 +368,7 @@ button.yolo-runtime-selector[data-compact='true']
   );
 }
 
-.yolo-context-usage-ring:focus-visible {
+button.yolo-context-usage-ring:focus-visible {
   outline: 2px solid
     color-mix(in srgb, var(--interactive-accent) 65%, transparent);
   outline-offset: 2px;
@@ -381,9 +382,12 @@ button.yolo-runtime-selector[data-compact='true']
   --yolo-context-usage-ring-color: var(--text-error);
 }
 
-.yolo-context-usage-ring__svg {
+/* `svg.` outranks core `.clickable-icon svg { opacity: var(--icon-opacity) }`,
+ * which would otherwise dim the ring at rest. */
+svg.yolo-context-usage-ring__svg {
   width: 16px;
   height: 16px;
+  opacity: 1;
   transform: rotate(-90deg);
 }
 
@@ -4010,26 +4014,25 @@ button.yolo-update-toast-tab.is-active {
 
 /* 圆形发送/停止按钮（ChatGPT/Claude 风格）。
  *
- * 选择器写成 `button.yolo-chat-user-input-submit-button-circle`，是为了对抗
- * Obsidian `app.css` 里的 `button:not(.clickable-icon) { box-shadow: var(--input-shadow) }`
- * ——必须保持等同或更高特异度，否则按钮内会出现一圈 inset 灰环。
+ * 按钮带 `.clickable-icon`：Obsidian 核心（含 iPad 的 `.is-tablet` 内边距）
+ * 和主题都通过 `button:not(.clickable-icon)` 给文字按钮加底色、阴影、内边距
+ * 和圆角，特异度可以任意高（Primary 是 (0,1,2)），会把 24px 圆按钮撑成圆角方块、
+ * 图标宽度挤成 0。挂上 `.clickable-icon` 就整类脱离这些规则；剩下要盖住的是
+ * `.clickable-icon` 自己的内边距、圆角，以及 hover/active 的灰底，由下面的
+ * `button.` 选择器负责。
  *
- * 同样地，Obsidian 的全局规则 `svg { width/height: var(--icon-size) }`
+ * Obsidian 的全局规则 `svg { width/height: var(--icon-size) }`
  * 会覆盖 lucide 通过 inline 属性写入的尺寸 —— 必须在选择器内显式给 svg
- * 兜底宽高，否则图标会被撑大或缩成奇形怪状。
- *
- * iPad 上 Obsidian 还有 `.is-tablet button:not(.clickable-icon)
- * { padding: var(--size-4-1) var(--size-4-5) }`，特异度 (0,2,1) 高于这里，
- * 会把 24px 圆按钮撑成椭圆、图标宽度挤成 0。聊天面板里自己定内边距的按钮
- * 都要带上 `body.is-tablet` 版本的选择器才能在平板上保住自己的内边距。 */
-button.yolo-chat-user-input-submit-button-circle,
-body.is-tablet button.yolo-chat-user-input-submit-button-circle {
+ * 兜底宽高，否则图标会被撑大或缩成奇形怪状。 */
+button.yolo-chat-user-input-submit-button-circle {
   /* 略大于左侧 `+` 按钮（var(--size-4-5) ≈ 20px），强化"主按钮"地位但
    * 又不至于撑出 var(--size-4-4) 行高太多。 */
   width: 24px;
   height: 24px;
   padding: 0;
   border-radius: 50%;
+  /* `.clickable-icon` 取主题的 `--corner-shape`（Primary 是超椭圆），会把圆画成圆角方。 */
+  corner-shape: round;
   border: none;
   /* 用 Obsidian 设计系统的「主操作按钮」语义色对，自动跟随主题。 */
   background: var(--interactive-accent);
@@ -4052,10 +4055,20 @@ body.is-tablet button.yolo-chat-user-input-submit-button-circle {
   line-height: 0;
 }
 
+/* `opacity: 1` 盖住核心 `.clickable-icon svg` 的 `--icon-opacity`，箭头保持纯色。 */
 button.yolo-chat-user-input-submit-button-circle svg {
   width: 14px;
   height: 14px;
   display: block;
+  opacity: 1;
+}
+
+/* `.clickable-icon` 的 hover/active 会换成灰底和图标色，主按钮保持自己的配色；
+ * 停止、禁用两态写在后面，同特异度按顺序覆盖这里。 */
+button.yolo-chat-user-input-submit-button-circle:hover,
+button.yolo-chat-user-input-submit-button-circle:active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 button.yolo-chat-user-input-submit-button-circle:hover:not(:disabled) {
