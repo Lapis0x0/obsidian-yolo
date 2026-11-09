@@ -204,11 +204,17 @@ function toLocalRect(rect: DOMRect, containerRect: DOMRect): LocalRect {
   }
 }
 
-function getAnnotationBoundaryRect(container: HTMLElement): DOMRect {
-  return (
+/** The horizontal span floating UI may occupy: the message list's content
+ * box, so its scrollbar gutter does not count as room. */
+function getAnnotationBoundaryRect(container: HTMLElement): {
+  left: number
+  right: number
+} {
+  const boundary =
     container.closest<HTMLElement>('.yolo-chat-messages') ??
     container.ownerDocument.documentElement
-  ).getBoundingClientRect()
+  const left = boundary.getBoundingClientRect().left + boundary.clientLeft
+  return { left, right: left + boundary.clientWidth }
 }
 
 export default function AssistantSelectionQuoteButton({
