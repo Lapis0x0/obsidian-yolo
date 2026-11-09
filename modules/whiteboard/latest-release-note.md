@@ -1,11 +1,13 @@
-## 0.0.8 Edge Jumping & New Board Folder 🧭
+## 0.1.0 In-House Engine 🚀
 
-- Added a custom default folder for new whiteboards; left empty, it follows Obsidian's location for new notes. (#629)
-- Added "Go to other end" for whiteboard edges, to jump back and forth between an annotation and its source passage. (#627)
+- Migrated the YOLO Whiteboard core to an in-house engine, greatly improving performance.
+- Framed areas on scanned PDFs can now be connected, so you can jump from an annotation back to the area and see it highlighted. (#640)
+- Ctrl/Cmd+V now pastes straight into the whiteboard, with text pasted as frameless text; unified the naming of "cards" and "text".
 
 ---
 
-## 0.0.8 连线跳转与新建目录 🧭
+## 0.1.0 自研引擎 🚀
 
-- 新建白板支持自定义默认目录，留空时跟随 Obsidian 新建笔记位置。（#629）
-- 白板连线支持「跳到另一端」，可在批注与原文段落之间来回跳转。（#627）
+- 将 YOLO 白板核心迁移为自研引擎，大幅优化性能表现。
+- 白板扫描版 PDF 的框选区域支持连线，可从批注跳回原区域并高亮。（#640）
+- 白板支持 Ctrl/Cmd+V 直接粘贴，文字粘贴为无框文字；统一「卡片 / 文字」命名。
