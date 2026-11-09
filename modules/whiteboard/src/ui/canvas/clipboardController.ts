@@ -4,10 +4,14 @@
 // These are the browser's own `copy`/`cut`/`paste` events, not key bindings:
 // a clipboard type of our own choosing (`obsidian/canvas`) can only be read
 // and written through a `ClipboardEvent`'s `clipboardData` — the async
-// clipboard API does not expose it. Such an event goes to whatever has focus,
-// so the viewport is made focusable (a press anywhere on the board focuses
-// it, the way Canvas's wrapper is) and the events are heard on it: they reach
-// this board and no other, in whichever window it lives in.
+// clipboard API does not expose it. Chromium sends such an event to where the
+// page's text selection is, not to what has focus: text selected and copied
+// in another pane stays selected when the board is pressed (the board keeps
+// its presses from selecting), and the paste goes there. So the events are
+// heard on the board's document, and the board takes one when it is what the
+// user is in — the focus is inside its viewport, which is made focusable for
+// that (a press anywhere on the board focuses it, the way Canvas's wrapper
+// is). That holds for one board at a time, in whichever window it lives in.
 //
 // A field inside the board — a card's editor, a label, a PDF search box —
 // keeps its own copy and paste; so does text selected in a card's rendered
@@ -67,18 +71,20 @@ export class ClipboardController {
   bind(): void {
     const el = this.deps.viewportEl
     el.tabIndex = -1
-    el.addEventListener('copy', this.onCopy)
-    el.addEventListener('cut', this.onCut)
-    el.addEventListener('paste', this.onPaste)
+    const doc = el.ownerDocument
+    doc.addEventListener('copy', this.onCopy)
+    doc.addEventListener('cut', this.onCut)
+    doc.addEventListener('paste', this.onPaste)
     el.addEventListener('pointermove', this.onPointerMove)
     el.addEventListener('pointerleave', this.onPointerLeave)
   }
 
   destroy(): void {
     const el = this.deps.viewportEl
-    el.removeEventListener('copy', this.onCopy)
-    el.removeEventListener('cut', this.onCut)
-    el.removeEventListener('paste', this.onPaste)
+    const doc = el.ownerDocument
+    doc.removeEventListener('copy', this.onCopy)
+    doc.removeEventListener('cut', this.onCut)
+    doc.removeEventListener('paste', this.onPaste)
     el.removeEventListener('pointermove', this.onPointerMove)
     el.removeEventListener('pointerleave', this.onPointerLeave)
     this.pointer = null
@@ -92,11 +98,14 @@ export class ClipboardController {
     this.pointer = null
   }
 
-  /** Whether a clipboard event is the board's rather than a field's. */
+  /** Whether a clipboard event is the board's: the focus is in this board,
+   * and not in a field of it. */
   private owns(e: ClipboardEvent): boolean {
     if (e.defaultPrevented || e.clipboardData === null) return false
     if (this.core.isParseFailed()) return false
-    return !isTypingIntoField(this.deps.viewportEl.ownerDocument)
+    const doc = this.deps.viewportEl.ownerDocument
+    if (!this.deps.viewportEl.contains(doc.activeElement)) return false
+    return !isTypingIntoField(doc)
   }
 
   /** Copies the selection, or answers null when the event is not the

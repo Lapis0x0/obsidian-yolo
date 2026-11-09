@@ -84,6 +84,7 @@ jest.mock('obsidian', () => {
     // lookups resolve.
     async onOpen(): Promise<void> {}
     async onClose(): Promise<void> {}
+    setEphemeralState(_state: unknown): void {}
     constructor(public leaf: unknown) {
       // Real Obsidian's View base constructor calls getViewType() before the
       // subclass constructor body (and TS parameter properties) have run —
@@ -542,6 +543,40 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
     const wrappedHandler = registerSpy.mock.calls[0]?.[2] as () => unknown
     expect(wrappedHandler()).toBe(false)
     registerSpy.mockRestore()
+  })
+
+  it("passes Obsidian's request to take the focus on to the module", () => {
+    const focus = jest.fn()
+    const { factory } = makeFactory()
+    const view: YoloModuleFileViewV1 = {
+      viewType: 'yolo-whiteboard',
+      extensions: ['yoloboard'],
+      name: 'Whiteboard',
+      icon: 'layout-grid',
+      factory: (context) => ({ ...factory(context), focus }),
+    }
+    const slot = new ModuleFileViewSlot(
+      'whiteboard',
+      'yolo-whiteboard',
+      'layout-grid',
+      view.name,
+      makeLocales(),
+    )
+    slot.bind(view)
+    const hostView = createModuleFileView(
+      {} as never,
+      makePlugin(),
+      slot,
+    ) as unknown as {
+      onOpen(): Promise<void>
+      setEphemeralState(state: unknown): void
+    }
+    void hostView.onOpen()
+
+    hostView.setEphemeralState({ subpath: '#x' })
+    expect(focus).not.toHaveBeenCalled()
+    hostView.setEphemeralState({ focus: true })
+    expect(focus).toHaveBeenCalledTimes(1)
   })
 })
 

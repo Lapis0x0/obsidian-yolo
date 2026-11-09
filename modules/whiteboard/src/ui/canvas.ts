@@ -1626,6 +1626,20 @@ export class WhiteboardCanvas {
     this.lastRawData = ''
   }
 
+  /**
+   * The view was made the one being worked in (opened, or its tab gone back
+   * to): the viewport takes the focus, as a press on the board gives it, so
+   * the board's keys and Mod+V's `paste` (./canvas/clipboardController.ts)
+   * reach it straight away. Focus already inside the board is left where it
+   * is.
+   */
+  focus(): void {
+    const viewport = this.viewportEl as HTMLElement | undefined
+    if (!viewport?.isConnected) return
+    if (viewport.contains(viewport.ownerDocument.activeElement)) return
+    viewport.focus({ preventScroll: true })
+  }
+
   onResize(): void {
     this.viewportSize = null
     this.pdf.refitPanel()

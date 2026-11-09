@@ -160,6 +160,7 @@ yolo.registerModule({
           getViewData: () => canvas.getViewData(),
           clear: () => canvas.clear(),
           onResize: () => canvas.onResize(),
+          focus: () => canvas.focus(),
           dispose: () => {
             forgetOpenBoard()
             canvas.dispose()

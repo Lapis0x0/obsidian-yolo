@@ -284,6 +284,23 @@ class HostModuleFileView extends TextFileView {
     }
   }
 
+  /** Obsidian asks a view it activates to take the focus through
+   * `{ focus: true }` here (a note's editor takes the cursor); passed on to
+   * the module, which knows what inside it should have it. */
+  setEphemeralState(state: unknown): void {
+    super.setEphemeralState(state)
+    const wantsFocus =
+      typeof state === 'object' &&
+      state !== null &&
+      (state as { focus?: unknown }).focus === true
+    if (!wantsFocus || !this.instance?.focus) return
+    try {
+      this.instance.focus()
+    } catch (error) {
+      this.reportError('focus', error)
+    }
+  }
+
   /** Rebuilds instance state from the current slot: bound -> live instance,
    * unbound -> placeholder. Used on open, on every slot bind/unbind, and on
    * popout window migration (dispose old instance, rebuild via factory,

@@ -109,6 +109,14 @@ export type YoloModuleFileViewInstanceV1 = Readonly<{
   getViewData(): string
   clear(): void
   onResize?(): void
+  /**
+   * Obsidian made this view the one being worked in — opened it, or switched
+   * back to its tab — and asks it to take the keyboard focus, as a note's
+   * editor takes the cursor. Without it focus stays on the document body, so
+   * keys and clipboard events (Mod+V's `paste`) reach nothing in the view
+   * until it is clicked.
+   */
+  focus?(): void
   /** Release all DOM, listeners, observers, rAF. Called on view close and on
    * window migration (host rebuilds via factory afterwards). */
   dispose(): void
