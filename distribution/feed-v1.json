@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 51,
+  "revision": 52,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.15",
+    "version": "1.6.16",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.15",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.16",
     "releaseNotes": {
-      "en": "## 1.6.15 Auto-Update Fix 🔧\n\n- Fixed the plugin reloading over and over after an automatic update, which kept the ribbon icons flickering.",
-      "zh": "## 1.6.15 自动更新问题修复 🔧\n\n- 修复自动更新后插件反复重载、图标不停闪烁的问题。"
+      "en": "## 1.6.16 Auto Retry & Fixes 🔁\n\n- Added the mathjax-engine component, powering high-performance rendering in YOLO Whiteboard.\n- Model requests now retry automatically, up to 3 times, when rate-limited or the service is overloaded. (#642)\n- The annotation editor is now multi-line, so long annotations can be read in full while editing; fixed it being covered by the scrollbar near the right edge. (#639)\n- Fixed the context-usage ring and send button rendering as squares under third-party themes such as Primary. (#641)",
+      "zh": "## 1.6.16 自动重试与问题修复 🔁\n\n- 新增 mathjax-engine 组件，服务 YOLO 白板的高性能渲染。\n- 模型请求被限流或服务过载时自动重试，最多重试 3 次。（#642）\n- 批注编辑框改为多行，长批注编辑时能完整看到；修复贴右时被滚动条遮挡的问题。（#639）\n- 修复上下文圆环和发送按钮在 Primary 等第三方主题下显示成方块的问题。（#641）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.15/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.15/main.js",
-        "byteSize": 5818494,
-        "sha256": "3599fd5c2e554fefeb9a175d11f713a64599d5e0172891b94cbbbbce90ce1fb2"
+        "mirrorPath": "core/1.6.16/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/main.js",
+        "byteSize": 5826023,
+        "sha256": "cd790285a350daf6a3e7a0e1bd7855dbf144e3741e975078f767760a19f2c8e4"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.15/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.15/manifest.json",
+        "mirrorPath": "core/1.6.16/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/manifest.json",
         "byteSize": 412,
-        "sha256": "730834c9a3941db01fed2275a8dfb74c4c9d10173311bf966d66989e7eee0634"
+        "sha256": "8b4ddec9944fc82671730e0c544bb0d95c7da44eba9803a8928e6ed757980215"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.15/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.15/styles.css",
-        "byteSize": 499050,
-        "sha256": "2fdcce908b1f4be034eae2198f75bb060e15eb8824297485f656d3601d2404df"
+        "mirrorPath": "core/1.6.16/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/styles.css",
+        "byteSize": 499416,
+        "sha256": "0ea4b5613b574cbc353aca71b24385694d103102e13d0aa2e2298054c5304085"
       }
     }
   },
