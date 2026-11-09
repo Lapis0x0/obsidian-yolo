@@ -17,7 +17,7 @@ export const en = {
   tools: {
     label: 'Whiteboard Toolset',
     description:
-      'Create YOLO whiteboards and edit their cards, connections and groups.',
+      'Create YOLO whiteboards and edit their text, cards, connections and groups.',
   },
   menu: {
     exportBoard: 'Export whiteboard…',
@@ -26,11 +26,11 @@ export const en = {
     // item with no plugin prefix, so this entry names the product.
     newWhiteboard: 'New YOLO whiteboard',
     importCanvas: 'Import as YOLO whiteboard',
-    newCard: 'New card',
+    newCard: 'New text card',
     newText: 'New text',
-    convertToNote: 'Convert to note',
+    convertToNote: 'Save as note',
     convertToText: 'Convert to text',
-    convertToCard: 'Convert to card',
+    convertToCard: 'Convert to text card',
     deleteCard: 'Delete',
     deleteEdge: 'Delete connection',
     arrowNone: 'No arrow',
@@ -77,7 +77,7 @@ export const en = {
   },
   cardMenu: {
     addText: 'Add text',
-    newCard: 'Add card',
+    newCard: 'Add text card',
     addNote: 'Add note',
     addMedia: 'Add media file',
     addBoard: 'Add board',
@@ -102,9 +102,9 @@ export const en = {
     tidy: 'Tidy up',
     arrows: 'Arrows',
     edgeLabel: 'Label',
-    wholeCard: 'Connect to whole card',
-    wholeCardFrom: 'Start: whole card',
-    wholeCardTo: 'End: whole card',
+    wholeCard: 'Connect to the whole',
+    wholeCardFrom: 'Start: the whole',
+    wholeCardTo: 'End: the whole',
     jumpToOtherEnd: 'Go to other end',
     openReader: 'Open in reader',
     openSpread: 'Spread out pages',
@@ -153,7 +153,7 @@ export const en = {
     exportCancelled: 'Export cancelled',
     exportNothing: 'There is nothing on this whiteboard to export.',
     exportBoardNotOpen: 'Open the whiteboard to export it.',
-    convertedToNote: 'Card saved as {path}',
+    convertedToNote: 'Saved as note {path}',
     dropUnsupported:
       'Only notes, PDFs, images, audio, video and HTML files can be dropped onto a whiteboard.',
     imported: 'Imported as {path}',
@@ -174,7 +174,7 @@ export const en = {
     },
     status: {
       preparing: 'Reading the board…',
-      reading: 'Reading {count} card(s)…',
+      reading: 'Reading {count} item(s)…',
       writing: 'Writing…',
     },
     stop: 'Stop',
@@ -204,7 +204,7 @@ export const en = {
   },
   find: {
     open: 'Find on board',
-    placeholder: 'Find in cards…',
+    placeholder: 'Find on this whiteboard…',
     previous: 'Previous (Shift+Enter)',
     next: 'Next (Enter)',
     close: 'Close find (Esc)',
@@ -262,7 +262,7 @@ export const en = {
     title: 'Could not read this whiteboard',
     hint: 'The file could not be parsed. It has not been modified — fix it outside the whiteboard and reopen.',
     createFailed: 'Could not create a new whiteboard.',
-    convertFailed: 'Could not convert this card into a note.',
+    convertFailed: 'Could not save as a note.',
     createNoteFailed: 'Could not create the note.',
     dropFailed: 'Could not add the dropped file to this whiteboard.',
     pasteFailed: 'Could not add the pasted file to this whiteboard.',

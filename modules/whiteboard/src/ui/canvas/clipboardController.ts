@@ -36,8 +36,8 @@ import { fileNodeKind } from '../../domain/naming'
 import {
   DROP_STAGGER_PX,
   DUPLICATE_OFFSET_WORLD_PX,
-  NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  NEW_TEXT_SIZE,
   WEB_URL_PATTERN,
   fileCardSizes,
 } from '../constants'
@@ -146,7 +146,7 @@ export class ClipboardController {
   /**
    * Canvas's order: files first (a picture copied from elsewhere), then cards
    * copied from a board or a Canvas, then text — a web address as a web
-   * card, anything else as a text card.
+   * card, anything else as text (`textOrLinkNode`).
    */
   private readonly onPaste = (e: ClipboardEvent): void => {
     if (!this.owns(e) || !this.core.canEdit()) return
@@ -240,8 +240,10 @@ export class ClipboardController {
   }
 }
 
-/** Pasted text as a card: a lone web address is a web card, the way it is in
- * Canvas; anything else is a text card holding it. The id is a placeholder —
+/** Pasted text on the board: a lone web address is a web card, the way it is
+ * in Canvas; anything else is text (`plain`) — a passage taken down where it
+ * landed, as text written there with a double-click is, sized by what it
+ * holds rather than cut off by a card's box. The id is a placeholder —
  * `placeFragment` mints the real one. */
 function textOrLinkNode(text: string): BoardNode {
   if (WEB_URL_PATTERN.test(text) && !/\s/.test(text)) {
@@ -261,9 +263,11 @@ function textOrLinkNode(text: string): BoardNode {
     type: 'text',
     x: 0,
     y: 0,
-    w: NEW_CARD_SIZE.w,
-    h: NEW_CARD_SIZE.h,
+    w: NEW_TEXT_SIZE.w,
+    h: NEW_TEXT_SIZE.h,
     text,
+    plain: true,
+    autoWidth: true,
     extra: {},
   }
 }
