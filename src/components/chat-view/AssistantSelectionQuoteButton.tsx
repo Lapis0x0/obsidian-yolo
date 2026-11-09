@@ -224,7 +224,7 @@ export default function AssistantSelectionQuoteButton({
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
-  const editorRef = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const finalizeSelectionFrameRef = useRef<number | null>(null)
   const isSelectingRef = useRef(false)
@@ -611,11 +611,26 @@ export default function AssistantSelectionQuoteButton({
 
   useEffect(() => {
     if (!activeDraft) return
-    const frameId = window.requestAnimationFrame(() =>
-      editorRef.current?.focus(),
-    )
+    const frameId = window.requestAnimationFrame(() => {
+      const editor = editorRef.current
+      if (!editor) return
+      editor.focus()
+      // Reopening an existing comment continues it rather than prepending.
+      editor.setSelectionRange(editor.value.length, editor.value.length)
+    })
     return () => window.cancelAnimationFrame(frameId)
   }, [activeDraft?.id])
+
+  // The editor grows with its comment; CSS caps it and scrolls past that.
+  const activeComment = activeDraft?.comment
+  useLayoutEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.setCssProps({ '--yolo-annotation-editor-height': 'auto' })
+    editor.setCssProps({
+      '--yolo-annotation-editor-height': `${editor.scrollHeight}px`,
+    })
+  }, [activeComment, editorPosition])
 
   const handleMouseDown = useCallback((event: ReactMouseEvent) => {
     event.preventDefault()
@@ -719,7 +734,7 @@ export default function AssistantSelectionQuoteButton({
   }, [activeDraft, handleSave])
 
   const handleEditorBlur = useCallback(
-    (event: ReactFocusEvent<HTMLInputElement>) => {
+    (event: ReactFocusEvent<HTMLTextAreaElement>) => {
       const nextTarget = event.relatedTarget
       const editor = editorContainerRef.current
       const NodeCtor = editor?.ownerDocument.defaultView?.Node ?? Node
@@ -873,15 +888,16 @@ export default function AssistantSelectionQuoteButton({
           }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <input
+          <textarea
             ref={editorRef}
-            type="text"
+            rows={1}
             value={activeDraft.comment ?? ''}
             placeholder={commentPlaceholder}
             onChange={(event) => handleCommentChange(event.currentTarget.value)}
             onBlur={handleEditorBlur}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
                 handleSave()
               } else if (event.key === 'Escape') {

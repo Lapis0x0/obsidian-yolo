@@ -2308,8 +2308,9 @@ button.yolo-assistant-annotation-marker.is-active {
   position: absolute;
   z-index: 9;
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   width: min(320px, calc(100% - 16px));
   padding: 4px;
   border: 1px solid var(--background-modifier-border);
@@ -2336,14 +2337,17 @@ button.yolo-assistant-annotation-marker.is-active {
   width: min(300px, calc(100% - 16px));
 }
 
-.yolo-assistant-annotation-editor input {
+.yolo-assistant-annotation-editor textarea {
   display: block;
-  flex: 1;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 32px;
+  height: var(--yolo-annotation-editor-height, 32px);
+  min-height: 32px;
+  max-height: 160px;
   margin: 0;
-  padding: 5px 8px;
+  padding: 7px 8px;
+  overflow-y: auto;
   border: 0;
   border-radius: var(--radius-s);
   background: transparent;
@@ -2351,9 +2355,10 @@ button.yolo-assistant-annotation-marker.is-active {
   font: inherit;
   line-height: var(--line-height-tight);
   box-shadow: none;
+  resize: none;
 }
 
-.yolo-assistant-annotation-editor input:focus {
+.yolo-assistant-annotation-editor textarea:focus {
   box-shadow: none;
 }
 
@@ -2362,7 +2367,6 @@ button.yolo-assistant-annotation-marker.is-active {
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  flex: none;
 }
 
 .yolo-assistant-message-selectable
