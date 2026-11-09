@@ -52,21 +52,21 @@
       "localizations": {
         "en": {
           "name": "YOLO Whiteboard",
-          "description": "An infinite canvas for spatial thinking: place note, text, and PDF cards, connect them, and read/annotate PDFs alongside your notes."
+          "description": "An infinite canvas for spatial thinking: place text and all kinds of cards, connect them, and read/annotate PDFs alongside your notes."
         },
         "zh": {
           "name": "YOLO 白板",
-          "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
+          "description": "用于空间化思考的无限画布：摆放笔记、文字与各类卡片，建立连线，并在笔记旁阅读与标注 PDF。"
         },
         "it": {
           "name": "Lavagna YOLO",
-          "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
+          "description": "Una tela infinita per il pensiero spaziale: disponi testi e schede di ogni tipo, collegali tra loro e leggi/annota i PDF accanto alle tue note."
         }
       },
       "versions": [
         {
-          "version": "0.0.8",
-          "hostApi": "^1.12.0",
+          "version": "0.1.0",
+          "hostApi": "^1.13.0",
           "platforms": [
             "desktop",
             "mobile"
@@ -78,15 +78,15 @@
               "write": 1
             }
           },
-          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.8/module.json",
+          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.1.0/module.json",
           "manifest": {
             "byteSize": 1867,
-            "sha256": "130f6032dd3d0582451c41cb061c095b8e42d58983b41edca58712f06962a6ce"
+            "sha256": "2ef7cb11eb7a87a760c9bc20ffc93ae88db57edf06a01e60c84c667f3c688904"
           },
           "releaseNotes": {
-            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.8/release-note.md",
-            "byteSize": 542,
-            "sha256": "70a388bc1d6fef47e2b0a754c4663e6e9e6cd8476e3e200a34735531b2ca89ef"
+            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.1.0/release-note.md",
+            "byteSize": 708,
+            "sha256": "df1cdafa2a4b6014847118c0ebca94bb43413c25fb4d059b3b5028995e9dfb13"
           }
         }
       ]
