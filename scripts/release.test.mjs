@@ -31,6 +31,7 @@ async function writeRuntimeComponentFixture(root) {
     'pdf-engine': 'p',
     'bash-engine': 'b',
     'claude-agent-sdk': 'c',
+    'mathjax-engine': 'm',
   }
   const assetBytes = Buffer.from('fixture wasm bytes')
   const components = []
