@@ -1881,6 +1881,7 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     reasonedFor: '思考了 {{seconds}} 秒',
+    autoRetrying: '服务繁忙，正在重试（{attempt}/{max}）...',
     annotations: '注释',
     vaultSources: '笔记引用（{count}）',
     pdfReferenceNoPreview: '（PDF：点击标题打开对应页）',

@@ -18,6 +18,7 @@ import {
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
+import { ProviderRequestError } from '../llm/providerErrors'
 import type { McpManager } from '../mcp/mcpManager'
 
 jest.mock('../mcp/mcpManager', () => {
@@ -829,5 +830,141 @@ describe('AgentLlmTurnExecutor', () => {
     expect(result.assistantMessage.content).toBe('')
     expect(result.toolCallRequests).toEqual([])
     expect(result.hasAssistantOutput).toBe(false)
+  })
+
+  describe('automatic retry', () => {
+    const rateLimited = () =>
+      new ProviderRequestError(
+        'provider-1',
+        429,
+        'Rate limit reached',
+        new Error('429'),
+      )
+    const answer = {
+      content: 'answer',
+      annotations: undefined,
+      usage: undefined,
+      toolCalls: [],
+    }
+    const contentChunk = {
+      id: 'stream-retry',
+      model: TEST_MODEL.model,
+      object: 'chat.completion.chunk' as const,
+      choices: [{ finish_reason: null, delta: {} }],
+    }
+
+    const createExecutor = (
+      observed: ChatAssistantMessage[],
+      abortSignal?: AbortSignal,
+    ) =>
+      new AgentLlmTurnExecutor({
+        providerClient: new MockProvider(),
+        model: TEST_MODEL,
+        requestContextBuilder: {
+          generateRequestMessages: jest
+            .fn()
+            .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+        } as unknown as RequestContextBuilder,
+        mcpManager: createMockMcpManager(),
+        conversationId: 'conv-1',
+        messages: [],
+        requestParams: { deliveryMode: 'incremental' },
+        abortSignal,
+        onAssistantMessage: (message) => observed.push(message),
+      })
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('resends a request the provider turned away before any output', async () => {
+      mockExecuteSingleTurn
+        .mockRejectedValueOnce(rateLimited())
+        .mockRejectedValueOnce(rateLimited())
+        .mockResolvedValueOnce(answer)
+      const observed: ChatAssistantMessage[] = []
+
+      const run = createExecutor(observed).run()
+      await jest.runAllTimersAsync()
+      const result = await run
+
+      expect(mockExecuteSingleTurn).toHaveBeenCalledTimes(3)
+      expect(
+        observed.map((message) => message.metadata?.autoRetry?.attempt),
+      ).toEqual([undefined, 1, 2, undefined])
+      expect(result.assistantMessage.content).toBe('answer')
+      expect(result.assistantMessage.metadata?.generationState).toBe(
+        'completed',
+      )
+      expect(result.assistantMessage.metadata?.autoRetry).toBeUndefined()
+    })
+
+    it('surfaces the refusal once the retries are spent', async () => {
+      mockExecuteSingleTurn.mockRejectedValue(rateLimited())
+      const observed: ChatAssistantMessage[] = []
+
+      const run = createExecutor(observed).run()
+      const settled = expect(run).rejects.toThrow('429')
+      await jest.runAllTimersAsync()
+      await settled
+
+      expect(mockExecuteSingleTurn).toHaveBeenCalledTimes(4)
+      const last = observed[observed.length - 1]
+      expect(last.metadata?.generationState).toBe('error')
+      expect(last.metadata?.autoRetry).toBeUndefined()
+    })
+
+    it('does not resend once the attempt has shown output', async () => {
+      mockExecuteSingleTurn.mockImplementationOnce(
+        async ({ onStreamDelta }) => {
+          onStreamDelta?.({
+            contentDelta: 'partial',
+            reasoningDelta: '',
+            chunk: contentChunk,
+          })
+          throw rateLimited()
+        },
+      )
+      const observed: ChatAssistantMessage[] = []
+
+      await expect(createExecutor(observed).run()).rejects.toThrow('429')
+      expect(mockExecuteSingleTurn).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not resend refusals that would fail the same way', async () => {
+      mockExecuteSingleTurn.mockRejectedValueOnce(
+        new ProviderRequestError(
+          'provider-1',
+          429,
+          'You exceeded your current quota, please check your billing',
+          new Error('429'),
+        ),
+      )
+      const observed: ChatAssistantMessage[] = []
+
+      await expect(createExecutor(observed).run()).rejects.toThrow('quota')
+      expect(mockExecuteSingleTurn).toHaveBeenCalledTimes(1)
+    })
+
+    it('stops waiting when the run is aborted', async () => {
+      mockExecuteSingleTurn.mockRejectedValue(rateLimited())
+      const controller = new AbortController()
+      const observed: ChatAssistantMessage[] = []
+
+      const run = createExecutor(observed, controller.signal).run()
+      const settled = expect(run).rejects.toThrow('Aborted')
+      await jest.advanceTimersByTimeAsync(0)
+      controller.abort()
+      await settled
+
+      expect(mockExecuteSingleTurn).toHaveBeenCalledTimes(1)
+      const last = observed[observed.length - 1]
+      expect(last.metadata?.generationState).toBe('aborted')
+      expect(last.metadata?.autoRetry).toBeUndefined()
+    })
   })
 })

@@ -1706,6 +1706,7 @@ export type TranslationKeys = {
     regenerate: string
     reasoning: string
     reasonedFor?: string
+    autoRetrying?: string
     annotations: string
     vaultSources?: string
     assistantQuote?: {

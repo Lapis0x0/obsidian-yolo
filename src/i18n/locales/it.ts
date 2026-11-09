@@ -1841,6 +1841,7 @@ export const it: DeepPartial<TranslationKeys> = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     reasonedFor: 'Ha ragionato per {{seconds}} s',
+    autoRetrying: 'Provider occupato, nuovo tentativo ({attempt}/{max})...',
     annotations: 'Annotazioni',
     vaultSources: 'Fonti dal vault ({count})',
     pdfReferenceNoPreview: '(PDF: clicca il titolo per aprire la pagina)',

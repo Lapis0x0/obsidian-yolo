@@ -169,6 +169,12 @@ export type ChatAssistantMessage = {
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
     errorDetail?: ChatErrorDetail
+    /**
+     * Set while the provider has turned the request away (rate limit,
+     * overload) before any output and the turn is waiting to send it again;
+     * cleared once the answer starts or the turn ends.
+     */
+    autoRetry?: { attempt: number; maxAttempts: number }
     llmDebugTraceId?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string

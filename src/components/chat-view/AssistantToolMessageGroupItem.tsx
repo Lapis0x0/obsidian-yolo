@@ -1450,6 +1450,7 @@ function AssistantToolMessageGroupItem({
                           isGenerating={
                             message.metadata?.generationState === 'streaming'
                           }
+                          autoRetry={message.metadata?.autoRetry}
                           hasAnswerContent={message.content.trim().length > 0}
                           generationState={reasoningGenerationState}
                           reasoningDurationMs={

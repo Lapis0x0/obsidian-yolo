@@ -1984,6 +1984,7 @@ export const en: TranslationKeys = {
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
     reasonedFor: 'Thought for {{seconds}}s',
+    autoRetrying: 'Provider busy, retrying ({attempt}/{max})...',
     annotations: 'Annotations',
     vaultSources: 'Vault sources ({count})',
     pdfReferenceNoPreview: '(PDF: click the title to open the page)',

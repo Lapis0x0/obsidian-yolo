@@ -40,7 +40,8 @@ const setUp = (
   mockedExecuteSingleTurn.mockImplementation(async () => {
     llmCalls += 1
     if (llmCalls > 1) {
-      throw new ProviderRequestError('minimax', 529, 'overloaded', null)
+      // A refusal the turn does not retry, so the run fails on this call.
+      throw new ProviderRequestError('minimax', 400, 'invalid request', null)
     }
     onFirstTurn?.(service)
     return {

@@ -167,6 +167,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   conversationId,
   messageId,
   isGenerating = false,
+  autoRetry,
 }: {
   reasoning: string
   hasAnswerContent: boolean
@@ -182,6 +183,8 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   conversationId?: string
   messageId?: string
   isGenerating?: boolean
+  /** 服务端拒绝了请求、正在等待重发时由运行时给出；只影响「请求中」阶段的标签。 */
+  autoRetry?: { attempt: number; maxAttempts: number }
 }) {
   const { t } = useLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
@@ -219,6 +222,14 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   }, [hasAnswerContent, hasReasoningText, isStreaming])
 
   const stageLabel = useMemo(() => {
+    if (stage === 'requesting' && autoRetry) {
+      return t(
+        'chat.autoRetrying',
+        'Provider busy, retrying ({attempt}/{max})...',
+      )
+        .replace('{attempt}', String(autoRetry.attempt))
+        .replace('{max}', String(autoRetry.maxAttempts))
+    }
     if (stage === 'requesting') {
       return t('quickAsk.statusRequesting', 'Requesting...')
     }
@@ -229,7 +240,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       return ''
     }
     return t('chat.reasoning', 'Reasoning')
-  }, [reasoningDurationMs, stage, t])
+  }, [autoRetry, reasoningDurationMs, stage, t])
 
   const isToggleable = hasReasoningText
   const showBody = hasReasoningText && isExpanded

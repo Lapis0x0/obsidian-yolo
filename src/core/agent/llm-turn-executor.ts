@@ -35,10 +35,16 @@ import {
   registerLLMDebugTraceForTurn,
   updateLLMDebugTrace,
 } from '../llm/debugCapture'
+import { classifyProviderError } from '../llm/providerErrorClassification'
 import { ProviderRequestError } from '../llm/providerErrors'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import { fromModelToolName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
+import {
+  type AutomaticRetrySchedule,
+  MAX_AUTOMATIC_RETRIES,
+  getNextAutomaticRetry,
+} from '../retry/limitedAutomaticRetry'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { ChatContextPolicy } from './chat-runtime-profiles'
@@ -214,6 +220,47 @@ export async function prepareTurnRequest(
   return { requestMessages, tools: requestTools }
 }
 
+/** Waits before each resend of a request the provider turned away. */
+const TURN_RETRY_SCHEDULE: AutomaticRetrySchedule = [2_000, 10_000, 30_000]
+
+/**
+ * The provider answered with a refusal that says nothing about the request
+ * itself — rate limited, overloaded, or a server-side failure — so the same
+ * request can succeed later. Billing, auth and context-length refusals would
+ * fail identically and are surfaced at once.
+ */
+const isTransientProviderRejection = (error: unknown): boolean => {
+  const category = classifyProviderError({
+    message: formatErrorMessageWithCauses(error),
+    ...(error instanceof ProviderRequestError
+      ? { status: error.status, responseBody: error.responseBody }
+      : {}),
+  })
+  return category === 'rateLimit' || category === 'server'
+}
+
+const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const createAbortError = () => {
+      const error = new Error('Aborted')
+      error.name = 'AbortError'
+      return error
+    }
+    if (signal?.aborted) {
+      reject(createAbortError())
+      return
+    }
+    const handleAbort = () => {
+      clearTimeout(timer)
+      reject(createAbortError())
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort)
+      resolve()
+    }, delayMs)
+    signal?.addEventListener('abort', handleAbort, { once: true })
+  })
+
 export class AgentLlmTurnExecutor {
   constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
@@ -322,165 +369,210 @@ export class AgentLlmTurnExecutor {
       let recordedFirstToken = false
       /** Runs already placed in the conversation, by run id. */
       const openedToolRuns = new Set<string>()
-      turnResult = await executeSingleTurn({
-        providerClient: this.input.providerClient,
-        model: this.input.model,
-        request: {
-          model: this.input.model.model,
-          messages: requestMessages,
-          temperature: this.input.requestParams?.temperature,
-          top_p: this.input.requestParams?.top_p,
-          max_tokens: this.input.requestParams?.max_tokens,
-          ...(requestReasoning !== undefined
-            ? { reasoningLevel: requestReasoning }
+      const runAttempt = () =>
+        executeSingleTurn({
+          providerClient: this.input.providerClient,
+          model: this.input.model,
+          request: {
+            model: this.input.model.model,
+            messages: requestMessages,
+            temperature: this.input.requestParams?.temperature,
+            top_p: this.input.requestParams?.top_p,
+            max_tokens: this.input.requestParams?.max_tokens,
+            ...(requestReasoning !== undefined
+              ? { reasoningLevel: requestReasoning }
+              : {}),
+          },
+          tools,
+          signal: this.input.abortSignal,
+          deliveryMode,
+          primaryRequestTimeoutMs:
+            this.input.requestParams?.primaryRequestTimeoutMs,
+          streamFallbackRecoveryEnabled:
+            this.input.requestParams?.streamFallbackRecoveryEnabled,
+          geminiTools: this.input.geminiTools,
+          ...(this.input.session ? { session: this.input.session } : {}),
+          ...(this.input.nativeToolPolicy
+            ? { nativeToolPolicy: this.input.nativeToolPolicy }
             : {}),
-        },
-        tools,
-        signal: this.input.abortSignal,
-        deliveryMode,
-        primaryRequestTimeoutMs:
-          this.input.requestParams?.primaryRequestTimeoutMs,
-        streamFallbackRecoveryEnabled:
-          this.input.requestParams?.streamFallbackRecoveryEnabled,
-        geminiTools: this.input.geminiTools,
-        ...(this.input.session ? { session: this.input.session } : {}),
-        ...(this.input.nativeToolPolicy
-          ? { nativeToolPolicy: this.input.nativeToolPolicy }
-          : {}),
-        debugTraceId: debugTrace?.id,
-        onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
-          if (reasoningDelta) reasoningTracker.observeReasoning()
+          debugTraceId: debugTrace?.id,
+          onStreamDelta: ({
+            contentDelta,
+            reasoningDelta,
+            chunk,
+            toolCalls,
+          }) => {
+            if (reasoningDelta) reasoningTracker.observeReasoning()
 
-          let metadata = assistantMessage.metadata
-          if (contentDelta || toolCalls?.length) {
-            const reasoningDurationMs = reasoningTracker.settle()
-            if (reasoningDurationMs !== undefined) {
-              metadata = { ...metadata, reasoningDurationMs }
+            let metadata = assistantMessage.metadata
+            if (metadata?.autoRetry) {
+              metadata = { ...metadata, autoRetry: undefined }
             }
-          }
-          if (
-            !recordedFirstToken &&
-            (Boolean(contentDelta) ||
-              Boolean(reasoningDelta) ||
-              Boolean(toolCalls?.length))
-          ) {
-            recordedFirstToken = true
-            updateLLMDebugTrace(debugTrace?.id, {
-              providerFirstTokenMs: Date.now() - providerStart,
-            })
-          }
-
-          const content = contentDelta
-            ? assistantMessage.content + contentDelta
-            : assistantMessage.content
-
-          const reasoning =
-            reasoningDelta && !preserveInitialReasoning
-              ? `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
-              : assistantMessage.reasoning
-
-          let toolCallRequests = assistantMessage.toolCallRequests
-          if (toolCalls && toolCalls.length > 0) {
-            const streamedToolCallRequests = toolCalls
-              .map((toolCall) => {
-                const name = toolCall.function?.name?.trim()
-                if (!name) {
-                  return null
-                }
-
-                const normalizedName = this.normalizeToolCallName(name)
-
-                return {
-                  id:
-                    toolCall.id ??
-                    `${assistantMessage.id}-stream-tool-${toolCall.index}`,
-                  name: normalizedName,
-                  arguments: toolCall.function?.arguments,
-                  metadata: toolCall.metadata,
-                }
+            if (contentDelta || toolCalls?.length) {
+              const reasoningDurationMs = reasoningTracker.settle()
+              if (reasoningDurationMs !== undefined) {
+                metadata = { ...metadata, reasoningDurationMs }
+              }
+            }
+            if (
+              !recordedFirstToken &&
+              (Boolean(contentDelta) ||
+                Boolean(reasoningDelta) ||
+                Boolean(toolCalls?.length))
+            ) {
+              recordedFirstToken = true
+              updateLLMDebugTrace(debugTrace?.id, {
+                providerFirstTokenMs: Date.now() - providerStart,
               })
-              .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
-                Boolean(toolCall),
-              )
-
-            if (streamedToolCallRequests.length > 0) {
-              toolCallRequests = streamedToolCallRequests
             }
-          }
-          if (chunk.usage) {
-            metadata = { ...metadata, usage: chunk.usage }
-          }
-          if (chunk.choices?.[0]?.delta?.providerMetadata) {
-            metadata = {
-              ...metadata,
-              providerMetadata: chunk.choices[0].delta.providerMetadata,
-            }
-          }
 
-          // Only replace the reference when something actually changed —
-          // an untouched reference tells downstream state layers this
-          // message can be skipped without a deep comparison.
-          if (
-            content !== assistantMessage.content ||
-            reasoning !== assistantMessage.reasoning ||
-            toolCallRequests !== assistantMessage.toolCallRequests ||
-            metadata !== assistantMessage.metadata
-          ) {
+            const content = contentDelta
+              ? assistantMessage.content + contentDelta
+              : assistantMessage.content
+
+            const reasoning =
+              reasoningDelta && !preserveInitialReasoning
+                ? `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+                : assistantMessage.reasoning
+
+            let toolCallRequests = assistantMessage.toolCallRequests
+            if (toolCalls && toolCalls.length > 0) {
+              const streamedToolCallRequests = toolCalls
+                .map((toolCall) => {
+                  const name = toolCall.function?.name?.trim()
+                  if (!name) {
+                    return null
+                  }
+
+                  const normalizedName = this.normalizeToolCallName(name)
+
+                  return {
+                    id:
+                      toolCall.id ??
+                      `${assistantMessage.id}-stream-tool-${toolCall.index}`,
+                    name: normalizedName,
+                    arguments: toolCall.function?.arguments,
+                    metadata: toolCall.metadata,
+                  }
+                })
+                .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+                  Boolean(toolCall),
+                )
+
+              if (streamedToolCallRequests.length > 0) {
+                toolCallRequests = streamedToolCallRequests
+              }
+            }
+            if (chunk.usage) {
+              metadata = { ...metadata, usage: chunk.usage }
+            }
+            if (chunk.choices?.[0]?.delta?.providerMetadata) {
+              metadata = {
+                ...metadata,
+                providerMetadata: chunk.choices[0].delta.providerMetadata,
+              }
+            }
+
+            // Only replace the reference when something actually changed —
+            // an untouched reference tells downstream state layers this
+            // message can be skipped without a deep comparison.
+            if (
+              content !== assistantMessage.content ||
+              reasoning !== assistantMessage.reasoning ||
+              toolCallRequests !== assistantMessage.toolCallRequests ||
+              metadata !== assistantMessage.metadata
+            ) {
+              assistantMessage = {
+                ...assistantMessage,
+                content,
+                reasoning,
+                toolCallRequests,
+                metadata,
+              }
+            }
+            this.input.onAssistantMessage(assistantMessage)
+
+            const toolRun = chunk.choices?.[0]?.delta?.providerToolRun
+            if (!toolRun?.length) return
+            const runId = toolRun[0].id
+            if (openedToolRuns.has(runId)) {
+              // The run is already in place; this only completes its calls.
+              this.input.onProviderToolRun?.(toolRun)
+              return
+            }
+            openedToolRuns.add(runId)
+            // Everything streamed so far is the part of the answer that came
+            // before this run. Seal it, place the run after it, and continue in
+            // a new message — that ordering is the whole point of the run being
+            // a positional signal rather than metadata.
+            producedAssistantOutput ||=
+              assistantMessage.content.trim().length > 0
             assistantMessage = {
               ...assistantMessage,
-              content,
-              reasoning,
-              toolCallRequests,
-              metadata,
+              metadata: {
+                ...assistantMessage.metadata,
+                generationState: 'completed',
+                durationMs: Date.now() - segmentStart,
+                ...(reasoningTracker.settle() !== undefined
+                  ? { reasoningDurationMs: reasoningTracker.durationMs }
+                  : {}),
+              },
             }
-          }
-          this.input.onAssistantMessage(assistantMessage)
-
-          const toolRun = chunk.choices?.[0]?.delta?.providerToolRun
-          if (!toolRun?.length) return
-          const runId = toolRun[0].id
-          if (openedToolRuns.has(runId)) {
-            // The run is already in place; this only completes its calls.
+            segmentStart = Date.now()
+            this.input.onAssistantMessage(assistantMessage)
             this.input.onProviderToolRun?.(toolRun)
-            return
-          }
-          openedToolRuns.add(runId)
-          // Everything streamed so far is the part of the answer that came
-          // before this run. Seal it, place the run after it, and continue in
-          // a new message — that ordering is the whole point of the run being
-          // a positional signal rather than metadata.
-          producedAssistantOutput ||= assistantMessage.content.trim().length > 0
+            splitCount += 1
+            assistantMessage = {
+              role: 'assistant',
+              id: `${assistantMessageId}#${splitCount}`,
+              content: '',
+              metadata: {
+                ...assistantMessage.metadata,
+                generationState: 'streaming',
+                usage: undefined,
+                durationMs: undefined,
+                reasoningDurationMs: undefined,
+                errorMessage: undefined,
+              },
+            }
+            this.input.onAssistantMessage(assistantMessage)
+          },
+        })
+
+      // A provider that turns the request away before answering (rate limit,
+      // overload) is sent the same request again, but only while the attempt
+      // has put nothing in the conversation: once any delta has been shown, a
+      // second attempt would be a different sample stitched onto the first.
+      let retryCount = 0
+      for (;;) {
+        const attemptMessage = assistantMessage
+        try {
+          turnResult = await runAttempt()
+          break
+        } catch (error) {
+          const nextRetry =
+            assistantMessage === attemptMessage &&
+            openedToolRuns.size === 0 &&
+            !this.input.abortSignal?.aborted &&
+            isTransientProviderRejection(error)
+              ? getNextAutomaticRetry(retryCount, TURN_RETRY_SCHEDULE)
+              : null
+          if (!nextRetry) throw error
+          retryCount = nextRetry.retryCount
           assistantMessage = {
             ...assistantMessage,
             metadata: {
               ...assistantMessage.metadata,
-              generationState: 'completed',
-              durationMs: Date.now() - segmentStart,
-              ...(reasoningTracker.settle() !== undefined
-                ? { reasoningDurationMs: reasoningTracker.durationMs }
-                : {}),
-            },
-          }
-          segmentStart = Date.now()
-          this.input.onAssistantMessage(assistantMessage)
-          this.input.onProviderToolRun?.(toolRun)
-          splitCount += 1
-          assistantMessage = {
-            role: 'assistant',
-            id: `${assistantMessageId}#${splitCount}`,
-            content: '',
-            metadata: {
-              ...assistantMessage.metadata,
-              generationState: 'streaming',
-              usage: undefined,
-              durationMs: undefined,
-              reasoningDurationMs: undefined,
-              errorMessage: undefined,
+              autoRetry: {
+                attempt: nextRetry.retryCount,
+                maxAttempts: MAX_AUTOMATIC_RETRIES,
+              },
             },
           }
           this.input.onAssistantMessage(assistantMessage)
-        },
-      })
+          await waitForRetry(nextRetry.delayMs, this.input.abortSignal)
+        }
+      }
       if (!recordedFirstToken) {
         updateLLMDebugTrace(debugTrace?.id, {
           providerFirstTokenMs: Date.now() - providerStart,
@@ -511,6 +603,7 @@ export class AgentLlmTurnExecutor {
           : {}),
         durationMs: Date.now() - segmentStart,
         generationState: isAborted ? ('aborted' as const) : ('error' as const),
+        autoRetry: undefined,
         errorMessage,
         ...(errorDetail ? { errorDetail } : {}),
       }
@@ -571,6 +664,7 @@ export class AgentLlmTurnExecutor {
       generationState: this.input.abortSignal?.aborted
         ? ('aborted' as const)
         : ('completed' as const),
+      autoRetry: undefined,
       providerMetadata: turnResult.providerMetadata,
     }
 
