@@ -214,3 +214,72 @@ describe('summarizeBoard with portals', () => {
     expect(text).toContain('p  board  20,0 10×10  Sub.yoloboard  shown at 0.5×')
   })
 })
+
+describe('summarizeBoard with PDFs', () => {
+  /** A PDF card whose two pages are spread out to the right of each other,
+   * under its title, where a first layout puts them (domain/spread.ts). */
+  function spreadPdf(open: boolean): BoardNode {
+    return {
+      id: 'c-pdf',
+      type: 'file',
+      x: 0,
+      y: 0,
+      w: 390,
+      h: 494,
+      file: 'Papers/paper.pdf',
+      spread: {
+        open,
+        title: { x: 0, y: -45, w: 390, h: 39 },
+        pages: [
+          { x: 0, y: 0, w: 390, h: 494 },
+          { x: 416, y: 0, w: 390, h: 494 },
+        ],
+      },
+      extra: {},
+    }
+  }
+
+  it('says where a spread-out PDF lies, title and pages together', () => {
+    const text = summarizeBoard(boardWith([spreadPdf(true)]), {
+      path: 'b.yoloboard',
+    })
+    expect(text).toContain('c-pdf  pdf  0,0 390×494  Papers/paper.pdf')
+    expect(text).toContain('spread out: 2 pages over 0,-45 806×539')
+  })
+
+  it('says nothing more of a PDF that is put away', () => {
+    const text = summarizeBoard(boardWith([spreadPdf(false)]), {
+      path: 'b.yoloboard',
+    })
+    expect(text).not.toContain('spread out')
+  })
+
+  it('names the page an edge end is on, and says once what that means', () => {
+    const board = boardWith(
+      [spreadPdf(true), text('c-note', 'summary')],
+      [
+        {
+          id: 'e-page',
+          fromNode: 'c-pdf',
+          toNode: 'c-note',
+          fromPage: 2,
+          fromEnd: 'none',
+          toEnd: 'arrow',
+          extra: {},
+        },
+        {
+          id: 'e-whole',
+          fromNode: 'c-note',
+          toNode: 'c-pdf',
+          fromEnd: 'none',
+          toEnd: 'arrow',
+          extra: {},
+        },
+      ],
+    )
+    const summary = summarizeBoard(board, { path: 'b.yoloboard' })
+    expect(summary).toContain('e-page: c-pdf p.2 -> c-note')
+    expect(summary).toContain('e-whole: c-note -> c-pdf')
+    expect(summary).toContain('card p.N is page N of that PDF')
+  })
+})

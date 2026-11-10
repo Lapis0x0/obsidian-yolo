@@ -120,6 +120,16 @@ const connectItem = {
       description:
         'Which side of the target card to arrive at. Omit to let the board choose.',
     },
+    fromPage: {
+      type: 'number',
+      description:
+        'When the source is a PDF card: the page the arrow leaves from, counted from 1. It is drawn from that page while the PDF is spread out, from the card while it is not. Omit to connect the whole document.',
+    },
+    toPage: {
+      type: 'number',
+      description:
+        'When the target is a PDF card: the page the arrow points at, counted from 1. Omit to connect the whole document.',
+    },
   },
   required: ['from', 'to'],
 } as const

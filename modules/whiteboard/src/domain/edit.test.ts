@@ -273,6 +273,87 @@ describe('applyBoardEdit — connect and group', () => {
     ).toMatchObject({ ok: false })
   })
 
+  describe('to a page of a PDF', () => {
+    function pdf(pages?: number): BoardNode {
+      return {
+        id: 'c-pdf',
+        type: 'file',
+        x: 0,
+        y: 0,
+        w: 390,
+        h: 494,
+        file: 'Papers/paper.pdf',
+        ...(pages === undefined
+          ? {}
+          : {
+              spread: {
+                open: true,
+                title: { x: 0, y: -45, w: 390, h: 39 },
+                pages: Array.from({ length: pages }, (_, index) => ({
+                  x: index * 416,
+                  y: 0,
+                  w: 390,
+                  h: 494,
+                })),
+              },
+            }),
+        extra: {},
+      }
+    }
+
+    it('records the page the end is on', () => {
+      const board = boardWith([pdf(), card('c-a', 600, 0)])
+      const result = ok(
+        apply(board, { connect: [{ from: 'c-a', to: 'c-pdf', toPage: 3 }] }),
+      )
+      expect(result.board.edges[0]).toMatchObject({
+        fromNode: 'c-a',
+        toNode: 'c-pdf',
+        toPage: 3,
+      })
+      expect(result.board.edges[0]).not.toHaveProperty('fromPage')
+    })
+
+    it('rejects a page on a card that is not a PDF', () => {
+      const board = boardWith([pdf(), card('c-a', 600, 0)])
+      expect(
+        apply(board, { connect: [{ from: 'c-a', to: 'c-pdf', fromPage: 1 }] }),
+      ).toMatchObject({ ok: false, error: expect.stringContaining('PDF') })
+    })
+
+    it('rejects a page that is not a whole number from 1', () => {
+      const board = boardWith([pdf(), card('c-a', 600, 0)])
+      for (const toPage of [0, 1.5]) {
+        expect(
+          apply(board, { connect: [{ from: 'c-a', to: 'c-pdf', toPage }] }),
+        ).toMatchObject({ ok: false })
+      }
+    })
+
+    it('rejects a page past the end, where the board knows the end', () => {
+      const board = boardWith([pdf(2), card('c-a', 600, 0)])
+      expect(
+        apply(board, { connect: [{ from: 'c-a', to: 'c-pdf', toPage: 3 }] }),
+      ).toMatchObject({ ok: false, error: expect.stringContaining('2 pages') })
+    })
+
+    it('connects two pages of one PDF, but not a page to itself', () => {
+      const board = boardWith([pdf(4)])
+      expect(
+        ok(
+          apply(board, {
+            connect: [{ from: 'c-pdf', to: 'c-pdf', fromPage: 1, toPage: 4 }],
+          }),
+        ).board.edges[0],
+      ).toMatchObject({ fromPage: 1, toPage: 4 })
+      expect(
+        apply(board, {
+          connect: [{ from: 'c-pdf', to: 'c-pdf', fromPage: 2, toPage: 2 }],
+        }),
+      ).toMatchObject({ ok: false })
+    })
+  })
+
   it('frames the cards it groups, behind them', () => {
     const board = boardWith([card('c-a', 0, 0), card('c-b', 200, 0)])
     const result = ok(

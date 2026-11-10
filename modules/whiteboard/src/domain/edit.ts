@@ -48,6 +48,7 @@ import type {
 } from './fileFormat'
 import { isNodeSide } from './fileFormat'
 import { groupRectForNodes } from './groups'
+import { fileNodeKind } from './naming'
 import {
   addEdge,
   addNode,
@@ -130,6 +131,11 @@ export type ConnectOp = Readonly<{
   color?: string
   fromSide?: string
   toSide?: string
+  /** The page of a PDF card that end is on (fileFormat.ts's `fromPage`/
+   * `toPage`): drawn to that page when the PDF is spread out, to its card
+   * when it is not. Absent, the end is on the whole document. */
+  fromPage?: number
+  toPage?: number
 }>
 
 export type GroupOp = Readonly<{
@@ -414,9 +420,17 @@ function applyConnects(
   const ids: EdgeId[] = []
   for (const [index, op] of ops.entries()) {
     const where = `connect[${index}]`
-    requireNode(next, op.from, `${where}.from`)
-    requireNode(next, op.to, `${where}.to`)
-    if (op.from === op.to) fail(`${where}: a card cannot connect to itself.`)
+    const from = requireNode(next, op.from, `${where}.from`)
+    const to = requireNode(next, op.to, `${where}.to`)
+    const fromPage = edgePage(from, op.fromPage, `${where}.fromPage`)
+    const toPage = edgePage(to, op.toPage, `${where}.toPage`)
+    // Two pages of one PDF are two places; the same card twice is not.
+    if (
+      op.from === op.to &&
+      (fromPage === undefined || toPage === undefined || fromPage === toPage)
+    ) {
+      fail(`${where}: a card cannot connect to itself.`)
+    }
     const id = context.newEdgeId(next)
     next = addEdge(next, {
       id,
@@ -432,6 +446,8 @@ function applyConnects(
       ...(op.toSide !== undefined
         ? { toSide: requireSide(op.toSide, `${where}.toSide`) }
         : {}),
+      ...(fromPage !== undefined ? { fromPage } : {}),
+      ...(toPage !== undefined ? { toPage } : {}),
       ...(op.label !== undefined ? { label: op.label } : {}),
       ...colorField(op.color, `${where}.color`),
       extra: {},
@@ -506,6 +522,31 @@ function requireNode(board: Board, id: NodeId, where: string): BoardNode {
   const node = board.nodes.find((candidate) => candidate.id === id)
   if (!node) fail(`${where}: no card with id "${id}".`)
   return node
+}
+
+/**
+ * A connection end's page, checked: only a PDF card has pages, counted from
+ * 1 — and no more than it has, where the board knows how many that is (its
+ * spread has been laid out). One that has never been spread out is taken at
+ * its word; a page past its end would be drawn to its title.
+ */
+function edgePage(
+  node: BoardNode,
+  page: number | undefined,
+  where: string,
+): number | undefined {
+  if (page === undefined) return undefined
+  if (node.type !== 'file' || fileNodeKind(node.file) !== 'pdf') {
+    fail(`${where}: only a PDF card has pages.`)
+  }
+  if (!Number.isInteger(page) || page < 1) {
+    fail(`${where}: a page is a whole number from 1 (got ${String(page)}).`)
+  }
+  const count = node.spread?.pages.length
+  if (count !== undefined && page > count) {
+    fail(`${where}: ${node.file} has ${count} pages (got ${page}).`)
+  }
+  return page
 }
 
 function requireSide(value: string, where: string): NodeSide {

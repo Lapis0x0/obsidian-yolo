@@ -40,6 +40,7 @@ import {
 } from './fileFormat'
 import { nodesInsideGroup } from './groups'
 import { fileNodeKind } from './naming'
+import { expandBoard, isSpreadTitle, spreadPages } from './spread'
 
 /** How much of any card is shown in a board summary. */
 export const CARD_PREVIEW_CHARS = 50
@@ -81,11 +82,20 @@ export function summarizeBoard(
   }
 
   if (cards.length > 0) {
+    const spreads = spreadAreas(board)
     lines.push('', 'cards (id, kind, x,y, w×h)')
     for (const card of cards) {
       lines.push(`  ${cardHeadline(card)}`)
       const body = cardPreview(card, previews)
       if (body) lines.push(`    ${body}`)
+      // What the board shows of an open PDF is not its card's box: said, so
+      // what is put beside it is put beside what is there.
+      const spread = spreads.get(card.id)
+      if (spread) {
+        lines.push(
+          `    spread out: ${plural(spread.pages, 'page')} over ${position(spread.area)} (it folds back to the box above)`,
+        )
+      }
     }
   }
 
@@ -104,9 +114,20 @@ export function summarizeBoard(
         `  (an end written portal${NODE_PATH_SEPARATOR}card is a card on the board behind that board card)`,
       )
     }
+    if (
+      board.edges.some(
+        (edge) => edge.fromPage !== undefined || edge.toPage !== undefined,
+      )
+    ) {
+      lines.push(
+        '  (an end written card p.N is page N of that PDF; without a page it is the whole document)',
+      )
+    }
     for (const edge of board.edges) {
       const label = edge.label ? ` "${edge.label}"` : ''
-      lines.push(`  ${edge.id}: ${edge.fromNode} -> ${edge.toNode}${label}`)
+      lines.push(
+        `  ${edge.id}: ${edgeEnd(edge.fromNode, edge.fromPage)} -> ${edgeEnd(edge.toNode, edge.toPage)}${label}`,
+      )
     }
   }
 
@@ -157,8 +178,57 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-function position(node: BoardNode): string {
-  return `${node.x},${node.y} ${node.w}×${node.h}`
+function position(
+  rect: Readonly<{ x: number; y: number; w: number; h: number }>,
+): string {
+  return `${rect.x},${rect.y} ${rect.w}×${rect.h}`
+}
+
+/** An edge's end: its card, and the page of it when it is a PDF's. */
+function edgeEnd(node: NodeId, page: number | undefined): string {
+  return page === undefined ? node : `${node} p.${page}`
+}
+
+type SpreadArea = Readonly<{
+  pages: number
+  area: Readonly<{ x: number; y: number; w: number; h: number }>
+}>
+
+/**
+ * Where each PDF that is spread out lies, by its id: its title and pages
+ * together, where the board lays them out (domain/spread.ts's
+ * `expandBoard`) — not the folded card's box the file keeps for it, which
+ * is all that is there while the PDF is put away.
+ */
+function spreadAreas(board: Board): ReadonlyMap<NodeId, SpreadArea> {
+  const areas = new Map<NodeId, SpreadArea>()
+  if (
+    !board.nodes.some(
+      (node) => node.type === 'file' && node.spread?.open === true,
+    )
+  ) {
+    return areas
+  }
+  const expanded = expandBoard(board)
+  for (const node of expanded.nodes) {
+    if (!isSpreadTitle(node)) continue
+    const pages = spreadPages(expanded, node.id)
+    const parts = [node, ...pages]
+    const left = Math.min(...parts.map((part) => part.x))
+    const top = Math.min(...parts.map((part) => part.y))
+    const right = Math.max(...parts.map((part) => part.x + part.w))
+    const bottom = Math.max(...parts.map((part) => part.y + part.h))
+    areas.set(node.id, {
+      pages: pages.length,
+      area: {
+        x: Math.round(left),
+        y: Math.round(top),
+        w: Math.round(right - left),
+        h: Math.round(bottom - top),
+      },
+    })
+  }
+  return areas
 }
 
 /**
