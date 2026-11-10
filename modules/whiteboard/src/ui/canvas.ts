@@ -208,8 +208,6 @@ import {
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SCALE_BOUNDS,
-  SPREAD_DEAL_MAX_DELAY_MS,
-  SPREAD_DEAL_STAGGER_MS,
   SPREAD_DEAL_WINDOW_MS,
   SPREAD_SHEET_OF_SELECTED_CLASS,
   SVG_NS,
@@ -260,6 +258,12 @@ import {
 } from './pictures/typesetCards'
 import { TypesetStyle } from './pictures/typesetStyle'
 import { applyColorToElement } from './selectionToolbar'
+import {
+  type SheetMotion,
+  type SpreadMotionDirection,
+  sheetMotion,
+  spreadMotions,
+} from './spreadMotion'
 import { TypesetClient, typesetWorkerSource } from './typesetting/typesetClient'
 
 /**
@@ -304,26 +308,33 @@ const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
  * (`holdFoldedCard`). */
 const FOLD_COVER_CLASS = 'yolo-whiteboard-spread-fold-cover'
 
-/** What a sheet that is its card's page wears while it travels between its
- * place and the card's: drawn over the other sheets, from its top-left. A
- * keyframe's constants, not what moves — `transform` alone does. */
-const OVER_CARD_FRAME = Object.freeze({ transformOrigin: '0 0', zIndex: 1 })
-
 /**
- * The `transform`, from the sheet's top-left (`transformOrigin: '0 0'`), that
- * lays a sheet's element over a folded card's rectangle: its top-left on the
- * card's, as wide as the card. In the element's own units
- * (`nodeElementScale`), which its `transform` is in.
+ * A sheet's motion (./spreadMotion.ts) as the DOM plays it: keyframes for
+ * its element between its place and the card's, and the `transform` it has
+ * at the card's end. In the element's own units (`nodeElementScale`), which
+ * its `transform` is in, and from its top-left; the sheet on top is drawn
+ * over the others. The origin and the stacking are a keyframe's constants,
+ * not what moves — `transform` and `opacity` alone do.
  */
-function overCardTransform(
+function sheetKeyframes(
   el: HTMLElement,
-  sheet: Readonly<{ x: number; y: number; w: number }>,
-  card: Readonly<{ x: number; y: number; w: number }>,
-): string {
+  motion: SheetMotion,
+  direction: SpreadMotionDirection,
+): Readonly<{ keyframes: Keyframe[]; atCard: string }> {
   const scale = nodeElementScale(el)
-  const dx = (card.x - sheet.x) / scale
-  const dy = (card.y - sheet.y) / scale
-  return `translate(${dx}px, ${dy}px) scale(${card.w / sheet.w})`
+  const atCard = `translate(${motion.offset.x / scale}px, ${motion.offset.y / scale}px) scale(${motion.scale})`
+  const frame = (transform: string, opacity: number): Keyframe => ({
+    transformOrigin: '0 0',
+    transform,
+    ...(motion.fade ? { opacity } : {}),
+    ...(motion.onTop ? { zIndex: 1 } : {}),
+  })
+  const home = frame('none', 1)
+  const away = frame(atCard, 0)
+  return {
+    keyframes: direction === 'in' ? [away, home] : [home, away],
+    atCard,
+  }
 }
 
 /**
@@ -3907,47 +3918,35 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * The overview tier's side of a spread being dealt out of its card
-   * (`in`) or gathered back into it (`out`), carried by the canvas
-   * (OverviewLayer's `animate`) by the DOM's rule: the sheet of the page the
-   * card shows travels whole between its place and the card's, drawn over
-   * the others, which come out from under it or go back under it fading, in
-   * page order as they come out. Whether that sheet is there to travel.
+   * The overview tier's side of a spread being dealt out of its card (`in`)
+   * or gathered back into it (`out`): the sheets' motions
+   * (./spreadMotion.ts), carried by the canvas (OverviewLayer's `animate`),
+   * told in the order that draws the one on top last. Whether the page the
+   * card shows was there to travel.
    */
   private animateSpreadOnOverview(
     id: NodeId,
     card: SpreadRect,
     lead: number,
-    direction: 'in' | 'out',
+    direction: SpreadMotionDirection,
   ): boolean {
-    const sheets = spreadPages(this.board, id)
-    const motion = (sheet: (typeof sheets)[number]) => ({
+    let led = false
+    for (const { sheet, motion } of spreadMotions(
+      spreadPages(this.board, id),
+      card,
+      lead,
       direction,
-      offset: { x: card.x - sheet.x, y: card.y - sheet.y },
-      scale: card.w / sheet.w,
-    })
-    const leadSheet = sheets.find((sheet) => sheet.page === lead)
-    for (const sheet of sheets) {
-      if (sheet === leadSheet) continue
+    )) {
+      if (motion.onTop) led = true
       this.overviewLayer?.animate(sheet.id, {
-        ...motion(sheet),
-        delay:
-          direction === 'in'
-            ? Math.min(
-                (sheet.page - 1) * SPREAD_DEAL_STAGGER_MS,
-                SPREAD_DEAL_MAX_DELAY_MS,
-              )
-            : 0,
+        direction,
+        offset: motion.offset,
+        scale: motion.scale,
+        fade: motion.fade,
+        delay: motion.delay,
       })
     }
-    if (!leadSheet) return false
-    // Set last, so it is drawn over the rest.
-    this.overviewLayer?.animate(leadSheet.id, {
-      ...motion(leadSheet),
-      fade: false,
-      delay: 0,
-    })
-    return true
+    return led
   }
 
   private prefersReducedMotion(): boolean {
@@ -3980,12 +3979,9 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * A sheet of the spread just opened, dealt out of the card to its place.
-   * The sheet of the page the card was showing is the card: it leaves at
-   * once from where the card was, whole and on top. The others come out
-   * from under it, fading in, in page order (constants.ts's SPREAD_DEAL_*).
-   * Only `transform` and `opacity` move, as a Web Animation, so nothing is
-   * left on the element.
+   * A sheet of the spread just opened, dealt out of the card to its place by
+   * its motion (./spreadMotion.ts), as it mounts. As a Web Animation, so
+   * nothing is left on the element.
    */
   private playSpreadDeal(id: NodeId): void {
     const deal = this.spreadDeal
@@ -3999,43 +3995,20 @@ export class WhiteboardCanvas {
     if (node?.type !== 'pdf-page' || node.parent !== deal.parent) return
     const el = this.cardRenderer.getRuntime(id)?.el
     if (!el) return
-    const fromCard = overCardTransform(el, node, deal.card)
-    const options: KeyframeAnimationOptions = {
+    const motion = sheetMotion(node, deal.card, deal.lead, 'in')
+    el.animate(sheetKeyframes(el, motion, 'in').keyframes, {
       duration: ARRANGE_ANIMATION_MS,
       easing: ARRANGE_ANIMATION_EASING,
+      delay: motion.delay,
       fill: 'backwards',
-    }
-    if (node.page === deal.lead) {
-      el.animate(
-        [
-          { ...OVER_CARD_FRAME, transform: fromCard },
-          { ...OVER_CARD_FRAME, transform: 'none' },
-        ],
-        options,
-      )
-      return
-    }
-    el.animate(
-      [
-        { transformOrigin: '0 0', transform: fromCard, opacity: 0 },
-        { transformOrigin: '0 0', transform: 'none', opacity: 1 },
-      ],
-      {
-        ...options,
-        delay: Math.min(
-          (node.page - 1) * SPREAD_DEAL_STAGGER_MS,
-          SPREAD_DEAL_MAX_DELAY_MS,
-        ),
-      },
-    )
+    })
   }
 
   /**
-   * Closes a spread the way it opened, backwards. The sheet of the page the
-   * card will show (`firstPage`) is the card: wherever it was put, it goes
-   * back to where the card comes back to (under the title), whole and on
-   * top, and is made as wide as the card. The others on screen go there too
-   * under it, and fade. Only then is the spread closed — and a copy of that
+   * Closes a spread the way it opened, backwards: the sheets on screen go
+   * back to where the card comes back to (under the title) by their motions
+   * (./spreadMotion.ts) — the page the card will show whole and on top,
+   * wherever it was put. Only then is the spread closed — and a copy of that
    * sheet is held over the card until its reader has drawn
    * (`holdFoldedCard`), so the page stays the same piece of paper from
    * start to end. A second ask while they travel is the same ask, and is let
@@ -4089,26 +4062,16 @@ export class WhiteboardCanvas {
       for (const sheet of spreadPages(this.board, id)) {
         const el = this.cardRenderer.getRuntime(sheet.id)?.el
         if (!el) continue
-        const toCard = overCardTransform(el, sheet, card)
-        const isLead = sheet.page === lead
-        if (isLead) leadSheet = { el, transform: toCard }
+        const motion = sheetMotion(sheet, card, lead, 'out')
+        const { keyframes, atCard } = sheetKeyframes(el, motion, 'out')
+        if (motion.onTop) leadSheet = { el, transform: atCard }
         gathering.push(
-          el.animate(
-            isLead
-              ? [
-                  { ...OVER_CARD_FRAME, transform: 'none' },
-                  { ...OVER_CARD_FRAME, transform: toCard },
-                ]
-              : [
-                  { transformOrigin: '0 0', transform: 'none', opacity: 1 },
-                  { transformOrigin: '0 0', transform: toCard, opacity: 0 },
-                ],
-            {
-              duration: ARRANGE_ANIMATION_MS,
-              easing: ARRANGE_ANIMATION_EASING,
-              fill: 'forwards',
-            },
-          ),
+          el.animate(keyframes, {
+            duration: ARRANGE_ANIMATION_MS,
+            easing: ARRANGE_ANIMATION_EASING,
+            delay: motion.delay,
+            fill: 'forwards',
+          }),
         )
       }
     }
