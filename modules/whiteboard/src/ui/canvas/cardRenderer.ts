@@ -44,6 +44,7 @@ import {
 import { type PdfPageLabels, nodeTitleText } from '../lod'
 import type { PdfDrawQueue } from '../pdf/drawQueue'
 import {
+  type PagePicture,
   PdfReader,
   type ReaderAnnotationEvents,
   type ReaderPassageMark,
@@ -258,8 +259,12 @@ export type CardRendererCallbacks = Readonly<{
    * pages are drawn in. */
   drawPriority: (id: NodeId) => number
   /** The small picture standing for a card (../pictures/pictures.ts) — for
-   * a PDF card, the one of its page `page` — or null while it has none. */
-  picture: (id: NodeId, page?: number) => ImageBitmap | null
+   * a PDF card, the one of its page `page`, or a sharp one handed over from
+   * where the page was just shown — or null while it has none. */
+  picture: (id: NodeId, page?: number) => PagePicture | null
+  /** A PDF card's or sheet's reader shows every page in view in its own
+   * picture now (PdfReader's `onDrawn`). */
+  onPdfDrawn: (id: NodeId) => void
   /** Whether the board draws the card's content itself, under the world —
    * the GPU scene (../gpu/gpuBoard.ts) — and can go on doing so until its
    * DOM has its content. */
@@ -819,6 +824,18 @@ export class CardRenderer {
       '--yolo-whiteboard-title-line-max-width',
       `${this.callbacks.spreadTitleMaxWidth(id)}px`,
     )
+  }
+
+  /** A copy of the picture a mounted PDF card or sheet shows `page` with
+   * (PdfReader's `copyPicture`), or null when it has none of its own. */
+  copyPdfPicture(id: NodeId, page: number): HTMLCanvasElement | null {
+    return this.runtimeByNodeId.get(id)?.pdfReader?.copyPicture(page) ?? null
+  }
+
+  /** Whether a mounted PDF card's reader already shows every page in view
+   * in its own picture (PdfReader's `drawn`). */
+  pdfDrawn(id: NodeId): boolean {
+    return this.runtimeByNodeId.get(id)?.pdfReader?.drawn === true
   }
 
   /** Every PDF card marks its passages again (`passageMarks`). */
@@ -1624,6 +1641,7 @@ export class CardRenderer {
       drawQueue: this.callbacks.pdfDraws,
       drawPriority: () => this.callbacks.drawPriority(id),
       placeholder: (page) => this.callbacks.picture(id, page),
+      onDrawn: () => this.callbacks.onPdfDrawn(id),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
       onPassagesMove: () => this.callbacks.onPassagesMove(id),
@@ -1952,7 +1970,7 @@ export class CardRenderer {
    */
   private showPictureUntil(
     bodyEl: HTMLElement,
-    picture: ImageBitmap,
+    picture: PagePicture,
     ready: Promise<unknown>,
   ): void {
     const canvas = bodyEl.ownerDocument.createElement('canvas')

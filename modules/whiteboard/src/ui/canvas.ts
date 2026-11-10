@@ -49,6 +49,7 @@ import {
   type NodeColor,
   type NodeId,
   type PortalView,
+  type SpreadRect,
   emptyBoard,
   isPlainText,
   parseBoard,
@@ -112,6 +113,7 @@ import {
   layoutSpreadGrid,
   nodesToDelete,
   openSpread,
+  pdfPageNodeId,
   reflowSpread,
   scaleSpread,
   spreadPages,
@@ -189,6 +191,7 @@ import {
   CONTENT_BUILD_START_CAP_PER_FRAME,
   EDGE_HIDDEN_CLASS,
   FIT_CAMERA_PADDING_PX,
+  FOLD_COVER_MAX_MS,
   FRAME_ON_TIME_PERIODS,
   GRID_WORLD_STEP_PX,
   GROUP_LABEL_WORLD_FONT_PX,
@@ -223,7 +226,7 @@ import {
   placeDrawnLines,
   placeDrawnPassage,
 } from './gpu/passages'
-import { pageOfKey } from './gpu/pdfCards'
+import { firstPage, pageOfKey } from './gpu/pdfCards'
 import { checkTypeset, showTypeset } from './gpu/typesetCheck'
 import { type PdfPageLabels, blockStartLine, nextOverviewState } from './lod'
 import type { PageFrame } from './pdf/annotationGeometry'
@@ -297,6 +300,60 @@ const NO_PINS: ReadonlySet<NodeId> = new Set()
 const ROOT_CLASS = 'yolo-whiteboard-root'
 /** On every sheet of the spread whose title is under the pointer. */
 const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
+/** On the copy of a sheet held over the card it went back into
+ * (`holdFoldedCard`). */
+const FOLD_COVER_CLASS = 'yolo-whiteboard-spread-fold-cover'
+
+/** What a sheet that is its card's page wears while it travels between its
+ * place and the card's: drawn over the other sheets, from its top-left. A
+ * keyframe's constants, not what moves — `transform` alone does. */
+const OVER_CARD_FRAME = Object.freeze({ transformOrigin: '0 0', zIndex: 1 })
+
+/**
+ * The `transform`, from the sheet's top-left (`transformOrigin: '0 0'`), that
+ * lays a sheet's element over a folded card's rectangle: its top-left on the
+ * card's, as wide as the card. In the element's own units
+ * (`nodeElementScale`), which its `transform` is in.
+ */
+function overCardTransform(
+  el: HTMLElement,
+  sheet: Readonly<{ x: number; y: number; w: number }>,
+  card: Readonly<{ x: number; y: number; w: number }>,
+): string {
+  const scale = nodeElementScale(el)
+  const dx = (card.x - sheet.x) / scale
+  const dy = (card.y - sheet.y) / scale
+  return `translate(${dx}px, ${dy}px) scale(${card.w / sheet.w})`
+}
+
+/**
+ * A copy of a sheet's element as it stands at `transform` — its pictures
+ * copied in, since a cloned canvas is blank — that is no card: nothing finds
+ * it by id, points at it or lights it up with its spread.
+ */
+function foldCoverOf(el: HTMLElement, transform: string): HTMLElement {
+  const cover = el.cloneNode(true) as HTMLElement
+  const sources = el.querySelectorAll('canvas')
+  cover.querySelectorAll('canvas').forEach((copy, index) => {
+    const source = sources[index]
+    if (!source || source.width === 0 || source.height === 0) return
+    copy.width = source.width
+    copy.height = source.height
+    copy.getContext('2d')?.drawImage(source, 0, 0)
+  })
+  cover.removeAttribute('data-node-id')
+  cover.querySelectorAll('[data-node-id]').forEach((inner) => {
+    inner.removeAttribute('data-node-id')
+  })
+  cover.classList.remove(
+    CARD_SELECTED_CLASS,
+    SPREAD_SIBLING_CLASS,
+    SPREAD_SHEET_OF_SELECTED_CLASS,
+  )
+  cover.classList.add(FOLD_COVER_CLASS)
+  cover.style.transform = transform
+  return cover
+}
 /** Height over width of the widest page a folded PDF card is expected to
  * show: a landscape A4's. It decides how many of its pages get thumbnails. */
 const FOLDED_PAGE_MIN_ASPECT = 0.7
@@ -432,14 +489,29 @@ export class WhiteboardCanvas {
   private pendingEdit: Readonly<{ id: NodeId; until: number }> | null = null
   /** The spread whose title the pointer is on (`syncSpreadHover`). */
   private hoveredSpreadId: NodeId | null = null
-  /** The spread being dealt out of its card's corner — see `playSpreadDeal`. */
+  /** The spread being dealt out of its card — see `playSpreadDeal`. */
   private spreadDeal: Readonly<{
     parent: NodeId
-    origin: Readonly<{ x: number; y: number }>
+    /** The folded card's rectangle, which every sheet leaves from. */
+    card: SpreadRect
+    /** The page the card was showing (`leadPageOf`): its sheet is the card,
+     * and the others come out from under it. */
+    lead: number
     startedAt: number
   }> | null = null
   /** Spreads whose sheets are being gathered back before they close. */
   private readonly spreadsFolding = new Set<NodeId>()
+  /** A sheet's sharp picture of its page, copied from the card it is being
+   * dealt out of, for its reader to show until it has drawn its own — so the
+   * page the card was showing does not go soft as it becomes a sheet. */
+  private readonly spreadHandoffPictures = new Map<NodeId, HTMLCanvasElement>()
+  /** A copy of the sheet that just became a folded card, laid over the card
+   * until its reader has drawn (`holdFoldedCard`) — so the page does not go
+   * blank, then soft, as the card mounts and opens its file. */
+  private readonly foldCovers = new Map<
+    NodeId,
+    Readonly<{ cover: HTMLElement; timer: number }>
+  >()
 
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
@@ -1707,6 +1779,9 @@ export class WhiteboardCanvas {
     this.nearImages = null
     this.spreadFrame?.destroy()
     this.spreadFrame = null
+    this.spreadHandoffPictures.clear()
+    for (const id of [...this.foldCovers.keys()])
+      this.releaseFoldedCard(id, true)
     this.passagePoints?.destroy()
     this.passagePoints = null
     this.passageHandles?.destroy()
@@ -2326,8 +2401,15 @@ export class WhiteboardCanvas {
       pdfDraws: this.pdfDraws,
       drawPriority: (id) => this.distanceFromViewCenter(id),
       picture: (id, page) => {
+        const handed = this.spreadHandoffPictures.get(id)
+        if (handed) return handed
         const node = this.nodesById.get(id)
         return node ? this.pictureOf(node, false, page) : null
+      },
+      onPdfDrawn: (id) => {
+        // Shown in its own picture now: what was held for it can go.
+        this.spreadHandoffPictures.delete(id)
+        this.releaseFoldedCard(id)
       },
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
@@ -3781,6 +3863,9 @@ export class WhiteboardCanvas {
       return
     }
     if (!node || !isPdfNode(node)) return
+    // Opened again before its card had drawn: the copy over it is not of
+    // anything there any more.
+    this.releaseFoldedCard(id, true)
     if (node.spread) {
       this.beginSpreadDeal(id, node)
       this.commitSpreadToggle(id, openSpread(this.board, id))
@@ -3818,16 +3903,51 @@ export class WhiteboardCanvas {
     const deal = this.spreadDeal
     if (!this.overview || !deal || deal.parent !== id) return
     this.spreadDeal = null
-    for (const sheet of spreadPages(this.board, id)) {
+    this.animateSpreadOnOverview(id, deal.card, deal.lead, 'in')
+  }
+
+  /**
+   * The overview tier's side of a spread being dealt out of its card
+   * (`in`) or gathered back into it (`out`), carried by the canvas
+   * (OverviewLayer's `animate`) by the DOM's rule: the sheet of the page the
+   * card shows travels whole between its place and the card's, drawn over
+   * the others, which come out from under it or go back under it fading, in
+   * page order as they come out. Whether that sheet is there to travel.
+   */
+  private animateSpreadOnOverview(
+    id: NodeId,
+    card: SpreadRect,
+    lead: number,
+    direction: 'in' | 'out',
+  ): boolean {
+    const sheets = spreadPages(this.board, id)
+    const motion = (sheet: (typeof sheets)[number]) => ({
+      direction,
+      offset: { x: card.x - sheet.x, y: card.y - sheet.y },
+      scale: card.w / sheet.w,
+    })
+    const leadSheet = sheets.find((sheet) => sheet.page === lead)
+    for (const sheet of sheets) {
+      if (sheet === leadSheet) continue
       this.overviewLayer?.animate(sheet.id, {
-        direction: 'in',
-        offset: { x: deal.origin.x - sheet.x, y: deal.origin.y - sheet.y },
-        delay: Math.min(
-          (sheet.page - 1) * SPREAD_DEAL_STAGGER_MS,
-          SPREAD_DEAL_MAX_DELAY_MS,
-        ),
+        ...motion(sheet),
+        delay:
+          direction === 'in'
+            ? Math.min(
+                (sheet.page - 1) * SPREAD_DEAL_STAGGER_MS,
+                SPREAD_DEAL_MAX_DELAY_MS,
+              )
+            : 0,
       })
     }
+    if (!leadSheet) return false
+    // Set last, so it is drawn over the rest.
+    this.overviewLayer?.animate(leadSheet.id, {
+      ...motion(leadSheet),
+      fade: false,
+      delay: 0,
+    })
+    return true
   }
 
   private prefersReducedMotion(): boolean {
@@ -3839,24 +3959,33 @@ export class WhiteboardCanvas {
   }
 
   /** Arms the deal for a spread about to open from `card`: its sheets will
-   * leave the card's corner as they mount (`playSpreadDeal`), or, in the
-   * overview tier where nothing mounts, as the canvas draws them
-   * (`dealOnOverview`). */
+   * leave the card as they mount (`playSpreadDeal`), or, in the overview
+   * tier where nothing mounts, as the canvas draws them (`dealOnOverview`).
+   *
+   * The page the card shows is the card: its sheet is handed the card's
+   * sharp picture of it, so it does not go soft for the moment between the
+   * card going and the sheet drawing its own — with or without the motion. */
   private beginSpreadDeal(id: NodeId, card: BoardNode): void {
+    const lead = firstPage(card)?.page ?? 1
+    const sharp = this.cardRenderer.copyPdfPicture(id, lead)
+    if (sharp) this.spreadHandoffPictures.set(pdfPageNodeId(id, lead), sharp)
     this.spreadDeal = this.prefersReducedMotion()
       ? null
       : {
           parent: id,
-          origin: { x: card.x, y: card.y },
+          card: { x: card.x, y: card.y, w: card.w, h: card.h },
+          lead,
           startedAt: this.context.getWindow().performance.now(),
         }
   }
 
   /**
-   * A sheet of the spread just opened, dealt from the card's corner to its
-   * place: the page is seen coming out of the card it was in. Page order
-   * sets when it leaves (constants.ts's SPREAD_DEAL_*). Only `transform` and
-   * `opacity`, as a Web Animation, so nothing is left on the element.
+   * A sheet of the spread just opened, dealt out of the card to its place.
+   * The sheet of the page the card was showing is the card: it leaves at
+   * once from where the card was, whole and on top. The others come out
+   * from under it, fading in, in page order (constants.ts's SPREAD_DEAL_*).
+   * Only `transform` and `opacity` move, as a Web Animation, so nothing is
+   * left on the element.
    */
   private playSpreadDeal(id: NodeId): void {
     const deal = this.spreadDeal
@@ -3870,52 +3999,68 @@ export class WhiteboardCanvas {
     if (node?.type !== 'pdf-page' || node.parent !== deal.parent) return
     const el = this.cardRenderer.getRuntime(id)?.el
     if (!el) return
-    // In the sheet's own units (`nodeElementScale`), which its `transform`
-    // is in.
-    const scale = nodeElementScale(el)
-    const dx = (deal.origin.x - node.x) / scale
-    const dy = (deal.origin.y - node.y) / scale
+    const fromCard = overCardTransform(el, node, deal.card)
+    const options: KeyframeAnimationOptions = {
+      duration: ARRANGE_ANIMATION_MS,
+      easing: ARRANGE_ANIMATION_EASING,
+      fill: 'backwards',
+    }
+    if (node.page === deal.lead) {
+      el.animate(
+        [
+          { ...OVER_CARD_FRAME, transform: fromCard },
+          { ...OVER_CARD_FRAME, transform: 'none' },
+        ],
+        options,
+      )
+      return
+    }
     el.animate(
       [
-        { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 },
-        { transform: 'none', opacity: 1 },
+        { transformOrigin: '0 0', transform: fromCard, opacity: 0 },
+        { transformOrigin: '0 0', transform: 'none', opacity: 1 },
       ],
       {
-        duration: ARRANGE_ANIMATION_MS,
-        easing: ARRANGE_ANIMATION_EASING,
+        ...options,
         delay: Math.min(
           (node.page - 1) * SPREAD_DEAL_STAGGER_MS,
           SPREAD_DEAL_MAX_DELAY_MS,
         ),
-        fill: 'backwards',
       },
     )
   }
 
   /**
-   * Closes a spread the way it opened, backwards: the sheets on screen slide
-   * into the corner the card comes back to (under the title, where the first
-   * page is) and fade, and only then is the spread closed and the card faded
-   * in where they went. A second ask while they travel is the
-   * same ask, and is let go.
+   * Closes a spread the way it opened, backwards. The sheet of the page the
+   * card will show (`firstPage`) is the card: wherever it was put, it goes
+   * back to where the card comes back to (under the title), whole and on
+   * top, and is made as wide as the card. The others on screen go there too
+   * under it, and fade. Only then is the spread closed — and a copy of that
+   * sheet is held over the card until its reader has drawn
+   * (`holdFoldedCard`), so the page stays the same piece of paper from
+   * start to end. A second ask while they travel is the same ask, and is let
+   * go.
    */
   private async foldSpreadAway(id: NodeId): Promise<void> {
     if (this.spreadsFolding.has(id)) return
     const title = this.nodesById.get(id)
     if (!title) return
     const corner = foldedCardOrigin(title)
+    const reader = title.type === 'file' ? title.readerRect : undefined
+    const card: SpreadRect = {
+      ...corner,
+      w: reader?.w ?? title.w,
+      h: reader?.h ?? title.h,
+    }
+    const lead = firstPage(title)?.page ?? 1
+    let leadSheet: Readonly<{ el: HTMLElement; transform: string }> | null =
+      null
     const gathering: Animation[] = []
     const onOverview = this.overview && !this.prefersReducedMotion()
     if (onOverview) {
       // No elements to animate: the canvas gathers the sheets instead, and
       // the spread closes when they have arrived.
-      for (const sheet of spreadPages(this.board, id)) {
-        this.overviewLayer?.animate(sheet.id, {
-          direction: 'out',
-          offset: { x: corner.x - sheet.x, y: corner.y - sheet.y },
-          delay: 0,
-        })
-      }
+      const led = this.animateSpreadOnOverview(id, card, lead, 'out')
       this.spreadsFolding.add(id)
       await new Promise((resolve) =>
         this.context.getWindow().setTimeout(resolve, ARRANGE_ANIMATION_MS),
@@ -3928,26 +4073,36 @@ export class WhiteboardCanvas {
         return
       }
       this.commitSpreadToggle(id, closeSpread(this.board, id))
-      this.overviewLayer?.animate(id, {
-        direction: 'in',
-        offset: { x: 0, y: 0 },
-        delay: 0,
-      })
+      // The sheet that came back whole is where the card is drawn now, at
+      // its width: the card simply takes its place. Without one, the card
+      // fades in where the others went.
+      if (!led) {
+        this.overviewLayer?.animate(id, {
+          direction: 'in',
+          offset: { x: 0, y: 0 },
+          delay: 0,
+        })
+      }
       return
     }
     if (!this.prefersReducedMotion()) {
       for (const sheet of spreadPages(this.board, id)) {
         const el = this.cardRenderer.getRuntime(sheet.id)?.el
         if (!el) continue
-        const scale = nodeElementScale(el)
-        const dx = (corner.x - sheet.x) / scale
-        const dy = (corner.y - sheet.y) / scale
+        const toCard = overCardTransform(el, sheet, card)
+        const isLead = sheet.page === lead
+        if (isLead) leadSheet = { el, transform: toCard }
         gathering.push(
           el.animate(
-            [
-              { transform: 'none', opacity: 1 },
-              { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 },
-            ],
+            isLead
+              ? [
+                  { ...OVER_CARD_FRAME, transform: 'none' },
+                  { ...OVER_CARD_FRAME, transform: toCard },
+                ]
+              : [
+                  { transformOrigin: '0 0', transform: 'none', opacity: 1 },
+                  { transformOrigin: '0 0', transform: toCard, opacity: 0 },
+                ],
             {
               duration: ARRANGE_ANIMATION_MS,
               easing: ARRANGE_ANIMATION_EASING,
@@ -3970,7 +4125,20 @@ export class WhiteboardCanvas {
       for (const animation of gathering) animation.cancel()
       return
     }
+    // Copied, and put beside it in the world, while the sheet is still there:
+    // it goes with the spread.
+    const cover =
+      leadSheet && leadSheet.el.isConnected
+        ? foldCoverOf(leadSheet.el, leadSheet.transform)
+        : null
+    if (cover) leadSheet?.el.after(cover)
     this.commitSpreadToggle(id, closeSpread(this.board, id))
+    if (cover) {
+      this.holdFoldedCard(id, cover)
+      return
+    }
+    // The page the card shows was not on screen to become it: the card
+    // fades in where the others went.
     if (gathering.length === 0) return
     this.cardRenderer
       .getRuntime(id)
@@ -3978,6 +4146,48 @@ export class WhiteboardCanvas {
         duration: ARRANGE_ANIMATION_MS,
         easing: ARRANGE_ANIMATION_EASING,
       })
+  }
+
+  /**
+   * Keeps `cover` — a copy of the sheet that just went back into its card,
+   * already in the world where the sheet ended — over the folded card until
+   * the card's reader shows the pages it opens on in its own pictures
+   * (`releaseFoldedCard`, from the reader's `onDrawn`). A card mounting is a body with nothing in it, then a file
+   * being opened, then pages standing in for themselves until they are
+   * drawn; under the copy none of that is seen. Given up on after
+   * FOLD_COVER_MAX_MS, so a card that cannot draw is never hidden for long.
+   */
+  private holdFoldedCard(id: NodeId, cover: HTMLElement): void {
+    this.releaseFoldedCard(id, true)
+    const timer = this.context
+      .getWindow()
+      .setTimeout(() => this.releaseFoldedCard(id), FOLD_COVER_MAX_MS)
+    this.foldCovers.set(id, { cover, timer })
+    if (this.cardRenderer.pdfDrawn(id)) this.releaseFoldedCard(id)
+  }
+
+  /** Takes the copy held over a folded card away (`holdFoldedCard`): faded
+   * out, since the card under it may show its page from a little further
+   * down than the sheet did, or `now` when there is nothing left to show it
+   * over. */
+  private releaseFoldedCard(id: NodeId, now = false): void {
+    const held = this.foldCovers.get(id)
+    if (!held) return
+    this.foldCovers.delete(id)
+    this.context.getWindow().clearTimeout(held.timer)
+    const { cover } = held
+    if (now || this.prefersReducedMotion()) {
+      cover.remove()
+      return
+    }
+    const remove = () => cover.remove()
+    void cover
+      .animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: ARRANGE_ANIMATION_MS,
+        easing: ARRANGE_ANIMATION_EASING,
+        fill: 'forwards',
+      })
+      .finished.then(remove, remove)
   }
 
   /**

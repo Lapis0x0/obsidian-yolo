@@ -122,9 +122,14 @@ export type PdfReaderOptions = Readonly<{
   drawQueue?: PdfDrawQueue
   /** Where this reader stands in `drawQueue`: lower goes first. */
   drawPriority?: () => number
-  /** A small picture of a page (../pictures/pdfPages.ts), shown until the page's
-   * own is drawn; null when there is none yet. */
-  placeholder?: (page: number) => ImageBitmap | null
+  /** A picture of a page shown until the page's own is drawn — its small
+   * one (../pictures/pdfPages.ts), or a sharp one another reader of the same
+   * page handed over (`copyPicture`); null when there is none yet. */
+  placeholder?: (page: number) => PagePicture | null
+  /** Called once, the first time every page in view shows its own picture
+   * in full — no stand-in, no fade still running: whatever was laid over
+   * the reader until it could show itself may go. */
+  onDrawn?: () => void
   /** Called when the reading position changes — by scrolling, a page jump,
    * a search hit, or a relayout that moved the column under it. Not called
    * for a `setPosition`. */
@@ -221,6 +226,9 @@ const KEEP_OVERSCAN_VIEWPORTS = 2
 /** Draws one reader may have running at once. The engine renders on the main
  * thread in slices; more than two at a time only interleaves them. */
 const MAX_DRAWS_IN_FLIGHT = 2
+
+/** What a page can be shown with before its own picture is drawn. */
+export type PagePicture = ImageBitmap | HTMLCanvasElement
 
 const READER_CLASS = 'yolo-whiteboard-pdf-reader'
 const SCROLLER_CLASS = 'yolo-whiteboard-pdf-scroller'
@@ -419,6 +427,8 @@ export class PdfReader {
   private drawsInFlight = 0
   private failed = false
   private destroyed = false
+  /** `onDrawn` has been called. */
+  private drawnReported = false
 
   private readonly store: AnnotationStore | null
   private unsubscribeAnnotations: (() => void) | null = null
@@ -803,6 +813,28 @@ export class PdfReader {
     return marks
       ? Array.from(marks.querySelectorAll<HTMLElement>(`.${NOTE_CLASS}`))
       : []
+  }
+
+  /** Whether every page in view has shown its own picture (`onDrawn`). */
+  get drawn(): boolean {
+    return this.drawnReported
+  }
+
+  /** A copy of the picture `page` is drawn with, at the density it was
+   * drawn at — for another reader of the page to show until it has drawn
+   * its own (`placeholder`) — or null when the page has no picture of its
+   * own here. */
+  copyPicture(page: number): HTMLCanvasElement | null {
+    const slot = this.slots.find((candidate) => candidate.number === page)
+    const source = slot?.canvas
+    if (!slot || !source || slot.drawnRatio === 0 || source.width === 0) {
+      return null
+    }
+    const copy = this.rootEl.ownerDocument.createElement('canvas')
+    copy.width = source.width
+    copy.height = source.height
+    copy.getContext('2d')?.drawImage(source, 0, 0)
+    return copy
   }
 
   /** A copy of the page picture under `rect` (client pixels), no wider than
@@ -1624,6 +1656,26 @@ export class PdfReader {
     // that is pending (a page loading, a draw running) schedules the next pass
     // itself when it lands.
     if (deferred) this.schedule()
+    this.reportIfDrawn()
+  }
+
+  /** Calls `onDrawn` once every page in view shows its own picture, its
+   * fade over what stood in for it over. Asked after every pass and when a
+   * fade ends — the two moments it can become true. */
+  private reportIfDrawn(): void {
+    if (this.drawnReported || !this.options.onDrawn) return
+    const layout = this.layout
+    const height = this.scrollerSize?.height ?? 0
+    if (!layout || !(height > 0)) return
+    const scrollTop = this.sheet !== null ? 0 : this.scrollerEl.scrollTop
+    const shown = pagesInBand(layout, scrollTop, height, 0)
+    if (!shown) return
+    for (let index = shown.first; index <= shown.last; index += 1) {
+      const slot = this.slots[index]
+      if (!slot || slot.drawnRatio === 0 || slot.fadingOut) return
+    }
+    this.drawnReported = true
+    this.options.onDrawn()
   }
 
   private mayStartWork(): boolean {
@@ -1823,7 +1875,9 @@ export class PdfReader {
     slot.fadingOut = old
     canvas.classList.add(CANVAS_FADE_IN_CLASS)
     const end = () => {
-      if (slot.canvas === canvas) this.endFade(slot)
+      if (slot.canvas !== canvas) return
+      this.endFade(slot)
+      this.reportIfDrawn()
     }
     canvas.addEventListener('animationend', end, { once: true })
     canvas.addEventListener('animationcancel', end, { once: true })

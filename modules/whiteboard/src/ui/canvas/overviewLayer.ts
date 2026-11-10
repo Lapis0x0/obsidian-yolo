@@ -270,6 +270,8 @@ export class OverviewLayer {
       direction: 'in' | 'out'
       offset: Readonly<{ x: number; y: number }>
       delay: number
+      scale?: number
+      fade?: boolean
       start: number
     }>
   >()
@@ -691,7 +693,12 @@ export class OverviewLayer {
    * a PDF spread being dealt out or gathered back (canvas.ts). The DOM tiers
    * do this with Web Animations on the elements; here there are no elements,
    * so the canvas carries the motion and redraws every frame until it ends.
-   * A card that has gone out stays unseen until it leaves the board.
+   *
+   * At the `offset` end it is `scale` times its size, from its top-left. A
+   * motion with `fade: false` keeps the card whole throughout — the sheet a
+   * folded card is the page of. The last card set moving is drawn over the
+   * others. A card that has gone out stays where it went — unseen, or whole
+   * if it does not fade — until it leaves the board.
    */
   animate(
     id: NodeId,
@@ -699,9 +706,13 @@ export class OverviewLayer {
       direction: 'in' | 'out'
       offset: Readonly<{ x: number; y: number }>
       delay: number
+      scale?: number
+      fade?: boolean
     }>,
   ): void {
     if (!this.active) return
+    // Drawn in the order set: taken out first, so it goes on top.
+    this.motions.delete(id)
     this.motions.set(id, {
       ...motion,
       start: this.context.getWindow().performance.now(),
@@ -744,12 +755,13 @@ export class OverviewLayer {
       // of the start, settling into the end.
       const eased = 1 - (1 - t) ** 4
       const away = motion.direction === 'in' ? 1 - eased : eased
-      const alpha = 1 - away
+      const alpha = motion.fade === false ? 1 : 1 - away
       if (alpha <= 0) continue
+      const size = 1 + ((motion.scale ?? 1) - 1) * away
       const x = (node.x + motion.offset.x * away) * view.scale + view.tx
       const y = (node.y + motion.offset.y * away) * view.scale + view.ty
-      const w = node.w * view.scale
-      const h = node.h * view.scale
+      const w = node.w * size * view.scale
+      const h = node.h * size * view.scale
       ctx.globalAlpha = alpha
       ctx.fillStyle = palette.background
       ctx.fillRect(x, y, w, h)

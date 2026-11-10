@@ -71,6 +71,21 @@
     color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 }
 
+/* The copy of the sheet that just went back into its card, held over the
+ * card until it has drawn (canvas.ts's `holdFoldedCard`): a picture, not a
+ * card. Over the card that mounts after it, laid where the sheet ended (its
+ * transform is from its top-left), and nothing in it fades in again — its
+ * pictures were copied in finished. */
+.yolo-whiteboard-card.yolo-whiteboard-spread-fold-cover {
+  z-index: 1;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-spread-fold-cover .yolo-whiteboard-pdf-canvas {
+  animation: none;
+}
+
 /* A sheet is a page of paper: square corners, no frame of its own beyond the
  * one every card has, and the page drawn edge to edge. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-sheet {

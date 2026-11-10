@@ -630,6 +630,15 @@ export const SPREAD_DEAL_MAX_DELAY_MS = 200
 export const SPREAD_DEAL_WINDOW_MS = 500
 
 /**
+ * How long, at most, a closed spread's copy of the page its card shows is
+ * held over the card while the card opens its file and draws
+ * (canvas.ts's `holdFoldedCard`). It goes as soon as the card has drawn —
+ * usually well inside this; the cap only keeps a card that cannot draw from
+ * being hidden behind a picture of itself.
+ */
+export const FOLD_COVER_MAX_MS = 1500
+
+/**
  * A node arriving on the board (created, pasted, restored by an undo) and one
  * leaving it (deleted, cut). The same mirror of the host's motion tokens as
  * the arrangement above: entering is `--yolo-anim-duration-enter` on the
