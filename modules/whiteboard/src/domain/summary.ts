@@ -178,10 +178,14 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
+/** In whole units: a card dragged or resized by hand lands on fractions no
+ * one placing a card next to it needs, and `edit_board` rounds what it is
+ * given anyway. */
 function position(
   rect: Readonly<{ x: number; y: number; w: number; h: number }>,
 ): string {
-  return `${rect.x},${rect.y} ${rect.w}×${rect.h}`
+  const [x, y, w, h] = [rect.x, rect.y, rect.w, rect.h].map(Math.round)
+  return `${x},${y} ${w}×${h}`
 }
 
 /** An edge's end: its card, and the page of it when it is a PDF's. */

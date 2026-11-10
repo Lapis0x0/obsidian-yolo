@@ -34,6 +34,12 @@ describe('summarizeBoard', () => {
     expect(summary).toContain('320,-140')
   })
 
+  it('gives coordinates in whole units', () => {
+    const card = { ...text('c-1', 'a', -18725.20863037276, 0.5), w: 385.547 }
+    const summary = summarizeBoard(boardWith([card]), { path: 'b.yoloboard' })
+    expect(summary).toContain('c-1  text  -18725,1 386×50')
+  })
+
   it('previews a text card rather than giving it in full', () => {
     const long = 'x'.repeat(CARD_PREVIEW_CHARS * 3)
     const summary = summarizeBoard(boardWith([text('c-1', long)]), {
