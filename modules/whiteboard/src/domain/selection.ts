@@ -47,12 +47,33 @@ function intersects(card: VirtualCardRect, rect: WorldRect): boolean {
   )
 }
 
-/** Ids of every node intersecting `rect`, in the input nodes' order. */
+function encloses(rect: WorldRect, card: VirtualCardRect): boolean {
+  return (
+    card.x >= rect.left &&
+    card.x + card.w <= rect.right &&
+    card.y >= rect.top &&
+    card.y + card.h <= rect.bottom
+  )
+}
+
+/**
+ * Ids of every node `rect` selects, in the input nodes' order: each one it
+ * intersects — but a frame (`framed`: an open group, a portal) only when it
+ * encloses it whole. A frame is mostly room for other things, so a band
+ * drawn across it, or inside it, is about what is in it: taken as about the
+ * frame too, a band around a few cards of a group picked up the group, and
+ * moving the selection moved the whole group with it.
+ */
 export function nodesInMarquee(
   nodes: readonly VirtualCardRect[],
   rect: WorldRect,
+  framed: (id: string) => boolean = () => false,
 ): string[] {
-  return nodes.filter((node) => intersects(node, rect)).map((node) => node.id)
+  return nodes
+    .filter((node) =>
+      framed(node.id) ? encloses(rect, node) : intersects(node, rect),
+    )
+    .map((node) => node.id)
 }
 
 /**

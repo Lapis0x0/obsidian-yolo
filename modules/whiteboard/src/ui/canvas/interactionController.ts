@@ -1479,11 +1479,20 @@ export class InteractionController {
     this.core.setEdgeSelection([])
     // A card behind a portal is in the band if what shows of it is.
     const shown = []
+    const framed = new Set<NodeId>()
     for (const node of this.core.getBoard().nodes) {
       const part = shownPart(node, this.core.clipOf(node.id))
-      if (part) shown.push(part)
+      if (!part) continue
+      shown.push(part)
+      if ((node.type === 'group' && !isFolded(node)) || isPortal(node)) {
+        framed.add(node.id)
+      }
     }
-    const hits = nodesInMarquee(shown, marqueeRectFromPoints(worldA, worldB))
+    const hits = nodesInMarquee(
+      shown,
+      marqueeRectFromPoints(worldA, worldB),
+      (id) => framed.has(id),
+    )
     // Shift makes the band add rather than replace — a union, not a toggle:
     // dragging over something already selected must not deselect it, or a
     // second band drawn across the same area would undo the first.

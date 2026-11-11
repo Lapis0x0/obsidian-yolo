@@ -75,6 +75,18 @@ describe('nodesInMarquee', () => {
     const cards = [card('a', 0, 0), card('b', 500, 500), card('c', 2000, 2000)]
     expect(nodesInMarquee(cards, rect)).toEqual(['a', 'b'])
   })
+
+  it('selects a frame only when the rect encloses it whole', () => {
+    const frame = { id: 'g', x: 0, y: 0, w: 400, h: 400 }
+    const framed = (id: string) => id === 'g'
+    const inside = { left: 50, top: 50, right: 150, bottom: 150 }
+    const across = { left: 300, top: 300, right: 600, bottom: 600 }
+    const around = { left: -10, top: -10, right: 410, bottom: 410 }
+    const nodes = [frame, card('a', 60, 60)]
+    expect(nodesInMarquee(nodes, inside, framed)).toEqual(['a'])
+    expect(nodesInMarquee(nodes, across, framed)).toEqual([])
+    expect(nodesInMarquee(nodes, around, framed)).toEqual(['g', 'a'])
+  })
 })
 
 describe('nodeAtPoint', () => {
