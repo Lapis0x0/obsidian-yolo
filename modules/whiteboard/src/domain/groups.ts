@@ -151,6 +151,29 @@ export function groupMemberParts(
   ]
 }
 
+/**
+ * Where `node`'s title is on the board (domain/title.ts), drawn at `scale`
+ * (its portals'), or null for a node that wears none: a group's over its
+ * frame, a PDF card's or a portal's over the card, and an open spread's
+ * title node, which is its title. As wide as the room a title can count on,
+ * or the card it heads — the bar itself is as wide as its words, which only
+ * the UI measures.
+ */
+export function nodeTitleRect(node: BoardNode, scale = 1): GroupRect | null {
+  if (isSpreadTitle(node)) return { x: node.x, y: node.y, w: node.w, h: node.h }
+  const headed =
+    node.type === 'group' ||
+    (node.type === 'file' && ['pdf', 'board'].includes(fileNodeKind(node.file)))
+  if (!headed) return null
+  const h = NODE_TITLE.height * scale
+  return {
+    x: node.x,
+    y: node.y - NODE_TITLE.gap * scale - h,
+    w: node.type === 'group' ? NODE_TITLE.room * scale : node.w,
+    h,
+  }
+}
+
 /** The rectangle `groupMemberParts` covers. */
 export function groupMemberExtent(
   member: BoardNode,
@@ -777,9 +800,11 @@ export function gapBetween(a: GroupRect, b: GroupRect): number {
  * What dropping the nodes `moving` — a drag's whole set, with what its groups
  * carry — where `board` has them now does to membership, or null for nothing.
  *
- * The things dragged are the ones nothing else in the drag carries, each as
- * far as it reaches (a PDF with its pages), judged by where their edges are:
- * what is shown, whatever its size and wherever it was taken hold of. Judged
+ * The things dragged are the ones nothing else in the drag carries, each
+ * judged by where its edges are — what is shown, whatever its size and
+ * wherever it was taken hold of — or, for one that wears a title (a group,
+ * a PDF, a portal), by its title's (`nodeTitleRect`): that is what it is
+ * held by, and an open spread's sheets reach far past it. Judged
  * by their centre, a card twice the size of another had to be pushed twice as
  * far into a group before the group would take it. `leave` is in the
  * board's world units — the caller's to say, from how far a hand has to pull
@@ -814,7 +839,13 @@ export function groupDropDecision(
   if (dragged.length === 0) return null
   const from = new Set(dragged.map((node) => parents.get(node.id) ?? null))
   const home = from.size === 1 ? (from.values().next().value ?? null) : null
-  const extents = dragged.map((node) => groupMemberExtent(node, board.nodes))
+  // What is held by a title is judged by it: it is what the hand holds, and
+  // an open spread's sheets reach far past where it is being taken.
+  const extents = dragged.map(
+    (node) =>
+      nodeTitleRect(node, scaleOf(node.id)) ??
+      groupMemberExtent(node, board.nodes),
+  )
   const gap = (frame: GroupRect): number =>
     Math.min(...extents.map((extent) => gapBetween(frame, extent)))
   const depth = (id: NodeId) => {
