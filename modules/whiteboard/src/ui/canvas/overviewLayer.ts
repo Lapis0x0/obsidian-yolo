@@ -54,7 +54,6 @@ import {
   computeWorldViewportRect,
 } from '../../domain/virtualization'
 import {
-  ARRANGE_ANIMATION_MS,
   EDGE_ARROW_WORLD_PX,
   EDGE_LABEL_FONT_PX,
   EDGE_LABEL_MAX_WIDTH_EM,
@@ -78,6 +77,7 @@ import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
 import type { PageFrame } from '../pdf/annotationGeometry'
 import { pageMarks, paintPageMarks } from '../pdf/pageMarks'
 import { READER_METRICS } from '../pdf/readerLayout'
+import type { Pose } from '../tween'
 
 import {
   type TitleBadge,
@@ -123,10 +123,16 @@ type Surface = Readonly<{
  */
 export type ContentLayer = Readonly<{
   begin: () => void
-  /** Whether it draws `node`'s content this frame, at `rect` (world units);
-   * a yes is a promise to. */
-  claim: (node: BoardNode, rect: CardRect) => boolean
+  /** Whether it draws `node`'s content this frame, laid out at `rect`
+   * (world units) — and, a card in motion (./motions.ts), shown `look.scale`
+   * times that size from its top-left at `look.alpha`; a yes is a promise
+   * to. */
+  claim: (node: BoardNode, rect: CardRect, look?: CardLook) => boolean
 }>
+
+/** How a card in motion is shown, beyond where: scaled from its top-left,
+ * and how opaque. */
+export type CardLook = Readonly<{ scale: number; alpha: number }>
 
 /** A page's annotations as the overview draws them: its highlights one path
  * per colour, in page fractions, and its framed areas. */
@@ -221,6 +227,15 @@ export type OverviewLayerCallbacks = Readonly<{
    * element; here it is the same numbers, drawn.
    */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
+  /** Where a node in motion is shown now (./motions.ts), or null for one
+   * shown where the board has it. */
+  poseOf: (id: NodeId) => Pose | null
+  /** Cards that have left the board and are shown on their way out
+   * (./motions.ts's `departures`), drawn with the board's own. */
+  departures: () => Iterable<Readonly<{ node: BoardNode; pose: Pose }>>
+  /** What the collapsed groups show in their boxes, where (canvas.ts's
+   * `foldedShown`), drawn with the board's own. */
+  folded: () => Iterable<Readonly<{ node: BoardNode; pose: Pose }>>
   /** What a PDF card's or a sheet's title says about its page — see
    * ui/lod.ts's `nodeTitleText`. */
   pdfPageLabels: PdfPageLabels
@@ -263,18 +278,6 @@ export class OverviewLayer {
    * Kept in world units, so a zoom does not invalidate them; dropped with the
    * palette, whose font they were measured in. */
   private readonly titleLines = new Map<string, readonly string[]>()
-  /** Cards in flight — see `animate`. */
-  private readonly motions = new Map<
-    NodeId,
-    Readonly<{
-      direction: 'in' | 'out'
-      offset: Readonly<{ x: number; y: number }>
-      delay: number
-      scale?: number
-      fade?: boolean
-      start: number
-    }>
-  >()
   /** Where each title line was last drawn, in world units. */
   private readonly titleRects = new Map<
     NodeId,
@@ -367,7 +370,6 @@ export class OverviewLayer {
       this.dirty = true
       return
     }
-    this.motions.clear()
     this.clear()
     this.callbacks.contentLayer()?.begin()
   }
@@ -417,38 +419,6 @@ export class OverviewLayer {
     const surface = { ...size, text: false, selection: false, screen: false }
     this.drawGroups(ctx, view, live)
     this.drawBoard(ctx, view, surface, live)
-    ctx.globalAlpha = 1
-  }
-
-  /**
-   * `nodes` — cards, and groups as frames — drawn the way this tier draws
-   * them, onto a surface of someone else's: the small pictures a collapsed
-   * group shows of what it holds (cardRenderer.ts). Their faces, titles and
-   * pictures, no selection and no edges. The caller owns the context's
-   * transform and clears it first.
-   */
-  paintNodes(
-    ctx: CanvasRenderingContext2D,
-    view: CanvasView,
-    size: Readonly<{ width: number; height: number }>,
-    nodes: readonly BoardNode[],
-  ): void {
-    this.palette ??= this.readPalette(ctx)
-    const surface = { ...size, text: true, selection: false, screen: false }
-    this.drawGroups(
-      ctx,
-      view,
-      null,
-      nodes.filter((node) => node.type === 'group'),
-    )
-    this.drawCards(
-      ctx,
-      view,
-      surface,
-      null,
-      undefined,
-      nodes.filter((node) => node.type !== 'group'),
-    )
     ctx.globalAlpha = 1
   }
 
@@ -653,7 +623,6 @@ export class OverviewLayer {
     this.drawBoard(ctx, view, surface, live, (id) =>
       this.callbacks.isMounted(id),
     )
-    this.drawMotions(ctx, view)
     ctx.globalAlpha = 1
   }
 
@@ -721,85 +690,33 @@ export class OverviewLayer {
   }
 
   /**
-   * Moves a card in from `offset` (world units from where it is) while it
-   * fades in, or out to it while it fades away — the overview tier's side of
-   * a PDF spread being dealt out or gathered back (canvas.ts). The DOM tiers
-   * do this with Web Animations on the elements; here there are no elements,
-   * so the canvas carries the motion and redraws every frame until it ends.
-   *
-   * At the `offset` end it is `scale` times its size, from its top-left. A
-   * motion with `fade: false` keeps the card whole throughout — the sheet a
-   * folded card is the page of. The last card set moving is drawn over the
-   * others. A card that has gone out stays where it went — unseen, or whole
-   * if it does not fade — until it leaves the board.
+   * The cards in motion this frame that the content layer does not draw
+   * (`drawCards`), each where it is shown (./motions.ts) and as opaque —
+   * card by card rather than batched, since each has its own opacity, and
+   * over the cards at rest. Drawn as they are drawn at rest, so nothing
+   * changes the frame one stops moving: its surface, its wash, its picture,
+   * its border, and its title block where it has no picture. Whether any
+   * was drawn.
    */
-  animate(
-    id: NodeId,
-    motion: Readonly<{
-      direction: 'in' | 'out'
-      offset: Readonly<{ x: number; y: number }>
-      delay: number
-      scale?: number
-      fade?: boolean
-    }>,
-  ): void {
-    if (!this.active) return
-    // Drawn in the order set: taken out first, so it goes on top.
-    this.motions.delete(id)
-    this.motions.set(id, {
-      ...motion,
-      start: this.context.getWindow().performance.now(),
-    })
-    this.dirty = true
-  }
-
-  /** Puts cards back where they are, at full opacity, mid-motion or not. */
-  stopAnimating(ids: Iterable<NodeId>): void {
-    for (const id of ids) this.motions.delete(id)
-    this.dirty = true
-  }
-
-  /** The cards in motion, each at its own place and opacity; the next frame
-   * is owed while any is still moving. */
-  private drawMotions(ctx: CanvasRenderingContext2D, view: CanvasView): void {
+  private drawMoving(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    moving: readonly Readonly<{ node: BoardNode; pose: Pose }>[],
+  ): boolean {
     const palette = this.palette
-    if (!palette || this.motions.size === 0) return
-    const now = this.context.getWindow().performance.now()
-    /** A card came to rest this frame: the next is still owed, since it is
-     * `drawCards` that draws it from there on. */
-    let landed = false
-    let moving = false
-    for (const [id, motion] of this.motions) {
-      const node = this.callbacks.getNode(id)
-      const elapsed = now - motion.start - motion.delay
-      const t = Math.min(1, Math.max(0, elapsed / ARRANGE_ANIMATION_MS))
-      if (!node) {
-        this.motions.delete(id)
-        continue
-      }
-      // Drawn here on the frame it arrives too — `drawCards` skipped it
-      // this frame — and handed back to `drawCards` from the next.
-      if (motion.direction === 'in' && t >= 1) {
-        this.motions.delete(id)
-        landed = true
-      }
-      if (t < 1) moving = true
-      // ARRANGE_ANIMATION_EASING's curve, near enough for 220ms: fast out
-      // of the start, settling into the end.
-      const eased = 1 - (1 - t) ** 4
-      const away = motion.direction === 'in' ? 1 - eased : eased
-      const alpha = motion.fade === false ? 1 : 1 - away
+    if (!palette) return false
+    let drew = false
+    for (const { node, pose } of moving) {
+      const alpha = pose.opacity
       if (alpha <= 0) continue
-      const size = 1 + ((motion.scale ?? 1) - 1) * away
-      const x = (node.x + motion.offset.x * away) * view.scale + view.tx
-      const y = (node.y + motion.offset.y * away) * view.scale + view.ty
-      const w = node.w * size * view.scale
-      const h = node.h * size * view.scale
+      drew = true
+      const x = pose.x * view.scale + view.tx
+      const y = pose.y * view.scale + view.ty
+      const w = pose.w * view.scale
+      const h = pose.h * view.scale
       ctx.globalAlpha = alpha
       ctx.fillStyle = palette.background
       ctx.fillRect(x, y, w, h)
-      // The wash it wears once it lands (`drawCards`), or it would change
-      // the frame it stops moving.
       const picture = this.pictureOf(node, { w }, palette.dark)
       const own = this.colorOf(node, palette)
       if (!picture || own !== null) {
@@ -811,8 +728,6 @@ export class OverviewLayer {
         ctx.fillStyle = own ?? palette.neutral
         ctx.fillRect(x, y, w, h)
       }
-      // Its pages, as they will be drawn once it lands (`drawCards`), and
-      // then no title: a PDF's stays put, drawn by `drawCards` throughout.
       ctx.globalAlpha = alpha
       const pictured = this.drawPicture(
         ctx,
@@ -822,9 +737,6 @@ export class OverviewLayer {
         view.scale,
         picture,
       )
-      // The border it will have when it lands (`drawCards`): a selection's
-      // ring, the faint accent of a selected spread's sheet, or the plain
-      // one — so nothing changes the frame it stops.
       const selected = this.callbacks.isSelected(node.id)
       const ofSelected =
         !selected &&
@@ -840,14 +752,14 @@ export class OverviewLayer {
       ctx.lineWidth = 1
       if (pictured || w < OVERVIEW_TITLE_MIN_CARD_PX) continue
       const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
-      ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale}px ${palette.fontFamily}`
+      ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale * (pose.w / node.w)}px ${palette.fontFamily}`
       ctx.fillStyle = palette.text
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText(title, x + w / 2, y + h / 2, w)
     }
     ctx.globalAlpha = 1
-    if (moving || landed) this.dirty = true
+    return drew
   }
 
   destroy(): void {
@@ -990,6 +902,101 @@ export class OverviewLayer {
     nodes: readonly BoardNode[] = this.callbacks.getCardNodes(),
     unit = 1,
   ): boolean {
+    const moving: { node: BoardNode; pose: Pose }[] = []
+    const still = this.drawStillCards(
+      ctx,
+      view,
+      surface,
+      live,
+      moving,
+      skip,
+      nodes,
+      unit,
+    )
+    const own =
+      surface.screen && unit === 1 && nodes === this.callbacks.getCardNodes()
+    if (!own) return this.drawMoving(ctx, view, moving) || still
+    // Over the cards at rest: what the collapsed groups show in their boxes,
+    // then what is on its way into one, then everything in motion.
+    const content = this.callbacks.contentLayer()
+    const boxed = this.drawPosed(
+      ctx,
+      view,
+      surface,
+      this.callbacks.folded(),
+      content,
+    )
+    const flying = this.drawPosed(
+      ctx,
+      view,
+      surface,
+      this.callbacks.departures(),
+      content,
+    )
+    return this.drawMoving(ctx, view, moving) || boxed || flying || still
+  }
+
+  /**
+   * Nodes the board does not have where they are shown — what a collapsed
+   * group shows in its box, a card on its way into one — each at its pose:
+   * by the content layer where it can, as a card in motion is otherwise
+   * (`drawMoving`), and a group as its frame. Whether this canvas drew any.
+   */
+  private drawPosed(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    surface: Surface,
+    posed: Iterable<Readonly<{ node: BoardNode; pose: Pose }>>,
+    content: ContentLayer | null,
+  ): boolean {
+    const palette = this.palette
+    if (!palette) return false
+    const unclaimed: { node: BoardNode; pose: Pose }[] = []
+    let drew = false
+    for (const { node, pose } of posed) {
+      const x = pose.x * view.scale + view.tx
+      const y = pose.y * view.scale + view.ty
+      const w = pose.w * view.scale
+      const h = pose.h * view.scale
+      if (x >= surface.width || y >= surface.height || x + w <= 0 || y + h <= 0)
+        continue
+      if (node.type === 'group') {
+        // The frame's look (`drawGroups`), as small as it is shown.
+        const color = this.colorOf(node, palette) ?? palette.neutral
+        ctx.fillStyle = color
+        ctx.globalAlpha = (OVERVIEW_CARD_WASH_ALPHA / 2) * pose.opacity
+        ctx.fillRect(x, y, w, h)
+        ctx.strokeStyle = color
+        ctx.globalAlpha = OVERVIEW_THEMED_BORDER_ALPHA * pose.opacity
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+        drew = true
+        continue
+      }
+      const laidOut = { x: pose.x, y: pose.y, w: node.w, h: node.h }
+      const look = { scale: pose.w / node.w, alpha: pose.opacity }
+      if (content?.claim(node, laidOut, look)) continue
+      unclaimed.push({ node, pose })
+    }
+    ctx.globalAlpha = 1
+    return this.drawMoving(ctx, view, unclaimed) || drew
+  }
+
+  /** `drawCards`' cards at rest, batched — and the ones in motion, set
+   * aside in `moving` for `drawMoving` unless the content layer draws them.
+   * Only the board's own cards on screen move: a minimap or a collapsed
+   * group's pictures show where things are, and a portal's cards are where
+   * it shows them. */
+  private drawStillCards(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    surface: Surface,
+    live: ReadonlyMap<NodeId, CardRect> | null,
+    moving: { node: BoardNode; pose: Pose }[],
+    skip: ((id: NodeId) => boolean) | undefined,
+    nodes: readonly BoardNode[],
+    unit: number,
+  ): boolean {
+    const posed = surface.screen && unit === 1
     const isSelected = (id: NodeId): boolean =>
       surface.selection && this.callbacks.isSelected(id)
     const palette = this.palette
@@ -1017,8 +1024,8 @@ export class OverviewLayer {
         : null
     for (const node of nodes) {
       if (skip?.(node.id)) continue
-      const moving = this.motions.has(node.id)
-      const rect = live?.get(node.id) ?? node
+      const pose = posed ? this.callbacks.poseOf(node.id) : null
+      const rect = pose ?? live?.get(node.id) ?? node
       const x = rect.x * view.scale + view.tx
       const y = rect.y * view.scale + view.ty
       const w = rect.w * view.scale
@@ -1036,7 +1043,10 @@ export class OverviewLayer {
       // — and a PDF's stays drawn here while the card fades in under it: a
       // spread folding keeps its title in place throughout.
       const badge = this.callbacks.titleBadge(node)
-      if (badge && wearsTitleLine(node)) {
+      // One in motion carries its title line along while it keeps its size
+      // (an arrangement, a card arriving); shrinking into a fold, it goes.
+      const scale = pose ? pose.w / node.w : 1
+      if (badge && wearsTitleLine(node) && Math.abs(scale - 1) < 0.01) {
         const th = SPREAD_METRICS.titleHeight * typeScale
         titles.push({
           node,
@@ -1049,9 +1059,12 @@ export class OverviewLayer {
           maxW: Math.max(w, SPREAD_METRICS.pageWidth * typeScale),
         })
       }
-      // The rest of it is drawn on its own, at its own opacity
-      // (`drawMotions`).
-      if (moving) continue
+      if (pose) {
+        const laidOut = { x: pose.x, y: pose.y, w: node.w, h: node.h }
+        const look = { scale, alpha: pose.opacity }
+        if (!content?.claim(node, laidOut, look)) moving.push({ node, pose })
+        continue
+      }
       if (content?.claim(node, rect)) continue
       if (isPlainText(node)) texts.push(item)
       else if (badge && isSpreadTitle(node)) {
@@ -1613,11 +1626,14 @@ export class OverviewLayer {
       const fromNode = this.callbacks.getNode(edge.fromNode)
       const toNode = this.callbacks.getNode(edge.toNode)
       if (!fromNode || !toNode) continue
-      const from = {
-        id: edge.fromNode,
-        ...(live?.get(edge.fromNode) ?? fromNode),
-      }
-      const to = { id: edge.toNode, ...(live?.get(edge.toNode) ?? toNode) }
+      // To where each end is shown: moving (./motions.ts) on the board's
+      // own screen, held by a gesture, or at rest.
+      const shown = (id: NodeId, node: BoardNode) =>
+        (surface.screen && unit === 1 ? this.callbacks.poseOf(id) : null) ??
+        live?.get(id) ??
+        node
+      const from = { id: edge.fromNode, ...shown(edge.fromNode, fromNode) }
+      const to = { id: edge.toNode, ...shown(edge.toNode, toNode) }
       if (
         Math.min(from.x, to.x) - margin > world.right ||
         Math.max(from.x + from.w, to.x + to.w) + margin < world.left ||

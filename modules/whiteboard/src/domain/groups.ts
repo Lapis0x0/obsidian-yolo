@@ -99,6 +99,92 @@ export function collapsedGroupCells(
   return cells
 }
 
+/**
+ * Where a collapsed group's box shows one thing it holds: the thing's
+ * extent (`groupMemberExtent`) fitted whole into its cell and centred there —
+ * a point `p` of it is shown at `x + (p.x - extent.x) * scale`, and the same
+ * for y. Things past the cells are shown in the last one, the one saying how
+ * many more there are (`more`).
+ */
+export type GroupPlace = Readonly<{
+  id: NodeId
+  extent: GroupRect
+  scale: number
+  x: number
+  y: number
+  more: boolean
+}>
+
+/**
+ * Where the box at `box` shows each of the things `extents` are of, in the
+ * order the group holds them. One rule for the pictures the box paints and
+ * for the motion that carries the things into them (ui/foldMotion.ts), so the
+ * one ends where the other is.
+ */
+export function collapsedGroupPlaces(
+  box: GroupRect,
+  extents: readonly Readonly<{ id: NodeId; extent: GroupRect }>[],
+  scale = 1,
+): GroupPlace[] {
+  const cells = collapsedGroupCells(box, extents.length, scale)
+  const shown = extents.length > cells.length ? cells.length - 1 : cells.length
+  return extents.flatMap(({ id, extent }, index): GroupPlace[] => {
+    const more = index >= shown
+    const cell = cells[more ? cells.length - 1 : index]
+    if (!cell || extent.w <= 0 || extent.h <= 0) return []
+    const fit = Math.min(cell.w / extent.w, cell.h / extent.h)
+    return [
+      {
+        id,
+        extent,
+        scale: fit,
+        x: cell.x + (cell.w - extent.w * fit) / 2,
+        y: cell.y + (cell.h - extent.h * fit) / 2,
+        more,
+      },
+    ]
+  })
+}
+
+/** What a collapsed group's box shows a thing it holds as: the thing, and a
+ * spread's sheets with it. */
+export function groupMemberParts(
+  member: BoardNode,
+  nodes: readonly BoardNode[],
+): BoardNode[] {
+  return [
+    member,
+    ...nodes.filter(
+      (node) => node.type === 'pdf-page' && node.parent === member.id,
+    ),
+  ]
+}
+
+/** The rectangle `groupMemberParts` covers. */
+export function groupMemberExtent(
+  member: BoardNode,
+  nodes: readonly BoardNode[],
+): GroupRect {
+  const parts = groupMemberParts(member, nodes)
+  const x = Math.min(...parts.map((part) => part.x))
+  const y = Math.min(...parts.map((part) => part.y))
+  return {
+    x,
+    y,
+    w: Math.max(...parts.map((part) => part.x + part.w)) - x,
+    h: Math.max(...parts.map((part) => part.y + part.h)) - y,
+  }
+}
+
+/** `node` and everything moving it moves with it (`carriedBy`). */
+export function withCarried(
+  node: BoardNode,
+  nodes: readonly BoardNode[],
+): BoardNode[] {
+  const carried = new Set(carriedBy(node, nodes))
+  return [node, ...nodes.filter((other) => carried.has(other.id))]
+}
+
 /** How many things `group` directly holds: on the board, or put away in it
  * while it is collapsed. */
 export function groupMemberCount(

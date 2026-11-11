@@ -2,7 +2,10 @@
 // pixels from the camera (`cam`: tx, ty in CSS pixels, scale, device pixel
 // ratio), each instance reading its card's box and depth from the card table
 // (`cards`, CARD_TEXELS texels a slot) so that moving a card moves its
-// content without touching the instances.
+// content without touching the instances. A card in motion is shown scaled
+// from its top-left and faded (its fourth texel's z and w): every point of it
+// is placed at its box's corner plus its own offset times the scale, and
+// whatever it draws is multiplied by the alpha.
 //
 // Depth is what keeps cards in their order whatever order they are drawn
 // in: a card's frame and its content each have their own depth, the content
@@ -53,6 +56,7 @@ out vec2 vLocal;
 flat out vec4 vBox;
 flat out vec4 vFill;
 flat out vec4 vBorder;
+flat out vec2 vLook;
 vec4 unpack(uint c) {
   return vec4(float(c & 255u), float((c >> 8) & 255u), float((c >> 16) & 255u), float(c >> 24)) / 255.0;
 }
@@ -61,17 +65,19 @@ void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
+  vec4 view = cardTexel(slot, 3);
   uvec4 c = texelFetch(colors, ivec2(int(slot % ${SLOTS_PER_ROW}u), int(slot / ${SLOTS_PER_ROW}u)), 0);
   // Not drawn, or nothing to draw: a card whose frame the overview draws.
   if (box.z <= 0.0 || more.y == 0.0 || (c.x >> 24) + (c.y >> 24) == 0u) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   // One device pixel out on every side, for the edge's antialiasing.
-  float grow = 1.0 / (cam.z * cam.w);
+  float grow = 1.0 / (cam.z * cam.w * view.z);
   vec2 local = mix(vec2(-grow), box.zw + grow, corner);
   vLocal = local;
   vBox = vec4(box.zw, depth.w, more.x);
   vFill = unpack(c.x);
   vBorder = unpack(c.y);
-  gl_Position = vec4(toClip(toDevice(box.xy + local)), depth.x * 2.0 - 1.0, 1.0);
+  vLook = view.zw;
+  gl_Position = vec4(toClip(toDevice(box.xy + local * view.z)), depth.x * 2.0 - 1.0, 1.0);
 }`
 
 export const FRAME_FS = `#version 300 es
@@ -82,10 +88,11 @@ in vec2 vLocal;
 flat in vec4 vBox;
 flat in vec4 vFill;
 flat in vec4 vBorder;
+flat in vec2 vLook;
 out vec4 o;
 ${ROUND_BOX}
 void main() {
-  float k = cam.z * cam.w;
+  float k = cam.z * cam.w * vLook.x;
   vec2 half_ = vBox.xy * 0.5;
   float d = roundBox((vLocal - half_) * k, half_ * k, vBox.z * k);
   float outer = clamp(0.5 - d, 0.0, 1.0);
@@ -93,9 +100,10 @@ void main() {
   // pixels far away: the overview's line, which does not shrink with zoom.
   float width = max(vBox.w * k, vBox.w * cam.w);
   float inner = clamp(0.5 - (d + width), 0.0, 1.0);
-  vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a);
-  vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a);
-  bool opaque = vFill.a >= 1.0;
+  vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a) * vLook.y;
+  vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a) * vLook.y;
+  // Fading, it hides nothing under it.
+  bool opaque = vFill.a >= 1.0 && vLook.y >= 1.0;
   if (edgePass < 0.5) {
     // Whole pixels of an opaque fill: the depth that hides what is under.
     if (!opaque || outer < 1.0) discard;
@@ -125,13 +133,14 @@ flat out vec4 vClip;
 flat out float vTop;
 flat out vec4 vFill;
 flat out vec4 vBorder;
+flat out vec2 vLook;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
   vec4 more = cardTexel(slot, 2);
   vec4 view = cardTexel(slot, 3);
   if (more.y == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
-  float grow = 1.0 / (cam.z * cam.w);
+  float grow = 1.0 / (cam.z * cam.w * view.z);
   vec2 local = mix(rect.xy - grow, rect.xy + rect.zw + grow, corner);
   vLocal = local - rect.xy;
   // Where it shows in the card: moved up by the card's scroll.
@@ -141,7 +150,8 @@ void main() {
   vTop = view.y;
   vFill = fill;
   vBorder = border;
-  gl_Position = vec4(toClip(toDevice(box.xy + vCard)), depth.y * 2.0 - 1.0, 1.0);
+  vLook = view.zw;
+  gl_Position = vec4(toClip(toDevice(box.xy + vCard * view.z)), depth.y * 2.0 - 1.0, 1.0);
 }`
 
 const CLIP = /* glsl */ `
@@ -161,11 +171,12 @@ flat in vec4 vClip;
 flat in float vTop;
 flat in vec4 vFill;
 flat in vec4 vBorder;
+flat in vec2 vLook;
 out vec4 o;
 ${ROUND_BOX}
 ${CLIP}
 void main() {
-  float k = cam.z * cam.w;
+  float k = cam.z * cam.w * vLook.x;
   vec2 half_ = vRect.xy * 0.5;
   float d = roundBox((vLocal - half_) * k, half_ * k, min(vRect.z, min(half_.x, half_.y)) * k);
   float outer = clamp(0.5 - d, 0.0, 1.0);
@@ -173,7 +184,7 @@ void main() {
   vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a);
   vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a);
   vec4 res = (border + fill * (1.0 - border.a)) * (outer - inner) + fill * inner;
-  res *= clipped(vCard, vClip, vTop);
+  res *= clipped(vCard, vClip, vTop) * vLook.y;
   if (res.a <= 0.0) discard;
   o = res;
 }`
@@ -194,6 +205,7 @@ flat out vec4 vClip;
 flat out float vTop;
 flat out vec4 vColor;
 flat out float vOwnColors;
+flat out float vAlpha;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
@@ -203,10 +215,10 @@ void main() {
   vec4 l0 = texelFetch(lookup, at, 0);
   vec4 l1 = texelFetch(lookup, at + ivec2(1, 0), 0);
   if (l1.z == 0.0 || more.y == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
-  float ratio = cam.z * cam.w / l1.z;
+  float ratio = cam.z * cam.w * view.z / l1.z;
   // Moved up by the card's scroll, before it is put on whole pixels.
   vec2 shown = origin - vec2(0.0, view.x);
-  vec2 o = toDevice(box.xy + shown);
+  vec2 o = toDevice(box.xy + shown * view.z);
   // Drawn at the size it shows: on whole pixels, as the DOM sets text.
   if (snap > 0.5 && abs(ratio - 1.0) < 0.001) o = floor(o + 0.5);
   vec2 offset = l1.xy + corner * l0.zw;
@@ -218,6 +230,7 @@ void main() {
   vTop = view.y;
   vColor = color;
   vOwnColors = l1.w >= 16.0 ? 1.0 : 0.0;
+  vAlpha = view.w;
 }`
 
 export const GLYPH_FS = `#version 300 es
@@ -230,10 +243,11 @@ flat in vec4 vClip;
 flat in float vTop;
 flat in vec4 vColor;
 flat in float vOwnColors;
+flat in float vAlpha;
 out vec4 o;
 ${CLIP}
 void main() {
-  float keep = clipped(vCard, vClip, vTop);
+  float keep = clipped(vCard, vClip, vTop) * vAlpha;
   vec4 t = texture(pages, vUV);
   if (vOwnColors > 0.5) { o = t * keep; }
   else { float a = t.a * vColor.a * keep; o = vec4(vColor.rgb * a, a); }
@@ -250,6 +264,7 @@ out vec2 vCard;
 out vec2 vShown;
 flat out vec4 vClip;
 flat out float vTop;
+flat out float vAlpha;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
@@ -262,7 +277,8 @@ void main() {
   vShown = local - vec2(0.0, view.x);
   vClip = vec4(box.z - more.w, box.w, depth.z, more.z);
   vTop = view.y;
-  gl_Position = vec4(toClip(toDevice(box.xy + vShown)), depth.y * 2.0 - 1.0, 1.0);
+  vAlpha = view.w;
+  gl_Position = vec4(toClip(toDevice(box.xy + vShown * view.z)), depth.y * 2.0 - 1.0, 1.0);
 }`
 
 export const IMAGE_FS = `#version 300 es
@@ -275,6 +291,7 @@ in vec2 vCard;
 in vec2 vShown;
 flat in vec4 vClip;
 flat in float vTop;
+flat in float vAlpha;
 out vec4 o;
 ${CLIP}
 void main() {
@@ -283,6 +300,6 @@ void main() {
   vec2 q = abs(vCard - rect.xy - half_) - half_ + radius;
   float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
   float corner = radius > 0.0 ? clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0) : 1.0;
-  o = texture(picture, vUV) * clipped(vShown, vClip, vTop) * corner;
+  o = texture(picture, vUV) * clipped(vShown, vClip, vTop) * corner * vAlpha;
   if (o.a <= 0.0) discard;
 }`

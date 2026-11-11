@@ -26,6 +26,7 @@ import type { Rect } from '../../domain/portals'
 import type { CanvasView, WorldRect } from '../../domain/virtualization'
 
 import type { NodeRuntime } from './cardRenderer'
+import type { Motions } from './motions'
 
 export type CanvasCore = Readonly<{
   context: YoloModuleHostFileViewContextV1
@@ -90,6 +91,9 @@ export type CanvasCore = Readonly<{
   /** What a card is drawn at: the scale of the portals it is behind, 1 for
    * the board's own. */
   scaleOf: (id: NodeId) => number
+  /** Where every node in motion is shown, for everything that shows one
+   * (./motions.ts). */
+  motions: Motions
   /** Re-decides which cards are mounted after geometry changed. */
   recomputeVisibility: () => void
   /** Mounts/unmounts what the last recompute queued, now. */

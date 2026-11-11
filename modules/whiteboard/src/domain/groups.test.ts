@@ -12,11 +12,14 @@ import {
   arrangeTargets,
   boardBlocks,
   carryGroupMembers,
+  collapsedGroupCells,
+  collapsedGroupPlaces,
   createGroup,
   distanceToRect,
   fitGroups,
   groupDropDecision,
   groupFrameWithout,
+  groupMemberExtent,
   groupParents,
   groupRectForNodes,
   nodesInsideGroup,
@@ -546,6 +549,60 @@ describe('sizeGroup', () => {
     expect(node(fitGroups(sized), 'g')).toMatchObject({
       x: -GROUP_PADDING,
       w: 400 + GROUP_PADDING * 2,
+    })
+  })
+})
+
+describe('collapsedGroupPlaces', () => {
+  const box = { x: 1000, y: 2000, w: 312, h: 170 }
+  const extent = (id: string, w: number, h: number) => ({
+    id,
+    extent: { x: 0, y: 0, w, h },
+  })
+
+  it('fits each thing whole into its cell and centres it there', () => {
+    const [cell] = collapsedGroupCells(box, 1)
+    const [wide] = collapsedGroupPlaces(box, [extent('a', 400, 100)])
+    expect(wide?.scale).toBeCloseTo((cell?.w ?? 0) / 400)
+    expect(wide?.x).toBeCloseTo(cell?.x ?? 0)
+    // Shorter than the cell, so it sits in the middle of it.
+    expect((wide?.y ?? 0) - (cell?.y ?? 0)).toBeCloseTo(
+      ((cell?.h ?? 0) - 100 * (wide?.scale ?? 0)) / 2,
+    )
+  })
+
+  it('puts what is past the cells into the last one, as more', () => {
+    const things = Array.from({ length: 8 }, (_, i) => extent(`n${i}`, 50, 50))
+    const places = collapsedGroupPlaces(box, things)
+    const cells = collapsedGroupCells(box, 8)
+    expect(places.filter((place) => !place.more)).toHaveLength(5)
+    const last = cells[cells.length - 1]
+    for (const place of places.filter((each) => each.more)) {
+      expect(place.y).toBeGreaterThanOrEqual(last?.y ?? 0)
+      expect(place.x).toBeGreaterThanOrEqual(last?.x ?? 0)
+    }
+  })
+})
+
+describe('groupMemberExtent', () => {
+  it('covers a spread title with its sheets', () => {
+    const title = card('pdf', 0, 0, 390, 39)
+    const page: BoardNode = {
+      id: 'pdf/p1',
+      type: 'pdf-page',
+      parent: 'pdf',
+      page: 1,
+      x: 0,
+      y: 45,
+      w: 390,
+      h: 500,
+      extra: {},
+    } as BoardNode
+    expect(groupMemberExtent(title, [title, page])).toEqual({
+      x: 0,
+      y: 0,
+      w: 390,
+      h: 545,
     })
   })
 })

@@ -6,14 +6,16 @@
 //
 // Nothing here decides anything: dragGestures.ts asks domain/groups.ts what
 // the drop would do and hands the answer over, so what is shown is what
-// happens on release. The frames are written on the groups' own elements,
-// the way a resize writes a card's, and given back to the board's geometry
-// when the drag ends.
+// happens on release. Each frame is shown going to where the drop would put
+// it (./motions.ts's `follow`): one reaching out for a card about to join
+// glides out to take it in, and back when the card is taken away again,
+// instead of jumping with every pointer move. When the drag ends each goes
+// to where the board has it — which, on a drop, is where it was already
+// going.
 
 import type { NodeId } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
 
-import { nodeElementScale } from './cardContent'
 import type { CanvasCore } from './core'
 
 const TARGET_CLASS = 'yolo-whiteboard-group-drop-target'
@@ -31,7 +33,7 @@ export type GroupDropTag = Readonly<{
 }>
 
 export class GroupDropFeedback {
-  /** Groups whose element is held at a frame the board does not have. */
+  /** Groups shown at a frame the board does not have. */
   private held = new Set<NodeId>()
   private target: NodeId | null = null
   private tagEl: HTMLElement | null = null
@@ -50,9 +52,7 @@ export class GroupDropFeedback {
       if (!frames.has(id)) this.release(id)
     }
     for (const [id, rect] of frames) {
-      const el = this.core.getRuntime(id)?.el
-      if (!el) continue
-      placeFrame(el, rect)
+      this.core.motions.follow(id, rect)
       this.held.add(id)
     }
     if (target !== this.target) {
@@ -79,9 +79,7 @@ export class GroupDropFeedback {
   /** Back to the frame the board has. */
   private release(id: NodeId): void {
     this.held.delete(id)
-    const node = this.core.getNode(id)
-    const el = this.core.getRuntime(id)?.el
-    if (node && el) placeFrame(el, node)
+    this.core.motions.settle(id, { reshape: true })
   }
 
   private showTag(tag: GroupDropTag | null): void {
@@ -100,12 +98,4 @@ export class GroupDropFeedback {
     el.classList.toggle(TAG_LEAVING_CLASS, tag.leaving)
     el.style.translate = `${tag.at.x}px ${tag.at.y - TAG_LIFT}px`
   }
-}
-
-function placeFrame(el: HTMLElement, rect: CardRect): void {
-  const scale = nodeElementScale(el)
-  el.style.left = `${rect.x}px`
-  el.style.top = `${rect.y}px`
-  el.style.width = `${rect.w / scale}px`
-  el.style.height = `${rect.h / scale}px`
 }

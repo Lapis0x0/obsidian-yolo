@@ -28,7 +28,7 @@ import { imageTargets, isRemoteImage } from '../../typeset/images'
 import { type MathLayout, type MathSource, mathKey } from '../../typeset/math'
 import { type TypesetTokens, contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown, readingOffset } from '../canvas/cardContent'
-import type { ContentLayer } from '../canvas/overviewLayer'
+import type { CardLook, ContentLayer } from '../canvas/overviewLayer'
 import {
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
@@ -63,6 +63,9 @@ import {
   type ImagePicture,
   type SceneFrame,
 } from './scene'
+
+/** A card shown as it is, at rest. */
+const AT_REST: CardLook = { scale: 1, alpha: 1 }
 
 /** How far above a framed card's bottom edge its content fades out
  * (styles/cards/content.css's fade). */
@@ -206,8 +209,12 @@ export class GpuBoard implements ContentLayer {
     this.dirty = true
   }
 
-  /** What the overview's last frame had this layer draw, and where. */
-  private claimed = new Map<string, CardRect>()
+  /** What the overview's last frame had this layer draw, where, and — a
+   * card in motion — how. */
+  private claimed = new Map<
+    string,
+    Readonly<{ rect: CardRect; look: CardLook }>
+  >()
   /** The overview claimed afresh since the scene last followed it
    * (`syncShown`): what it claims only changes when it draws again — the
    * camera, the selection, a mount, the look — so a board at rest has
@@ -595,14 +602,21 @@ export class GpuBoard implements ContentLayer {
     this.dirty = true
   }
 
-  claim(node: BoardNode, rect: CardRect): boolean {
+  claim(node: BoardNode, rect: CardRect, look: CardLook = AT_REST): boolean {
     const tokens = this.deps.style.tokens
     // Without a worker nothing is claimed: the overview draws pictures as
     // it would without this layer.
     if (!tokens || !this.deps.typesetter.usable || !this.scene.usable) {
       return false
     }
-    if (this.pdfs.has(node.id)) return this.claimPdf(node, rect)
+    if (this.pdfs.has(node.id)) {
+      // A PDF in motion is its pages' pictures either way, and the overview
+      // draws those card by card as well as this would — without a card
+      // table entry and its chunk moving here every frame, which across a
+      // spread of hundreds of sheets folding is most of the frame.
+      if (look.scale !== 1 || look.alpha !== 1) return false
+      return this.claimPdf(node, rect, look)
+    }
     if (!this.nodes.has(node.id)) return false
     if (this.pending.has(node.id)) this.wanted.add(node.id)
     // One typeset again shows what it has until that comes — its window
@@ -612,17 +626,18 @@ export class GpuBoard implements ContentLayer {
       this.wanted.add(node.id)
       return false
     }
-    this.claimed.set(node.id, rect)
+    this.claimed.set(node.id, { rect, look })
     return true
   }
 
   /** A PDF card, drawn here once the picture of the first page it shows is
    * there and it is wide enough on screen to show one — as the overview
    * would draw it with its pictures; until then the overview draws it. */
-  private claimPdf(node: BoardNode, rect: CardRect): boolean {
+  private claimPdf(node: BoardNode, rect: CardRect, look: CardLook): boolean {
     const start = firstPage(node)
     if (!start || !this.deps.pagePicture(start.file, start.page)) return false
-    if (rect.w * this.deps.view().scale < PICTURE_MIN_SCREEN_PX) return false
+    if (rect.w * look.scale * this.deps.view().scale < PICTURE_MIN_SCREEN_PX)
+      return false
     if (!this.scene.cardOf(node.id)) {
       this.scene.setCard(node.id, {
         x: rect.x,
@@ -636,7 +651,7 @@ export class GpuBoard implements ContentLayer {
       })
       this.scene.setShown(node.id, false)
     }
-    this.claimed.set(node.id, rect)
+    this.claimed.set(node.id, { rect, look })
     return true
   }
 
@@ -705,7 +720,7 @@ export class GpuBoard implements ContentLayer {
       this.shown.delete(id)
       this.dirty = true
     }
-    for (const [id, rect] of this.claimed) {
+    for (const [id, { rect, look }] of this.claimed) {
       const card = this.scene.cardOf(id)
       const pdf = this.pdfs.get(id)
       const node = this.nodes.get(id) ?? pdf
@@ -730,6 +745,8 @@ export class GpuBoard implements ContentLayer {
         card.y !== rect.y ||
         card.w !== rect.w ||
         card.h !== rect.h ||
+        (card.scale ?? 1) !== look.scale ||
+        (card.alpha ?? 1) !== look.alpha ||
         !sameFrame(card.frame, frame)
       ) {
         this.scene.setCard(id, {
@@ -738,6 +755,9 @@ export class GpuBoard implements ContentLayer {
           y: rect.y,
           w: rect.w,
           h: rect.h,
+          scale: look.scale,
+          alpha: look.alpha,
+          anchor: { x: node.x, y: node.y },
           frame,
         })
         this.dirty = true

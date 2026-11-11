@@ -302,12 +302,12 @@ button.yolo-whiteboard-group-action:hover {
 }
 
 /* --- a collapsed group ----------------------------------------------------
- * The box under the title bar, as wide as it, holding a small picture of
- * each thing the group holds (ui/canvas/groupTitle.ts's `createGroupThumbs`,
- * drawn by the overview tier's own drawing). Unlike an open frame it is a
- * thing, not a region: what is in it is pictures, and a click on them opens
- * the group — so they take the pointer whether or not the group is selected.
- * They arrive faded in, as what they stand for leaves the board. */
+ * The box under the title bar, as wide as it. What the group holds is shown
+ * in it by the board itself, each thing in its cell (canvas.ts's `folded`),
+ * under the world layer this is in — the place the group folding away
+ * carried it to, so nothing is swapped in when the fold closes. Unlike an
+ * open frame the box is a thing, not a region: a click on it opens the
+ * group, so it takes the pointer whether or not the group is selected. */
 .yolo-whiteboard-group.yolo-whiteboard-group-collapsed {
   border-radius: 12px;
   /* A wash, like an open frame's, not a surface: a card dragged over the
@@ -326,12 +326,6 @@ button.yolo-whiteboard-group-action:hover {
   border-radius: inherit;
   pointer-events: auto;
   cursor: pointer;
-  animation: yolo-whiteboard-group-thumbs-in var(--yolo-anim-duration-enter)
-    var(--yolo-anim-ease-out);
-}
-
-.yolo-whiteboard-group-thumbs > canvas {
-  display: block;
 }
 
 .yolo-whiteboard-group-thumbs:hover {
@@ -351,15 +345,4 @@ button.yolo-whiteboard-group-action:hover {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-}
-
-@keyframes yolo-whiteboard-group-thumbs-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }

@@ -1,5 +1,5 @@
 import { SPREAD_DEAL_MAX_DELAY_MS, SPREAD_DEAL_STAGGER_MS } from './constants'
-import { sheetMotion, spreadMotions } from './spreadMotion'
+import { groupFoldMotions, sheetMotion, spreadMotions } from './foldMotion'
 
 const card = { x: 100, y: 200, w: 390 }
 const sheet = (page: number, x: number, y: number, w = 390) => ({
@@ -51,7 +51,7 @@ describe('spreadMotions', () => {
   it('puts the page the card shows last, so it is drawn over the rest', () => {
     const sheets = [sheet(1, 0, 0), sheet(2, 400, 0), sheet(3, 800, 0)]
     const order = spreadMotions(sheets, card, 2, 'out').map(
-      (move) => move.sheet.id,
+      (move) => move.node.id,
     )
     expect(order).toEqual(['p1', 'p3', 'p2'])
   })
@@ -59,5 +59,49 @@ describe('spreadMotions', () => {
   it('has nothing on top when the page the card shows is not there', () => {
     const moves = spreadMotions([sheet(1, 0, 0)], card, 7, 'in')
     expect(moves.some((move) => move.motion.onTop)).toBe(false)
+  })
+})
+
+describe('groupFoldMotions', () => {
+  const place = {
+    id: 'a',
+    extent: { x: 100, y: 100, w: 200, h: 100 },
+    scale: 0.25,
+    x: 10,
+    y: 20,
+    more: false,
+  }
+
+  it('carries the thing and what it carries under one map, whole', () => {
+    const nodes = [
+      { id: 'a', x: 100, y: 100 },
+      { id: 'a/p1', x: 200, y: 140 },
+    ]
+    const moves = groupFoldMotions([place], () => nodes)
+    expect(moves.map((move) => move.motion)).toEqual([
+      {
+        offset: { x: -90, y: -80 },
+        scale: 0.25,
+        fade: false,
+        delay: 0,
+        onTop: false,
+      },
+      {
+        // Folded at (10 + 100 * .25, 20 + 40 * .25): the same picture,
+        // smaller, wherever in it a node is.
+        offset: { x: 35 - 200, y: 30 - 140 },
+        scale: 0.25,
+        fade: false,
+        delay: 0,
+        onTop: false,
+      },
+    ])
+  })
+
+  it('fades what goes into the cell saying how many more', () => {
+    const moves = groupFoldMotions([{ ...place, more: true }], () => [
+      { id: 'a', x: 100, y: 100 },
+    ])
+    expect(moves[0]?.motion.fade).toBe(true)
   })
 })

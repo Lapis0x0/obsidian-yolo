@@ -621,13 +621,10 @@ export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
  * A PDF spread being opened deals its sheets out of the card's corner, one
  * after another in page order: each leaves this long after the one before,
  * and none later than the cap, so a long document is dealt in the same
- * breath as a short one. Sheets that mount within the window after the
- * spread opens (virtualization mounts a few per frame) are dealt too; later
- * ones, brought on screen by a pan, just appear.
+ * breath as a short one.
  */
 export const SPREAD_DEAL_STAGGER_MS = 12
 export const SPREAD_DEAL_MAX_DELAY_MS = 200
-export const SPREAD_DEAL_WINDOW_MS = 500
 
 /**
  * How long, at most, a closed spread's copy of the page its card shows is
@@ -641,23 +638,19 @@ export const FOLD_COVER_MAX_MS = 1500
 /**
  * A node arriving on the board (created, pasted, restored by an undo) and one
  * leaving it (deleted, cut). The same mirror of the host's motion tokens as
- * the arrangement above: entering is `--yolo-anim-duration-enter` on the
- * ease-out curve, leaving is `--yolo-anim-duration-exit` on the ease-in one.
+ * the arrangement above: entering is the arrangement's own motion
+ * (canvas/motions.ts), leaving is `--yolo-anim-duration-exit` on the ease-in
+ * one.
  *
  * The scale is small on purpose. A card is already where it will be — the
  * motion only has to say "this is new" or "this is going", not travel — so it
  * grows out of 94% and shrinks into 96%, which reads as a settle rather than a
  * zoom.
  */
-export const NODE_ENTER_MS = 220
 export const NODE_ENTER_FROM_SCALE = 0.94
 export const NODE_EXIT_MS = 160
 export const NODE_EXIT_TO_SCALE = 0.96
 export const NODE_EXIT_EASING = 'cubic-bezier(0.4, 0, 1, 1)'
-/** How long a node added to the board still counts as arriving. A node that
- * only mounts after this — added off screen and panned to later — is not new
- * to anyone looking at it, and appears like any other mounted card. */
-export const NODE_ENTER_WINDOW_MS = 600
 
 /**
  * The fling a pointer pan ends with: the camera keeps the velocity the hand

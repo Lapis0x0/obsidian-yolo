@@ -45,6 +45,7 @@ import {
   type EdgeAnchor,
   type EdgeId,
   type FileNode,
+  type GroupNode,
   type NodeColor,
   type NodeId,
   type PortalView,
@@ -66,12 +67,13 @@ import {
 import {
   arrangeTargets,
   carryGroupMembers,
-  collapsedGroupCells,
-  collapsedGroupSize,
+  collapsedGroupPlaces,
   createGroup,
   groupMemberCount,
+  groupMemberExtent,
   nodesToDragWith,
   releaseBounds,
+  withCarried,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
@@ -152,7 +154,11 @@ import { BoardSources } from './canvas/boardSources'
 import { CameraController } from './canvas/cameraController'
 import { nodeElementScale } from './canvas/cardContent'
 import { CardGeneration } from './canvas/cardGeneration'
-import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
+import {
+  CardRenderer,
+  type NodeExit,
+  type NodeRuntime,
+} from './canvas/cardRenderer'
 import { ClipboardController } from './canvas/clipboardController'
 import type { CanvasCore } from './canvas/core'
 import { DropImport } from './canvas/dropImport'
@@ -170,6 +176,7 @@ import {
 } from './canvas/interactionController'
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { Minimap } from './canvas/minimap'
+import { Motions } from './canvas/motions'
 import { OverviewLayer, type PortalLayer } from './canvas/overviewLayer'
 import { PassageHandles } from './canvas/passageHandles'
 import { PassagePoints } from './canvas/passagePoints'
@@ -209,7 +216,7 @@ import {
   INTERACTING_TIMEOUT_MS,
   MIN_SCALE_FIT_MARGIN,
   MOUNT_QUOTA_PER_FRAME,
-  NODE_ENTER_WINDOW_MS,
+  NODE_ENTER_FROM_SCALE,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
@@ -219,7 +226,6 @@ import {
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SCALE_BOUNDS,
-  SPREAD_DEAL_WINDOW_MS,
   SPREAD_SHEET_OF_SELECTED_CLASS,
   SVG_NS,
   UNMOUNT_QUOTA_PER_FRAME,
@@ -227,6 +233,12 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   WHEEL_ZOOM_MAX_DELTA_PER_EVENT,
 } from './constants'
+import {
+  type FoldMotion,
+  foldedPose,
+  groupFoldMotions,
+  spreadMotions,
+} from './foldMotion'
 import { GpuBoard } from './gpu/gpuBoard'
 import { ImageSizes } from './gpu/imageSizes'
 import { NearImages } from './gpu/nearImages'
@@ -269,12 +281,7 @@ import {
 } from './pictures/typesetCards'
 import { TypesetStyle } from './pictures/typesetStyle'
 import { applyColorToElement } from './selectionToolbar'
-import {
-  type SheetMotion,
-  type SpreadMotionDirection,
-  sheetMotion,
-  spreadMotions,
-} from './spreadMotion'
+import { type Pose, poseOf, scaledAboutCentre } from './tween'
 import { TypesetClient, typesetWorkerSource } from './typesetting/typesetClient'
 
 /** How long an edit asked for in the overview tier waits for its card to come
@@ -311,34 +318,11 @@ const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
  * (`holdFoldedCard`). */
 const FOLD_COVER_CLASS = 'yolo-whiteboard-spread-fold-cover'
 
-/**
- * A sheet's motion (./spreadMotion.ts) as the DOM plays it: keyframes for
- * its element between its place and the card's, and the `transform` it has
- * at the card's end. In the element's own units (`nodeElementScale`), which
- * its `transform` is in, and from its top-left; the sheet on top is drawn
- * over the others. The origin and the stacking are a keyframe's constants,
- * not what moves — `transform` and `opacity` alone do.
- */
-function sheetKeyframes(
-  el: HTMLElement,
-  motion: SheetMotion,
-  direction: SpreadMotionDirection,
-): Readonly<{ keyframes: Keyframe[]; atCard: string }> {
-  const scale = nodeElementScale(el)
-  const atCard = `translate(${motion.offset.x / scale}px, ${motion.offset.y / scale}px) scale(${motion.scale})`
-  const frame = (transform: string, opacity: number): Keyframe => ({
-    transformOrigin: '0 0',
-    transform,
-    ...(motion.fade ? { opacity } : {}),
-    ...(motion.onTop ? { zIndex: 1 } : {}),
-  })
-  const home = frame('none', 1)
-  const away = frame(atCard, 0)
-  return {
-    keyframes: direction === 'in' ? [away, home] : [home, away],
-    atCard,
-  }
-}
+/** One node's part in a fold, and the node it is of. */
+type FoldMove = Readonly<{ node: BoardNode; motion: FoldMotion }>
+
+/** A group's frame going from `from` to `to` alongside a fold. */
+type FrameMove = Readonly<{ id: NodeId; from: SpreadRect; to: SpreadRect }>
 
 /**
  * A copy of a sheet's element as it stands at `transform` — its pictures
@@ -491,30 +475,30 @@ export class WhiteboardCanvas {
    * next one would answer the same (`frame`). */
   private visibilityInputs: readonly unknown[] = []
   /**
-   * Nodes the user has just added to the board (created, pasted, dropped,
-   * restored by an undo), with when they were added — what `drainQueues`
-   * plays the arrival for as each one mounts. A node that mounts outside the
-   * window (NODE_ENTER_WINDOW_MS) was added off screen and is not new to
-   * anyone looking at it, so it mounts like any other.
+   * Where every node in motion is shown (./canvas/motions.ts): what every
+   * hand that draws the board asks, so a node moves the same whichever
+   * draws it.
    */
-  private readonly entering = new Map<NodeId, number>()
+  /** What the collapsed groups on the board show in their boxes, where
+   * (`foldedShown`); kept with the board's index. */
+  private folded: readonly Readonly<{ node: BoardNode; pose: Pose }>[] = []
+  private readonly motions = new Motions({
+    window: () => this.context.getWindow(),
+    rectOf: (id) => this.nodesById.get(id) ?? null,
+    elementOf: (id) =>
+      this.shownByElement(id)
+        ? (this.cardRenderer.getRuntime(id)?.el ?? null)
+        : null,
+    scaleOf: (id) => this.scaleOf(id),
+  })
   /** A card asked to be edited from the overview tier, waiting for the camera
    * to bring it back into the DOM (`zoomInToEdit`), and when to give up. */
   private pendingEdit: Readonly<{ id: NodeId; until: number }> | null = null
   /** The spread whose title the pointer is on (`syncSpreadHover`). */
   private hoveredSpreadId: NodeId | null = null
-  /** The spread being dealt out of its card — see `playSpreadDeal`. */
-  private spreadDeal: Readonly<{
-    parent: NodeId
-    /** The folded card's rectangle, which every sheet leaves from. */
-    card: SpreadRect
-    /** The page the card was showing (`leadPageOf`): its sheet is the card,
-     * and the others come out from under it. */
-    lead: number
-    startedAt: number
-  }> | null = null
-  /** Spreads whose sheets are being gathered back before they close. */
-  private readonly spreadsFolding = new Set<NodeId>()
+  /** Spreads and groups whose things are being gathered into their fold
+   * before it closes (`gather`). */
+  private readonly folding = new Set<NodeId>()
   /** A sheet's sharp picture of its page, copied from the card it is being
    * dealt out of, for its reader to show until it has drawn its own — so the
    * page the card was showing does not go soft as it becomes a sheet. */
@@ -850,6 +834,7 @@ export class WhiteboardCanvas {
     this.core = {
       context: this.context,
       host: this.host,
+      motions: this.motions,
       getBoard: () => this.board,
       getNode: (id) => this.nodesById.get(id),
       getEdge: (id) => this.boardEdgesById.get(id),
@@ -914,6 +899,7 @@ export class WhiteboardCanvas {
   ): void {
     const composition = this.sources.composition
     if (composition.portals.size === 0) {
+      this.flyIntoBoxes(next, ids)
       this.applyBoardChange(next, historyKey)
       return
     }
@@ -945,9 +931,80 @@ export class WhiteboardCanvas {
     // and the new ones are not arriving.
     for (const [from, name] of renamed) {
       this.purgeNodeRuntime(from)
-      this.entering.delete(name)
+      this.motions.stop([name])
     }
     this.setSelection([...this.selectedIds].map((id) => renamed.get(id) ?? id))
+  }
+
+  /**
+   * Cards a drop puts away into a collapsed group (dragGestures.ts's
+   * `withDropMembership`), shown going into the box: each — with what it
+   * carries — shrinking from where it was let go to its cell, where the box
+   * draws its picture of it once it gets there. They leave the
+   * board with the drop: each goes as an element being let go of
+   * (cardRenderer.ts's `playExit`), or, drawn, as a node departing
+   * (./canvas/motions.ts's `depart`).
+   */
+  private flyIntoBoxes(next: Board, ids: readonly NodeId[]): void {
+    if (this.prefersReducedMotion()) return
+    const settled = this.fitFrames(next)
+    const staying = new Set(settled.nodes.map((node) => node.id))
+    const gone = new Set(
+      ids.filter((id) => this.nodesById.has(id) && !staying.has(id)),
+    )
+    if (gone.size === 0) return
+    const live = this.interaction.liveNodeRects
+    for (const box of settled.nodes) {
+      if (!isFolded(box)) continue
+      const stash = box.stash.nodes
+      const byId = new Map(stash.map((node) => [node.id, node]))
+      const members = box.members.flatMap((id) => {
+        const node = byId.get(id)
+        return node ? [node] : []
+      })
+      if (!members.some((member) => gone.has(member.id))) continue
+      const places = collapsedGroupPlaces(
+        box,
+        members.map((member) => ({
+          id: member.id,
+          extent: groupMemberExtent(member, stash),
+        })),
+        this.scaleOf(box.id),
+      )
+      const moves = groupFoldMotions(places, (id) => {
+        const member = byId.get(id)
+        return member ? withCarried(member, stash) : []
+      })
+      for (const { node, motion } of moves) {
+        const was = this.nodesById.get(node.id)
+        const from = live?.get(node.id) ?? was
+        if (!gone.has(node.id) || !was || !from) continue
+        const into = foldedPose(node, motion)
+        const el = this.shownByElement(node.id)
+          ? this.cardRenderer.getRuntime(node.id)?.el
+          : null
+        // Its cell stays empty until it arrives (`folded`); the canvas
+        // draws it on the way, under its element if it has one.
+        this.motions.depart(was, poseOf(from), into)
+        if (!el) {
+          // Parked under the drawing while it was dragged: it goes now.
+          this.purgeNodeRuntime(node.id)
+          continue
+        }
+        // From where it stands on screen — its drag's `translate` and all —
+        // to its cell.
+        const unit = nodeElementScale(el)
+        const transform = `translate(${(into.x - from.x) / unit}px, ${(into.y - from.y) / unit}px) scale(${into.w / from.w})`
+        this.purgeNodeRuntime(node.id, {
+          exit: {
+            keyframes: [
+              { transformOrigin: '0 0', transform: 'none' },
+              { transformOrigin: '0 0', transform },
+            ],
+          },
+        })
+      }
+    }
   }
 
   private cardAtPoint(point: ScreenPoint, portals: boolean): NodeId | null {
@@ -2096,6 +2153,10 @@ export class WhiteboardCanvas {
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
       isMounted: (id) => this.shownByDom(id),
       getLiveRects: () => this.interaction.liveNodeRects,
+      poseOf: (id) => this.motions.pose(id),
+      departures: () => this.motions.departures(),
+      folded: () =>
+        this.folded.filter((shown) => !this.motions.isDeparting(shown.node.id)),
       pdfPageLabels: this.pdfPageLabels,
       picture: (node, dark, page) => this.pictureOf(node, dark, page),
       contentLayer: () => this.gpuBoard,
@@ -2167,7 +2228,7 @@ export class WhiteboardCanvas {
         this.findMarks?.cardMoved(id)
       },
     })
-    this.gpuBoard?.setNodes(this.ownCardNodes)
+    this.gpuBoard?.setNodes(this.drawableNodes())
     this.unsubscribeRemoteImages?.()
     this.unsubscribeRemoteImages = this.remoteImages.subscribe((key) => {
       // Its cards are typeset again — drawn, or left to the DOM, by whether
@@ -2378,7 +2439,6 @@ export class WhiteboardCanvas {
           : 0
       },
       onGroupAction: (id, action) => this.runGroupAction(id, action),
-      paintGroupThumbs: (id, canvas) => this.paintGroupThumbs(id, canvas),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -3154,11 +3214,17 @@ export class WhiteboardCanvas {
     this.markEntering(previous)
   }
 
-  /** Records the nodes `nodesById` has and `previous` did not, as arriving. */
+  /** The nodes `nodesById` has and `previous` did not, shown arriving: each
+   * grows into its place out of a slightly smaller, transparent version of
+   * itself (NODE_ENTER_FROM_SCALE) — whatever draws it, and when its element
+   * mounts later, from where the arrival has got to. The scale is small on
+   * purpose: the motion only has to say "this is new", not travel. */
   private markEntering(previous: ReadonlyMap<NodeId, BoardNode>): void {
-    const now = this.context.getWindow().performance.now()
-    for (const id of this.nodesById.keys()) {
-      if (!previous.has(id)) this.entering.set(id, now)
+    for (const [id, node] of this.nodesById) {
+      if (previous.has(id) || node.type === 'group') continue
+      this.motions.settle(id, {
+        from: scaledAboutCentre(node, NODE_ENTER_FROM_SCALE, 0),
+      })
     }
   }
 
@@ -3810,15 +3876,13 @@ export class WhiteboardCanvas {
         this.applyBoardChange(releaseBounds(this.board, id))
         break
       case 'collapse':
-        // Folded on the way in (`fitFrames`): what it holds leaves the
-        // board, the way a deleted card does, and the box takes its place.
-        this.applyBoardChange(collapseGroup(this.board, id))
-        break
+        // Gathered into the box first, and only then collapsed
+        // (`foldGroupAway`), which brings the board up to date itself.
+        void this.foldGroupAway(id)
+        return
       case 'expand':
-        this.applyBoardChange(expandGroup(this.board, id))
-        // What it put away is back, and the edges drawn to its box reach it.
-        this.rebuildEdgesSvg()
-        break
+        this.openGroup(id)
+        return
     }
     this.recomputeVisibility()
     this.drainQueues()
@@ -3826,55 +3890,42 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * A collapsed group's small pictures (./canvas/groupTitle.ts's
-   * `createGroupThumbs`): each thing it directly holds — a PDF spread with
-   * its sheets — drawn by the overview tier's own drawing, scaled to fit its
-   * cell and centred in it. Drawn at a few pixels to the unit, so it stays
-   * sharp as the board is looked at closer than 1:1.
+   * What every collapsed group on the board shows in its box, and where:
+   * each thing it holds — with what it carries — at the place the fold
+   * carried it to (domain/groups.ts's `collapsedGroupPlaces`), drawn by the
+   * board as it draws any card (`folded`). So the end of a group folding
+   * away is the box it leaves, not a picture of it swapped in; and what is
+   * in a box is typeset as sharp as the card it is, at any zoom. Not what
+   * the last cell stands in for, and not a group behind a portal.
    */
-  private paintGroupThumbs(id: NodeId, canvas: HTMLCanvasElement): void {
-    const group = this.nodesById.get(id)
-    const layer = this.overviewLayer
-    if (!isFolded(group) || !layer) return
-    const count = groupMemberCount(group, this.board.nodes)
-    const box = { x: 0, y: 0, ...collapsedGroupSize(count) }
-    const cells = collapsedGroupCells(box, count)
-    const shown = count > cells.length ? cells.length - 1 : cells.length
-    const px = this.context.getWindow().devicePixelRatio * 2
-    canvas.width = Math.round(box.w * px)
-    canvas.height = Math.round(box.h * px)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    const stashed = new Map(group.stash.nodes.map((node) => [node.id, node]))
-    const members = group.members.flatMap((member) => {
-      const node = stashed.get(member)
-      return node ? [node] : []
-    })
-    members.slice(0, shown).forEach((member, index) => {
-      const cell = cells[index]
-      const parts = [
-        member,
-        ...group.stash.nodes.filter(
-          (node) => node.type === 'pdf-page' && node.parent === member.id,
-        ),
-      ]
-      const extent = unionRect(parts)
-      if (!extent || extent.w <= 0 || extent.h <= 0) return
-      const fit = Math.min(cell.w / extent.w, cell.h / extent.h)
-      const left = cell.x + (cell.w - extent.w * fit) / 2
-      const top = cell.y + (cell.h - extent.h * fit) / 2
-      layer.paintNodes(
-        ctx,
-        {
-          scale: fit * px,
-          tx: (left - extent.x * fit) * px,
-          ty: (top - extent.y * fit) * px,
-        },
-        { width: canvas.width, height: canvas.height },
-        parts,
+  private foldedShown(): readonly Readonly<{ node: BoardNode; pose: Pose }>[] {
+    const portals = this.sources.composition.portals
+    const shown: { node: BoardNode; pose: Pose }[] = []
+    for (const box of this.board.nodes) {
+      if (!isFolded(box) || portalOf(box.id, portals)) continue
+      const stash = box.stash.nodes
+      const byId = new Map(stash.map((node) => [node.id, node]))
+      const members = box.members.flatMap((id) => {
+        const node = byId.get(id)
+        return node ? [node] : []
+      })
+      const places = collapsedGroupPlaces(
+        box,
+        members.map((member) => ({
+          id: member.id,
+          extent: groupMemberExtent(member, stash),
+        })),
+        this.scaleOf(box.id),
       )
-    })
+      const moves = groupFoldMotions(places, (id) => {
+        const member = byId.get(id)
+        return member ? withCarried(member, stash) : []
+      })
+      for (const { node, motion } of moves) {
+        if (!motion.fade) shown.push({ node, pose: foldedPose(node, motion) })
+      }
+    }
+    return shown
   }
 
   /**
@@ -3991,9 +4042,9 @@ export class WhiteboardCanvas {
     // anything there any more.
     this.releaseFoldedCard(id, true)
     if (node.spread) {
-      this.beginSpreadDeal(id, node)
+      const lead = this.handOffLeadPage(id, node)
       this.commitSpreadToggle(id, openSpread(this.board, id))
-      this.dealOnOverview(id)
+      this.dealOut(spreadMotions(spreadPages(this.board, id), node, lead, 'in'))
       return
     }
     let sizes: readonly Readonly<{ width: number; height: number }>[]
@@ -4016,50 +4067,9 @@ export class WhiteboardCanvas {
       defaultSpreadColumns(sizes, metrics),
       metrics,
     )
-    this.beginSpreadDeal(id, now)
+    const lead = this.handOffLeadPage(id, now)
     this.commitSpreadToggle(id, openSpread(this.board, id, layout))
-    this.dealOnOverview(id)
-  }
-
-  /** The overview tier's deal: the canvas carries each sheet out of the
-   * card's corner, in the same order and timing as `playSpreadDeal`. */
-  private dealOnOverview(id: NodeId): void {
-    const deal = this.spreadDeal
-    if (!this.overview || !deal || deal.parent !== id) return
-    this.spreadDeal = null
-    this.animateSpreadOnOverview(id, deal.card, deal.lead, 'in')
-  }
-
-  /**
-   * The overview tier's side of a spread being dealt out of its card (`in`)
-   * or gathered back into it (`out`): the sheets' motions
-   * (./spreadMotion.ts), carried by the canvas (OverviewLayer's `animate`),
-   * told in the order that draws the one on top last. Whether the page the
-   * card shows was there to travel.
-   */
-  private animateSpreadOnOverview(
-    id: NodeId,
-    card: SpreadRect,
-    lead: number,
-    direction: SpreadMotionDirection,
-  ): boolean {
-    let led = false
-    for (const { sheet, motion } of spreadMotions(
-      spreadPages(this.board, id),
-      card,
-      lead,
-      direction,
-    )) {
-      if (motion.onTop) led = true
-      this.overviewLayer?.animate(sheet.id, {
-        direction,
-        offset: motion.offset,
-        scale: motion.scale,
-        fade: motion.fade,
-        delay: motion.delay,
-      })
-    }
-    return led
+    this.dealOut(spreadMotions(spreadPages(this.board, id), now, lead, 'in'))
   }
 
   private prefersReducedMotion(): boolean {
@@ -4070,65 +4080,135 @@ export class WhiteboardCanvas {
       .matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
-  /** Arms the deal for a spread about to open from `card`: its sheets will
-   * leave the card as they mount (`playSpreadDeal`), or, in the overview
-   * tier where nothing mounts, as the canvas draws them (`dealOnOverview`).
-   *
-   * The page the card shows is the card: its sheet is handed the card's
-   * sharp picture of it, so it does not go soft for the moment between the
-   * card going and the sheet drawing its own — with or without the motion. */
-  private beginSpreadDeal(id: NodeId, card: BoardNode): void {
+  /** The cards the GPU scene may be asked to draw: the board's own, and
+   * everything the collapsed groups hold — not only what their boxes show
+   * (`folded`): what a group put away keeps its typesetting, so it comes
+   * back out drawn, not set again card by card while it moves. */
+  private drawableNodes(): readonly BoardNode[] {
+    const portals = this.sources.composition.portals
+    const held = this.board.nodes.flatMap((box) =>
+      isFolded(box) && !portalOf(box.id, portals)
+        ? box.stash.nodes.filter((node) => node.type !== 'group')
+        : [],
+    )
+    return held.length === 0
+      ? this.ownCardNodes
+      : [...this.ownCardNodes, ...held]
+  }
+
+  /** Whether `id` is on screen as an element of its own, rather than drawn
+   * by the overview canvas or not shown at all. */
+  private shownByElement(id: NodeId): boolean {
+    return (
+      this.cardRenderer.getRuntime(id)?.el != null &&
+      !this.cardRenderer.isParked(id)
+    )
+  }
+
+  /** Once a frame while anything is in motion (./canvas/motions.ts): the
+   * canvas draws it where it is shown, and its edges are drawn to it there —
+   * to where it rests, for one that has just stopped. */
+  private showMotions(): void {
+    if (this.motions.size === 0) return
+    const changed = this.motions.tick()
+    if (changed.size === 0) return
+    this.overviewLayer?.markDirty()
+    const shown = new Map<NodeId, CardRect>()
+    for (const { id, pose } of this.motions.moving()) shown.set(id, pose)
+    this.edgeLayer.redrawEdgesForNodes(changed, shown)
+  }
+
+  // -----------------------------------------------------------------------
+  // Folds: a PDF spread into its card, a group into its box.
+  //
+  // How each node moves is ./foldMotion.ts's, and showing it, on whichever
+  // hand draws the node, ./canvas/motions.ts's. What is here is the order of
+  // events around the board change: a fold opened is committed first, and
+  // what it opened is shown coming out of the fold (`dealOut`); a fold
+  // closed is gathered first (`gather`), and committed once everything has
+  // arrived.
+  // -----------------------------------------------------------------------
+
+  /** What a fold just opened, shown coming out of it: each node from where
+   * its motion folds it to where the board now has it. */
+  private dealOut(moves: readonly FoldMove[]): void {
+    for (const { node, motion } of moves) {
+      this.motions.settle(node.id, {
+        from: foldedPose(node, motion),
+        delay: motion.delay,
+        onTop: motion.onTop,
+      })
+    }
+    this.overviewLayer?.markDirty()
+  }
+
+  /**
+   * Gathers `moves` into their fold, and `frames` to their new rectangles
+   * alongside, each held where it arrives. True once everything has arrived;
+   * false, at once, for a fold of `key` already being gathered — a second
+   * ask while they travel is the same ask, and is let go.
+   */
+  private async gather(
+    key: NodeId,
+    moves: readonly FoldMove[],
+    frames: readonly FrameMove[] = [],
+  ): Promise<boolean> {
+    if (this.folding.has(key)) return false
+    for (const { node, motion } of moves) {
+      this.motions.move(node.id, foldedPose(node, motion), {
+        hold: true,
+        delay: motion.delay,
+        onTop: motion.onTop,
+      })
+    }
+    for (const frame of frames) {
+      this.motions.move(frame.id, poseOf(frame.to), {
+        hold: true,
+        reshape: true,
+      })
+    }
+    this.overviewLayer?.markDirty()
+    this.folding.add(key)
+    await this.motions.arrived([
+      ...moves.map((move) => move.node.id),
+      ...frames.map((frame) => frame.id),
+    ])
+    this.folding.delete(key)
+    return true
+  }
+
+  /** A gather called off — what it folded was closed, opened or removed
+   * some other way meanwhile: everything still there goes back to where the
+   * board has it. */
+  private ungather(
+    moves: readonly FoldMove[],
+    frames: readonly FrameMove[] = [],
+  ): void {
+    for (const { node } of moves) this.motions.settle(node.id)
+    for (const frame of frames) this.motions.settle(frame.id, { reshape: true })
+  }
+
+  /** The page a spread about to open from `card` comes out of it on — its
+   * sheet is the card. That sheet is handed the card's sharp picture of it,
+   * so it does not go soft for the moment between the card going and the
+   * sheet drawing its own, with or without the motion. */
+  private handOffLeadPage(id: NodeId, card: BoardNode): number {
     const lead = firstPage(card)?.page ?? 1
     const sharp = this.cardRenderer.copyPdfPicture(id, lead)
     if (sharp) this.spreadHandoffPictures.set(pdfPageNodeId(id, lead), sharp)
-    this.spreadDeal = this.prefersReducedMotion()
-      ? null
-      : {
-          parent: id,
-          card: { x: card.x, y: card.y, w: card.w, h: card.h },
-          lead,
-          startedAt: this.context.getWindow().performance.now(),
-        }
+    return lead
   }
 
   /**
-   * A sheet of the spread just opened, dealt out of the card to its place by
-   * its motion (./spreadMotion.ts), as it mounts. As a Web Animation, so
-   * nothing is left on the element.
-   */
-  private playSpreadDeal(id: NodeId): void {
-    const deal = this.spreadDeal
-    if (!deal) return
-    const now = this.context.getWindow().performance.now()
-    if (now - deal.startedAt > SPREAD_DEAL_WINDOW_MS) {
-      this.spreadDeal = null
-      return
-    }
-    const node = this.nodesById.get(id)
-    if (node?.type !== 'pdf-page' || node.parent !== deal.parent) return
-    const el = this.cardRenderer.getRuntime(id)?.el
-    if (!el) return
-    const motion = sheetMotion(node, deal.card, deal.lead, 'in')
-    el.animate(sheetKeyframes(el, motion, 'in').keyframes, {
-      duration: ARRANGE_ANIMATION_MS,
-      easing: ARRANGE_ANIMATION_EASING,
-      delay: motion.delay,
-      fill: 'backwards',
-    })
-  }
-
-  /**
-   * Closes a spread the way it opened, backwards: the sheets on screen go
-   * back to where the card comes back to (under the title) by their motions
-   * (./spreadMotion.ts) — the page the card will show whole and on top,
-   * wherever it was put. Only then is the spread closed — and a copy of that
-   * sheet is held over the card until its reader has drawn
-   * (`holdFoldedCard`), so the page stays the same piece of paper from
-   * start to end. A second ask while they travel is the same ask, and is let
-   * go.
+   * Closes a spread the way it opened, backwards: the sheets go back to
+   * where the card comes back to (under the title) by their motions
+   * (./foldMotion.ts) — the page the card will show whole and on top,
+   * wherever it was put. Only then is the spread closed — and where that
+   * sheet was an element, a copy of it is held over the card until its
+   * reader has drawn (`holdFoldedCard`), so the page stays the same piece of
+   * paper from start to end.
    */
   private async foldSpreadAway(id: NodeId): Promise<void> {
-    if (this.spreadsFolding.has(id)) return
     const title = this.nodesById.get(id)
     if (!title) return
     const corner = foldedCardOrigin(title)
@@ -4139,89 +4219,146 @@ export class WhiteboardCanvas {
       h: reader?.h ?? title.h,
     }
     const lead = firstPage(title)?.page ?? 1
-    let leadSheet: Readonly<{ el: HTMLElement; transform: string }> | null =
-      null
-    const gathering: Animation[] = []
-    const onOverview = this.overview && !this.prefersReducedMotion()
-    if (onOverview) {
-      // No elements to animate: the canvas gathers the sheets instead, and
-      // the spread closes when they have arrived.
-      const led = this.animateSpreadOnOverview(id, card, lead, 'out')
-      this.spreadsFolding.add(id)
-      await new Promise((resolve) =>
-        this.context.getWindow().setTimeout(resolve, ARRANGE_ANIMATION_MS),
-      )
-      this.spreadsFolding.delete(id)
-      if (!isSpreadTitle(this.nodesById.get(id))) {
-        this.overviewLayer?.stopAnimating(
-          spreadPages(this.board, id).map((sheet) => sheet.id),
-        )
-        return
-      }
-      this.commitSpreadToggle(id, closeSpread(this.board, id))
-      // The sheet that came back whole is where the card is drawn now, at
-      // its width: the card simply takes its place. Without one, the card
-      // fades in where the others went.
-      if (!led) {
-        this.overviewLayer?.animate(id, {
-          direction: 'in',
-          offset: { x: 0, y: 0 },
-          delay: 0,
-        })
-      }
-      return
-    }
-    if (!this.prefersReducedMotion()) {
-      for (const sheet of spreadPages(this.board, id)) {
-        const el = this.cardRenderer.getRuntime(sheet.id)?.el
-        if (!el) continue
-        const motion = sheetMotion(sheet, card, lead, 'out')
-        const { keyframes, atCard } = sheetKeyframes(el, motion, 'out')
-        if (motion.onTop) leadSheet = { el, transform: atCard }
-        gathering.push(
-          el.animate(keyframes, {
-            duration: ARRANGE_ANIMATION_MS,
-            easing: ARRANGE_ANIMATION_EASING,
-            delay: motion.delay,
-            fill: 'forwards',
-          }),
-        )
-      }
-    }
-    if (gathering.length > 0) {
-      this.spreadsFolding.add(id)
-      // A sheet torn down mid-flight cancels its animation; that is not a
-      // reason to leave the spread open.
-      await Promise.allSettled(gathering.map((animation) => animation.finished))
-      this.spreadsFolding.delete(id)
-    }
+    const moves = spreadMotions(spreadPages(this.board, id), card, lead, 'out')
+    const top = moves.find((move) => move.motion.onTop)?.node.id
+    if (!(await this.gather(id, moves))) return
     if (!isSpreadTitle(this.nodesById.get(id))) {
-      // Closed or undone some other way meanwhile: the sheets that are still
-      // there are shown again, not left gathered and invisible.
-      for (const animation of gathering) animation.cancel()
+      this.ungather(moves)
       return
     }
     // Copied, and put beside it in the world, while the sheet is still there:
     // it goes with the spread.
+    const leadEl =
+      top !== undefined && this.shownByElement(top)
+        ? this.cardRenderer.getRuntime(top)?.el
+        : undefined
+    const transform = top === undefined ? null : this.motions.transformOf(top)
     const cover =
-      leadSheet && leadSheet.el.isConnected
-        ? foldCoverOf(leadSheet.el, leadSheet.transform)
-        : null
-    if (cover) leadSheet?.el.after(cover)
+      leadEl?.isConnected && transform ? foldCoverOf(leadEl, transform) : null
+    if (cover) leadEl?.after(cover)
     this.commitSpreadToggle(id, closeSpread(this.board, id))
     if (cover) {
       this.holdFoldedCard(id, cover)
       return
     }
-    // The page the card shows was not on screen to become it: the card
+    // The sheet that came back whole, drawn, is where the card is drawn now,
+    // at its width: the card simply takes its place. With none, the card
     // fades in where the others went.
-    if (gathering.length === 0) return
-    this.cardRenderer
-      .getRuntime(id)
-      ?.el?.animate([{ opacity: 0 }, { opacity: 1 }], {
-        duration: ARRANGE_ANIMATION_MS,
-        easing: ARRANGE_ANIMATION_EASING,
+    if (top !== undefined || moves.length === 0) return
+    this.motions.settle(id, { from: poseOf(card, 0) })
+  }
+
+  /**
+   * Collapses group `id` the way it will look collapsed: each thing it holds
+   * goes, whole and with what it carries, into its cell of the box — where
+   * the box will draw its picture of it (./foldMotion.ts) — while the frame,
+   * and every frame round it, closes onto the box. Only then is the group
+   * collapsed. What arrived on screen as elements is let go of where it
+   * stands, fading over the pictures the box now draws in the same places.
+   */
+  private async foldGroupAway(id: NodeId): Promise<void> {
+    const group = this.nodesById.get(id)
+    if (group?.type !== 'group' || isFolded(group)) return
+    const settled = this.fitFrames(collapseGroup(this.board, id))
+    const box = settled.nodes.find((node) => node.id === id)
+    if (!box) return
+    const moves = this.groupFoldMoves(group, box, this.board.nodes)
+    const frames = this.frameMoves(this.board, settled)
+    if (!(await this.gather(id, moves, frames))) return
+    const now = this.nodesById.get(id)
+    if (now?.type !== 'group' || isFolded(now)) {
+      this.ungather(moves, frames)
+      return
+    }
+    for (const { node } of moves) {
+      if (this.shownByElement(node.id))
+        this.purgeNodeRuntime(node.id, { exit: 'fade' })
+    }
+    this.applyBoardChange(collapseGroup(this.board, id))
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.interaction.refreshInteractionLayer()
+  }
+
+  /** Expands group `id` out of its box the way it collapsed, backwards: what
+   * it holds comes out of its cells to where it was, as the frame — and
+   * every frame round it — opens back out. */
+  private openGroup(id: NodeId): void {
+    const box = this.nodesById.get(id)
+    if (!isFolded(box)) return
+    const next = expandGroup(this.board, id)
+    const settled = this.fitFrames(next)
+    const group = settled.nodes.find((node) => node.id === id)
+    if (group?.type !== 'group') return
+    const moves = this.groupFoldMoves(group, box, settled.nodes)
+    const frames = this.frameMoves(this.board, settled)
+    this.applyBoardChange(next)
+    // What it put away is back, and the edges drawn to its box reach it.
+    this.rebuildEdgesSvg()
+    this.dealOut(moves)
+    for (const frame of frames) {
+      this.motions.settle(frame.id, {
+        from: poseOf(frame.from),
+        reshape: true,
       })
+    }
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.interaction.refreshInteractionLayer()
+  }
+
+  /**
+   * How `group`'s things move between where they are in `nodes` and its box
+   * at `box`: each by the map its box draws its picture by
+   * (domain/groups.ts's `collapsedGroupPlaces`), with everything it carries.
+   */
+  private groupFoldMoves(
+    group: GroupNode,
+    box: SpreadRect,
+    nodes: readonly BoardNode[],
+  ): FoldMove[] {
+    const byId = new Map(nodes.map((node) => [node.id, node]))
+    const members = group.members.flatMap((member) => {
+      const node = byId.get(member)
+      return node ? [node] : []
+    })
+    const places = collapsedGroupPlaces(
+      { x: box.x, y: box.y, w: box.w, h: box.h },
+      members.map((member) => ({
+        id: member.id,
+        extent: groupMemberExtent(member, nodes),
+      })),
+      this.scaleOf(group.id),
+    )
+    return [
+      ...groupFoldMotions(places, (member) => {
+        const node = byId.get(member)
+        return node ? withCarried(node, nodes) : []
+      }),
+    ]
+  }
+
+  /** Every group's frame that is somewhere else in `after` than in
+   * `before`. */
+  private frameMoves(before: Board, after: Board): FrameMove[] {
+    const was = new Map(
+      before.nodes
+        .filter((node) => node.type === 'group')
+        .map((node) => [node.id, node]),
+    )
+    return after.nodes.flatMap((node): FrameMove[] => {
+      const from = node.type === 'group' ? was.get(node.id) : undefined
+      if (!from) return []
+      if (
+        from.x === node.x &&
+        from.y === node.y &&
+        from.w === node.w &&
+        from.h === node.h
+      ) {
+        return []
+      }
+      return [{ id: node.id, from, to: node }]
+    })
   }
 
   /**
@@ -4351,9 +4488,6 @@ export class WhiteboardCanvas {
         this.purgeNodeRuntime(nodeId)
       }
     }
-    // What was just spread out is new to the board, not arriving from off
-    // screen: its sheets are the same paper the card held.
-    for (const nodeId of this.nodesById.keys()) this.entering.delete(nodeId)
     this.setSelection([id])
     this.rebuildEdgesSvg()
     this.interaction.refreshInteractionLayer()
@@ -4463,54 +4597,26 @@ export class WhiteboardCanvas {
     const next = setNodePositions(this.board, positions)
     if (next === this.board) return
     this.applyBoardChange(next, options?.historyKey)
-    const moved: { el: HTMLElement; dx: number; dy: number }[] = []
     for (const id of positions.keys()) {
       const el = this.cardRenderer.getRuntime(id)?.el
       const node = this.nodesById.get(id)
-      if (!el || !node) continue
-      el.style.left = `${node.x}px`
-      el.style.top = `${node.y}px`
+      if (!node) continue
+      if (el) {
+        el.style.left = `${node.x}px`
+        el.style.top = `${node.y}px`
+      }
+      // Not decoration: these commands move several cards at once and the
+      // user pointed at none of them — with no travel there is nothing on
+      // screen saying what happened or which cards it happened to.
       const from = before.get(id)
-      if (!from) continue
-      const dx = from.x - node.x
-      const dy = from.y - node.y
-      if (dx !== 0 || dy !== 0) moved.push({ el, dx, dy })
+      if (!from || options?.animate === false) continue
+      if (from.x === node.x && from.y === node.y) continue
+      this.motions.settle(id, { from: poseOf({ ...node, ...from }) })
     }
-    if (options?.animate !== false) this.animateArrangement(moved)
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.interaction.refreshInteractionLayer()
     this.recomputeVisibility()
     this.drainQueues()
-  }
-
-  /**
-   * FLIP for an arrangement: the cards already carry their new `left`/`top`,
-   * so each is offset back to where it came from and animated to zero.
-   *
-   * Not decoration. These commands move several cards at once and the user
-   * pointed at none of them — with no travel there is nothing on screen saying
-   * what happened or which cards it happened to, and the command reads as "I
-   * pressed something, and maybe nothing occurred". Only `transform` is
-   * animated (CLAUDE.md), and as a Web Animation rather than a transition
-   * class, so nothing is left behind on the element for the next drag to
-   * inherit.
-   */
-  private animateArrangement(
-    moved: readonly { el: HTMLElement; dx: number; dy: number }[],
-  ): void {
-    if (moved.length === 0) return
-    if (this.prefersReducedMotion()) return
-    for (const { el, dx: worldX, dy: worldY } of moved) {
-      // In the card's own units (`nodeElementScale`), which its `transform`
-      // is in.
-      const scale = nodeElementScale(el)
-      const dx = worldX / scale
-      const dy = worldY / scale
-      el.animate(
-        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-        { duration: ARRANGE_ANIMATION_MS, easing: ARRANGE_ANIMATION_EASING },
-      )
-    }
   }
 
   /** Minted against `board` rather than `this.board` where a caller is
@@ -4542,9 +4648,8 @@ export class WhiteboardCanvas {
    * own. */
   private purgeNodeRuntime(
     id: NodeId,
-    options?: Readonly<{ exit?: boolean }>,
+    options?: Readonly<{ exit?: NodeExit }>,
   ): void {
-    this.entering.delete(id)
     // A run writing into a card that is going away has nowhere to land: the
     // stop settles it, and `planNodeCommit` finds no node to commit to.
     this.cardGeneration.stop(id)
@@ -4615,6 +4720,7 @@ export class WhiteboardCanvas {
     this.pictures?.pump()
     this.settleOverviewLinger()
     this.openPendingEdit(now)
+    this.showMotions()
     // It draws the camera the world layer was just given, and the geometry
     // the queues above have just finished changing.
     this.overviewLayer?.render()
@@ -5307,16 +5413,11 @@ export class WhiteboardCanvas {
       UNMOUNT_QUOTA_PER_FRAME,
       (id) => !this.cardRenderer.isParked(id) || this.takeContentBuild(),
     )
-    const now =
-      this.entering.size > 0 ? this.context.getWindow().performance.now() : 0
     for (const id of toMount) {
       this.cardRenderer.mountNode(id)
       this.interaction.adoptMountedCard(id)
-      this.playSpreadDeal(id)
-      const addedAt = this.entering.get(id)
-      if (addedAt === undefined) continue
-      this.entering.delete(id)
-      if (now - addedAt <= NODE_ENTER_WINDOW_MS) this.cardRenderer.playEnter(id)
+      // Mounted partway through a motion: shown where it has got to.
+      this.motions.attach(id)
     }
     for (const id of toUnmount) this.cardRenderer.unmountNode(id)
     if (toMount.length > 0 || toUnmount.length > 0) {
@@ -5426,7 +5527,7 @@ export class WhiteboardCanvas {
     this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
     this.pinsRevision += 1
-    this.entering.clear()
+    this.motions.destroy()
     this.contentSyncQueue.clear()
     this.engine.reset()
     this.edgeLayer.clearEdgesSvg()
@@ -5832,7 +5933,8 @@ export class WhiteboardCanvas {
             return !clip || overlaps(node, clip)
           })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
-    this.gpuBoard?.setNodes(this.ownCardNodes)
+    this.folded = this.foldedShown()
+    this.gpuBoard?.setNodes(this.drawableNodes())
     this.find?.boardChanged()
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(

@@ -29,14 +29,13 @@ import { isSpreadTitle } from '../../domain/spread'
 import type { AnnotationLease } from '../../host/annotationStore'
 import {
   ARRANGE_ANIMATION_EASING,
+  ARRANGE_ANIMATION_MS,
   CARD_BODY_LIVE_CLASS,
   CARD_BODY_SCROLLS_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_HANDOFF_CLASS,
   CARD_SELECTED_CLASS,
   GROUP_LABEL_WORLD_FONT_PX,
-  NODE_ENTER_FROM_SCALE,
-  NODE_ENTER_MS,
   NODE_EXIT_EASING,
   NODE_EXIT_MS,
   NODE_EXIT_TO_SCALE,
@@ -161,6 +160,13 @@ const WEB_FRAME_SANDBOX =
  * real. Every other parked card is inert DOM and answers to `parkedCapacity`.
  */
 const WEB_FRAME_POOL_CAPACITY = 6
+
+/** How a card being torn down leaves: at once (`false`), the way a deleted
+ * card does (`true`, `playExit`), fading where it stands (`'fade'`), or
+ * going somewhere as it goes — `keyframes` from where it stands, over the
+ * arrangement's motion (a card dropped on a collapsed group, into its cell
+ * of the box). */
+export type NodeExit = boolean | 'fade' | Readonly<{ keyframes: Keyframe[] }>
 
 export type NodeRuntime = {
   el: HTMLElement | null
@@ -307,9 +313,6 @@ export type CardRendererCallbacks = Readonly<{
   groupMemberCount: (id: NodeId) => number
   /** A button on a group's title bar was clicked. */
   onGroupAction: (id: NodeId, action: GroupTitleAction) => void
-  /** Draws a collapsed group's small pictures of what it holds onto
-   * `canvas`, sizing its backing store. */
-  paintGroupThumbs: (id: NodeId, canvas: HTMLCanvasElement) => void
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -456,13 +459,14 @@ export class CardRenderer {
    * see `CardRendererCallbacks.purgeNode` for how the two halves stay one
    * operation from every other caller's point of view.
    */
-  destroyRuntime(id: NodeId, options?: Readonly<{ exit?: boolean }>): void {
+  destroyRuntime(id: NodeId, options?: Readonly<{ exit?: NodeExit }>): void {
     const runtime = this.runtimeByNodeId.get(id)
     this.runtimeByNodeId.delete(id)
     this.parkedCards.delete(id)
     if (!runtime) return
     const el = runtime.el
-    if (options?.exit === true && el && this.playExit(runtime, el)) return
+    const exit = options?.exit ?? false
+    if (exit !== false && el && this.playExit(runtime, el, exit)) return
     this.destroyCardContent(runtime)
     el?.remove()
   }
@@ -481,8 +485,17 @@ export class CardRenderer {
    *
    * Declined — and the caller tears down at once — under reduced motion, and
    * for a card the viewer cannot see (parked in the pool).
+   *
+   * `'fade'`, it only fades, wherever it stands: a card gathered into a
+   * collapsed group's box is left there by the motion that took it
+   * (canvas.ts's `gather`), and settling inward would undo that. Given its
+   * own keyframes, it goes where they take it.
    */
-  private playExit(runtime: NodeRuntime, el: HTMLElement): boolean {
+  private playExit(
+    runtime: NodeRuntime,
+    el: HTMLElement,
+    exit: Exclude<NodeExit, false>,
+  ): boolean {
     const win = this.context.getWindow()
     if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
     if (
@@ -499,40 +512,32 @@ export class CardRenderer {
       this.destroyCardContent(runtime)
       el.remove()
     }
-    const animation = el.animate(
-      [
-        { opacity: 1, transform: 'scale(1)' },
-        { opacity: 0, transform: `scale(${String(NODE_EXIT_TO_SCALE)})` },
-      ],
-      { duration: NODE_EXIT_MS, easing: NODE_EXIT_EASING, fill: 'forwards' },
-    )
+    const animation =
+      typeof exit === 'object'
+        ? el.animate(exit.keyframes, {
+            duration: ARRANGE_ANIMATION_MS,
+            easing: ARRANGE_ANIMATION_EASING,
+            fill: 'forwards',
+          })
+        : el.animate(
+            exit === 'fade'
+              ? [{ opacity: 1 }, { opacity: 0 }]
+              : [
+                  { opacity: 1, transform: 'scale(1)' },
+                  {
+                    opacity: 0,
+                    transform: `scale(${String(NODE_EXIT_TO_SCALE)})`,
+                  },
+                ],
+            {
+              duration: NODE_EXIT_MS,
+              easing: NODE_EXIT_EASING,
+              fill: 'forwards',
+            },
+          )
     animation.onfinish = finish
     animation.oncancel = finish
     return true
-  }
-
-  /**
-   * Lets a card that has just been added to the board arrive: it grows out of
-   * a slightly smaller, transparent version of itself into place. Only
-   * `opacity` and `transform`, as a Web Animation so nothing is left on the
-   * element for the next drag to inherit (the same reasoning as the
-   * arrangement FLIP in canvas.ts).
-   */
-  playEnter(id: NodeId): void {
-    const el = this.runtimeByNodeId.get(id)?.el
-    if (!el) return
-    const win = this.context.getWindow()
-    if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    el.animate(
-      [
-        {
-          opacity: 0,
-          transform: `scale(${String(NODE_ENTER_FROM_SCALE)})`,
-        },
-        { opacity: 1, transform: 'scale(1)' },
-      ],
-      { duration: NODE_ENTER_MS, easing: ARRANGE_ANIMATION_EASING },
-    )
   }
 
   // -----------------------------------------------------------------------
@@ -1097,8 +1102,7 @@ export class CardRenderer {
    */
   private syncGroupThumbs(id: NodeId, el: HTMLElement, node: GroupNode): void {
     const existing = el.querySelector(`:scope > .${GROUP_THUMBS_CLASS}`)
-    // The box moved or renamed shows what it showed: kept, not drawn and
-    // faded in again.
+    // The box moved or renamed says what it said: kept as it is.
     if (existing && node.stash && this.thumbsDrawnFrom.get(el) === node.stash) {
       return
     }
@@ -1118,12 +1122,8 @@ export class CardRenderer {
           }
         : null
     el.appendChild(
-      createGroupThumbs(
-        this.context.getDocument(),
-        size,
-        more,
-        (canvas) => this.callbacks.paintGroupThumbs(id, canvas),
-        () => this.callbacks.onGroupAction(id, 'expand'),
+      createGroupThumbs(this.context.getDocument(), more, () =>
+        this.callbacks.onGroupAction(id, 'expand'),
       ),
     )
   }

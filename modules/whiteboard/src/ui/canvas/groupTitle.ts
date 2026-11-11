@@ -99,28 +99,23 @@ export const GROUP_COLLAPSED_CLASS = 'yolo-whiteboard-group-collapsed'
 const MORE_CLASS = 'yolo-whiteboard-group-more'
 
 /**
- * A collapsed group's box: a canvas holding a small picture of each thing it
- * holds (`paint` draws them; cardRenderer.ts hands it the overview tier's own
- * drawing), and, when there are more than the cells, the last cell saying how
- * many more. A click anywhere on it opens the group — each picture is a way
- * back to what it stands for.
+ * A collapsed group's box. What it holds is shown in it by the board itself,
+ * each thing in its cell (canvas.ts's `folded`) — drawn as the board draws
+ * any card, under the world layer this is in. What is here is what takes the
+ * click that opens the group — each thing in it is a way back to what it
+ * stands for — and, when there are more than the cells, the last cell saying
+ * how many more.
  */
 export function createGroupThumbs(
   doc: Document,
-  size: Readonly<{ w: number; h: number }>,
   more: Readonly<{
     text: string
     cell: Readonly<{ x: number; y: number; w: number; h: number }>
   }> | null,
-  paint: (canvas: HTMLCanvasElement) => void,
   onOpen: () => void,
 ): HTMLElement {
   const box = doc.createElement('div')
   box.className = GROUP_THUMBS_CLASS
-  const canvas = doc.createElement('canvas')
-  canvas.style.width = `${size.w}px`
-  canvas.style.height = `${size.h}px`
-  box.appendChild(canvas)
   if (more) {
     const label = doc.createElement('div')
     label.className = MORE_CLASS
@@ -137,7 +132,6 @@ export function createGroupThumbs(
     event.stopPropagation()
     onOpen()
   })
-  paint(canvas)
   return box
 }
 

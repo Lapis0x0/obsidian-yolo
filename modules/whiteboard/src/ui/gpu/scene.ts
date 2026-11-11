@@ -14,8 +14,10 @@
 //   [x, y, w, h]                          its box, world units
 //   [frame depth, content depth, fade, radius]
 //   [border width, shown, clip left, clip right]
-//   [scroll, clip top, 0, 0]               its content moved up by scroll,
-//                                          cut off above clip top
+//   [scroll, clip top, scale, alpha]       its content moved up by scroll,
+//                                          cut off above clip top; the whole
+//                                          card shown `scale` times its size
+//                                          from its top-left, at `alpha`
 // and the colour table one texel: [fill, border, 0, 0] as RGBA8 words.
 //
 // Knows nothing of boards or nodes: whoever shows the board tells it what
@@ -92,6 +94,17 @@ export type SceneCard = Readonly<{
    * left out. */
   scroll?: number
   clipTop?: number
+  /** A card in motion (../canvas/motions.ts): shown this many times its
+   * size from its top-left — laid out at its own — and this opaque. 1 and 1
+   * when left out. */
+  scale?: number
+  alpha?: number
+  /** Where the card belongs on the board, for the chunk it is kept in
+   * (`chunkKey`); where it is drawn when left out. A card shown somewhere
+   * else for a moment — dragged, or in motion — stays in its chunk, which
+   * only grows to take in where it is drawn: moving it to another chunk
+   * would have both chunks' instances packed again, every frame it moves. */
+  anchor?: Readonly<{ x: number; y: number }>
   /** Null while it has none (or never will: an image, a PDF). */
   content: CardInstances | null
 }>
@@ -201,7 +214,7 @@ export class GpuScene {
     }
     const before = slot.card
     slot.card = card
-    const chunk = chunkKey(card)
+    const chunk = chunkKey(card.anchor ?? card)
     if (slot.chunk !== chunk) {
       if (slot.chunk !== null) this.leaveChunk(id, slot.chunk)
       this.joinChunk(id, chunk)
@@ -771,8 +784,8 @@ export class GpuScene {
         card.clip.right,
         card.scroll ?? 0,
         card.clipTop ?? 0,
-        0,
-        0,
+        card.scale ?? 1,
+        card.alpha ?? 1,
       ],
       at,
     )
@@ -961,8 +974,8 @@ export class GpuScene {
 }
 
 /** The chunk a card is kept in: the one its top-left corner is in. */
-function chunkKey(card: SceneCard): string {
-  return `${Math.floor(card.x / CHUNK_WORLD)},${Math.floor(card.y / CHUNK_WORLD)}`
+function chunkKey(at: Readonly<{ x: number; y: number }>): string {
+  return `${Math.floor(at.x / CHUNK_WORLD)},${Math.floor(at.y / CHUNK_WORLD)}`
 }
 
 function compile(
