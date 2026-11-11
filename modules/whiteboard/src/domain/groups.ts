@@ -46,6 +46,71 @@ export const GROUP_PADDING = 20
  */
 export const GROUP_TITLE = Object.freeze({ width: 312, height: 39, gap: 6 })
 
+/**
+ * A collapsed group's box: as wide as its title bar, under it where the
+ * frame's top-left corner was, holding a small picture of each thing it
+ * holds — three to a row, at most two rows, the sixth cell saying how many
+ * more there are when there are more than six. So its size is fixed: one row
+ * or two.
+ */
+export const GROUP_COLLAPSED = Object.freeze({
+  padding: 13,
+  gap: 8,
+  columns: 3,
+  rows: 2,
+  cellHeight: 68,
+})
+
+/** The size of a collapsed group's box holding `count` things. */
+export function collapsedGroupSize(
+  count: number,
+  scale = 1,
+): Readonly<{ w: number; h: number }> {
+  const { padding, gap, columns, rows: most, cellHeight } = GROUP_COLLAPSED
+  const rows = Math.max(1, Math.min(most, Math.ceil(count / columns)))
+  return {
+    w: GROUP_TITLE.width * scale,
+    h: (padding * 2 + rows * cellHeight + (rows - 1) * gap) * scale,
+  }
+}
+
+/** The cells of a collapsed group's box at `box`, in order: as many as are
+ * shown — every thing, or five and the cell saying how many more. */
+export function collapsedGroupCells(
+  box: GroupRect,
+  count: number,
+  scale = 1,
+): GroupRect[] {
+  const { padding, gap, columns, rows, cellHeight } = GROUP_COLLAPSED
+  const shown = Math.min(count, columns * rows)
+  const cellW =
+    (GROUP_TITLE.width - padding * 2 - gap * (columns - 1)) / columns
+  const cells: GroupRect[] = []
+  for (let index = 0; index < shown; index += 1) {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    cells.push({
+      x: box.x + (padding + column * (cellW + gap)) * scale,
+      y: box.y + (padding + row * (cellHeight + gap)) * scale,
+      w: cellW * scale,
+      h: cellHeight * scale,
+    })
+  }
+  return cells
+}
+
+/** How many things `group` directly holds: on the board, or put away in it
+ * while it is collapsed. */
+export function groupMemberCount(
+  group: GroupNode,
+  nodes: readonly BoardNode[],
+): number {
+  const present = new Set(
+    (group.stash ? group.stash.nodes : nodes).map((node) => node.id),
+  )
+  return group.members.filter((id) => present.has(id)).length
+}
+
 /** How near a dragged card's centre has to come to a frame for dropping it
  * to put it in that group. A fitted frame hugs what it holds, so "on the
  * frame" has to include a little of the outside. */
@@ -391,6 +456,11 @@ function computeFrame(
   // Membership is kept acyclic (fileFormat.ts's `recordMembership`); this
   // only keeps a board that breaks the rule from looping.
   if (path.has(group.id)) return null
+  // A collapsed box is the size it is, whatever it put away.
+  if (group.stash) {
+    memo.set(group.id, group)
+    return group
+  }
   path.add(group.id)
   const scale = context.scaleOf(group.id)
   const pad = GROUP_PADDING * scale
@@ -674,15 +744,21 @@ export function groupDropDecision(
     for (let at = parents.get(id); at; at = parents.get(at)) count += 1
     return count
   }
+  const nearFrame = (node: GroupNode): boolean => {
+    const frame = groupFrameWithout(node, board.nodes, moving, scaleOf)
+    const distance = distanceToRect(frame, centre)
+    return node.id === home
+      ? distance <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
+      : distance < GROUP_JOIN_DISTANCE * scaleOf(node.id)
+  }
   let best: GroupNode | null = null
   for (const node of board.nodes) {
     if (node.type !== 'group' || moving.has(node.id)) continue
-    const frame = groupFrameWithout(node, board.nodes, moving, scaleOf)
-    const distance = distanceToRect(frame, centre)
-    const near =
-      node.id === home
-        ? distance <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
-        : distance < GROUP_JOIN_DISTANCE * scaleOf(node.id)
+    // A collapsed group takes in what is dropped on it — its box or its
+    // title bar — and nothing that is only near.
+    const near = node.stash
+      ? distanceToRect(groupOuterRect(node, scaleOf(node.id)), centre) === 0
+      : nearFrame(node)
     if (!near) continue
     if (
       !best ||

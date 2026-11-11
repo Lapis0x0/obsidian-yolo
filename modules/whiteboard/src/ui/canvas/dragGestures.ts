@@ -16,7 +16,9 @@ import {
   placeFragment,
 } from '../../domain/clipboard'
 import { type Board, type NodeId, isPlainText } from '../../domain/fileFormat'
+import { isFolded, unfoldGroup } from '../../domain/groupFold'
 import {
+  GROUP_PADDING,
   type GroupDrop,
   boardBlocks,
   draggedRoots,
@@ -851,11 +853,26 @@ export class DragGestures {
   ): Board {
     const drop = this.dropDecision(moved, ids, point)
     if (!drop) return moved
-    return setMembership(
-      moved,
-      draggedRoots(moved.nodes, new Set(ids)),
-      drop.target,
+    const roots = draggedRoots(moved.nodes, new Set(ids))
+    const target = moved.nodes.find((node) => node.id === drop.target)
+    if (!isFolded(target)) return setMembership(moved, roots, drop.target)
+    // Into a collapsed group: what it holds comes out for a moment, the
+    // dropped cards go beside it — to the right of its frame, along its top —
+    // and the group, still collapsed, puts them away with the rest when the
+    // board is settled (domain/groupFold.ts).
+    const open = unfoldGroup(moved, target.id, true)
+    const frame = open.nodes.find((node) => node.id === target.id)
+    const covered = unionRect(
+      open.nodes.filter((node) => roots.includes(node.id)).map(rectOfCard),
     )
+    if (!frame || !covered) return moved
+    const placed = moveNodes(
+      open,
+      ids,
+      frame.x + frame.w - covered.x,
+      frame.y + GROUP_PADDING * this.core.scaleOf(target.id) - covered.y,
+    )
+    return setMembership(placed, roots, target.id)
   }
 
   /** What dropping `ids` at `point` — the board `moved` with them there —
@@ -891,8 +908,18 @@ export class DragGestures {
     const point = this.core.worldPointFromEvent(e)
     const moving = new Set(interaction.ids)
     const drop = this.dropDecision(moved, interaction.ids, point)
+    // A collapsed group's box stays as it is: what is dropped on it is put
+    // away, and only the box lighting up says so — the frame it came from
+    // lets go of it all the same.
+    const intoFolded = isFolded(
+      drop?.target ? this.core.getNode(drop.target) : undefined,
+    )
     const settled = drop
-      ? setMembership(moved, draggedRoots(moved.nodes, moving), drop.target)
+      ? setMembership(
+          moved,
+          draggedRoots(moved.nodes, moving),
+          intoFolded ? null : drop.target,
+        )
       : moved
     const frames = changedFrames(
       board,

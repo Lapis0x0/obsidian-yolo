@@ -20,6 +20,7 @@ import {
   type NodeSide,
   isPlainText,
 } from '../../domain/fileFormat'
+import { isFolded } from '../../domain/groupFold'
 import { isPortal, shownPart } from '../../domain/portals'
 import {
   type CardRect,
@@ -236,10 +237,10 @@ export function buildInteractionLayer(doc: Document): HTMLElement {
 /** Matched on the data attribute rather than on a class, because both
  * kinds of mounted node carry it (a card and a group frame) and every
  * gesture that asks "which node is this" means either. */
-/** A spread's title is as wide as its name and a sheet as big as its page:
- * neither is resized by hand. */
+/** A spread's title is as wide as its name, a sheet as big as its page and
+ * a collapsed group's box as big as its cells: none is resized by hand. */
 function isFixedSize(node: BoardNode | undefined): boolean {
-  return node?.type === 'pdf-page' || isSpreadTitle(node)
+  return node?.type === 'pdf-page' || isSpreadTitle(node) || isFolded(node)
 }
 
 export function nodeIdFromEventTarget(

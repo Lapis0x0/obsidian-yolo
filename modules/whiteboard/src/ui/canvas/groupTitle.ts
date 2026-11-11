@@ -13,13 +13,15 @@ import type { WhiteboardTranslation } from '../../i18n'
 import { GROUP_LABEL_CLASS } from '../constants'
 
 export const GROUP_TITLE_CLASS = 'yolo-whiteboard-group-title'
+/** Held at a size on screen in the overview tier (cardRenderer.ts). */
+export const GROUP_TITLE_HELD_CLASS = 'yolo-whiteboard-group-title-held'
 const ICON_CLASS = 'yolo-whiteboard-group-title-icon'
 const COUNT_CLASS = 'yolo-whiteboard-group-count'
 const SPACER_CLASS = 'yolo-whiteboard-group-title-spacer'
 const ACTION_CLASS = 'yolo-whiteboard-group-action'
 
 /** What a button on the title bar does to its group. */
-export type GroupTitleAction = 'fit'
+export type GroupTitleAction = 'fit' | 'collapse' | 'expand'
 
 export type GroupTitleState = Readonly<{
   label: string
@@ -27,6 +29,8 @@ export type GroupTitleState = Readonly<{
   count: number
   /** The frame has a size set by hand, which "fit to content" lets go of. */
   sized: boolean
+  /** What it holds is put away behind the bar. */
+  collapsed: boolean
 }>
 
 /**
@@ -67,11 +71,16 @@ export function createGroupTitle(
   spacer.className = SPACER_CLASS
   bar.appendChild(spacer)
 
-  if (state.sized) {
+  if (state.sized && !state.collapsed) {
     bar.appendChild(
       actionButton(doc, t('group.fitToContent'), () => onAction('fit')),
     )
   }
+  bar.appendChild(
+    state.collapsed
+      ? actionButton(doc, t('group.expand'), () => onAction('expand'))
+      : actionButton(doc, t('group.collapse'), () => onAction('collapse')),
+  )
   return bar
 }
 
@@ -83,6 +92,53 @@ export function groupTitleLabel(bar: Element): HTMLElement | null {
 /** Whether an event landed on one of a title bar's buttons. */
 export function isGroupTitleAction(target: Element | null): boolean {
   return target?.closest(`.${ACTION_CLASS}`) != null
+}
+
+export const GROUP_THUMBS_CLASS = 'yolo-whiteboard-group-thumbs'
+export const GROUP_COLLAPSED_CLASS = 'yolo-whiteboard-group-collapsed'
+const MORE_CLASS = 'yolo-whiteboard-group-more'
+
+/**
+ * A collapsed group's box: a canvas holding a small picture of each thing it
+ * holds (`paint` draws them; cardRenderer.ts hands it the overview tier's own
+ * drawing), and, when there are more than the cells, the last cell saying how
+ * many more. A click anywhere on it opens the group — each picture is a way
+ * back to what it stands for.
+ */
+export function createGroupThumbs(
+  doc: Document,
+  size: Readonly<{ w: number; h: number }>,
+  more: Readonly<{
+    text: string
+    cell: Readonly<{ x: number; y: number; w: number; h: number }>
+  }> | null,
+  paint: (canvas: HTMLCanvasElement) => void,
+  onOpen: () => void,
+): HTMLElement {
+  const box = doc.createElement('div')
+  box.className = GROUP_THUMBS_CLASS
+  const canvas = doc.createElement('canvas')
+  canvas.style.width = `${size.w}px`
+  canvas.style.height = `${size.h}px`
+  box.appendChild(canvas)
+  if (more) {
+    const label = doc.createElement('div')
+    label.className = MORE_CLASS
+    label.textContent = more.text
+    label.style.left = `${more.cell.x}px`
+    label.style.top = `${more.cell.y}px`
+    label.style.width = `${more.cell.w}px`
+    label.style.height = `${more.cell.h}px`
+    box.appendChild(label)
+  }
+  box.addEventListener('pointerdown', (event) => event.stopPropagation())
+  box.addEventListener('dblclick', (event) => event.stopPropagation())
+  box.addEventListener('click', (event) => {
+    event.stopPropagation()
+    onOpen()
+  })
+  paint(canvas)
+  return box
 }
 
 function actionButton(

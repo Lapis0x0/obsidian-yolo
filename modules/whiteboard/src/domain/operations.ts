@@ -244,9 +244,23 @@ export function moveNodes(
     }
   }
   const nodes = board.nodes.map((node) =>
-    idSet.has(node.id) ? { ...node, x: node.x + dx, y: node.y + dy } : node,
+    idSet.has(node.id) ? placedAt(node, node.x + dx, node.y + dy) : node,
   )
   return { ...board, nodes }
+}
+
+/** `node` with its top-left corner at `x`, `y` — a group's hand-set range
+ * (fileFormat.ts's `GroupNode.bounds`) going with it, since the range is
+ * where the frame is kept, not a place on the board. */
+function placedAt(node: BoardNode, x: number, y: number): BoardNode {
+  if (node.type !== 'group' || !node.bounds) return { ...node, x, y }
+  const { bounds } = node
+  return {
+    ...node,
+    x,
+    y,
+    bounds: { ...bounds, x: bounds.x + x - node.x, y: bounds.y + y - node.y },
+  }
 }
 
 /**
@@ -282,7 +296,7 @@ export function setNodePositions(
       return node
     }
     changed = true
-    return { ...node, x: position.x, y: position.y }
+    return placedAt(node, position.x, position.y)
   })
   return changed ? { ...board, nodes } : board
 }

@@ -10,6 +10,7 @@
 // it touched.
 
 import type { Board, FileNode, NodeId } from '../../domain/fileFormat'
+import { fileShape } from '../../domain/groupFold'
 import {
   type BoardChanges,
   type Composition,
@@ -17,7 +18,6 @@ import {
   changesBetween,
   composeBoard,
 } from '../../domain/portals'
-import { collapseBoard } from '../../domain/spread'
 import type {
   BoardDocument,
   BoardDocumentOwner,
@@ -230,7 +230,7 @@ export class BoardSources {
   /** What saving the own file writes. */
   ownFileBoard(board: Board): Board | null {
     const own = this.ownBoardWith(board)
-    return own ? collapseBoard(own) : null
+    return own ? fileShape(own) : null
   }
 
   dispose(): void {

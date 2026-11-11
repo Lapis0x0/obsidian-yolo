@@ -34,6 +34,7 @@ import type {
   Edge,
   EdgeId,
   FileNode,
+  GroupStash,
   NodeId,
 } from './fileFormat'
 import { NODE_PATH_SEPARATOR } from './fileFormat'
@@ -612,6 +613,25 @@ function project(
                   },
                 }
               : {}),
+            // What a collapsed group put away is seen from where it is.
+            ...(moved.stash
+              ? {
+                  stash: {
+                    frame: {
+                      x: moved.stash.frame.x * scale + dx,
+                      y: moved.stash.frame.y * scale + dy,
+                      w: moved.stash.frame.w * scale,
+                      h: moved.stash.frame.h * scale,
+                    },
+                    nodes: moved.stash.nodes.map((inner) =>
+                      project(inner, prefix, dx, dy, scale),
+                    ),
+                    edges: moved.stash.edges.map((edge) =>
+                      projectEdge(edge, prefix),
+                    ),
+                  },
+                }
+              : {}),
           }
         : moved
   projectedFrom.set(made, node)
@@ -626,6 +646,12 @@ function projectEdge(edge: Edge, prefix: string): Edge {
     id: `${prefix}${edge.id}`,
     fromNode: `${prefix}${edge.fromNode}`,
     toNode: `${prefix}${edge.toNode}`,
+    ...(edge.fromMember === undefined
+      ? {}
+      : { fromMember: `${prefix}${edge.fromMember}` }),
+    ...(edge.toMember === undefined
+      ? {}
+      : { toMember: `${prefix}${edge.toMember}` }),
   })
 }
 
@@ -1010,8 +1036,12 @@ function unproject(
         h: back(moved.bounds.h, 0, was?.bounds?.h),
       }
     : undefined
+  const stash = moved.stash
+    ? unprojectStash(moved.stash, portalId, dx, dy, scale, was?.stash)
+    : undefined
   return {
     ...moved,
+    ...(stash ? { stash } : {}),
     members:
       was &&
       was.members.length === members.length &&
@@ -1033,6 +1063,46 @@ function unproject(
   }
 }
 
+/** What a collapsed group behind a portal put away, in its file's terms —
+ * the file's own stash when nothing in it changed. */
+function unprojectStash(
+  stash: GroupStash,
+  portalId: NodeId,
+  dx: number,
+  dy: number,
+  scale: number,
+  was: GroupStash | undefined,
+): GroupStash {
+  const prefix = `${portalId}${NODE_PATH_SEPARATOR}`
+  const nodes = stash.nodes.map((node) => {
+    const known = projectedFrom.get(node)
+    if (known) return known
+    const id = node.id.slice(prefix.length)
+    const source = was?.nodes.find((inner) => inner.id === id) ?? null
+    return unproject(node, portalId, dx, dy, scale, source)
+  })
+  const edges = stash.edges.map((edge) => unprojectEdge(edge, prefix))
+  const back = (value: number, offset: number) =>
+    scale === 1 ? value - offset : tidy((value - offset) / scale)
+  const frame = {
+    x: back(stash.frame.x, dx),
+    y: back(stash.frame.y, dy),
+    w: back(stash.frame.w, 0),
+    h: back(stash.frame.h, 0),
+  }
+  if (
+    was &&
+    shallowEqual(was.frame, frame) &&
+    was.nodes.length === nodes.length &&
+    was.nodes.every((node, index) => node === nodes[index]) &&
+    was.edges.length === edges.length &&
+    was.edges.every((edge, index) => sameEdge(edge, edges[index]))
+  ) {
+    return was
+  }
+  return { frame, nodes, edges }
+}
+
 function unprojectEdge(edge: Edge, prefix: string): Edge {
   const strip = (id: string) =>
     id.startsWith(prefix) ? id.slice(prefix.length) : id
@@ -1041,6 +1111,10 @@ function unprojectEdge(edge: Edge, prefix: string): Edge {
     id: strip(edge.id),
     fromNode: strip(edge.fromNode),
     toNode: strip(edge.toNode),
+    ...(edge.fromMember === undefined
+      ? {}
+      : { fromMember: strip(edge.fromMember) }),
+    ...(edge.toMember === undefined ? {} : { toMember: strip(edge.toMember) }),
   }
 }
 

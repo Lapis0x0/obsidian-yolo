@@ -13,9 +13,11 @@ import {
   type BoardNode,
   type FileNode,
   type GroupNode,
+  type GroupStash,
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
+import { collapsedGroupCells, collapsedGroupSize } from '../../domain/groups'
 import {
   type FileNodeKind,
   basenameWithoutExtension,
@@ -66,8 +68,12 @@ import {
   scaleNodeElement,
 } from './cardContent'
 import {
+  GROUP_COLLAPSED_CLASS,
+  GROUP_THUMBS_CLASS,
   GROUP_TITLE_CLASS,
+  GROUP_TITLE_HELD_CLASS,
   type GroupTitleAction,
+  createGroupThumbs,
   createGroupTitle,
   groupTitleLabel,
 } from './groupTitle'
@@ -301,6 +307,9 @@ export type CardRendererCallbacks = Readonly<{
   groupMemberCount: (id: NodeId) => number
   /** A button on a group's title bar was clicked. */
   onGroupAction: (id: NodeId, action: GroupTitleAction) => void
+  /** Draws a collapsed group's small pictures of what it holds onto
+   * `canvas`, sizing its backing store. */
+  paintGroupThumbs: (id: NodeId, canvas: HTMLCanvasElement) => void
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -628,6 +637,7 @@ export class CardRenderer {
     if (node.type === 'group') {
       const title = this.buildGroupTitle(id, node)
       el.appendChild(title)
+      this.syncGroupThumbs(id, el, node)
       this.worldEl.appendChild(el)
       // A group mounting while the overview tier holds titles at a screen
       // size has to arrive at that size, not at the stylesheet's.
@@ -1064,6 +1074,7 @@ export class CardRenderer {
         label: node.label ?? '',
         count: this.callbacks.groupMemberCount(id),
         sized: node.bounds !== undefined,
+        collapsed: node.stash !== undefined,
       },
       this.callbacks.t,
       (action) => this.callbacks.onGroupAction(id, action),
@@ -1074,6 +1085,47 @@ export class CardRenderer {
     )
     label?.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
     return title
+  }
+
+  /** What each collapsed group's pictures were drawn from. */
+  private readonly thumbsDrawnFrom = new WeakMap<HTMLElement, GroupStash>()
+
+  /**
+   * A collapsed group's box of small pictures, built afresh — or taken away
+   * from a group that is open. The box is in the group's own units, under
+   * its title bar; cells and their count are domain/groups.ts's.
+   */
+  private syncGroupThumbs(id: NodeId, el: HTMLElement, node: GroupNode): void {
+    const existing = el.querySelector(`:scope > .${GROUP_THUMBS_CLASS}`)
+    // The box moved or renamed shows what it showed: kept, not drawn and
+    // faded in again.
+    if (existing && node.stash && this.thumbsDrawnFrom.get(el) === node.stash) {
+      return
+    }
+    existing?.remove()
+    if (node.stash) this.thumbsDrawnFrom.set(el, node.stash)
+    const folded = node.stash !== undefined
+    el.classList.toggle(GROUP_COLLAPSED_CLASS, folded)
+    if (!folded) return
+    const count = this.callbacks.groupMemberCount(id)
+    const size = collapsedGroupSize(count)
+    const cells = collapsedGroupCells({ x: 0, y: 0, ...size }, count)
+    const more =
+      count > cells.length
+        ? {
+            text: `+${count - (cells.length - 1)}`,
+            cell: cells[cells.length - 1],
+          }
+        : null
+    el.appendChild(
+      createGroupThumbs(
+        this.context.getDocument(),
+        size,
+        more,
+        (canvas) => this.callbacks.paintGroupThumbs(id, canvas),
+        () => this.callbacks.onGroupAction(id, 'expand'),
+      ),
+    )
   }
 
   /**
@@ -1093,6 +1145,7 @@ export class CardRenderer {
     el.style.width = `${node.w / scale}px`
     el.style.height = `${node.h / scale}px`
     applyColorToElement(el, node.color)
+    this.syncGroupThumbs(id, el, node)
     if (this.callbacks.isRenamingGroup(id)) return
     const old = el.querySelector(`:scope > .${GROUP_TITLE_CLASS}`)
     const title = this.buildGroupTitle(id, node)
@@ -1136,6 +1189,7 @@ export class CardRenderer {
     if (bar.style.transform !== transform) {
       bar.setCssProps({ transform })
     }
+    bar.classList.toggle(GROUP_TITLE_HELD_CLASS, fontPx !== null)
   }
 
   private evictParkedCard(id: NodeId): void {

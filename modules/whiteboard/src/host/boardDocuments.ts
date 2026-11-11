@@ -17,12 +17,12 @@
 // changes not yet written are put on it again.
 //
 // The board kept is the board's shape of the file: an open PDF spread is its
-// pages (domain/spread.ts's `expandBoard`), folded back when written.
+// pages (domain/spread.ts's `expandBoard`) and a collapsed group holds what it
+// put away (domain/groupFold.ts), both turned back when written.
 
 import { type Board, parseBoard, serializeBoard } from '../domain/fileFormat'
-import { fitGroups } from '../domain/groups'
+import { boardShape, fileShape } from '../domain/groupFold'
 import { type FileChanges, applyChanges, mergeChanges } from '../domain/portals'
-import { collapseBoard, expandBoard } from '../domain/spread'
 
 /** How long after a change a document no tab owns waits to write it. */
 const WRITE_DELAY_MS = 800
@@ -134,7 +134,7 @@ export class BoardDocument {
       this.set(null, origin)
       return null
     }
-    const board = boardShapeOf(result.board)
+    const board = boardShape(result.board)
     this.statusValue = 'ready'
     this.set(board, origin)
     return board
@@ -165,7 +165,7 @@ export class BoardDocument {
       this.set(null, null)
       return
     }
-    let board = boardShapeOf(result.board)
+    let board = boardShape(result.board)
     // Changed under changes not written yet, or read after changes were
     // made to it: they go on what it now is, and are written.
     if (this.unwritten) board = applyChanges(board, this.unwritten)
@@ -219,7 +219,7 @@ export class BoardDocument {
   private write(): Promise<void> {
     this.writing = this.writing.then(async () => {
       if (this.owned || !this.unwritten || !this.boardValue) return
-      const content = serializeBoard(collapseBoard(this.boardValue))
+      const content = serializeBoard(fileShape(this.boardValue))
       try {
         const expected = this.snapshot
         const written = expected
@@ -240,13 +240,6 @@ export class BoardDocument {
     })
     return this.writing
   }
-}
-
-/** The board's shape of a board read from its file: open spreads spread
- * out, and every group's frame on what it holds — a file written before
- * membership was recorded has its frames fitted here, once. */
-function boardShapeOf(file: Board): Board {
-  return fitGroups(expandBoard(file))
 }
 
 function fileMerge(first: FileChanges, then: FileChanges): FileChanges {

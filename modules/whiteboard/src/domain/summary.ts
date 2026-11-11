@@ -76,8 +76,10 @@ export function summarizeBoard(
       const label = group.label ? ` "${group.label}"` : ''
       lines.push(
         `  ${group.id}${label} at ${position(group)}${
-          members.length > 0 ? ` — ${members.join(' ')}` : ' — (empty)'
-        }`,
+          // Collapsed on screen: its cards are where it says, but the user
+          // sees only a small box under its title.
+          group.collapsed ? ' (collapsed)' : ''
+        }${members.length > 0 ? ` — ${members.join(' ')}` : ' — (empty)'}`,
       )
     }
   }

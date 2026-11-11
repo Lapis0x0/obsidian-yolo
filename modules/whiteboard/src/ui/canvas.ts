@@ -55,10 +55,21 @@ import {
   serializeBoard,
 } from '../domain/fileFormat'
 import {
+  boardShape,
+  collapseGroup,
+  expandGroup,
+  fileShape,
+  isFolded,
+  settleGroups,
+  unfoldGroup,
+} from '../domain/groupFold'
+import {
   arrangeTargets,
   carryGroupMembers,
+  collapsedGroupCells,
+  collapsedGroupSize,
   createGroup,
-  fitGroups,
+  groupMemberCount,
   nodesToDragWith,
   releaseBounds,
 } from '../domain/groups'
@@ -106,9 +117,7 @@ import { splitOff } from '../domain/split'
 import {
   SPREAD_METRICS,
   closeSpread,
-  collapseBoard,
   defaultSpreadColumns,
-  expandBoard,
   foldedCardOrigin,
   isSpreadTitle,
   layoutSpreadGrid,
@@ -2364,11 +2373,12 @@ export class WhiteboardCanvas {
       groupLabelFontPx: (id) => this.groupLabelFontPx(id),
       groupMemberCount: (id) => {
         const group = this.nodesById.get(id)
-        if (group?.type !== 'group') return 0
-        return group.members.filter((member) => this.nodesById.has(member))
-          .length
+        return group?.type === 'group'
+          ? groupMemberCount(group, this.board.nodes)
+          : 0
       },
       onGroupAction: (id, action) => this.runGroupAction(id, action),
+      paintGroupThumbs: (id, canvas) => this.paintGroupThumbs(id, canvas),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -3118,10 +3128,11 @@ export class WhiteboardCanvas {
   }
 
   /** `board` with every group's frame on what it holds now (domain/
-   * groups.ts's `fitGroups`): what every write of the board goes through, so
+   * groups.ts's `fitGroups`), and every group just collapsed folded
+   * (domain/groupFold.ts): what every write of the board goes through, so
    * no caller has to remember that moving a card can move a frame. */
   private fitFrames(board: Board): Board {
-    return fitGroups(board, (id) => this.scaleOf(id))
+    return settleGroups(board, (id) => this.scaleOf(id))
   }
 
   private applyBoardChange(proposed: Board, historyKey?: string): void {
@@ -3137,6 +3148,9 @@ export class WhiteboardCanvas {
     this.history.push(step, historyKey)
     this.takeComposedBoard(next)
     this.refreshChangedGroups(previous)
+    // A group folded on the way in drew the edges to what it put away to
+    // its box instead: an edit that did not know it changed them.
+    if (next.edges !== proposed.edges) this.rebuildEdgesSvg()
     this.markEntering(previous)
   }
 
@@ -3291,14 +3305,14 @@ export class WhiteboardCanvas {
     // The agent reads and writes boards the way the file has them, so it is
     // handed that shape and its answer is opened back up (domain/spread.ts).
     const own = this.sources.ownBoard
-    if (!own) return edit(collapseBoard(this.board))[1]
-    const current = collapseBoard(own)
+    if (!own) return edit(fileShape(this.board))[1]
+    const current = fileShape(own)
     const [edited, value] = edit(current)
     if (edited && edited !== current) {
       const path = this.sourcePathForBoard()
       const changes = changesBetween(
         composeBoard(own, path, () => null),
-        fitGroups(expandBoard(edited)),
+        boardShape(edited),
         path,
       )
       this.sources.apply(changes)
@@ -3730,6 +3744,13 @@ export class WhiteboardCanvas {
     // rather than leaving an editor mounted on a deleted card.
     this.editing.blurEditor(ids)
     let board = this.board
+    // A collapsed group deleted is its frame gone, as an open one's is: what
+    // it put away comes back out first, and stays.
+    for (const id of ids) {
+      if (isFolded(board.nodes.find((node) => node.id === id))) {
+        board = unfoldGroup(board, id)
+      }
+    }
     for (const id of ids) {
       if (board.nodes.some((node) => node.id === id))
         board = removeNode(board, id)
@@ -3784,7 +3805,76 @@ export class WhiteboardCanvas {
    * the frame is its members' again. */
   private runGroupAction(id: NodeId, action: GroupTitleAction): void {
     if (!this.canEdit) return
-    if (action === 'fit') this.applyBoardChange(releaseBounds(this.board, id))
+    switch (action) {
+      case 'fit':
+        this.applyBoardChange(releaseBounds(this.board, id))
+        break
+      case 'collapse':
+        // Folded on the way in (`fitFrames`): what it holds leaves the
+        // board, the way a deleted card does, and the box takes its place.
+        this.applyBoardChange(collapseGroup(this.board, id))
+        break
+      case 'expand':
+        this.applyBoardChange(expandGroup(this.board, id))
+        // What it put away is back, and the edges drawn to its box reach it.
+        this.rebuildEdgesSvg()
+        break
+    }
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.interaction.refreshInteractionLayer()
+  }
+
+  /**
+   * A collapsed group's small pictures (./canvas/groupTitle.ts's
+   * `createGroupThumbs`): each thing it directly holds — a PDF spread with
+   * its sheets — drawn by the overview tier's own drawing, scaled to fit its
+   * cell and centred in it. Drawn at a few pixels to the unit, so it stays
+   * sharp as the board is looked at closer than 1:1.
+   */
+  private paintGroupThumbs(id: NodeId, canvas: HTMLCanvasElement): void {
+    const group = this.nodesById.get(id)
+    const layer = this.overviewLayer
+    if (!isFolded(group) || !layer) return
+    const count = groupMemberCount(group, this.board.nodes)
+    const box = { x: 0, y: 0, ...collapsedGroupSize(count) }
+    const cells = collapsedGroupCells(box, count)
+    const shown = count > cells.length ? cells.length - 1 : cells.length
+    const px = this.context.getWindow().devicePixelRatio * 2
+    canvas.width = Math.round(box.w * px)
+    canvas.height = Math.round(box.h * px)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const stashed = new Map(group.stash.nodes.map((node) => [node.id, node]))
+    const members = group.members.flatMap((member) => {
+      const node = stashed.get(member)
+      return node ? [node] : []
+    })
+    members.slice(0, shown).forEach((member, index) => {
+      const cell = cells[index]
+      const parts = [
+        member,
+        ...group.stash.nodes.filter(
+          (node) => node.type === 'pdf-page' && node.parent === member.id,
+        ),
+      ]
+      const extent = unionRect(parts)
+      if (!extent || extent.w <= 0 || extent.h <= 0) return
+      const fit = Math.min(cell.w / extent.w, cell.h / extent.h)
+      const left = cell.x + (cell.w - extent.w * fit) / 2
+      const top = cell.y + (cell.h - extent.h * fit) / 2
+      layer.paintNodes(
+        ctx,
+        {
+          scale: fit * px,
+          tx: (left - extent.x * fit) * px,
+          ty: (top - extent.y * fit) * px,
+        },
+        { width: canvas.width, height: canvas.height },
+        parts,
+      )
+    })
   }
 
   /**

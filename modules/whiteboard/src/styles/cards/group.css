@@ -132,6 +132,24 @@
   cursor: grabbing;
 }
 
+/* Held at a size on screen from far away (the overview tier): there the
+ * bar is only the group's name — what an overview is for — not a strip of
+ * controls blown up across the board. */
+.yolo-whiteboard-group-title.yolo-whiteboard-group-title-held {
+  /* Over the inline width the bar is given from GROUP_TITLE. */
+  width: max-content !important;
+  max-width: none;
+}
+
+.yolo-whiteboard-group-title-held
+  > :is(
+    .yolo-whiteboard-group-count,
+    .yolo-whiteboard-group-title-spacer,
+    .yolo-whiteboard-group-action
+  ) {
+  display: none;
+}
+
 /* Selected, the bar wears the selection ring with the frame. */
 .yolo-whiteboard-group.yolo-whiteboard-card-selected
   > .yolo-whiteboard-group-title {
@@ -281,4 +299,67 @@ button.yolo-whiteboard-group-action:hover {
 .yolo-whiteboard-group-drop-tag.yolo-whiteboard-group-drop-tag-leaving {
   color: var(--background-primary);
   background: var(--text-muted);
+}
+
+/* --- a collapsed group ----------------------------------------------------
+ * The box under the title bar, as wide as it, holding a small picture of
+ * each thing the group holds (ui/canvas/groupTitle.ts's `createGroupThumbs`,
+ * drawn by the overview tier's own drawing). Unlike an open frame it is a
+ * thing, not a region: what is in it is pictures, and a click on them opens
+ * the group — so they take the pointer whether or not the group is selected.
+ * They arrive faded in, as what they stand for leaves the board. */
+.yolo-whiteboard-group.yolo-whiteboard-group-collapsed {
+  border-radius: 12px;
+  /* A wash, like an open frame's, not a surface: a card dragged over the
+   * box may be drawn under the world (ui/gpu/gpuBoard.ts) and must show
+   * through it. */
+  background: color-mix(
+    in oklch,
+    var(--yolo-whiteboard-color) 12%,
+    transparent
+  );
+}
+
+.yolo-whiteboard-group-thumbs {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+  animation: yolo-whiteboard-group-thumbs-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-whiteboard-group-thumbs > canvas {
+  display: block;
+}
+
+.yolo-whiteboard-group-thumbs:hover {
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus);
+}
+
+/* The last cell when there are more things than cells: how many more. */
+.yolo-whiteboard-group-more {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--background-modifier-hover);
+  font-family: var(--font-interface);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+@keyframes yolo-whiteboard-group-thumbs-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

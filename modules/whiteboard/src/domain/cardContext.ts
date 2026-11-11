@@ -26,9 +26,9 @@
 // `getContext`) build the same string without awaiting anything.
 
 import type { Board, BoardNode, NodeId } from './fileFormat'
+import { fileShape, unfoldAllGroups } from './groupFold'
 import { nodesInsideGroup } from './groups'
 import { fileNodeKind } from './naming'
-import { collapseBoard } from './spread'
 import { summarizeBoard } from './summary'
 
 /** Backing-file path -> that file's text; and, under `pdfPageTextKey`, a
@@ -116,7 +116,7 @@ export function buildCardContext({
   const sections = [
     // Summarized the way the file has it: an open PDF spread is one PDF, not
     // a line per page (domain/spread.ts).
-    summarizeBoard(collapseBoard(board), { path, previews: noteTexts }),
+    summarizeBoard(fileShape(board), { path, previews: noteTexts }),
     thisCardSection(board, nodeId),
   ]
   const sources = sourcesSection(board, nodeId, noteTexts)
@@ -230,8 +230,11 @@ function expandedSources(board: Board, nodeId: NodeId): BoardNode[] {
 
 /** The cards a group holds, at any depth, in board order. */
 export function cardsInsideGroup(board: Board, group: BoardNode): BoardNode[] {
-  const memberIds = new Set(nodesInsideGroup(group, board.nodes))
-  return board.nodes.filter(
+  // What a collapsed group put away is still what it holds.
+  const open = unfoldAllGroups(board)
+  const opened = open.nodes.find((node) => node.id === group.id) ?? group
+  const memberIds = new Set(nodesInsideGroup(opened, open.nodes))
+  return open.nodes.filter(
     (node) => node.type !== 'group' && memberIds.has(node.id),
   )
 }

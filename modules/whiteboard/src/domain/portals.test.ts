@@ -1,4 +1,5 @@
 import { type Board, type BoardNode, type Edge, emptyBoard } from './fileFormat'
+import { collapseGroup, settleGroups } from './groupFold'
 import {
   type PortalExpansion,
   applyChanges,
@@ -319,6 +320,64 @@ describe('groups behind a portal', () => {
     // The file's own arrays, not copies of them: nothing else changed.
     expect(change?.after?.type === 'group' && change.after.members).toBe(
       was.type === 'group' && was.members,
+    )
+  })
+})
+
+describe('collapsed groups behind a portal', () => {
+  const sub = settleGroups(
+    collapseGroup(
+      board(
+        [
+          {
+            id: 'g',
+            type: 'group',
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            members: ['a'],
+            extra: {},
+          },
+          text('a', 10, 20),
+          text('b', 900, 20),
+        ],
+        [edge('ab', 'a', 'b')],
+      ),
+      'g',
+    ),
+  )
+  const own = board([portal('p', 'Sub.yoloboard', 1000, 500, { x: 0, y: 0 })])
+  const compose = () =>
+    composeBoard(own, 'Own.yoloboard', files({ 'Sub.yoloboard': sub }))
+
+  it('shows what it put away under the names and places of the board around', () => {
+    const composed = compose().board
+    const group = composed.nodes.find((node) => node.id === 'p/g')
+    expect(group?.type === 'group' && group.stash?.nodes[0]).toMatchObject({
+      id: 'p/a',
+      x: 1010,
+    })
+    expect(composed.edges.find((e) => e.id === 'p/ab')).toMatchObject({
+      fromNode: 'p/g',
+      fromMember: 'p/a',
+    })
+  })
+
+  it('writes back the file’s own stash when only the label changed', () => {
+    const before = compose()
+    const after: Board = {
+      ...before.board,
+      nodes: before.board.nodes.map((node) =>
+        node.id === 'p/g' ? { ...node, label: 'x' } : node,
+      ),
+    }
+    const change = changesBetween(before, after, 'Own.yoloboard')
+      .get('Sub.yoloboard')
+      ?.nodes.get('g')
+    const was = sub.nodes[0]
+    expect(change?.after?.type === 'group' && change.after.stash).toBe(
+      was.type === 'group' && was.stash,
     )
   })
 })

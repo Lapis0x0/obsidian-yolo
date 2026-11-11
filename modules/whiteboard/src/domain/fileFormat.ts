@@ -234,6 +234,12 @@ export type LinkNode = BoardNodeBase &
  * A group read without `members` was written before membership was recorded
  * (or by Canvas): its rectangle becomes its `bounds`, and the nodes wholly
  * inside it become its members (`recordMembership`).
+ *
+ * `collapsed` puts what the group holds away behind its title bar, as small
+ * pictures in a box of fixed size. In the file the members stay where they
+ * are, and the node's rectangle is the frame they make — a reader that does
+ * not know the field shows the group open. On the board a collapsed group is
+ * that box, and holds what it put away in `stash` (domain/groupFold.ts).
  */
 export type GroupNode = BoardNodeBase &
   Readonly<{
@@ -241,7 +247,22 @@ export type GroupNode = BoardNodeBase &
     label?: string
     members: readonly NodeId[]
     bounds?: SpreadRect
+    collapsed?: boolean
+    stash?: GroupStash
   }>
+
+/**
+ * What a collapsed group put away, on the board only (domain/groupFold.ts):
+ * everything it holds — nested groups with what they put away, a PDF's
+ * sheets — and the edges among them, where they were when the group was
+ * collapsed, and the frame they made then. Moving the box moves them all:
+ * they come back offset by how far its corner is from `frame`'s.
+ */
+export type GroupStash = Readonly<{
+  frame: SpreadRect
+  nodes: readonly BoardNode[]
+  edges: readonly Edge[]
+}>
 
 /**
  * One sheet of an open spread (`PdfSpread`), on the board.
@@ -335,6 +356,13 @@ export type Edge = Readonly<{
    * whole of it. */
   fromAnchor?: EdgeAnchor
   toAnchor?: EdgeAnchor
+  /**
+   * On the board only: the node an end really reaches, when it is put away
+   * in a collapsed group and the end is drawn to that group's box instead
+   * (domain/groupFold.ts). Never in a file — there the end names the node.
+   */
+  fromMember?: NodeId
+  toMember?: NodeId
   /** JSON Canvas defaults: 'none' at the source, 'arrow' at the target. */
   fromEnd: EdgeEnd
   toEnd: EdgeEnd
@@ -544,6 +572,7 @@ const GROUP_NODE_KEYS = [
   'label',
   'members',
   'bounds',
+  'collapsed',
 ] as const
 
 function parseNodes(
@@ -769,6 +798,7 @@ function parseNode(
         ...(label === undefined ? {} : { label }),
         members,
         ...(bounds ? { bounds } : {}),
+        ...(entry.collapsed === true ? { collapsed: true } : {}),
         extra: extractExtra(entry, GROUP_NODE_KEYS),
       }
     }
@@ -965,6 +995,14 @@ export function serializeNode(
     case 'link':
       return { ...common, url: node.url, ...node.extra }
     case 'group':
+      // A collapsed group's contents are opened back out of it
+      // (domain/groupFold.ts's `fileShape`) before anything writes it; one
+      // reaching here would write the group without what it holds.
+      if (node.stash) {
+        throw new Error(
+          `serializeNode: "${node.id}" still holds what it put away, which only exists on the board`,
+        )
+      }
       return {
         ...common,
         label: node.label,
@@ -974,6 +1012,7 @@ export function serializeNode(
         bounds: node.bounds
           ? [node.bounds.x, node.bounds.y, node.bounds.w, node.bounds.h]
           : undefined,
+        collapsed: node.collapsed === true ? true : undefined,
         ...node.extra,
       }
     case 'pdf-page':

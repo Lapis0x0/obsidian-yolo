@@ -420,6 +420,38 @@ export class OverviewLayer {
     ctx.globalAlpha = 1
   }
 
+  /**
+   * `nodes` — cards, and groups as frames — drawn the way this tier draws
+   * them, onto a surface of someone else's: the small pictures a collapsed
+   * group shows of what it holds (cardRenderer.ts). Their faces, titles and
+   * pictures, no selection and no edges. The caller owns the context's
+   * transform and clears it first.
+   */
+  paintNodes(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    size: Readonly<{ width: number; height: number }>,
+    nodes: readonly BoardNode[],
+  ): void {
+    this.palette ??= this.readPalette(ctx)
+    const surface = { ...size, text: true, selection: false, screen: false }
+    this.drawGroups(
+      ctx,
+      view,
+      null,
+      nodes.filter((node) => node.type === 'group'),
+    )
+    this.drawCards(
+      ctx,
+      view,
+      surface,
+      null,
+      undefined,
+      nodes.filter((node) => node.type !== 'group'),
+    )
+    ctx.globalAlpha = 1
+  }
+
   /** Edges, then cards — the board's own, then each portal's in its frame
    * — and the portals' frames over what they frame (`drawFrames`). Behind a
    * portal, what `skipBehind` names is left out: in the tier, the cards a
@@ -554,11 +586,12 @@ export class OverviewLayer {
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
     live: ReadonlyMap<NodeId, CardRect> | null,
+    groups: readonly BoardNode[] = this.callbacks.getGroupNodes(),
   ): void {
     const palette = this.palette
     if (!palette) return
     ctx.lineWidth = 1
-    for (const node of this.callbacks.getGroupNodes()) {
+    for (const node of groups) {
       const rect = live?.get(node.id) ?? node
       const color = this.colorOf(node, palette) ?? palette.neutral
       const x = rect.x * view.scale + view.tx

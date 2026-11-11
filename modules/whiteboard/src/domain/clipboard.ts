@@ -25,6 +25,7 @@ import {
   serializeEdge,
   serializeNode,
 } from './fileFormat'
+import { unfoldAllGroups } from './groupFold'
 import { nodesToDragWith } from './groups'
 import { mintEdgeId, mintNodeId } from './ids'
 import { addEdge, addNode } from './operations'
@@ -51,15 +52,17 @@ export type BoardFragment = Readonly<{
  * paste stacks the way the original did.
  */
 export function fragmentFromSelection(
-  board: Board,
+  whole: Board,
   selectedIds: ReadonlySet<NodeId>,
 ): BoardFragment {
-  const ids = new Set(nodesToDragWith(selectedIds, board.nodes))
+  // A collapsed group is copied with what it put away, as the file has it.
+  const open = unfoldAllGroups(whole)
+  const ids = new Set(nodesToDragWith(selectedIds, open.nodes))
   // A spread comes along whole or not at all: its title brings every sheet
   // (`nodesToDragWith`), and a sheet selected without it is part of a PDF that
   // is not being copied — the fold below drops it.
   // A group copied holds what was copied with it, and nothing else.
-  const nodes = board.nodes.flatMap((node): BoardNode[] => {
+  const nodes = open.nodes.flatMap((node): BoardNode[] => {
     if (!ids.has(node.id)) return []
     if (node.type !== 'group') return [node]
     const members = node.members.filter((id) => ids.has(id))
@@ -68,9 +71,9 @@ export function fragmentFromSelection(
     ]
   })
   const folded = collapseBoard({
-    ...board,
+    ...open,
     nodes,
-    edges: board.edges.filter(
+    edges: open.edges.filter(
       (edge) => ids.has(edge.fromNode) && ids.has(edge.toNode),
     ),
   })
