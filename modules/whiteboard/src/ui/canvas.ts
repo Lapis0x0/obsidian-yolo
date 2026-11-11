@@ -633,9 +633,9 @@ export class WhiteboardCanvas {
    * themselves (./canvas/interactionController.ts). Built in `ensureDom`. */
   private interaction!: InteractionController
 
-  // Edges: a single SVG overlay drawn into the world layer, redrawn
-  // wholesale on structural change (rebuildEdgesSvg) and per-path on card
-  // position change (redrawEdgesForNodes) — see ./canvas/edgeLayer.ts, which
+  // Edges: a single SVG overlay drawn into the world layer, brought in step
+  // with the board's edges after a change to them (syncEdgesSvg) and redrawn
+  // per path on card position change (redrawEdgesForNodes) — see ./canvas/edgeLayer.ts, which
   // owns the SVG's child elements and the incidence index, and its own doc
   // comment for the mount-independent, DOM-measurement-free approach.
   /** Constructed once in `ensureDom`, once the edges `<svg>` exists. */
@@ -1081,7 +1081,7 @@ export class WhiteboardCanvas {
     // is a different file, or the same file rewritten from outside, and
     // pushing the previous content over it is how an undo destroys data.
     this.history.reset()
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
     this.cameraController.loadCamera(this.board.camera)
     this.openWhereLastLooked()
     // Cards were all torn down above: whatever the layer was parked on is
@@ -2706,7 +2706,7 @@ export class WhiteboardCanvas {
       viewportEl: viewport,
       viewportCenterWorld: () => this.dropImport.viewportCenterWorld(),
       deleteNodes: (ids) => this.deleteNodes(ids),
-      rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
+      syncEdgesSvg: () => this.syncEdgesSvg(),
     })
     this.interaction = new InteractionController({
       core: this.core,
@@ -2762,7 +2762,7 @@ export class WhiteboardCanvas {
       onHoverChange: (id) => this.syncSpreadHover(id),
       overviewTitleLineAt: (point) =>
         this.overviewLayer?.titleLineAt(point) ?? null,
-      rebuildEdgesSvg: () => this.rebuildEdgesSvg(),
+      syncEdgesSvg: () => this.syncEdgesSvg(),
     })
     this.emptyHintEl = this.buildEmptyHint(doc, this.toolbarController.overlay)
     // Obsidian Canvas's top-right column, in the same overlay for the same
@@ -3089,7 +3089,7 @@ export class WhiteboardCanvas {
     else this.commitWithoutHistory(next)
     this.purgeNodeRuntime(id)
     this.interaction.refreshInteractionLayer()
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
   }
 
   /** The write path for board state that is not a step anyone would undo
@@ -3152,7 +3152,7 @@ export class WhiteboardCanvas {
       composed.edges.length !== next.edges.length ||
       composed.edges.some((edge, index) => edge !== next.edges[index])
     ) {
-      this.rebuildEdgesSvg()
+      this.syncEdgesSvg()
     }
   }
 
@@ -3211,7 +3211,7 @@ export class WhiteboardCanvas {
     this.refreshChangedGroups(previous)
     // A group folded on the way in drew the edges to what it put away to
     // its box instead: an edit that did not know it changed them.
-    if (next.edges !== proposed.edges) this.rebuildEdgesSvg()
+    if (next.edges !== proposed.edges) this.syncEdgesSvg()
     this.markEntering(previous)
   }
 
@@ -3311,7 +3311,7 @@ export class WhiteboardCanvas {
       const kept = [...this.selectedIds].filter((id) => this.nodesById.has(id))
       if (kept.length !== this.selectedIds.size) this.setSelection(kept)
     }
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
     this.interaction.refreshInteractionLayer()
     this.recomputeVisibility()
     this.drainQueues()
@@ -3643,7 +3643,7 @@ export class WhiteboardCanvas {
     const board = updateEdge(this.board, edgeId, patch)
     if (board === this.board) return
     this.applyBoardChange(board)
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
   }
 
   /**
@@ -3798,7 +3798,7 @@ export class WhiteboardCanvas {
     }
     this.applyBoardChange(board)
     this.setEdgeSelection([])
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
   }
 
   private deleteNodes(asked: readonly NodeId[]): void {
@@ -3829,9 +3829,9 @@ export class WhiteboardCanvas {
     this.clearSelection()
     this.interaction.refreshInteractionLayer()
     // Deleting cards cascades edge removal (operations.ts's removeCard) —
-    // the edge *set* changed, not just endpoint positions, so a full
-    // rebuild (rather than redrawEdgesForNodes) is the correct response.
-    this.rebuildEdgesSvg()
+    // the edge *set* changed, not just endpoint positions, so a sync
+    // (rather than redrawEdgesForNodes) is the correct response.
+    this.syncEdgesSvg()
   }
 
   // -----------------------------------------------------------------------
@@ -4302,7 +4302,7 @@ export class WhiteboardCanvas {
     const frames = this.frameMoves(this.board, settled)
     this.applyBoardChange(next)
     // What it put away is back, and the edges drawn to its box reach it.
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
     this.dealOut(moves)
     for (const frame of frames) {
       this.motions.settle(frame.id, {
@@ -4497,7 +4497,7 @@ export class WhiteboardCanvas {
       }
     }
     this.setSelection([id])
-    this.rebuildEdgesSvg()
+    this.syncEdgesSvg()
     this.interaction.refreshInteractionLayer()
     this.recomputeVisibility()
     this.drainQueues()
@@ -5473,7 +5473,7 @@ export class WhiteboardCanvas {
   // comment for the two redraw paths and why endpoint coordinates always
   // come from board data, never the DOM). What stays here is board-edge
   // bookkeeping (`boardEdgesById`) and re-applying the *selection* after a
-  // rebuild has replaced every path element — a concern of `selectedEdgeIds`,
+  // sync has given a changed edge new elements — a concern of `selectedEdgeIds`,
   // which this class owns, not of edge drawing.
   // -----------------------------------------------------------------------
 
@@ -5487,11 +5487,10 @@ export class WhiteboardCanvas {
     for (const id of this.engine.mounted) this.cardGeneration.syncChips(id)
   }
 
-  private rebuildEdgesSvg(): void {
-    this.edgeLayer.rebuildEdgesSvg(this.board.edges)
-    // A rebuild starts every edge visible; cull the off-screen ones now rather
-    // than leaving a board's worth of them in the document until the next
-    // visibility tick.
+  private syncEdgesSvg(): void {
+    this.edgeLayer.syncEdges(this.board.edges)
+    // A new edge starts visible; cull the off-screen ones now rather than
+    // leaving them in the document until the next visibility tick.
     if (this.viewportEl) {
       this.edgeLayer.updateVisibility(this.worldViewportRect(), this.pinnedIds)
     }
@@ -5502,7 +5501,7 @@ export class WhiteboardCanvas {
   }
 
   /** Drops selected ids whose edge is gone and re-applies the class to the
-   * rest, after a rebuild has replaced every path element. */
+   * rest, after a sync has given changed edges new elements. */
   private restoreEdgeSelection(): void {
     const surviving = Array.from(this.selectedEdgeIds).filter((id) =>
       this.boardEdgesById.has(id),

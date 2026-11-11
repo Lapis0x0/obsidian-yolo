@@ -179,7 +179,7 @@ export type DragGesturesDeps = Readonly<{
    */
   openOnSecondClick: (id: NodeId) => boolean
   /** The edge set changed (an Alt-drag copied edges along with its cards). */
-  rebuildEdgesSvg: () => void
+  syncEdgesSvg: () => void
   viewportCenterWorld: () => ScreenPoint
   /** Makes this the gesture in flight. */
   begin: (interaction: ResizeInteraction | CreateInteraction) => void
@@ -596,7 +596,7 @@ export class DragGestures {
     this.core.applyBoardChange(next, interaction.historyKey)
     this.core.recomputeVisibility()
     this.core.drainQueues()
-    if (fragment.edges.length > 0) this.deps.rebuildEdgesSvg()
+    if (fragment.edges.length > 0) this.deps.syncEdgesSvg()
   }
 
   // -----------------------------------------------------------------------

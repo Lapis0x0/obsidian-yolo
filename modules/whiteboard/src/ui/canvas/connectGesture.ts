@@ -107,8 +107,8 @@ export type ConnectGestureDeps = Readonly<{
   core: CanvasCore
   viewportEl: HTMLElement
   /** The in-flight connection's curve. A sibling of the edges group rather
-   * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
-   * takes it out from under a live gesture. */
+   * than a child, so a wholesale clear of that group
+   * (`clearEdgesSvg`) never takes it out from under a live gesture. */
   previewPathEl: SVGPathElement
   /** The preview's runs on over a card to the passage an end reaches, over
    * the cards where the curve is under them (as EdgeLayer draws an edge's). */
@@ -128,7 +128,7 @@ export type ConnectGestureDeps = Readonly<{
   ) => PassagePlacement | null
   /** Makes this the gesture in flight. */
   begin: (interaction: ConnectInteraction) => void
-  rebuildEdgesSvg: () => void
+  syncEdgesSvg: () => void
   enterEditMode: (id: NodeId) => void
   /** What a click on the card means (`DragGestures.clickCard`). */
   clickCard: (id: NodeId, wasSoleSelection: boolean, e: PointerEvent) => void
@@ -656,7 +656,7 @@ export class ConnectGesture {
                 },
           ),
     )
-    this.deps.rebuildEdgesSvg()
+    this.deps.syncEdgesSvg()
     this.deps.passagesConnected(
       [interaction.passage, landed].filter(
         (anchor): anchor is EdgeAnchor => !!anchor,

@@ -53,7 +53,7 @@ export type ClipboardControllerDeps = Readonly<{
   viewportCenterWorld: () => ScreenPoint
   /** The canvas's own delete path — what a cut removes through. */
   deleteNodes: (ids: readonly NodeId[]) => void
-  rebuildEdgesSvg: () => void
+  syncEdgesSvg: () => void
 }>
 
 export class ClipboardController {
@@ -235,7 +235,7 @@ export class ClipboardController {
     this.core.applyBoardChange(board)
     this.core.recomputeVisibility()
     this.core.drainQueues()
-    if (fragment.edges.length > 0) this.deps.rebuildEdgesSvg()
+    if (fragment.edges.length > 0) this.deps.syncEdgesSvg()
     this.core.setSelection(nodeIds)
   }
 }

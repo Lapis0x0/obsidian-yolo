@@ -1,6 +1,6 @@
 // The edges overlay for the `.yoloboard` canvas: a single SVG drawn into the
-// world layer, redrawn wholesale on structural change and per-path on card
-// position change ("世界层内单个 SVG overlay 画全部 edges...只在 edges 或端点
+// world layer, brought in step with the board's edges on structural change
+// (`syncEdges`) and redrawn per path on card position change ("世界层内单个 SVG overlay 画全部 edges...只在 edges 或端点
 // 卡片位移时重绘（不进逐帧路径）"). Split out of `../canvas.ts`
 // structurally (no behavior change): that file remains the single state
 // owner (board data, selection, an in-progress label rename) and keeps the
@@ -102,8 +102,8 @@ export type CardPassagePlacement =
 
 /**
  * The narrow surface `WhiteboardCanvas` injects so edge drawing can read
- * board node positions it does not own, cancel a label rename that a rebuild
- * is about to invalidate, and delegate a label's keydown/blur to the rename
+ * board node positions it does not own, cancel a label rename whose edge a
+ * sync is about to take away, and delegate a label's keydown/blur to the rename
  * system — all without this class importing the canvas.
  */
 export type EdgeLayerCallbacks = Readonly<{
@@ -131,7 +131,8 @@ export type EdgeLayerCallbacks = Readonly<{
     edge: Edge,
   ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
   /** An edge label being typed is about to lose the element it is typed in —
-   * called before every wholesale clear, structural rebuild included. */
+   * called before a sync takes its edge's elements away, and before every
+   * wholesale clear. */
   cancelActiveEdgeRename: () => void
   /** The edge whose label is being typed right now, or null — canvas.ts owns
    * the rename; this class only needs to know not to hide it
@@ -156,7 +157,7 @@ export type EdgeLayerCallbacks = Readonly<{
 /**
  * Owns the edges SVG's child elements (`edgeElsById`, the incidence index)
  * and its own copy of the board's edges, kept in step by whoever calls
- * `rebuildEdgesSvg` after a board mutation. One instance per
+ * `syncEdgesSvg` after a board mutation. One instance per
  * `WhiteboardCanvas`, constructed once the edges `<svg>`'s group and the
  * label layer exist (see `ensureDom`).
  */
@@ -183,36 +184,121 @@ export class EdgeLayer {
    * geometry it already had.
    */
   private readonly staleIds = new Set<EdgeId>()
+  /** The cards each edge is drawn ending on, as the board had them — what
+   * tells `syncEdges` an edge it keeps has to be drawn again. Recorded by
+   * whatever drew it, not by the last sync: a card moved since and moved
+   * back by an undo is the very object the sync saw, and the edge was drawn
+   * where it had gone. Absent while that is not known (off screen, or drawn
+   * to where a gesture holds a card). */
+  private readonly endsById = new Map<
+    EdgeId,
+    readonly [BoardNode | undefined, BoardNode | undefined]
+  >()
+  /** What goes in each of the three containers, kept in buckets (`Buckets`):
+   * the curves and their marks, the runs over the cards, the labels. */
+  private readonly curves: Buckets
+  private readonly runs: Buckets
+  private readonly labels: Buckets
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
-    private readonly edgesGroupEl: SVGGElement,
+    edgesGroupEl: SVGGElement,
     /** Over the cards, where the edges' runs to their passages go. */
-    private readonly passageRunsEl: SVGGElement,
-    private readonly edgeLabelsEl: HTMLElement,
+    passageRunsEl: SVGGElement,
+    edgeLabelsEl: HTMLElement,
     private readonly arrowMarkerId: string,
     private readonly callbacks: EdgeLayerCallbacks,
-  ) {}
+  ) {
+    const doc = () => context.getDocument()
+    this.curves = new Buckets(edgesGroupEl, () =>
+      doc().createElementNS(SVG_NS, 'g'),
+    )
+    this.runs = new Buckets(passageRunsEl, () =>
+      doc().createElementNS(SVG_NS, 'g'),
+    )
+    this.labels = new Buckets(edgeLabelsEl, () => doc().createElement('div'))
+  }
 
-  rebuildEdgesSvg(edges: readonly Edge[]): void {
-    this.clearEdgesSvg()
-    this.edgesById = new Map(edges.map((edge) => [edge.id, edge]))
+  /**
+   * Brings the drawing in step with `edges`, the board's edges now.
+   *
+   * Structural sharing does the diffing: an edge that is the very object
+   * last drawn keeps its elements, and is redrawn only if a card it ends on
+   * is no longer the one it was drawn to; one that is new or changed gets
+   * new elements, and one that is gone loses its own. Tearing every edge
+   * down and building it again instead cost a board of a few thousand a
+   * style recalculation of every one of them on each undo — a quarter of a
+   * second, for a card nudged back by one step.
+   *
+   * New elements go on the end, over the edges already drawn, rather than
+   * where the edge is in `edges`: Blink inserts into the middle of a few
+   * thousand siblings in time that grows with the position, which on a
+   * group folding open came to more than the restyle this saves. What that
+   * gives up is which of two crossing edges is drawn over the other.
+   */
+  syncEdges(edges: readonly Edge[]): void {
+    const next = new Map(edges.map((edge) => [edge.id, edge]))
+    for (const [edgeId, edge] of this.edgesById) {
+      if (next.get(edgeId) !== edge) this.removeEdgeDom(edgeId, edge)
+    }
     for (const edge of edges) {
-      this.indexEdgeIncidence(edge)
-      this.createEdgeDom(edge)
-      this.redrawEdge(edge.id)
+      if (this.edgesById.get(edge.id) !== edge) {
+        this.edgesById.set(edge.id, edge)
+        this.indexEdgeIncidence(edge)
+        this.createEdgeDom(edge)
+        this.redrawEdge(edge.id)
+        continue
+      }
+      const drawn = this.endsById.get(edge.id)
+      if (
+        !drawn ||
+        drawn[0] !== this.callbacks.getNode(edge.fromNode) ||
+        drawn[1] !== this.callbacks.getNode(edge.toNode)
+      ) {
+        this.redrawEdge(edge.id)
+      }
+    }
+    this.edgesById = next
+  }
+
+  /** Takes away one edge's elements and what this class knows of it. */
+  private removeEdgeDom(edgeId: EdgeId, edge: Edge): void {
+    // An edge label being typed is about to lose the element it is typed in.
+    if (this.callbacks.getRenamingEdgeId() === edgeId) {
+      this.callbacks.cancelActiveEdgeRename()
+    }
+    const dom = this.edgeElsById.get(edgeId)
+    if (dom) {
+      for (const el of [dom.path, dom.hit, dom.fromMark, dom.toMark]) {
+        if (el) this.curves.remove(el)
+      }
+      for (const run of [dom.fromRun, dom.toRun]) {
+        if (run) this.runs.remove(run.group)
+      }
+      if (dom.label) this.labels.remove(dom.label)
+    }
+    this.edgeElsById.delete(edgeId)
+    this.culledIds.delete(edgeId)
+    this.staleIds.delete(edgeId)
+    this.endsById.delete(edgeId)
+    this.edgesById.delete(edgeId)
+    for (const nodeId of [edge.fromNode, edge.toNode]) {
+      const ids = this.edgeIndexByNodeId.get(nodeId)
+      ids?.delete(edgeId)
+      if (ids?.size === 0) this.edgeIndexByNodeId.delete(nodeId)
     }
   }
 
   clearEdgesSvg(): void {
     // An edge label being typed is about to lose the element it is typed in.
     this.callbacks.cancelActiveEdgeRename()
-    this.edgesGroupEl.replaceChildren()
-    this.passageRunsEl.replaceChildren()
-    this.edgeLabelsEl.replaceChildren()
+    this.curves.clear()
+    this.runs.clear()
+    this.labels.clear()
     this.edgeElsById.clear()
     this.culledIds.clear()
     this.staleIds.clear()
+    this.endsById.clear()
     this.edgesById = new Map()
     this.edgeIndexByNodeId = new Map()
   }
@@ -383,7 +469,7 @@ export class EdgeLayer {
     hit.dataset.edgeId = edge.id
     hit.addEventListener('pointerenter', () => this.hover(edge.id, true))
     hit.addEventListener('pointerleave', () => this.hover(edge.id, false))
-    this.edgesGroupEl.appendChild(hit)
+    this.curves.append(hit)
 
     const path = doc.createElementNS(SVG_NS, 'path')
     path.setAttribute('class', EDGE_PATH_CLASS)
@@ -391,7 +477,7 @@ export class EdgeLayer {
     // one overlay draws every edge, so per-edge colour has to be per-element.
     // The arrowhead marker picks it up through `fill: context-stroke`.
     applyColorToElement(path, edge.color)
-    this.edgesGroupEl.appendChild(path)
+    this.curves.append(path)
     const clip = this.callbacks.clipPathOf(edge)
     if (clip) {
       hit.setAttribute('clip-path', clip)
@@ -423,7 +509,7 @@ export class EdgeLayer {
     const line = doc.createElementNS(SVG_NS, 'path')
     line.setAttribute('class', EDGE_PASSAGE_RUN_LINE_CLASS)
     group.append(hit, line)
-    this.passageRunsEl.appendChild(group)
+    this.runs.append(group)
     return { group, hit, line }
   }
 
@@ -442,7 +528,7 @@ export class EdgeLayer {
     const mark = this.context.getDocument().createElementNS(SVG_NS, 'circle')
     mark.setAttribute('class', EDGE_PASSAGE_END_CLASS)
     applyColorToElement(mark, edge.color)
-    this.edgesGroupEl.appendChild(mark)
+    this.curves.append(mark)
     return mark
   }
 
@@ -453,7 +539,6 @@ export class EdgeLayer {
    * own.
    */
   private createEdgeLabelEl(edge: Edge): HTMLElement | null {
-    const parent = this.edgeLabelsEl
     const el = this.context.getDocument().createElement('div')
     el.className = EDGE_LABEL_CLASS
     el.dataset.edgeId = edge.id
@@ -470,7 +555,7 @@ export class EdgeLayer {
       this.callbacks.onLabelKeyDown(edge.id, event),
     )
     el.addEventListener('blur', () => this.callbacks.onLabelBlur(edge.id))
-    parent.appendChild(el)
+    this.labels.append(el)
     return el
   }
 
@@ -499,7 +584,7 @@ export class EdgeLayer {
   detachEdgeLabel(edgeId: EdgeId): void {
     const dom = this.edgeElsById.get(edgeId)
     if (!dom?.label) return
-    dom.label.remove()
+    this.labels.remove(dom.label)
     this.edgeElsById.set(edgeId, { ...dom, label: null })
   }
 
@@ -547,12 +632,21 @@ export class EdgeLayer {
     // the way back in.
     if (this.culledIds.has(edgeId)) {
       this.staleIds.add(edgeId)
+      this.endsById.delete(edgeId)
       return
     }
     this.staleIds.delete(edgeId)
     const edge = this.edgesById.get(edgeId)
     const dom = this.edgeElsById.get(edgeId)
     if (!edge || !dom) return
+    if (overrides) {
+      this.endsById.delete(edgeId)
+    } else {
+      this.endsById.set(edgeId, [
+        this.callbacks.getNode(edge.fromNode),
+        this.callbacks.getNode(edge.toNode),
+      ])
+    }
     const geometry = this.geometryOf(edge, overrides)
     if (!geometry) return // dangling edges are rejected at parse time; stay defensive
     for (const el of [
@@ -801,5 +895,59 @@ function placeRun(
   for (const path of [run.hit, run.line]) {
     if (to) path.setAttribute('d', `M${from.x},${from.y} L${to.x},${to.y}`)
     else path.removeAttribute('d')
+  }
+}
+
+/** The most children a bucket holds (`Buckets`). */
+const BUCKET_SIZE = 256
+
+/**
+ * A container's children, kept in plain buckets of at most `BUCKET_SIZE`
+ * rather than all directly in it.
+ *
+ * Obsidian's own stylesheet has `body.is-frameless > .app-container ~ *`, a
+ * rule every element in the document is matched against, and under it an
+ * element put in or taken out among a few thousand siblings costs time that
+ * grows with its place among them — a quarter of a millisecond apiece by the
+ * thousandth, so a group folding a few hundred edges away spent some 200 ms
+ * on taking their elements out alone. In buckets an element never has more
+ * than a few hundred siblings. A bucket is styled by nothing: what is drawn
+ * reads its look from its own classes, and its position from the container.
+ */
+class Buckets {
+  /** The bucket being filled. */
+  private tail: Element | null = null
+
+  constructor(
+    private readonly container: Element,
+    private readonly bucket: () => Element,
+  ) {}
+
+  append(el: Element): void {
+    if (!this.tail || this.tail.childElementCount >= BUCKET_SIZE) {
+      this.tail = this.bucket()
+      this.container.appendChild(this.tail)
+    }
+    this.tail.appendChild(el)
+  }
+
+  /** Takes `el` out, and its bucket once that is empty and no longer the one
+   * being filled. */
+  remove(el: Element): void {
+    const bucket = el.parentElement
+    el.remove()
+    if (
+      bucket &&
+      bucket !== this.tail &&
+      bucket.parentElement === this.container &&
+      bucket.childElementCount === 0
+    ) {
+      bucket.remove()
+    }
+  }
+
+  clear(): void {
+    this.container.replaceChildren()
+    this.tail = null
   }
 }

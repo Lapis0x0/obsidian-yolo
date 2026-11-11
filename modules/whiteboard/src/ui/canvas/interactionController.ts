@@ -337,7 +337,7 @@ export type InteractionControllerDeps = Readonly<{
   overviewTitleLineAt: (
     point: Readonly<{ x: number; y: number }>,
   ) => NodeId | null
-  rebuildEdgesSvg: () => void
+  syncEdgesSvg: () => void
 }>
 
 export class InteractionController {
@@ -412,7 +412,7 @@ export class InteractionController {
       queueContentSync: deps.queueContentSync,
       onLiveRectsChange: deps.onLiveRectsChange,
       followPdfLinkAt: (id, e) => deps.pdf.followPdfLinkAt(id, e),
-      rebuildEdgesSvg: deps.rebuildEdgesSvg,
+      syncEdgesSvg: deps.syncEdgesSvg,
       openOnSecondClick: (id) => {
         // Written into by a generation: the text is the stream's until it
         // settles, and a click is not asking to stop it.
@@ -437,7 +437,7 @@ export class InteractionController {
         deps.edges.endPlacement(card, anchor, page),
       ...deps.passageTargets,
       begin,
-      rebuildEdgesSvg: deps.rebuildEdgesSvg,
+      syncEdgesSvg: deps.syncEdgesSvg,
       enterEditMode: (id) => deps.editing.enterEditMode(id),
       clickCard: (id, wasSoleSelection, e) =>
         this.drag.clickCard(id, wasSoleSelection, e),

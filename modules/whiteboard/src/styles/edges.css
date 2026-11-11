@@ -1,6 +1,6 @@
 /* --- edges ----------------------------------------------------------------
  * One SVG overlay in the world layer draws every edge (ui/canvas.ts's
- * rebuildEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally
+ * syncEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally
  * 1x1px element lets paths be drawn anywhere in world coordinates,
  * including negative x/y, without a viewBox that would need to track board
  * extent. Coordinates are world units, so an edge's *path* scales with zoom
@@ -64,12 +64,12 @@
   cursor: grabbing;
 }
 
-/* Hovering the hit path thickens the edge it belongs to (its immediate
- * sibling — see createEdgeDom's element order), which is the only signal
- * that a line is a thing you can grab. Hovering a run over a card does the
- * same through the class EdgeLayer's `hover` puts on every piece. */
+/* Hovering an edge — its hit path or a run over a card — thickens it, which
+ * is the only signal that a line is a thing you can grab. Through the class
+ * EdgeLayer's `hover` puts on every piece, not a `:hover +` sibling rule: an
+ * edge coming or going would then have every edge after it in the SVG
+ * restyled, thousands on a big board. */
 
-.yolo-whiteboard-edge-hit:hover + .yolo-whiteboard-edge-path,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-hovered,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
   stroke-width: calc(
