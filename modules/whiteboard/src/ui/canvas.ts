@@ -4274,7 +4274,8 @@ export class WhiteboardCanvas {
    * the box will draw its picture of it (./foldMotion.ts) — while the frame,
    * and every frame round it, closes onto the box. Only then is the group
    * collapsed. What arrived on screen as elements is let go of where it
-   * stands, fading over the pictures the box now draws in the same places.
+   * stands, fading over the pictures the box now draws in the same places —
+   * all but what went into the last cell, which arrived faded.
    */
   private async foldGroupAway(id: NodeId): Promise<void> {
     const group = this.nodesById.get(id)
@@ -4290,9 +4291,11 @@ export class WhiteboardCanvas {
       this.ungather(moves, frames)
       return
     }
-    for (const { node } of moves) {
+    // What went into the last cell faded on the way and is not there to see:
+    // fading it out again would start it back at whole, over the count.
+    for (const { node, motion } of moves) {
       if (this.shownByElement(node.id))
-        this.purgeNodeRuntime(node.id, { exit: 'fade' })
+        this.purgeNodeRuntime(node.id, { exit: motion.fade ? false : 'fade' })
     }
     this.applyBoardChange(collapseGroup(this.board, id))
     this.recomputeVisibility()
