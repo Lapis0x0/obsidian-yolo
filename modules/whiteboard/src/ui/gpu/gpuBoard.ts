@@ -533,18 +533,22 @@ export class GpuBoard implements ContentLayer {
     this.moved(reading)
   }
 
-  /** The thumb of the card being read, where its card is on screen, and
-   * none while all of it shows. Written only when it changes. */
+  /** The thumb of the card being read, where its card is drawn — a card a
+   * gesture is carrying where it is carried, not where the board still has
+   * it — and none while all of it shows, or while it is drawn shrunk or
+   * fading by a motion. Written only when it changes. */
   private syncThumb(view: CanvasView): void {
     const reading = this.reading
-    const node = reading ? this.nodes.get(reading.id) : undefined
+    const node = reading ? this.scene.cardOf(reading.id) : undefined
     const max = reading ? this.maxScroll(reading.id) : null
     if (
       !reading ||
       !node ||
       max === null ||
       max <= 0 ||
-      !this.shown.has(node.id)
+      !this.shown.has(reading.id) ||
+      (node.scale ?? 1) !== 1 ||
+      (node.alpha ?? 1) !== 1
     ) {
       if (this.thumbKey !== '') {
         this.thumbKey = ''
