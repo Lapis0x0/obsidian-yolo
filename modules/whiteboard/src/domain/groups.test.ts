@@ -5,7 +5,6 @@ import {
   emptyBoard,
 } from './fileFormat'
 import {
-  GROUP_LEAVE_DISTANCE,
   GROUP_PADDING,
   GROUP_TITLE,
   arrangeTargets,
@@ -410,6 +409,8 @@ describe('createGroup', () => {
 })
 
 describe('groupDropDecision', () => {
+  const LEAVE = 91
+
   // A group holding two cards side by side: frame 0,0 → 660 wide.
   const base = fitGroups(
     boardWith([
@@ -429,7 +430,7 @@ describe('groupDropDecision', () => {
     // Its left edge just over the frame's right edge.
     const x = frame.x + frame.w - 1
     const moved = at(base, 'loose', x, 20)
-    expect(groupDropDecision(moved, new Set(['loose']))).toEqual({
+    expect(groupDropDecision(moved, new Set(['loose']), LEAVE)).toEqual({
       target: 'g',
       leaving: false,
     })
@@ -442,7 +443,7 @@ describe('groupDropDecision', () => {
     }
     // Its top edge just over the frame's bottom; its centre 450 below.
     const moved = at(big, 'big', 0, frame.y + frame.h - 1)
-    expect(groupDropDecision(moved, new Set(['big']))).toEqual({
+    expect(groupDropDecision(moved, new Set(['big']), LEAVE)).toEqual({
       target: 'g',
       leaving: false,
     })
@@ -450,25 +451,20 @@ describe('groupDropDecision', () => {
 
   it('keeps reaching for a card it has reached for until it is clearly away', () => {
     const near = at(base, 'loose', frame.x + frame.w + 50, 20)
-    expect(groupDropDecision(near, new Set(['loose']))).toBeNull()
-    expect(groupDropDecision(near, new Set(['loose']), undefined, 'g')).toEqual(
-      { target: 'g', leaving: false },
-    )
-    const away = at(
-      base,
-      'loose',
-      frame.x + frame.w + GROUP_LEAVE_DISTANCE + 1,
-      20,
-    )
+    expect(groupDropDecision(near, new Set(['loose']), LEAVE)).toBeNull()
     expect(
-      groupDropDecision(away, new Set(['loose']), undefined, 'g'),
+      groupDropDecision(near, new Set(['loose']), LEAVE, undefined, 'g'),
+    ).toEqual({ target: 'g', leaving: false })
+    const away = at(base, 'loose', frame.x + frame.w + LEAVE + 1, 20)
+    expect(
+      groupDropDecision(away, new Set(['loose']), LEAVE, undefined, 'g'),
     ).toBeNull()
   })
 
   it('leaves a card that does not reach the frame where it was', () => {
     const x = frame.x + frame.w + 1
     expect(
-      groupDropDecision(at(base, 'loose', x, 20), new Set(['loose'])),
+      groupDropDecision(at(base, 'loose', x, 20), new Set(['loose']), LEAVE),
     ).toBeNull()
   })
 
@@ -479,8 +475,10 @@ describe('groupDropDecision', () => {
       base.nodes,
       new Set(['b']),
     )
-    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE - 1
-    expect(groupDropDecision(at(base, 'b', x, 20), new Set(['b']))).toBeNull()
+    const x = rest.x + rest.w + LEAVE - 1
+    expect(
+      groupDropDecision(at(base, 'b', x, 20), new Set(['b']), LEAVE),
+    ).toBeNull()
   })
 
   it('takes a member dragged well away out of its group', () => {
@@ -489,8 +487,10 @@ describe('groupDropDecision', () => {
       base.nodes,
       new Set(['b']),
     )
-    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE + 1
-    expect(groupDropDecision(at(base, 'b', x, 20), new Set(['b']))).toEqual({
+    const x = rest.x + rest.w + LEAVE + 1
+    expect(
+      groupDropDecision(at(base, 'b', x, 20), new Set(['b']), LEAVE),
+    ).toEqual({
       target: null,
       leaving: true,
     })
@@ -506,7 +506,7 @@ describe('groupDropDecision', () => {
       ],
     })
     const moved = at(two, 'b', 3000, 1050)
-    expect(groupDropDecision(moved, new Set(['b']))).toEqual({
+    expect(groupDropDecision(moved, new Set(['b']), LEAVE)).toEqual({
       target: 'h',
       leaving: false,
     })
@@ -523,12 +523,18 @@ describe('groupDropDecision', () => {
       ]),
     )
     expect(
-      groupDropDecision(at(nested, 'loose', 120, 400), new Set(['loose'])),
+      groupDropDecision(
+        at(nested, 'loose', 120, 400),
+        new Set(['loose']),
+        LEAVE,
+      ),
     ).toEqual({ target: 'inner', leaving: false })
     // Taken out of the inner one onto the outer one: a way out.
     const yOut = at(nested, 'y', 0, -2000)
     const rest = fitGroups(yOut)
-    expect(groupDropDecision(at(rest, 'y', 0, 0), new Set(['y']))).toEqual({
+    expect(
+      groupDropDecision(at(rest, 'y', 0, 0), new Set(['y']), LEAVE),
+    ).toEqual({
       target: 'outer',
       leaving: true,
     })
@@ -536,7 +542,7 @@ describe('groupDropDecision', () => {
 
   it('judges a dragged group as one thing, carried members aside', () => {
     const moving = new Set(['g', 'a', 'b'])
-    expect(groupDropDecision(base, moving)).toBeNull()
+    expect(groupDropDecision(base, moving, LEAVE)).toBeNull()
   })
 
   it('does not take apart a selection gathered from several groups', () => {
@@ -545,7 +551,7 @@ describe('groupDropDecision', () => {
       nodes: [...base.nodes, group('h', 0, 0, 1, 1, ['c']), card('c', 3000, 0)],
     })
     const moved = at(at(two, 'b', 6000, 6000), 'c', 6100, 6000)
-    expect(groupDropDecision(moved, new Set(['b', 'c']))).toBeNull()
+    expect(groupDropDecision(moved, new Set(['b', 'c']), LEAVE)).toBeNull()
   })
 })
 

@@ -138,7 +138,7 @@ describe('collapsing a group', () => {
       box.x + 10 - 2000,
       box.y + 10 - 2000,
     )
-    expect(groupDropDecision(onBox, new Set(['new']))).toEqual({
+    expect(groupDropDecision(onBox, new Set(['new']), 91)).toEqual({
       target: 'g',
       leaving: false,
     })
@@ -148,6 +148,6 @@ describe('collapsing a group', () => {
       box.x + box.w + 30 - 2000,
       box.y - 2000,
     )
-    expect(groupDropDecision(near, new Set(['new']))).toBeNull()
+    expect(groupDropDecision(near, new Set(['new']), 91)).toBeNull()
   })
 })

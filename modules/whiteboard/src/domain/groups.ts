@@ -197,14 +197,6 @@ export function groupMemberCount(
   return group.members.filter((id) => present.has(id)).length
 }
 
-/** How far a member has to be taken from the frame the rest of its group
- * makes — the gap between its nearest edge and that frame — for dropping it
- * to take it out. A frame hugs what it holds, so a member is clear of the
- * frame the rest makes before it has moved at all: leaving has to be
- * further than that, and a card nudged off line is not a card being taken
- * away. */
-export const GROUP_LEAVE_DISTANCE = 91
-
 /** True when `outer` completely encloses `inner`. */
 export function rectContains(outer: GroupRect, inner: GroupRect): boolean {
   return (
@@ -798,10 +790,15 @@ export function gapBetween(a: GroupRect, b: GroupRect): number {
  * far as it reaches (a PDF with its pages), judged by where their edges are:
  * what is shown, whatever its size and wherever it was taken hold of. Judged
  * by their centre, a card twice the size of another had to be pushed twice as
- * far into a group before the group would take it. Every group they could go
+ * far into a group before the group would take it. `leave` is in the
+ * board's world units — the caller's to say, from how far a hand has to pull
+ * (ui/constants.ts's GROUP_LEAVE_SCREEN_PX). Every group they could go
  * into is asked whether they are on it:
  *   - the group they are all in, generously — they stay unless all of them
- *     are taken `GROUP_LEAVE_DISTANCE` clear of the frame the rest of it makes;
+ *     are taken `leave` clear of the frame the rest of it makes: a frame
+ *     hugs what it holds, so a member is clear of the frame the rest makes
+ *     before it has moved at all, and a card nudged off line is not a card
+ *     being taken away;
  *   - any other — a frame, or a collapsed group's box — as soon as one of
  *     them touches it; and the one it has already reached out for
  *     (`reaching`, what a drag in progress showed it joining), until they
@@ -816,6 +813,7 @@ export function gapBetween(a: GroupRect, b: GroupRect): number {
 export function groupDropDecision(
   board: Board,
   moving: ReadonlySet<NodeId>,
+  leave: number,
   scaleOf: ScaleOf = UNIT_SCALE,
   reaching: NodeId | null = null,
 ): GroupDrop | null {
@@ -836,7 +834,7 @@ export function groupDropDecision(
   const nearFrame = (node: GroupNode): boolean => {
     const frame = groupFrameWithout(node, board.nodes, moving, scaleOf)
     return node.id === home || node.id === reaching
-      ? gap(frame) <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
+      ? gap(frame) <= leave * scaleOf(node.id)
       : gap(frame) === 0
   }
   let best: GroupNode | null = null

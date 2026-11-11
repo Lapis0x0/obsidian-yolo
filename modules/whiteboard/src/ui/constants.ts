@@ -783,6 +783,18 @@ export const CONNECT_SNAP_WORLD_PX = 12
 export const SNAP_SCREEN_PX = 8
 
 /**
+ * How far, in screen pixels, what is dragged has to be pulled clear of a
+ * group's frame for the group to let go of it — the group it was in, or the
+ * one that has reached out for it (domain/groups.ts's `groupDropDecision`).
+ *
+ * Screen rather than world, like SNAP_SCREEN_PX: it is how far a hand pulls.
+ * Held in world units it shrank with the zoom — 91 of them are ~20px on a
+ * board zoomed out to fit, and a selection being placed beside what a group
+ * already holds slipped out of it at the first step to the side.
+ */
+export const GROUP_LEAVE_SCREEN_PX = 91
+
+/**
  * When a drag lines up with what it nears: once the hand is looking for a
  * place, not while it is still travelling — a card pulled onto every line it
  * crosses on the way does not follow the hand, and a guide flashed at each is

@@ -53,6 +53,7 @@ import {
   DRAG_THRESHOLD_PX,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
+  GROUP_LEAVE_SCREEN_PX,
   MIN_CARD_SIZE,
   PLAIN_TEXT_AUTO_CLASS,
   SNAP_AIM_LEAVE_SPEED,
@@ -1007,6 +1008,7 @@ export class DragGestures {
     return groupDropDecision(
       moved,
       new Set(ids),
+      GROUP_LEAVE_SCREEN_PX / this.core.getView().scale,
       this.core.scaleOf,
       this.reaching,
     )
