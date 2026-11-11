@@ -301,9 +301,10 @@ export class ToolbarController {
    * World rectangle the toolbar is anchored to: the union of the selected
    * nodes, or — for an edge — a zero-size rect at the point its label hangs
    * from, which is the only place on a curve that reads as "the edge itself".
-   * A node counts its title with it, wherever and however large it is shown
-   * (canvas.ts's `titleRectOf`), so the toolbar stands over the title — a
-   * group's, a PDF's, a portal's alike. A card a gesture is carrying counts
+   * A node that wears a title counts as its title (canvas.ts's
+   * `titleRectOf`), so the toolbar stands over the title — a group's, a
+   * PDF's, a portal's alike — and in the same place whether the node is
+   * folded or open. A card a gesture is carrying counts
    * where it is drawn.
    */
   private toolbarBounds(): ToolbarBounds | null {
@@ -323,9 +324,10 @@ export class ToolbarController {
       if (!node) continue
       const rect = live?.get(id) ?? node
       const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
-      rects.push(bounds)
-      const title = this.callbacks.titleRectOf(id, bounds)
-      if (title) rects.push(title)
+      // A node that wears a title is stood over by it alone: what it heads —
+      // a group's frame, a PDF's card or its sheets — changes size as it
+      // folds and opens, and the title does not, so the toolbar stays put.
+      rects.push(this.callbacks.titleRectOf(id, bounds) ?? bounds)
     }
     return rects.length > 0 ? unionRect(rects) : null
   }

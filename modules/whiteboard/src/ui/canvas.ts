@@ -3921,14 +3921,21 @@ export class WhiteboardCanvas {
   }
 
   /** Where `id`'s title is on the board over its node shown at `rect`, world
-   * units — the same box the DOM and the overview draw it in
-   * (./canvas/nodeTitle.ts's `titleBox`); null for a node that wears none. */
+   * units, for the toolbar to stand over (./canvas/nodeTitle.ts's
+   * `titleBox`); null for a node that wears none.
+   *
+   * On its node's own width: an open spread's title node is one page wide,
+   * as wide as the card the PDF folds into, so the toolbar is in the same
+   * place either way — on the room the DOM gives a spread's title, as wide
+   * as the document, it moved across by the difference whenever the name
+   * was longer than a page. Held at a size on screen far out, the box grows
+   * with the title, and the toolbar stays centred over it. */
   private titleRectOf(id: NodeId, rect: CardRect): CardRect | null {
     const node = this.nodesById.get(id)
     const title = node ? this.titleOf(node) : null
     if (!title) return null
     const unit = this.scaleOf(id)
-    const room = title.own ? this.spreadTitleMaxWidthOf(id) : rect.w
+    const room = rect.w
     return titleBox(
       rect,
       title,
