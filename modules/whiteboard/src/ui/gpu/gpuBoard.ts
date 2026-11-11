@@ -266,6 +266,10 @@ export class GpuBoard implements ContentLayer {
    * under the world layer, positioned in world units. */
   private readonly thumb: HTMLElement
   private thumbKey = ''
+  /** The board's cards, bottom to top, as it last said (`setNodes`). */
+  private order: readonly string[] = []
+  /** The cards shown picked up (`CardLook.lift`), drawn over the rest. */
+  private raised: ReadonlySet<string> = new Set()
 
   constructor(private readonly deps: GpuBoardDeps) {
     const doc = deps.parent.ownerDocument
@@ -328,8 +332,19 @@ export class GpuBoard implements ContentLayer {
       this.scene.removeCard(id)
       this.scene.setImages(id, [])
     }
-    this.scene.setOrder(cards)
+    this.order = cards
+    this.applyOrder()
     this.dirty = true
+  }
+
+  /** The board's order, with what is picked up (`raised`) over it all. */
+  private applyOrder(): void {
+    const raised = this.raised
+    this.scene.setOrder(
+      raised.size === 0
+        ? this.order
+        : [...this.order.filter((id) => !raised.has(id)), ...raised],
+    )
   }
 
   /** A file changed: the note cards showing it are typeset again, and
@@ -617,11 +632,12 @@ export class GpuBoard implements ContentLayer {
       return false
     }
     if (this.pdfs.has(node.id)) {
-      // A PDF in motion is its pages' pictures either way, and the overview
+      // A PDF folding is its pages' pictures either way, and the overview
       // draws those card by card as well as this would — without a card
       // table entry and its chunk moving here every frame, which across a
-      // spread of hundreds of sheets folding is most of the frame.
-      if (look.scale !== 1 || look.alpha !== 1) return false
+      // spread of hundreds of sheets folding is most of the frame. One
+      // picked up is drawn here, over the cards it is carried across.
+      if (look.scale < 1 || look.alpha !== 1) return false
       return this.claimPdf(node, rect, look)
     }
     if (!this.nodes.has(node.id)) return false
@@ -714,6 +730,20 @@ export class GpuBoard implements ContentLayer {
   private syncShown(): void {
     const view = this.deps.view()
     const { width, height } = this.deps.viewportSize()
+    // Over every other card while it is picked up, and back in its place
+    // once it is set down.
+    const raised = new Set<string>()
+    for (const [id, { look }] of this.claimed) {
+      if ((look.lift ?? 0) > 0) raised.add(id)
+    }
+    if (
+      raised.size !== this.raised.size ||
+      [...raised].some((id) => !this.raised.has(id))
+    ) {
+      this.raised = raised
+      this.applyOrder()
+      this.dirty = true
+    }
     for (const id of this.claimed.keys()) {
       if (this.deps.isMounted(id)) this.claimed.delete(id)
     }
@@ -754,6 +784,8 @@ export class GpuBoard implements ContentLayer {
         card.h !== rect.h ||
         (card.scale ?? 1) !== look.scale ||
         (card.alpha ?? 1) !== look.alpha ||
+        (card.rotate ?? 0) !== (look.rotate ?? 0) ||
+        (card.lift ?? 0) !== (look.lift ?? 0) ||
         !sameFrame(card.frame, frame)
       ) {
         this.scene.setCard(id, {
@@ -764,6 +796,8 @@ export class GpuBoard implements ContentLayer {
           h: rect.h,
           scale: look.scale,
           alpha: look.alpha,
+          rotate: look.rotate,
+          lift: look.lift,
           anchor: { x: node.x, y: node.y },
           frame,
         })

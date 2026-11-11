@@ -4,6 +4,7 @@ import {
   type Tween,
   arrived,
   cubicBezier,
+  liftedPose,
   poseAt,
   poseOf,
   samePose,
@@ -97,5 +98,62 @@ describe('poses', () => {
     const a = { x: 0, y: 0, w: 10, h: 10, opacity: 1 }
     expect(samePose(a, { ...a, x: 0.005 })).toBe(true)
     expect(samePose(a, { ...a, x: 0.5 })).toBe(false)
+    expect(samePose(a, { ...a, rotate: 0.1 })).toBe(false)
+    expect(samePose(a, { ...a, lift: 1 })).toBe(false)
+  })
+
+  it('tweens a turn and a lift back to rest', () => {
+    const at = poseAt(
+      tween({
+        from: { x: 0, y: 0, w: 10, h: 10, opacity: 1, rotate: 0.2, lift: 1 },
+        to: { x: 0, y: 0, w: 10, h: 10, opacity: 1 },
+      }),
+      1100,
+    )
+    expect(at.rotate).toBeCloseTo(0.1)
+    expect(at.lift).toBeCloseTo(0.5)
+  })
+})
+
+describe('liftedPose', () => {
+  const lift = { centre: { x: 50, y: 25 }, scale: 1.1, rotate: 0 }
+
+  it('grows what is carried about its middle, as one', () => {
+    const card = { x: 0, y: 0, w: 100, h: 50 }
+    const lifted = liftedPose(card, card, lift, 1)
+    expect(lifted.x).toBeCloseTo(-5)
+    expect(lifted.y).toBeCloseTo(-2.5)
+    expect(lifted.w).toBeCloseTo(110)
+    expect(lifted.h).toBeCloseTo(55)
+    expect(lifted.lift).toBe(1)
+    // A card beside it, carried with it, moves out from the same middle.
+    const beside = { x: 100, y: 0, w: 100, h: 50 }
+    const shown = liftedPose(beside, beside, lift, 1)
+    expect(shown.x).toBeCloseTo(105)
+  })
+
+  it('goes where the drag has it', () => {
+    const home = { x: 0, y: 0 }
+    const live = { x: 300, y: 40, w: 100, h: 50 }
+    const shown = liftedPose(home, live, lift, 1)
+    expect(shown.x).toBeCloseTo(295)
+    expect(shown.y).toBeCloseTo(37.5)
+  })
+
+  it('turns one card about its own centre', () => {
+    const card = { x: 0, y: 0, w: 100, h: 50 }
+    const shown = liftedPose(card, card, { ...lift, rotate: 0.3 }, 1)
+    expect(shown.rotate).toBeCloseTo(0.3)
+    expect(shown.x + shown.w / 2).toBeCloseTo(50)
+    expect(shown.y + shown.h / 2).toBeCloseTo(25)
+  })
+
+  it('is where it was, not picked up at all', () => {
+    const card = { x: 0, y: 0, w: 100, h: 50 }
+    expect(liftedPose(card, card, { ...lift, rotate: 0.3 }, 0)).toEqual({
+      ...card,
+      opacity: 1,
+      lift: 0,
+    })
   })
 })

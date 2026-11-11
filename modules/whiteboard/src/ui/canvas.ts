@@ -485,6 +485,7 @@ export class WhiteboardCanvas {
   private readonly motions = new Motions({
     window: () => this.context.getWindow(),
     rectOf: (id) => this.nodesById.get(id) ?? null,
+    liveRectOf: (id) => this.interaction.liveNodeRects?.get(id) ?? null,
     elementOf: (id) =>
       this.shownByElement(id)
         ? (this.cardRenderer.getRuntime(id)?.el ?? null)
@@ -977,15 +978,20 @@ export class WhiteboardCanvas {
       })
       for (const { node, motion } of moves) {
         const was = this.nodesById.get(node.id)
-        const from = live?.get(node.id) ?? was
-        if (!gone.has(node.id) || !was || !from) continue
+        const held = live?.get(node.id) ?? was
+        if (!gone.has(node.id) || !was || !held) continue
         const into = foldedPose(node, motion)
         const el = this.shownByElement(node.id)
           ? this.cardRenderer.getRuntime(node.id)?.el
           : null
         // Its cell stays empty until it arrives (`folded`); the canvas
-        // draws it on the way, under its element if it has one.
-        this.motions.depart(was, poseOf(from), into)
+        // draws it on the way, under its element if it has one — from where
+        // it is shown, picked up as it still is.
+        this.motions.depart(
+          was,
+          this.motions.pose(node.id) ?? poseOf(held),
+          into,
+        )
         if (!el) {
           // Parked under the drawing while it was dragged: it goes now.
           this.purgeNodeRuntime(node.id)
@@ -994,7 +1000,7 @@ export class WhiteboardCanvas {
         // From where it stands on screen — its drag's `translate` and all —
         // to its cell.
         const unit = nodeElementScale(el)
-        const transform = `translate(${(into.x - from.x) / unit}px, ${(into.y - from.y) / unit}px) scale(${into.w / from.w})`
+        const transform = `translate(${(into.x - held.x) / unit}px, ${(into.y - held.y) / unit}px) scale(${into.w / held.w})`
         this.purgeNodeRuntime(node.id, {
           exit: {
             keyframes: [
@@ -4110,6 +4116,9 @@ export class WhiteboardCanvas {
    * canvas draws it where it is shown, and its edges are drawn to it there —
    * to where it rests, for one that has just stopped. */
   private showMotions(): void {
+    // Picked up over a few frames, and drawn as it is each one — the
+    // elements by their own animations.
+    if (this.motions.lifting) this.overviewLayer?.markDirty()
     if (this.motions.size === 0) return
     const changed = this.motions.tick()
     if (changed.size === 0) return

@@ -542,6 +542,14 @@ export class DragGestures {
       this.core.getRuntime(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
     }
     this.carried = interaction
+    // Picked up, as one thing — and one card alone tilted in the hand
+    // (constants.ts's LIFT_TILT_RAD).
+    const [only, ...more] = interaction.ids
+    this.core.motions.lift(
+      interaction.ids,
+      this.core.getView().scale,
+      more.length === 0 && this.core.getNode(only)?.type !== 'group',
+    )
   }
 
   /**
@@ -814,6 +822,9 @@ export class DragGestures {
         interaction.historyKey,
       )
     }
+    // Where each was held as it was let go — taken while the drag's copy of
+    // where they are is still there to say.
+    const held = this.core.motions.drop()
     // The board holds these positions now; the drag's copy of them retires.
     this.setLiveNodeRects(null)
     this.carried = null
@@ -831,6 +842,8 @@ export class DragGestures {
         el.style.top = `${card.y}px`
       }
     }
+    // Set down where the board has them now, from where they were held.
+    for (const [id, pose] of held) this.core.motions.settle(id, { from: pose })
     this.deps.edges.redrawEdgesForNodes(new Set(interaction.ids))
     this.deps.refreshLayer()
     // Dragged cards may have moved on/off screen — re-evaluate mount state

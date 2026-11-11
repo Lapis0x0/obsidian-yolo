@@ -7,31 +7,22 @@
    * cards otherwise stack in plain DOM/mount order (no general z-order
    * model) — and above the 1 a spread's title stands at (spread.css). */
   z-index: 2;
-  /* Picked up: a hair larger and casting a shadow, so a drag reads as the
-   * card being lifted off the board rather than slid across it — and set back
-   * down, not dropped, when it ends. `scale`, and the drag itself writes
-   * `translate` every frame; the two compose. A card behind a portal at
-   * another scale has its scale set inline (portal.css), so it is not lifted
-   * this way — the shadow below still lifts it. */
-  scale: 1.015;
 }
 
-.yolo-whiteboard-card {
-  transition: scale var(--yolo-anim-duration-exit, 160ms)
-    var(--yolo-anim-ease-out, ease-out);
-}
-
-/* The lift's shadow. On a pseudo-element so it can fade — a shadow itself
- * cannot be animated without repainting it every frame — and at opacity 0 it
- * is not painted at all, so a board of resting cards pays nothing for it. */
+/* Picked up: casting a shadow, so a drag reads as the card being lifted off
+ * the board rather than slid across it. How it grows and tilts is the motion
+ * layer's (ui/canvas/motions.ts's `lift`), which every hand drawing the board
+ * shows alike; the shadow is constants.ts's LIFT_SHADOW, as the GPU scene and
+ * the overview draw it for the cards they draw. On a pseudo-element so it can
+ * fade — a shadow itself cannot be animated without repainting it every
+ * frame — and at opacity 0 it is not painted at all, so a board of resting
+ * cards pays nothing for it. */
 .yolo-whiteboard-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow:
-    0 8px 20px -6px rgb(0 0 0 / 12%),
-    0 1px 3px rgb(0 0 0 / 6%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 14%);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--yolo-anim-duration-exit, 160ms)

@@ -18,6 +18,8 @@
 //                                          cut off above clip top; the whole
 //                                          card shown `scale` times its size
 //                                          from its top-left, at `alpha`
+//   [turn, lift, 0, 0]                     turned about its centre (radians),
+//                                          and how far picked up — its shadow
 // and the colour table one texel: [fill, border, 0, 0] as RGBA8 words.
 //
 // Knows nothing of boards or nodes: whoever shows the board tells it what
@@ -99,6 +101,11 @@ export type SceneCard = Readonly<{
    * when left out. */
   scale?: number
   alpha?: number
+  /** Picked up (../canvas/motions.ts's `lift`): turned this far about its
+   * centre, in radians, and how far up, 0 to 1 — what its shadow shows.
+   * Neither when left out. */
+  rotate?: number
+  lift?: number
   /** Where the card belongs on the board, for the chunk it is kept in
    * (`chunkKey`); where it is drawn when left out. A card shown somewhere
    * else for a moment — dragged, or in motion — stays in its chunk, which
@@ -791,6 +798,10 @@ export class GpuScene {
         card.clipTop ?? 0,
         card.scale ?? 1,
         card.alpha ?? 1,
+        card.rotate ?? 0,
+        card.lift ?? 0,
+        0,
+        0,
       ],
       at,
     )

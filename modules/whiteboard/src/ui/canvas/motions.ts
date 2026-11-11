@@ -28,16 +28,30 @@
 // (`depart`): a card dropped on a collapsed group, going into its cell. The
 // board no longer has it, so what it was is kept with its motion, for the
 // canvas to draw (`departures`) until it gets there.
+//
+// And what a drag carries is shown picked up (`lift`): grown about the middle
+// of all of it, one card tilted, casting a shadow — wherever the drag has it,
+// which no tween knows, so its pose is worked out from there each time it is
+// asked for (../tween.ts's `liftedPose`). Let go of (`drop`), it is set down
+// by an ordinary tween, from where it was held to where the board has it.
 
 import type { BoardNode, NodeId } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
-import { ARRANGE_ANIMATION_MS } from '../constants'
+import {
+  ARRANGE_ANIMATION_MS,
+  LIFT_GROW_MAX_SCREEN_PX,
+  LIFT_MS,
+  LIFT_SCALE,
+  LIFT_TILT_RAD,
+} from '../constants'
 import {
   type Ease,
+  type Lift,
   type Pose,
   type Tween,
   arrived,
   cubicBezier,
+  liftedPose,
   poseAt,
   poseOf,
   samePose,
@@ -64,6 +78,8 @@ export type MotionsDeps = Readonly<{
   window: () => Window
   /** Where the board has a node; null once it has left the board. */
   rectOf: (id: NodeId) => CardRect | null
+  /** Where a drag has a node it is carrying, while it carries it. */
+  liveRectOf: (id: NodeId) => CardRect | null
   /** A node's element, while it is shown by one. */
   elementOf: (id: NodeId) => HTMLElement | null
   /** A group's world units per unit of its element (canvas.ts's
@@ -90,8 +106,19 @@ export type MoveOptions = Readonly<{
   reshape?: boolean
 }>
 
+/** What a drag has picked up (`Motions.lift`). */
+type Lifted = {
+  /** Where the board had each, as the drag began. */
+  homes: ReadonlyMap<NodeId, CardRect>
+  lift: Lift
+  start: number
+  /** The Web Animations showing it on the elements it has. */
+  animations: Map<NodeId, Animation>
+}
+
 export class Motions {
   private readonly entries = new Map<NodeId, Entry>()
+  private lifted: Lifted | null = null
   private query: Readonly<{ window: Window; list: MediaQueryList }> | null =
     null
   private readonly departing = new Map<
@@ -174,7 +201,85 @@ export class Motions {
    * it. */
   pose(id: NodeId): Pose | null {
     const entry = this.entries.get(id)
-    return entry ? poseAt(entry.tween, this.now()) : null
+    if (entry) return poseAt(entry.tween, this.now())
+    const lifted = this.lifted
+    const home = lifted?.homes.get(id)
+    if (!lifted || !home) return null
+    return liftedPose(
+      home,
+      this.deps.liveRectOf(id) ?? home,
+      lifted.lift,
+      this.liftAmount(lifted),
+    )
+  }
+
+  /**
+   * Picks up `ids`, which a drag is about to carry from where the board has
+   * them, as one thing: grown about their middle — by no more than
+   * `LIFT_GROW_MAX_SCREEN_PX` a side at `screenScale` — and turned if `tilt`.
+   * Under reduced motion it neither grows nor turns, and its shadow is there
+   * at once.
+   */
+  lift(ids: readonly NodeId[], screenScale: number, tilt: boolean): void {
+    this.drop()
+    const homes = new Map<NodeId, CardRect>()
+    let left = Infinity
+    let top = Infinity
+    let right = -Infinity
+    let bottom = -Infinity
+    for (const id of ids) {
+      const rect = this.deps.rectOf(id)
+      if (!rect) continue
+      homes.set(id, rect)
+      left = Math.min(left, rect.x)
+      top = Math.min(top, rect.y)
+      right = Math.max(right, rect.x + rect.w)
+      bottom = Math.max(bottom, rect.y + rect.h)
+    }
+    if (homes.size === 0) return
+    // Picked up from where it is: one still on its way somewhere goes on
+    // from where the board has it.
+    this.stop(homes.keys())
+    const still = this.reducedMotion()
+    const span = Math.max(right - left, bottom - top) * screenScale
+    const lift: Lift = {
+      centre: { x: (left + right) / 2, y: (top + bottom) / 2 },
+      scale: still
+        ? 1
+        : Math.min(LIFT_SCALE, 1 + (2 * LIFT_GROW_MAX_SCREEN_PX) / span),
+      rotate: still || !tilt ? 0 : LIFT_TILT_RAD,
+    }
+    const now = this.now()
+    this.lifted = {
+      homes,
+      lift,
+      start: still ? now - LIFT_MS : now,
+      animations: new Map(),
+    }
+    for (const id of homes.keys()) this.playLift(id)
+  }
+
+  /** Still being picked up — drawn again every frame until it is. */
+  get lifting(): boolean {
+    return this.lifted !== null && this.liftAmount(this.lifted) < 1
+  }
+
+  /**
+   * Lets go of what is picked up, and where each of it is shown as it is let
+   * go — what `settle` sets it down from once the board has it where it was
+   * dropped.
+   */
+  drop(): ReadonlyMap<NodeId, Pose> {
+    const lifted = this.lifted
+    if (!lifted) return new Map()
+    const held = new Map<NodeId, Pose>()
+    for (const id of lifted.homes.keys()) {
+      const pose = this.pose(id)
+      if (pose) held.set(id, pose)
+    }
+    for (const animation of lifted.animations.values()) animation.cancel()
+    this.lifted = null
+    return held
   }
 
   /** Every node shown somewhere the board does not have it, the ones drawn
@@ -227,10 +332,15 @@ export class Motions {
   }
 
   /** `id`'s element has just mounted: shown where its tween has it, from
-   * here on by its own Web Animation. Whether it is in motion. */
+   * here on by its own Web Animation — or picked up, if a drag is carrying
+   * it. Whether it is in motion. */
   attach(id: NodeId): boolean {
     const entry = this.entries.get(id)
-    if (!entry) return false
+    if (!entry) {
+      if (!this.lifted?.homes.has(id)) return false
+      this.playLift(id)
+      return true
+    }
     this.play(id, entry)
     return true
   }
@@ -304,10 +414,11 @@ export class Motions {
     const pose = this.pose(id)
     const base = this.deps.rectOf(id)
     if (!el || !pose || !base) return null
-    return cardTransform(el, pose, base)
+    return cardTransform(el, pose, base, (pose.rotate ?? 0) !== 0)
   }
 
   destroy(): void {
+    this.drop()
     this.stop([...this.entries.keys()])
     this.departing.clear()
   }
@@ -315,6 +426,36 @@ export class Motions {
   private homePose(id: NodeId): Pose | null {
     const rect = this.deps.rectOf(id)
     return rect ? poseOf(rect) : null
+  }
+
+  /** How far `lifted` is picked up by now, 0 to 1, on the curve. */
+  private liftAmount(lifted: Lifted): number {
+    return ARRANGE_EASE.at(Math.min(1, (this.now() - lifted.start) / LIFT_MS))
+  }
+
+  /**
+   * `id` picked up, on its element, from the point the lift has reached. The
+   * drag moves the element by its `translate`, carrying everything it
+   * carries the same way, so where it is picked up to from there never
+   * changes: one animation, held at its end.
+   */
+  private playLift(id: NodeId): void {
+    const lifted = this.lifted
+    const home = lifted?.homes.get(id)
+    const el = this.deps.elementOf(id)
+    if (!lifted || !home || !el) return
+    lifted.animations.get(id)?.cancel()
+    const turns = lifted.lift.rotate !== 0
+    const at = (pose: Pose): Keyframe => ({
+      transformOrigin: '0 0',
+      transform: cardTransform(el, pose, home, turns),
+    })
+    const animation = el.animate(
+      [at(poseOf(home)), at(liftedPose(home, home, lifted.lift, 1))],
+      { duration: LIFT_MS, easing: ARRANGE_EASE.css, fill: 'forwards' },
+    )
+    animation.currentTime = Math.max(0, this.now() - lifted.start)
+    lifted.animations.set(id, animation)
   }
 
   /** `entry` on `id`'s element, if it has one, at the point its tween has
@@ -347,9 +488,10 @@ export class Motions {
     } else {
       const base = this.deps.rectOf(id)
       if (!base) return
+      const turns = (from.rotate ?? 0) !== 0 || (to.rotate ?? 0) !== 0
       const at = (pose: Pose): Keyframe => ({
         transformOrigin: '0 0',
-        transform: cardTransform(el, pose, base),
+        transform: cardTransform(el, pose, base, turns),
         ...(fades ? { opacity: pose.opacity } : {}),
         ...(entry.onTop ? { zIndex: 1 } : {}),
       })
@@ -368,11 +510,21 @@ export class Motions {
 }
 
 /** The transform that shows a card whose element stands at `base` at
- * `pose`, in the element's own units (`nodeElementScale`). */
-function cardTransform(el: HTMLElement, pose: Pose, base: CardRect): string {
+ * `pose`, in the element's own units (`nodeElementScale`) — turned about its
+ * centre, where `turns` says the poses it goes between are, so that every
+ * keyframe has the same functions and each is tweened as itself. */
+function cardTransform(
+  el: HTMLElement,
+  pose: Pose,
+  base: CardRect,
+  turns = false,
+): string {
   const unit = nodeElementScale(el)
   const dx = (pose.x - base.x) / unit
   const dy = (pose.y - base.y) / unit
   const scale = base.w > 0 ? pose.w / base.w : 1
-  return `translate(${dx}px, ${dy}px) scale(${scale})`
+  if (!turns) return `translate(${dx}px, ${dy}px) scale(${scale})`
+  const cx = pose.w / 2 / unit
+  const cy = pose.h / 2 / unit
+  return `translate(${dx}px, ${dy}px) translate(${cx}px, ${cy}px) rotate(${pose.rotate ?? 0}rad) translate(${-cx}px, ${-cy}px) scale(${scale})`
 }

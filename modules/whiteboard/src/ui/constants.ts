@@ -648,6 +648,27 @@ export const FOLD_COVER_MAX_MS = 1500
  * zoom.
  */
 export const NODE_ENTER_FROM_SCALE = 0.94
+
+/**
+ * What a drag picks up (canvas/motions.ts's `lift`): grown a little and
+ * casting a shadow, and — one card alone — tilted, as a card taken in the
+ * hand is; set back down on the arrangement's motion when it is let go.
+ *
+ * Grown at most `LIFT_SCALE`, and never more than `LIFT_GROW_MAX_SCREEN_PX`
+ * a side on screen: a group or a selection is picked up as one thing, and a
+ * few percent of something filling the screen is a lurch, not a lift. Only
+ * one card tilts, for the same reason — a group turning swings its far
+ * corners by tens of pixels.
+ *
+ * The shadow is a card's own, in its units — `0 10px 28px` at 14% black —
+ * and comes in over `LIFT_MS`, as the growth and the tilt do.
+ */
+export const LIFT_SCALE = 1.03
+export const LIFT_GROW_MAX_SCREEN_PX = 6
+export const LIFT_TILT_RAD = (-1.2 * Math.PI) / 180
+export const LIFT_MS = 160
+export const LIFT_SHADOW = { offsetY: 10, blur: 28, alpha: 0.14 } as const
+
 export const NODE_EXIT_MS = 160
 export const NODE_EXIT_TO_SCALE = 0.96
 export const NODE_EXIT_EASING = 'cubic-bezier(0.4, 0, 1, 1)'

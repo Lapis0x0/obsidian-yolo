@@ -2,7 +2,8 @@
 // arithmetic of ./canvas/motions.ts, which every part of the board that
 // shows a node asks (the DOM, the overview canvas, the GPU scene, the edges).
 //
-// A node is shown at a pose: a rectangle in world units and an opacity. A
+// A node is shown at a pose: a rectangle in world units and an opacity — and,
+// picked up (`liftedPose`), turned about its centre and casting a shadow. A
 // card's pose is its own box scaled about its top-left — its content is laid
 // out at its own size and shown that much smaller or larger; a group's is its
 // frame, whatever shape. A tween takes a pose to another over a duration, on
@@ -18,6 +19,11 @@ export type Pose = Readonly<{
   w: number
   h: number
   opacity: number
+  /** Turned this far about its centre, in radians; not at all if absent. */
+  rotate?: number
+  /** How far it is picked up, 0 to 1 — what its shadow shows; at rest on
+   * the board if absent. */
+  lift?: number
 }>
 
 /** A timing curve, as CSS writes it and as a function of progress. */
@@ -104,6 +110,12 @@ export function poseAt(tween: Tween, now: number): Pose {
     w: mix(from.w, to.w),
     h: mix(from.h, to.h),
     opacity: mix(from.opacity, to.opacity),
+    ...(from.rotate !== undefined || to.rotate !== undefined
+      ? { rotate: mix(from.rotate ?? 0, to.rotate ?? 0) }
+      : {}),
+    ...(from.lift !== undefined || to.lift !== undefined
+      ? { lift: mix(from.lift ?? 0, to.lift ?? 0) }
+      : {}),
   }
 }
 
@@ -123,7 +135,9 @@ export function samePose(a: Pose, b: Pose): boolean {
     near(a.y, b.y) &&
     near(a.w, b.w) &&
     near(a.h, b.h) &&
-    near(a.opacity, b.opacity)
+    near(a.opacity, b.opacity) &&
+    Math.abs((a.rotate ?? 0) - (b.rotate ?? 0)) < 1e-4 &&
+    near(a.lift ?? 0, b.lift ?? 0)
   )
 }
 
@@ -140,5 +154,57 @@ export function scaledAboutCentre(
     w: rect.w * scale,
     h: rect.h * scale,
     opacity,
+  }
+}
+
+/** How a carried thing is picked up (`liftedPose`). */
+export type Lift = Readonly<{
+  /** The middle of all it carries as the drag began, world units. */
+  centre: Readonly<{ x: number; y: number }>
+  /** Shown this many times its size, fully picked up. */
+  scale: number
+  /** And turned this far about the centre, in radians. */
+  rotate: number
+}>
+
+/**
+ * Where a node carried by a drag is shown, `amount` (0 to 1) of the way to
+ * picked up: grown by `lift.scale` and turned by `lift.rotate` about the
+ * middle of everything the drag carries, so what it carries is picked up as
+ * one thing. `home` is where the node was as the drag began, `live` where the
+ * drag has it now — a drag carries everything the same way, so the middle
+ * goes with each node.
+ */
+export function liftedPose(
+  home: Readonly<{ x: number; y: number }>,
+  live: Readonly<{ x: number; y: number; w: number; h: number }>,
+  lift: Lift,
+  amount: number,
+): Pose {
+  const scale = 1 + (lift.scale - 1) * amount
+  const centre = {
+    x: lift.centre.x + live.x - home.x,
+    y: lift.centre.y + live.y - home.y,
+  }
+  const x = centre.x + (live.x - centre.x) * scale
+  const y = centre.y + (live.y - centre.y) * scale
+  const w = live.w * scale
+  const h = live.h * scale
+  const rotate = lift.rotate * amount
+  if (rotate === 0) return { x, y, w, h, opacity: 1, lift: amount }
+  // Turned about the middle of what is carried, which for one card is its
+  // own centre: its centre goes round that point, and it turns about it.
+  const cos = Math.cos(rotate)
+  const sin = Math.sin(rotate)
+  const dx = x + w / 2 - centre.x
+  const dy = y + h / 2 - centre.y
+  return {
+    x: centre.x + dx * cos - dy * sin - w / 2,
+    y: centre.y + dx * sin + dy * cos - h / 2,
+    w,
+    h,
+    opacity: 1,
+    rotate,
+    lift: amount,
   }
 }

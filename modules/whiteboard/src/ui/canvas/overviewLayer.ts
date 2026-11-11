@@ -60,6 +60,7 @@ import {
   EDGE_LABEL_PADDING_PX,
   EDGE_PASSAGE_MARK_WORLD_PX,
   EDGE_STROKE_WORLD_PX,
+  LIFT_SHADOW,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
@@ -125,14 +126,30 @@ export type ContentLayer = Readonly<{
   begin: () => void
   /** Whether it draws `node`'s content this frame, laid out at `rect`
    * (world units) — and, a card in motion (./motions.ts), shown `look.scale`
-   * times that size from its top-left at `look.alpha`; a yes is a promise
-   * to. */
+   * times that size from its top-left at `look.alpha`, turned and picked up
+   * as `look` says; a yes is a promise to. */
   claim: (node: BoardNode, rect: CardRect, look?: CardLook) => boolean
 }>
 
 /** How a card in motion is shown, beyond where: scaled from its top-left,
- * and how opaque. */
-export type CardLook = Readonly<{ scale: number; alpha: number }>
+ * how opaque, turned about its centre (radians), and how far picked up —
+ * what its shadow shows (../tween.ts's `Pose`). */
+export type CardLook = Readonly<{
+  scale: number
+  alpha: number
+  rotate?: number
+  lift?: number
+}>
+
+/** How `node` shown at `pose` looks (`CardLook`). */
+function lookOf(node: BoardNode, pose: Pose): CardLook {
+  return {
+    scale: pose.w / node.w,
+    alpha: pose.opacity,
+    rotate: pose.rotate,
+    lift: pose.lift,
+  }
+}
 
 /** A page's annotations as the overview draws them: its highlights one path
  * per colour, in page fractions, and its framed areas. */
@@ -706,6 +723,7 @@ export class OverviewLayer {
     const palette = this.palette
     if (!palette) return false
     let drew = false
+    const dpr = this.context.getWindow().devicePixelRatio || 1
     for (const { node, pose } of moving) {
       const alpha = pose.opacity
       if (alpha <= 0) continue
@@ -714,9 +732,29 @@ export class OverviewLayer {
       const y = pose.y * view.scale + view.ty
       const w = pose.w * view.scale
       const h = pose.h * view.scale
+      ctx.save()
+      if (pose.rotate) {
+        ctx.translate(x + w / 2, y + h / 2)
+        ctx.rotate(pose.rotate)
+        ctx.translate(-x - w / 2, -y - h / 2)
+      }
       ctx.globalAlpha = alpha
       ctx.fillStyle = palette.background
+      // Picked up, its surface casts the shadow — in the card's units, as
+      // the card's own does (drag.css). A shadow's offset and blur are in
+      // device pixels, turned by nothing: it falls straight down whatever
+      // the card does.
+      const lift = pose.lift ?? 0
+      if (lift > 0) {
+        const unit = (pose.w / node.w) * view.scale * dpr
+        ctx.shadowColor = `rgba(0, 0, 0, ${LIFT_SHADOW.alpha * lift})`
+        ctx.shadowBlur = LIFT_SHADOW.blur * unit
+        ctx.shadowOffsetY = LIFT_SHADOW.offsetY * unit
+      }
       ctx.fillRect(x, y, w, h)
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
+      ctx.shadowOffsetY = 0
       const picture = this.pictureOf(node, { w }, palette.dark)
       const own = this.colorOf(node, palette)
       if (!picture || own !== null) {
@@ -750,13 +788,15 @@ export class OverviewLayer {
       ctx.stroke()
       ctx.globalAlpha = alpha
       ctx.lineWidth = 1
-      if (pictured || w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
-      ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale * (pose.w / node.w)}px ${palette.fontFamily}`
-      ctx.fillStyle = palette.text
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(title, x + w / 2, y + h / 2, w)
+      if (!pictured && w >= OVERVIEW_TITLE_MIN_CARD_PX) {
+        const title = nodeTitleText(node, this.callbacks.pdfPageLabels)
+        ctx.font = `500 ${TITLE_BLOCK_WORLD_FONT_PX * view.scale * (pose.w / node.w)}px ${palette.fontFamily}`
+        ctx.fillStyle = palette.text
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(title, x + w / 2, y + h / 2, w)
+      }
+      ctx.restore()
     }
     ctx.globalAlpha = 1
     return drew
@@ -973,8 +1013,7 @@ export class OverviewLayer {
         continue
       }
       const laidOut = { x: pose.x, y: pose.y, w: node.w, h: node.h }
-      const look = { scale: pose.w / node.w, alpha: pose.opacity }
-      if (content?.claim(node, laidOut, look)) continue
+      if (content?.claim(node, laidOut, lookOf(node, pose))) continue
       unclaimed.push({ node, pose })
     }
     ctx.globalAlpha = 1
@@ -1044,9 +1083,10 @@ export class OverviewLayer {
       // spread folding keeps its title in place throughout.
       const badge = this.callbacks.titleBadge(node)
       // One in motion carries its title line along while it keeps its size
-      // (an arrangement, a card arriving); shrinking into a fold, it goes.
+      // (an arrangement, a card arriving) or is picked up, and turns it as it
+      // turns; shrinking into a fold, it goes.
       const scale = pose ? pose.w / node.w : 1
-      if (badge && wearsTitleLine(node) && Math.abs(scale - 1) < 0.01) {
+      if (badge && wearsTitleLine(node) && scale > 0.99) {
         const th = SPREAD_METRICS.titleHeight * typeScale
         titles.push({
           node,
@@ -1057,12 +1097,16 @@ export class OverviewLayer {
           h: th,
           // Its own width, never under a page's default (title-line.css).
           maxW: Math.max(w, SPREAD_METRICS.pageWidth * typeScale),
+          turn: pose?.rotate
+            ? { x: x + w / 2, y: y + h / 2, angle: pose.rotate }
+            : undefined,
         })
       }
       if (pose) {
         const laidOut = { x: pose.x, y: pose.y, w: node.w, h: node.h }
-        const look = { scale, alpha: pose.opacity }
-        if (!content?.claim(node, laidOut, look)) moving.push({ node, pose })
+        if (!content?.claim(node, laidOut, lookOf(node, pose))) {
+          moving.push({ node, pose })
+        }
         continue
       }
       if (content?.claim(node, rect)) continue
@@ -1297,6 +1341,13 @@ export class OverviewLayer {
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'left'
     for (const title of titles) {
+      const { turn } = title
+      if (turn) {
+        ctx.save()
+        ctx.translate(turn.x, turn.y)
+        ctx.rotate(turn.angle)
+        ctx.translate(-turn.x, -turn.y)
+      }
       const name = nodeTitleText(title.node)
       const badgeText = title.badge.text
       const pad = SPREAD_TITLE_WORLD.padding * u
@@ -1360,6 +1411,7 @@ export class OverviewLayer {
       for (let i = 0; i < lines.length; i += 1) {
         ctx.fillText(lines[i], box.x + pad + badgeW + gap, top + i * lineH)
       }
+      if (turn) ctx.restore()
     }
     ctx.lineWidth = 1
   }
@@ -1892,6 +1944,9 @@ type TitleLine = Readonly<{
   /** How wide its line may run before the name wraps (title-line.css): the
    * document's width, a folded card's being its own. Screen pixels. */
   maxW: number
+  /** Turned with its card, picked up: by `angle` radians about the card's
+   * centre, screen pixels. */
+  turn?: Readonly<{ x: number; y: number; angle: number }>
 }>
 
 /** A PDF card as its reader: not an open spread's title. */
