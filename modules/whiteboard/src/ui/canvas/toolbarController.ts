@@ -460,7 +460,7 @@ export class ToolbarController {
       if (group.bounds !== undefined && !folded) {
         items.push({
           label: this.callbacks.t('toolbar.fitGroup'),
-          icon: 'shrink',
+          icon: 'locate-fixed',
           onSelect: () => this.callbacks.groupAction(group.id, 'fit'),
         })
       }
