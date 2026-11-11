@@ -33,6 +33,7 @@ import {
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
+import { isFolded } from '../../domain/groupFold'
 import { arrangeTargets } from '../../domain/groups'
 import { isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
@@ -503,10 +504,17 @@ export class ToolbarController {
    * knows which axis they mean — see canvas.ts's selection menu.
    */
   private tidyControl(): ToolbarAction | null {
-    const targets = arrangeTargets(
-      this.callbacks.getBoard(),
-      this.callbacks.getSelectedIds(),
-    ).length
+    const board = this.callbacks.getBoard()
+    const selected = this.callbacks.getSelectedIds()
+    const only =
+      selected.size === 1
+        ? board.nodes.find((node) => selected.has(node.id))
+        : undefined
+    // A collapsed group holds what it holds put away, and is tidied all the
+    // same (canvas.ts's `tidyFolded`): the button stays as it folds.
+    const targets = isFolded(only)
+      ? only.members.length
+      : arrangeTargets(board, selected).length
     if (!this.callbacks.canEdit() || targets < 2) return null
     return {
       label: this.callbacks.t('toolbar.tidy'),

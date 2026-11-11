@@ -68,6 +68,7 @@ import {
   arrangeTargets,
   carryGroupMembers,
   collapsedGroupPlaces,
+  collapsedGroupSize,
   createGroup,
   groupMemberCount,
   groupMemberExtent,
@@ -322,6 +323,10 @@ const SPREAD_SIBLING_CLASS = 'yolo-whiteboard-spread-sibling'
 const FOLD_COVER_CLASS = 'yolo-whiteboard-spread-fold-cover'
 
 /** One node's part in a fold, and the node it is of. */
+/** A thing a collapsed group shows in its box, where the box on the board
+ * puts it (`foldedShown`), and which box. */
+type FoldedShown = Readonly<{ node: BoardNode; pose: Pose; box: NodeId }>
+
 type FoldMove = Readonly<{ node: BoardNode; motion: FoldMotion }>
 
 /** A group's frame going from `from` to `to` alongside a fold. */
@@ -484,7 +489,7 @@ export class WhiteboardCanvas {
    */
   /** What the collapsed groups on the board show in their boxes, where
    * (`foldedShown`); kept with the board's index. */
-  private folded: readonly Readonly<{ node: BoardNode; pose: Pose }>[] = []
+  private folded: readonly FoldedShown[] = []
   private readonly motions = new Motions({
     window: () => this.context.getWindow(),
     rectOf: (id) => this.nodesById.get(id) ?? null,
@@ -2171,8 +2176,7 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.interaction.liveNodeRects,
       poseOf: (id) => this.motions.pose(id),
       departures: () => this.motions.departures(),
-      folded: () =>
-        this.folded.filter((shown) => !this.motions.isDeparting(shown.node.id)),
+      folded: () => this.foldedNow(),
       pdfPageLabels: this.pdfPageLabels,
       picture: (node, dark, page) => this.pictureOf(node, dark, page),
       contentLayer: () => this.gpuBoard,
@@ -3917,20 +3921,32 @@ export class WhiteboardCanvas {
     return this.titleMeasureOf
   }
 
-  /** Where `id`'s title is on the board over its node shown at `rect`, world
-   * units, as the DOM and the overview draw it (./canvas/nodeTitle.ts's
-   * `titleBox`) — for the toolbar to stand over; null for a node that wears
-   * none. */
+  /**
+   * Where the toolbar stands over `id`'s title, world units, its node shown
+   * at `rect`: the title as it is with its node folded (./canvas/nodeTitle.ts's
+   * `titleBox`) — a group's over its box, a PDF's over its card — so the
+   * toolbar is in the same place folded or open. A title that fits its node
+   * folded is the same title open, and is stood over exactly; a longer one,
+   * cut short folded and whole open, is stood over its start. Null for a node
+   * that wears none.
+   */
   private titleRectOf(id: NodeId, rect: CardRect): CardRect | null {
     const node = this.nodesById.get(id)
     const title = node ? this.titleOf(node) : null
     if (!node || !title) return null
+    const unit = this.scaleOf(id)
+    // A PDF's card and its open spread's title node are already one page
+    // wide; a group open is its frame, and folded the width of its box.
+    const folded =
+      node.type === 'group'
+        ? { ...rect, w: collapsedGroupSize(1, unit).w }
+        : rect
     return titleBox(
       node,
-      rect,
+      folded,
       this.titleMeasure().width(title),
       titleScale(this.seenScaleOf(id)),
-      this.scaleOf(id),
+      unit,
     )
   }
 
@@ -3966,9 +3982,9 @@ export class WhiteboardCanvas {
    * in a box is typeset as sharp as the card it is, at any zoom. Not what
    * the last cell stands in for, and not a group behind a portal.
    */
-  private foldedShown(): readonly Readonly<{ node: BoardNode; pose: Pose }>[] {
+  private foldedShown(): readonly FoldedShown[] {
     const portals = this.sources.composition.portals
-    const shown: { node: BoardNode; pose: Pose }[] = []
+    const shown: FoldedShown[] = []
     for (const box of this.board.nodes) {
       if (!isFolded(box) || portalOf(box.id, portals)) continue
       const stash = box.stash.nodes
@@ -3990,10 +4006,43 @@ export class WhiteboardCanvas {
         return member ? withCarried(member, stash) : []
       })
       for (const { node, motion } of moves) {
-        if (!motion.fade) shown.push({ node, pose: foldedPose(node, motion) })
+        if (!motion.fade) {
+          shown.push({ node, pose: foldedPose(node, motion), box: box.id })
+        }
       }
     }
     return shown
+  }
+
+  /**
+   * What the collapsed groups show in their boxes (`folded`), where each box
+   * is shown now: carried with it while a drag holds it somewhere the board
+   * does not have it yet, or a motion is taking it there — at the box's
+   * place on the board, it stayed behind as the box moved off without it.
+   * Not what is flying out of a box.
+   */
+  private foldedNow(): readonly Readonly<{ node: BoardNode; pose: Pose }>[] {
+    const live = this.interaction.liveNodeRects
+    return this.folded.flatMap((shown) => {
+      if (this.motions.isDeparting(shown.node.id)) return []
+      const box = this.nodesById.get(shown.box)
+      const at = this.motions.pose(shown.box) ?? live?.get(shown.box)
+      if (!box || !at || box.w === 0) return [shown]
+      const k = at.w / box.w
+      const { pose } = shown
+      return [
+        {
+          node: shown.node,
+          pose: {
+            ...pose,
+            x: at.x + (pose.x - box.x) * k,
+            y: at.y + (pose.y - box.y) * k,
+            w: pose.w * k,
+            h: pose.h * k,
+          },
+        },
+      ]
+    })
   }
 
   /**
@@ -4078,12 +4127,39 @@ export class WhiteboardCanvas {
    * a dragged card snaps to, so tidying and dragging agree about what "even"
    * means. */
   private tidySelection(): void {
+    const [only] = this.selectedIds
+    const single =
+      this.selectedIds.size === 1 ? this.nodesById.get(only) : undefined
+    if (isFolded(single)) {
+      this.tidyFolded(single.id)
+      return
+    }
     this.applyArrangement(
       tidyRects(
         arrangeTargets(this.board, this.selectedIds),
         GRID_WORLD_STEP_PX,
       ),
     )
+  }
+
+  /**
+   * Tidies what a collapsed group holds where it is put away: the group is
+   * opened on the board, what it holds tidied, and put away again, in one
+   * step. What it holds is the same things shown otherwise — in its box —
+   * so tidying it does what it does to the group open, and is undone alike.
+   */
+  private tidyFolded(id: NodeId): void {
+    if (!this.canEdit) return
+    const open = expandGroup(this.board, id)
+    const positions = carryGroupMembers(
+      open.nodes,
+      tidyRects(arrangeTargets(open, new Set([id])), GRID_WORLD_STEP_PX),
+    )
+    if (positions.size === 0) return
+    this.applyBoardChange(collapseGroup(setNodePositions(open, positions), id))
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.interaction.refreshInteractionLayer()
   }
 
   /**
