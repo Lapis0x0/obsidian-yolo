@@ -1,8 +1,8 @@
 // A node's title (styles/cards/node-title.css): the one bar over a node that
 // says what it is and what it is called. A group, a PDF — folded into its
 // card or spread out — and a portal each wear one, and it is the same bar on
-// all of them: a mark (a group's frame, or a badge naming the kind of
-// document), the name, and a note (how much a group holds). It is the node's
+// all of them: a badge naming what kind of thing it is (a group, a PDF, a
+// board), the name, and a note (how much a group holds). It is the node's
 // handle: a press on it selects the node, a drag moves it, and a group's is
 // renamed by a double-click. What is done to the node as a whole is the
 // selection toolbar's, which stands over the title.
@@ -28,35 +28,27 @@ import { TITLE_MIN_SCREEN_PX } from '../constants'
 export const TITLE_CLASS = 'yolo-whiteboard-title'
 /** An open spread's title, which is its own node's whole box. */
 const OWN_CLASS = 'yolo-whiteboard-title-own'
-/** A title with no surface of its own (`boxed`). */
-const BARE_CLASS = 'yolo-whiteboard-title-bare'
 /** The name, where a group's rename edits it (editingController.ts). */
 export const TITLE_LABEL_CLASS = 'yolo-whiteboard-title-label'
-const ICON_CLASS = 'yolo-whiteboard-title-icon'
 const BADGE_CLASS = 'yolo-whiteboard-title-badge'
 const NOTE_CLASS = 'yolo-whiteboard-title-note'
 
-/** A badge's tint: the theme's colour of that name. */
-export type TitleBadgeTone = 'red' | 'blue'
+/** A badge's tint: the theme's colour of that name — or, `neutral`, the
+ * muted text's, which a coloured group's badge takes its colour in place of
+ * (node-title.css). */
+export type TitleBadgeTone = 'red' | 'blue' | 'neutral'
 
-/** What a title is marked with: a group's frame, or the kind of document. */
-export type TitleMark =
-  | Readonly<{ kind: 'group' }>
-  | Readonly<{ kind: 'badge'; text: string; tone: TitleBadgeTone }>
+/** What kind of thing a title names, in a word, and its tint. */
+export type TitleBadge = Readonly<{ text: string; tone: TitleBadgeTone }>
 
 export type Title = Readonly<{
-  mark: TitleMark
+  badge: TitleBadge
   label: string
   /** Beside the name, muted: how much a group holds. */
   note: string | null
   /** An open spread's: the node is the title's box, rather than headed by
    * it. */
   own: boolean
-  /** On a surface of its own — a group's, which heads a region of the board
-   * and would otherwise stand on nothing. A document's stands over its
-   * paper as a heading does, with none: the bar's border shows only as the
-   * selection's ring. */
-  boxed: boolean
 }>
 
 /** What `titleOf` needs to know beyond the node. */
@@ -71,14 +63,13 @@ export function titleOf(node: BoardNode, about: TitleContext): Title | null {
   if (node.type === 'group') {
     const count = about.memberCount(node.id)
     return {
-      mark: { kind: 'group' },
+      badge: { text: t('group.badge'), tone: 'neutral' },
       label: node.label ?? '',
       note:
         count === 1
           ? t('group.countOne')
           : t('group.count').replace('{count}', String(count)),
       own: false,
-      boxed: true,
     }
   }
   if (node.type !== 'file') return null
@@ -87,20 +78,18 @@ export function titleOf(node: BoardNode, about: TitleContext): Title | null {
     case 'pdf': {
       const open = isSpreadTitle(node)
       return {
-        mark: { kind: 'badge', text: 'PDF', tone: 'red' },
+        badge: { text: 'PDF', tone: 'red' },
         label,
         note: null,
         own: open,
-        boxed: false,
       }
     }
     case 'board':
       return {
-        mark: { kind: 'badge', text: t('card.boardBadge'), tone: 'blue' },
+        badge: { text: t('card.boardBadge'), tone: 'blue' },
         label,
         note: null,
         own: false,
-        boxed: false,
       }
     default:
       return null
@@ -120,7 +109,6 @@ export const TITLE_LOOK = Object.freeze({
   border: 1,
   radius: 9,
   gap: 8,
-  icon: 15,
   label: Object.freeze({ size: 16, weight: 500 }),
   note: Object.freeze({ size: 12, weight: 400 }),
   badge: Object.freeze({
@@ -142,11 +130,9 @@ export function titleContentWidth(title: Title, measure: MeasureText): number {
   const look = TITLE_LOOK
   const badge = look.badge
   const parts = [
-    title.mark.kind === 'group'
-      ? look.icon
-      : measure(title.mark.text, badge.size, badge.weight) +
-        title.mark.text.length * badge.spacing * badge.size +
-        badge.padding * 2,
+    measure(title.badge.text, badge.size, badge.weight) +
+      title.badge.text.length * badge.spacing * badge.size +
+      badge.padding * 2,
     measure(title.label, look.label.size, look.label.weight),
     ...(title.note === null
       ? []
@@ -207,22 +193,14 @@ export function titleBox(
  * here to keep in step. */
 export function createTitle(doc: Document, title: Title): HTMLElement {
   const bar = doc.createElement('div')
-  bar.className = [
-    TITLE_CLASS,
-    ...(title.own ? [OWN_CLASS] : []),
-    ...(title.boxed ? [] : [BARE_CLASS]),
-  ].join(' ')
+  bar.className = title.own ? `${TITLE_CLASS} ${OWN_CLASS}` : TITLE_CLASS
   bar.style.height = `${NODE_TITLE.height}px`
   if (!title.own) bar.style.bottom = `calc(100% + ${NODE_TITLE.gap}px)`
 
-  if (title.mark.kind === 'group') {
-    bar.appendChild(groupIcon(doc))
-  } else {
-    const badge = doc.createElement('span')
-    badge.className = `${BADGE_CLASS} ${BADGE_CLASS}-${title.mark.tone}`
-    badge.textContent = title.mark.text
-    bar.appendChild(badge)
-  }
+  const badge = doc.createElement('span')
+  badge.className = `${BADGE_CLASS} ${BADGE_CLASS}-${title.badge.tone}`
+  badge.textContent = title.badge.text
+  bar.appendChild(badge)
 
   const label = doc.createElement('span')
   label.className = TITLE_LABEL_CLASS
@@ -256,29 +234,6 @@ export function applyTitleScale(bar: HTMLElement, scale: number): void {
   }
 }
 
-/** A frame with a heading: what a group is. */
-function groupIcon(doc: Document): SVGElement {
-  const ns = 'http://www.w3.org/2000/svg'
-  const svg = doc.createElementNS(ns, 'svg')
-  svg.setAttribute('class', ICON_CLASS)
-  svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('aria-hidden', 'true')
-  const rect = doc.createElementNS(ns, 'rect')
-  for (const [key, value] of Object.entries({
-    x: '3',
-    y: '3',
-    width: '18',
-    height: '18',
-    rx: '4',
-  })) {
-    rect.setAttribute(key, value)
-  }
-  const line = doc.createElementNS(ns, 'path')
-  line.setAttribute('d', 'M3 9h18')
-  svg.append(rect, line)
-  return svg
-}
-
 /** How wide titles lay out, in the font the DOM lays them out in — one for
  * the board, which everything asking where a title is shares. */
 export type TitleMeasure = Readonly<{
@@ -304,7 +259,7 @@ export function createTitleMeasure(family: string): TitleMeasure {
     family,
     text,
     width: (title) => {
-      const key = JSON.stringify([title.mark, title.label, title.note])
+      const key = JSON.stringify([title.badge, title.label, title.note])
       const known = widths.get(key)
       if (known !== undefined) return known
       if (widths.size >= TITLE_WIDTHS_LIMIT) widths.clear()

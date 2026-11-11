@@ -184,6 +184,7 @@ export const it = {
     activity: 'Elaborazione della cache della lavagna',
   },
   group: {
+    badge: 'Gruppo',
     count: '{count} elementi',
     countOne: '1 elemento',
     dropInto: 'Sposta in {name}',

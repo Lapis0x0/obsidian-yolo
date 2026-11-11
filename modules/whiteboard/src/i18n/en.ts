@@ -187,6 +187,7 @@ export const en = {
     activity: 'Processing whiteboard cache',
   },
   group: {
+    badge: 'Group',
     count: '{count} items',
     countOne: '1 item',
     dropInto: 'Move into {name}',

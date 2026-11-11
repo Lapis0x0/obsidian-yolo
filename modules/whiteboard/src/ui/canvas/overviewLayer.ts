@@ -966,6 +966,7 @@ export class OverviewLayer {
       badges: {
         red: read('--color-red', '#e93147'),
         blue: read('--color-blue', '#086ddd'),
+        neutral: read('--text-muted', '#5c5c5c'),
       },
       dark: this.styleSourceEl.closest('.theme-dark') !== null,
     }
@@ -1445,57 +1446,34 @@ export class OverviewLayer {
       // Where it was drawn is where it is pointed at: a press on any of it is
       // a press on its node (`titleLineAt`).
       this.titleRects.set(line.node.id, toWorld(box))
-      // The bar: its surface, where it has one, and the selection's ring.
-      const selected = this.callbacks.isSelected(line.node.id)
-      if (title.boxed || selected) {
+      // No surface of its own; the selection's ring when it is selected.
+      if (this.callbacks.isSelected(line.node.id)) {
         ctx.beginPath()
         ctx.roundRect(box.x, box.y, box.w, box.h, look.radius * u)
-        if (title.boxed) {
-          ctx.fillStyle = palette.background
-          ctx.fill()
-        }
-        ctx.strokeStyle = selected ? palette.accent : palette.border
-        ctx.lineWidth = selected ? 2 : 1
+        ctx.strokeStyle = palette.accent
+        ctx.lineWidth = 2
         ctx.stroke()
       }
       const mid = box.y + box.h / 2
       let x = box.x + (look.border + look.paddingStart) * u
-      // The mark.
-      if (title.mark.kind === 'group') {
-        const size = look.icon * u
-        ctx.strokeStyle = palette.muted
-        ctx.lineWidth = 2 * (size / 24)
-        ctx.beginPath()
-        ctx.roundRect(
-          x + size / 8,
-          mid - size * 0.375,
-          size * 0.75,
-          size * 0.75,
-          size / 6,
-        )
-        ctx.moveTo(x + size / 8, mid - size / 8)
-        ctx.lineTo(x + size * 0.875, mid - size / 8)
-        ctx.stroke()
-        x += size
-      } else {
-        const badge = look.badge
-        const text = title.mark.text
-        const badgeW =
-          (width(text, badge.size, badge.weight) +
-            text.length * badge.spacing * badge.size +
-            badge.padding * 2) *
-          u
-        const badgeH = badge.height * u
-        ctx.fillStyle = palette.badges[title.mark.tone]
-        ctx.globalAlpha = 0.12
-        ctx.beginPath()
-        ctx.roundRect(x, mid - badgeH / 2, badgeW, badgeH, 4 * u)
-        ctx.fill()
-        ctx.globalAlpha = 1
-        ctx.font = font(badge.size, badge.weight)
-        ctx.fillText(text, x + badge.padding * u, mid)
-        x += badgeW
-      }
+      // The badge.
+      const badge = look.badge
+      const text = title.badge.text
+      const badgeW =
+        (width(text, badge.size, badge.weight) +
+          text.length * badge.spacing * badge.size +
+          badge.padding * 2) *
+        u
+      const badgeH = badge.height * u
+      ctx.fillStyle = palette.badges[title.badge.tone]
+      ctx.globalAlpha = 0.12
+      ctx.beginPath()
+      ctx.roundRect(x, mid - badgeH / 2, badgeW, badgeH, 4 * u)
+      ctx.fill()
+      ctx.globalAlpha = 1
+      ctx.font = font(badge.size, badge.weight)
+      ctx.fillText(text, x + badge.padding * u, mid)
+      x += badgeW
       x += look.gap * u
       // The name, in what the rest leaves it.
       const labelW = width(title.label, look.label.size, look.label.weight)

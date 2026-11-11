@@ -180,6 +180,7 @@ export const zh = {
     activity: '正在处理白板缓存',
   },
   group: {
+    badge: '分组',
     count: '{count} 项',
     countOne: '1 项',
     dropInto: '放进 {name}',

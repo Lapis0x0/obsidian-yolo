@@ -35,10 +35,10 @@
     312px
   );
   padding: 0 6px 0 11px;
-  border: 1px solid var(--background-modifier-border);
+  /* No surface of its own: a heading over what it heads, as a document's
+   * title over its paper. The border is there for the selection's ring. */
+  border: 1px solid transparent;
   border-radius: 9px;
-  background: var(--background-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   font-family: var(--font-interface);
   white-space: nowrap;
   transform: scale(var(--yolo-whiteboard-title-scale, 1));
@@ -50,15 +50,6 @@
 
 .yolo-whiteboard-title.yolo-whiteboard-title-own {
   bottom: 0;
-}
-
-/* A document's title (nodeTitle.ts's `boxed`): a heading over its paper, on
- * no surface of its own — its border is there only to show the selection's
- * ring. */
-.yolo-whiteboard-title.yolo-whiteboard-title-bare {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
 }
 
 .yolo-whiteboard-root .yolo-whiteboard-title {
@@ -95,18 +86,7 @@
   box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
 }
 
-/* The marks: a group's frame, or the kind of document. */
-.yolo-whiteboard-title-icon {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
+/* The badge: what kind of thing it is, in a word, on its tint. */
 .yolo-whiteboard-title-badge {
   flex: none;
   height: 20px;
@@ -127,6 +107,24 @@
 .yolo-whiteboard-title-badge-blue {
   color: var(--color-blue);
   background-color: rgba(var(--color-blue-rgb), 0.12);
+}
+
+.yolo-whiteboard-title-badge-neutral {
+  color: var(--text-muted);
+  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+/* A coloured group's badge is in its colour: what it is known by on the
+ * board, as its frame lights in it when a card is dropped in. */
+.yolo-whiteboard-themed
+  > .yolo-whiteboard-title
+  > .yolo-whiteboard-title-badge-neutral {
+  color: var(--yolo-whiteboard-color);
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-whiteboard-color) 12%,
+    transparent
+  );
 }
 
 .yolo-whiteboard-title-label {
