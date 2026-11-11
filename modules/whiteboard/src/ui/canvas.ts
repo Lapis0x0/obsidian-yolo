@@ -2301,7 +2301,6 @@ export class WhiteboardCanvas {
       this.context,
       viewport,
       world,
-      panCapture,
       // Every world-layer overlay that is counter-scaled instead of drawn in
       // world units, and nothing else: the camera writes the counter-scale
       // variable on each of these rather than once on `world`, because a
@@ -2720,6 +2719,7 @@ export class WhiteboardCanvas {
       worldEl: world,
       panCaptureEl: panCapture,
       interactionLayerEl: interactionLayer,
+      shownByElement: (id) => this.shownByElement(id),
       previewPathEl: preview,
       previewRunEls: { start: previewStartRun, end: previewEndRun },
       getNodesById: () => this.nodesById,

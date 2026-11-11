@@ -30,6 +30,9 @@
    * included; layout and style containment are what the dense-board budget
    * actually wanted. */
   contain: layout style;
+  /* Pointed at, a card says it can be picked up by the cursor alone; one the
+   * board's drawing shows says it through the handle layer's cover
+   * (resize-handles.css). */
   cursor: grab;
 }
 
@@ -52,25 +55,6 @@
 
 .yolo-whiteboard-card.yolo-whiteboard-card-editing {
   cursor: text;
-}
-
-/* The card under the pointer (ui/canvas/interactionController.ts's
- * `setHoveredNode`, the same state that parks the handle layer on it) firms
- * its border one more step: the cheapest possible way of saying "this is a
- * thing you can pick up", and the one Figma, tldraw and Miro all give. A
- * class rather than `:hover`, because the handle layer overhangs the card's
- * border and a pointer on it is still on the card. Not animated: a hover
- * colour is a receipt, and a fade reads as lag. */
-.yolo-whiteboard-card.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ):not(.yolo-whiteboard-card-editing) {
-  border-color: color-mix(in srgb, var(--text-normal) 20%, transparent);
-}
-
-.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ):not(.yolo-whiteboard-card-editing) {
-  border-color: var(--yolo-whiteboard-color);
 }
 
 /* A deleted card on its way out (cardRenderer's `playExit`): only its pixels

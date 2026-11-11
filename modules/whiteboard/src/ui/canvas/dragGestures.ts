@@ -63,6 +63,7 @@ import { nodeElementScale } from './cardContent'
 import type { CanvasCore } from './core'
 import type { EdgeLayer } from './edgeLayer'
 import { GroupDropFeedback, type GroupDropTag } from './groupDropFeedback'
+import { type HoldPointer, resizeCursor } from './pointerHold'
 import type { SnapGuideLayer } from './snapGuideLayer'
 
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
@@ -188,6 +189,8 @@ export type DragGesturesDeps = Readonly<{
   getLayerNodeId: () => NodeId | null
   placeLayer: (rect: CardRect) => void
   refreshLayer: () => void
+  /** What a gesture holds the pointer on, and the cursor it shows. */
+  holdPointer: HoldPointer
 }>
 
 export class DragGestures {
@@ -291,7 +294,7 @@ export class DragGestures {
       dragging: false,
       snapCandidates: [],
     })
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    this.deps.holdPointer(e.pointerId, resizeCursor(handle))
     return true
   }
 
@@ -1015,11 +1018,11 @@ export class DragGestures {
       dragging: false,
       snapCandidates: [],
     })
-    // Captured on the viewport rather than left on the button: the ghost is
-    // dragged across cards and over live content (an embedded page swallows
-    // pointer events), and the button must not receive the pointerup either —
-    // its click is the keyboard's alone.
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    // Held rather than left on the button: the ghost is dragged across cards
+    // and over live content (an embedded page swallows pointer events), and
+    // the button must not receive the pointerup either — its click is the
+    // keyboard's alone.
+    this.deps.holdPointer(e.pointerId, 'grabbing')
   }
 
   updateCreate(interaction: CreateInteraction, e: PointerEvent): void {

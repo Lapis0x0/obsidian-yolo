@@ -23,26 +23,18 @@ function createController(): CameraController {
   const context = {
     getWindow: () => win,
   } as unknown as YoloModuleHostFileViewContextV1
-  return new CameraController(
-    context,
-    fakeElement(),
-    fakeElement(),
-    fakeElement(),
-    [],
-    [],
-    {
-      isParseFailed: () => false,
-      isEditingWheelTarget: () => false,
-      scrollFocusedCardBy: () => false,
-      zoomFocusedPortalBy: () => false,
-      setInteracting: () => undefined,
-      getSelectedNodes: () => [],
-      getAllNodes: () => [],
-      commitCamera: () => undefined,
-      afterCameraReset: () => undefined,
-      isOverviewActive: () => false,
-    },
-  )
+  return new CameraController(context, fakeElement(), fakeElement(), [], [], {
+    isParseFailed: () => false,
+    isEditingWheelTarget: () => false,
+    scrollFocusedCardBy: () => false,
+    zoomFocusedPortalBy: () => false,
+    setInteracting: () => undefined,
+    getSelectedNodes: () => [],
+    getAllNodes: () => [],
+    commitCamera: () => undefined,
+    afterCameraReset: () => undefined,
+    isOverviewActive: () => false,
+  })
 }
 
 describe('CameraController.subscribeViewChange', () => {

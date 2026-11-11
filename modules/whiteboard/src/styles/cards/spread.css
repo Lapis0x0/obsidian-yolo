@@ -13,26 +13,12 @@
  * the name is never cut: the line is at least the node's width and as much
  * wider as the name needs, spilling past it. So the line, not the node, is
  * what wears the selection ring — a card's, since it is the whole document
- * being selected — and the border a pointed-at card gets. */
+ * being selected. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title,
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered,
 .yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-selected {
   border-color: transparent;
   background-color: transparent;
   box-shadow: none;
-}
-
-/* A card's hover border (card.css) is written with its selection and
- * editing exclusions, which outweigh the rule above: repeated at that
- * weight, for the title and a themed one. The line below carries the hover
- * instead. */
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ):not(.yolo-whiteboard-card-editing),
-.yolo-whiteboard-card.yolo-whiteboard-spread-title.yolo-whiteboard-themed.yolo-whiteboard-card-hovered:not(
-    .yolo-whiteboard-card-selected
-  ):not(.yolo-whiteboard-card-editing) {
-  border-color: transparent;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-spread-title::before,

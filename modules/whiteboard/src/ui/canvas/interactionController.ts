@@ -71,6 +71,7 @@ import { GROUP_TITLE_CLASS, isGroupTitleAction } from './groupTitle'
 import { isTypingIntoField } from './keymapController'
 import type { PassagePoints } from './passagePoints'
 import type { PdfIntegration } from './pdfIntegration'
+import { type HoldPointer, holdPointerOn } from './pointerHold'
 import type { SnapGuideLayer } from './snapGuideLayer'
 import type { ToolbarController } from './toolbarController'
 
@@ -90,6 +91,13 @@ const INTERACTION_LAYER_FIXED_CLASS = 'yolo-whiteboard-interaction-layer-fixed'
  * and opens its board, so the top handles keep off it (styles/cards/portal.css). */
 const INTERACTION_LAYER_PORTAL_CLASS =
   'yolo-whiteboard-interaction-layer-portal'
+/** On the layer while it is parked on a card the board's drawing shows —
+ * one with no element of its own under the pointer to show the grab cursor
+ * (`INTERACTION_GRAB_CLASS`). */
+const INTERACTION_LAYER_DRAWN_CLASS = 'yolo-whiteboard-interaction-layer-drawn'
+/** The layer's own cover over a drawn card, under its handles: what the
+ * pointer is on there, and so what shows it the hand (resize-handles.css). */
+const INTERACTION_GRAB_CLASS = 'yolo-whiteboard-interaction-grab'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -98,7 +106,8 @@ const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
  * says it is a thing — and that its label is where it is picked up. */
 const GROUP_HINTED_CLASS = 'yolo-whiteboard-group-hinted'
 /** On the card the pointer is over — the same state that parks the handle
- * layer on it (`hoveredNodeId`), shown on the card itself. */
+ * layer on it (`hoveredNodeId`), on the card itself, for what it shows only
+ * then (a PDF card's page pill). */
 const CARD_HOVERED_CLASS = 'yolo-whiteboard-card-hovered'
 /** On a card while the pointer is over something in its content a click
  * opens — a comment dot on a PDF card not entered, a link into a PDF — or a
@@ -211,6 +220,9 @@ export type Interaction =
 export function buildInteractionLayer(doc: Document): HTMLElement {
   const interactionLayer = doc.createElement('div')
   interactionLayer.className = `${INTERACTION_LAYER_CLASS} ${INTERACTION_LAYER_HIDDEN_CLASS}`
+  const grab = doc.createElement('div')
+  grab.className = INTERACTION_GRAB_CLASS
+  interactionLayer.appendChild(grab)
   for (const handle of RESIZE_HANDLES) {
     const resizer = doc.createElement('div')
     resizer.className = RESIZER_CLASS
@@ -257,10 +269,13 @@ export type InteractionControllerDeps = Readonly<{
   core: CanvasCore
   viewportEl: HTMLElement
   worldEl: HTMLElement
-  /** The element a pan captures the pointer on (see CameraController). */
+  /** The element every gesture holds the pointer on (./pointerHold.ts). */
   panCaptureEl: HTMLElement
   /** From `buildInteractionLayer`, already in the world layer. */
   interactionLayerEl: HTMLElement
+  /** Whether a node is shown by an element of its own, rather than by the
+   * board's drawing (canvas.ts's `shownByElement`). */
+  shownByElement: (id: NodeId) => boolean
   /** The connection preview path in the edges `<svg>`. */
   previewPathEl: SVGPathElement
   previewRunEls: ConnectGestureDeps['previewRunEls']
@@ -342,6 +357,8 @@ export type InteractionControllerDeps = Readonly<{
 
 export class InteractionController {
   private readonly core: CanvasCore
+  /** The one way any gesture here holds the pointer (./pointerHold.ts). */
+  private readonly holdPointer: HoldPointer
   /**
    * What the last press landed on — the only trustworthy answer to "what was
    * clicked" this canvas has.
@@ -396,6 +413,7 @@ export class InteractionController {
 
   constructor(private readonly deps: InteractionControllerDeps) {
     this.core = deps.core
+    this.holdPointer = holdPointerOn(deps.panCaptureEl)
     const begin = (interaction: Interaction) => {
       this.interaction = interaction
     }
@@ -424,6 +442,7 @@ export class InteractionController {
       getLayerNodeId,
       placeLayer: (rect) => this.placeInteractionLayer(rect),
       refreshLayer: () => this.refreshInteractionLayer(),
+      holdPointer: this.holdPointer,
     })
     this.connect = new ConnectGesture({
       core: deps.core,
@@ -441,6 +460,7 @@ export class InteractionController {
       enterEditMode: (id) => deps.editing.enterEditMode(id),
       clickCard: (id, wasSoleSelection, e) =>
         this.drag.clickCard(id, wasSoleSelection, e),
+      holdPointer: this.holdPointer,
     })
   }
 
@@ -636,7 +656,9 @@ export class InteractionController {
         startPositions: new Map(),
         snapCandidates: [],
       }
-      this.deps.viewportEl.setPointerCapture(e.pointerId)
+      // Held by the closed hand from the press on: a card taken hold of is
+      // grabbed whether it is then moved or let go.
+      this.holdPointer(e.pointerId, 'grabbing')
       this.watchAutoPan(e)
       return
     }
@@ -706,7 +728,7 @@ export class InteractionController {
             },
     }
     this.autoPan = null
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    this.holdPointer(e.pointerId, 'grabbing')
     return true
   }
 
@@ -918,8 +940,12 @@ export class InteractionController {
       this.setHoveredNode(null)
       return
     }
+    // Its cover over a drawn card is the card, not the layer: what the
+    // pointer is over there is asked of the card as anywhere on it.
     const onLayer =
-      target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
+      target !== null &&
+      !target.classList.contains(INTERACTION_GRAB_CLASS) &&
+      target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     const nodeId = onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e)
     this.setHoveredNode(nodeId)
     if (nodeId !== null) {
@@ -1092,6 +1118,10 @@ export class InteractionController {
       INTERACTION_LAYER_PORTAL_CLASS,
       card !== null && isPortal(card),
     )
+    layer.classList.toggle(
+      INTERACTION_LAYER_DRAWN_CLASS,
+      next !== null && !this.deps.shownByElement(next),
+    )
     if (card) this.placeInteractionLayer(rectOfCard(card))
   }
 
@@ -1185,7 +1215,8 @@ export class InteractionController {
       startY: e.clientY,
       samples: [{ t: e.timeStamp, x: e.clientX, y: e.clientY }],
     }
-    this.deps.camera.beginPan(e.pointerId)
+    this.holdPointer(e.pointerId, 'grabbing')
+    this.deps.camera.beginPan()
   }
 
   /**
@@ -1208,7 +1239,7 @@ export class InteractionController {
       startY: e.clientY,
       historyKey: `portal-drag:${portalId}:${e.timeStamp}`,
     }
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    this.holdPointer(e.pointerId, 'grabbing')
     return true
   }
 
@@ -1389,7 +1420,7 @@ export class InteractionController {
       additive: e.shiftKey,
       baseIds: Array.from(this.core.getSelectedIds()),
     }
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    this.holdPointer(e.pointerId, 'default')
     const doc = this.core.context.getDocument()
     const el = doc.createElement('div')
     el.className = MARQUEE_CLASS

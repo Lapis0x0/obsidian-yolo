@@ -64,18 +64,9 @@
   z-index: 1;
 }
 
-/* Pointed at or selected, a spread's title is a node of its own, and the
- * line wears that card's border. A card's title line is a label on the
- * card: the card wears its own hover and selection ring, and a second one
- * round the label would read as a second thing selected — the line lights
- * only under the pointer. */
-.yolo-whiteboard-card-hovered > .yolo-whiteboard-title-line,
-.yolo-whiteboard-card-hovered
-  > .yolo-whiteboard-card-title-badged:hover
-  > .yolo-whiteboard-title-line {
-  border-color: var(--background-modifier-border-focus);
-}
-
+/* Selected, a spread's title is a node of its own, and the line wears that
+ * card's ring. Pointed at, it is the cursor that says it can be picked up
+ * (cards/card.css), as for any card. */
 .yolo-whiteboard-card-selected > .yolo-whiteboard-title-line {
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 1px var(--interactive-accent);

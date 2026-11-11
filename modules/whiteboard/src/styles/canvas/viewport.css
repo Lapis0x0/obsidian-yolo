@@ -30,19 +30,17 @@
   outline: none;
 }
 
-/* What a pan captures the pointer on, and the only place its cursor lives.
- * Blink takes the cursor from the capturing element for as long as the
- * capture lasts, so an empty, pointer-transparent box with this one rule *is*
- * the gesture's cursor — and because it never changes, a pan changes no style
- * at all. The rule used to be a class on the viewport; `cursor` is inherited,
- * and flipping it there restyled every card and every edge path and label on
- * the board, ~130ms each way on a 3000-edge board (see
- * cameraController.ts's beginPan). */
+/* What every gesture holds the pointer on, and the only place its cursor
+ * lives (ui/canvas/pointerHold.ts). Blink takes the cursor from the element
+ * holding the capture for as long as it lasts, so this empty,
+ * pointer-transparent box *is* the gesture's cursor — the one the gesture
+ * told it, the closed hand unless it said otherwise — and telling it one
+ * restyles nothing else: it has no descendants. */
 .yolo-whiteboard-pan-capture {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  cursor: grabbing;
+  cursor: var(--yolo-whiteboard-held-cursor, grabbing);
 }
 
 /* Space held (interactionController.ts's armSpacePan): the same box takes the pointer over

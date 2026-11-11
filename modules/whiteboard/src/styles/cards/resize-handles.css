@@ -8,10 +8,10 @@
  * size it is multiplied against is written once on the world element from
  * ui/canvas.ts).
  *
- * The handles are invisible: they are hit areas, not decoration. The card's
- * own accent ring already says which card the pointer is on, and eight
+ * The handles are invisible: they are hit areas, not decoration. Eight
  * visible dots at every hover would be noise on a dense board. The cursor is
- * what tells the user a handle is under the pointer. */
+ * what tells the user a handle is under the pointer — and, on the card
+ * itself, that it can be picked up. */
 
 .yolo-whiteboard-interaction-layer {
   position: absolute;
@@ -28,6 +28,24 @@
 
 .yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer-hidden {
   display: none;
+}
+
+/* A card the board's drawing shows has no element under the pointer to
+ * carry its `cursor: grab` (cards/card.css): the pointer is on the viewport,
+ * whose cursor is every card's and edge's to inherit, and changing it there
+ * restyles all of them. So the layer parked on it covers it, under the
+ * handles, with the one thing that cursor needs. A press on the cover is a
+ * press on the card it covers (interactionController.ts's
+ * `nodeIdAtPointer`). A card with an element of its own shows its own. */
+.yolo-whiteboard-interaction-grab {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  cursor: grab;
+}
+
+.yolo-whiteboard-interaction-layer-drawn > .yolo-whiteboard-interaction-grab {
+  pointer-events: auto;
 }
 
 .yolo-whiteboard-resizer {

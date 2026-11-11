@@ -57,6 +57,7 @@ import type { CanvasCore } from './core'
 import { isSoleSelection } from './dragGestures'
 import type { EdgeLayer } from './edgeLayer'
 import type { PassageSource } from './passagePoints'
+import type { HoldPointer } from './pointerHold'
 
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 
@@ -132,6 +133,8 @@ export type ConnectGestureDeps = Readonly<{
   enterEditMode: (id: NodeId) => void
   /** What a click on the card means (`DragGestures.clickCard`). */
   clickCard: (id: NodeId, wasSoleSelection: boolean, e: PointerEvent) => void
+  /** What a gesture holds the pointer on, and the cursor it shows. */
+  holdPointer: HoldPointer
   /** An edge was made or re-attached reaching these passages — the
    * selection one was pulled from may now be marked where it was read. */
   passagesConnected: (anchors: readonly EdgeAnchor[]) => void
@@ -296,7 +299,9 @@ export class ConnectGesture {
       target: null,
       targetPassage: null,
     })
-    this.deps.viewportEl.setPointerCapture(e.pointerId)
+    // An edge taken by an end is carried, as a card is; one drawn out of a
+    // connection point points where it is going.
+    this.deps.holdPointer(e.pointerId, edgeId === null ? 'pointer' : 'grabbing')
   }
 
   update(interaction: ConnectInteraction, e: PointerEvent): void {
