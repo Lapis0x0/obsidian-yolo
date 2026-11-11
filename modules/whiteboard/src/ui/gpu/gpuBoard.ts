@@ -98,6 +98,9 @@ export type GpuBoardDeps = Readonly<{
   root: HTMLElement
   style: TypesetStyle
   view: () => CanvasView
+  /** The viewport's size in CSS pixels, which the scene's canvas fills —
+   * as the board keeps it, so that nothing here reads layout. */
+  viewportSize: () => Readonly<{ width: number; height: number }>
   /** Whether a card has its DOM now. The overview leaves a card it drew
    * under the world for its DOM to cover when it mounts, and does not draw
    * again for that; bare text's DOM is transparent and would not cover this
@@ -693,6 +696,7 @@ export class GpuBoard implements ContentLayer {
     const body = tokens?.body.size ?? 16
     const result = this.scene.render(
       view,
+      this.deps.viewportSize(),
       settled || this.movedAt === -1,
       this.deps.imagePicture,
       body * view.scale * dpr < MIN_BODY_DEVICE_PX,
@@ -705,8 +709,7 @@ export class GpuBoard implements ContentLayer {
    * gesture is moving at its live rectangle — and nothing else. */
   private syncShown(): void {
     const view = this.deps.view()
-    const width = this.canvas.clientWidth
-    const height = this.canvas.clientHeight
+    const { width, height } = this.deps.viewportSize()
     for (const id of this.claimed.keys()) {
       if (this.deps.isMounted(id)) this.claimed.delete(id)
     }

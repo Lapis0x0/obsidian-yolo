@@ -2185,6 +2185,7 @@ export class WhiteboardCanvas {
       root,
       style: typesetStyle,
       view: this.core.getView,
+      viewportSize: () => this.getViewportSize(),
       isMounted: (id) => this.shownByDom(id),
       isSelected: (id) => this.selectedIds.has(id),
       cache: {
@@ -4113,6 +4114,13 @@ export class WhiteboardCanvas {
     const changed = this.motions.tick()
     if (changed.size === 0) return
     this.overviewLayer?.markDirty()
+    // In the overview tier the canvas draws the edges, to where things are
+    // shown; their DOM is out of the drawing, and writing to it would still
+    // cost a style recalculation over every edge on the board — paid, as it
+    // happens, by the next thing that asks for style (the canvas setting a
+    // font), every frame. The DOM was given where they end when the board
+    // changed.
+    if (this.overview) return
     const shown = new Map<NodeId, CardRect>()
     for (const { id, pose } of this.motions.moving()) shown.set(id, pose)
     this.edgeLayer.redrawEdgesForNodes(changed, shown)

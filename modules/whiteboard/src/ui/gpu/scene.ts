@@ -270,6 +270,11 @@ export class GpuScene {
    * per world unit), where type first shows (`warmGlyphs`). */
   render(
     view: CanvasView,
+    /** The canvas's size in CSS pixels, as its owner knows it — not read
+     * off the element, which in a frame that has just moved anything laid
+     * out (a group's frame taking another shape) would lay out the page then
+     * and there. */
+    size: Readonly<{ width: number; height: number }>,
     settled: boolean,
     picture: ImagePicture = () => null,
     greeked = false,
@@ -280,8 +285,8 @@ export class GpuScene {
     const { gl } = g
     const win = this.canvas.ownerDocument.defaultView
     const dpr = win?.devicePixelRatio ?? 1
-    const cssW = this.canvas.clientWidth
-    const cssH = this.canvas.clientHeight
+    const cssW = size.width
+    const cssH = size.height
     const w = Math.max(1, Math.round(cssW * dpr))
     const h = Math.max(1, Math.round(cssH * dpr))
     if (this.canvas.width !== w) this.canvas.width = w
