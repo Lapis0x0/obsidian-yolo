@@ -27,7 +27,10 @@
   /* Rounder than the cards it holds (10), so a region reads as a region
    * rather than as one more card. */
   border-radius: 16px;
-  background: color-mix(in oklch, var(--yolo-whiteboard-color) 8%, transparent);
+  /* No fill of its own: the frame's wash is drawn on the board's canvas,
+   * under every card (ui/canvas/overviewLayer.ts's `drawGroupWashes`). This
+   * element is over the GPU scene and the canvas, and a fill here tinted
+   * every card they draw inside it. */
   contain: layout style;
 }
 
@@ -262,21 +265,33 @@ button.yolo-whiteboard-group-action:hover {
 
 /* --- a drag over groups (ui/canvas/groupDropFeedback.ts) ------------------
  * The group a drag would put its cards in, if it were let go now: the frame
- * lights in the accent and its wash deepens, as the frame reaches out to take
- * the card in. */
+ * lights and its wash deepens (drawn on the canvas, with the rest of it), as
+ * the frame reaches out to take the card in — in the group's own colour
+ * where it has one, which is what it is known by on the board; in the
+ * accent where it has none. */
 .yolo-whiteboard-group.yolo-whiteboard-group-drop-target {
   border-color: var(--interactive-accent);
   box-shadow: inset 0 0 0 1px var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 7%, transparent);
 }
 
 .yolo-whiteboard-group-drop-target > .yolo-whiteboard-group-title {
   border-color: var(--interactive-accent);
 }
 
+.yolo-whiteboard-group.yolo-whiteboard-themed.yolo-whiteboard-group-drop-target {
+  border-color: var(--yolo-whiteboard-color);
+  box-shadow: inset 0 0 0 1px var(--yolo-whiteboard-color);
+}
+
+.yolo-whiteboard-themed.yolo-whiteboard-group-drop-target
+  > .yolo-whiteboard-group-title {
+  border-color: var(--yolo-whiteboard-color);
+}
+
 /* Over the dragged cards, saying which way they are going: into a group, in
- * the accent, or out of one, muted. In front of everything (cards are at most
- * 2 while dragged, drag.css), and never in the way of the drag. */
+ * its colour as its frame is lit (the accent for one without), or out of
+ * one, muted. In front of everything (cards are at most 2 while dragged,
+ * drag.css), and never in the way of the drag. */
 .yolo-whiteboard-group-drop-tag {
   position: absolute;
   left: 0;
@@ -296,6 +311,10 @@ button.yolo-whiteboard-group-action:hover {
   pointer-events: none;
 }
 
+.yolo-whiteboard-group-drop-tag.yolo-whiteboard-themed {
+  background: var(--yolo-whiteboard-color);
+}
+
 .yolo-whiteboard-group-drop-tag.yolo-whiteboard-group-drop-tag-leaving {
   color: var(--background-primary);
   background: var(--text-muted);
@@ -310,14 +329,7 @@ button.yolo-whiteboard-group-action:hover {
  * group, so it takes the pointer whether or not the group is selected. */
 .yolo-whiteboard-group.yolo-whiteboard-group-collapsed {
   border-radius: 12px;
-  /* A wash, like an open frame's, not a surface: a card dragged over the
-   * box may be drawn under the world (ui/gpu/gpuBoard.ts) and must show
-   * through it. */
-  background: color-mix(
-    in oklch,
-    var(--yolo-whiteboard-color) 12%,
-    transparent
-  );
+  /* Its wash is the canvas's too, under what the box shows. */
 }
 
 .yolo-whiteboard-group-thumbs {

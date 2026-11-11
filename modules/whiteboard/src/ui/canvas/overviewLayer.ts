@@ -90,6 +90,18 @@ const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
 /** How dark bare text's block of ink is drawn, zoomed out past reading it. */
 const OVERVIEW_TEXT_ALPHA = 0.18
+/** A group's wash (`drawGroupWashes`): how much of its colour an open
+ * frame, a collapsed box and a lit one are filled with — the accent's being
+ * lighter, as a full colour against a preset — and the corners of each, in
+ * the element's units (styles/cards/group.css). */
+const GROUP_WASH = {
+  open: 0.08,
+  folded: 0.12,
+  lit: 0.16,
+  litAccent: 0.07,
+  radius: 16,
+  foldedRadius: 12,
+} as const
 /** Below this many CSS pixels wide a page is drawn as its card alone, not
  * its picture: there is nothing of the page left to see, and a minimap holds
  * hundreds of pages each narrower than a pixel — scaling every one of their
@@ -219,9 +231,17 @@ export type OverviewLayerCallbacks = Readonly<{
   /** What a card's title line says it is (./titleLine.ts's
    * `titleBadgeOf`), or null for a card without one. */
   titleBadge: (node: BoardNode) => TitleBadge | null
-  /** The groups, which only the minimap draws (`paintBoard`): in the tier
-   * they keep their DOM. */
+  /** The groups. Their frames, titles and borders are their DOM's at every
+   * tier, but their washes are drawn here, under the cards
+   * (`drawGroupWashes`); the minimap draws them whole (`paintBoard`). */
   getGroupNodes: () => readonly BoardNode[]
+  /** The frame a node behind a portal shows through, which its group's wash
+   * is cut to; null for the board's own. */
+  portalClipOf: (
+    id: NodeId,
+  ) => Readonly<{ x: number; y: number; w: number; h: number }> | null
+  /** The group a drag in progress has lit, whose wash deepens. */
+  litGroup: () => NodeId | null
   getEdges: () => readonly Edge[]
   /** What is behind each open portal (domain/portals.ts), cut to where it
    * shows through: drawn after the board's own, each in its frame.
@@ -566,6 +586,77 @@ export class OverviewLayer {
     return drew
   }
 
+  /**
+   * Every group's wash — the faint fill of its colour its frame is — under
+   * every card. The rest of a group is its element's, in the world layer
+   * over the board's drawing; its wash cannot be: a fill over the GPU scene
+   * and this canvas tinted every card it held with it. Drawn where the
+   * group is shown (a frame reaching out, carried, folding), in its own
+   * colour or the board's grey, deeper while a drag has it lit — in the
+   * accent for a group of no colour — and cut to the portal it is behind.
+   * Whether any was drawn.
+   */
+  private drawGroupWashes(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    surface: Surface,
+    live: ReadonlyMap<NodeId, CardRect> | null,
+  ): boolean {
+    const palette = this.palette
+    if (!palette) return false
+    const lit = this.callbacks.litGroup()
+    let drew = false
+    for (const node of this.callbacks.getGroupNodes()) {
+      const rect = this.callbacks.poseOf(node.id) ?? live?.get(node.id) ?? node
+      const x = rect.x * view.scale + view.tx
+      const y = rect.y * view.scale + view.ty
+      const w = rect.w * view.scale
+      const h = rect.h * view.scale
+      if (x >= surface.width || y >= surface.height || x + w <= 0 || y + h <= 0)
+        continue
+      const own = this.colorOf(node, palette)
+      const folded = node.type === 'group' && node.stash !== undefined
+      const alpha =
+        node.id === lit
+          ? own === null
+            ? GROUP_WASH.litAccent
+            : GROUP_WASH.lit
+          : folded
+            ? GROUP_WASH.folded
+            : GROUP_WASH.open
+      const clip = this.callbacks.portalClipOf(node.id)
+      ctx.save()
+      if (clip) {
+        ctx.beginPath()
+        ctx.rect(
+          clip.x * view.scale + view.tx,
+          clip.y * view.scale + view.ty,
+          clip.w * view.scale,
+          clip.h * view.scale,
+        )
+        ctx.clip()
+      }
+      ctx.globalAlpha = alpha
+      ctx.fillStyle =
+        own ?? (node.id === lit ? palette.accent : palette.neutral)
+      ctx.beginPath()
+      ctx.roundRect(
+        x,
+        y,
+        w,
+        h,
+        (folded ? GROUP_WASH.foldedRadius : GROUP_WASH.radius) *
+          view.scale *
+          (rect.w / node.w),
+      )
+      ctx.fill()
+      ctx.restore()
+      drew = true
+    }
+    ctx.globalAlpha = 1
+    return drew
+  }
+
   /** The groups as frames: a faint wash of their colour and its border —
    * the group stylesheet's look with the label left out, which at a
    * minimap's size would be a smudge. */
@@ -637,6 +728,7 @@ export class OverviewLayer {
     // Recorded as the frame draws them — the board's own and every
     // portal's — so cleared once, before any.
     this.titleRects.clear()
+    this.drawGroupWashes(ctx, view, surface, live)
     this.drawBoard(ctx, view, surface, live, (id) =>
       this.callbacks.isMounted(id),
     )
@@ -682,6 +774,7 @@ export class OverviewLayer {
     this.callbacks.contentLayer()?.begin()
     const live = this.callbacks.getLiveRects()
     const mounted = (id: NodeId) => this.callbacks.isMounted(id)
+    const washed = this.drawGroupWashes(ctx, view, surface, live)
     const ownDrew = this.drawCards(ctx, view, surface, live, mounted)
     const portalsDrew = this.inPortals(ctx, view, (layer) =>
       this.drawCards(
@@ -698,7 +791,8 @@ export class OverviewLayer {
     const portalFramesDrew = this.inPortals(ctx, view, (layer) =>
       this.drawFrames(ctx, view, surface, live, mounted, layer.nodes),
     )
-    const drew = ownDrew || portalsDrew || ownFramesDrew || portalFramesDrew
+    const drew =
+      washed || ownDrew || portalsDrew || ownFramesDrew || portalFramesDrew
     ctx.globalAlpha = 1
     if (drew === this.underlay) return
     this.underlay = drew

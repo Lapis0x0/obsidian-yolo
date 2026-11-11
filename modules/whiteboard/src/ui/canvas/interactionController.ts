@@ -514,6 +514,11 @@ export class InteractionController {
     return this.drag.liveNodeRects
   }
 
+  /** The group a drag in progress has lit (see `DragGestures`). */
+  get litGroup(): NodeId | null {
+    return this.drag.litGroup
+  }
+
   /** A card was just mounted; if a drag is carrying it, it joins the drag
    * where the drag has it (see `DragGestures.adoptMountedCard`). */
   adoptMountedCard(id: NodeId): void {

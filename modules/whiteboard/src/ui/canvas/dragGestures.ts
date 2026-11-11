@@ -251,6 +251,11 @@ export class DragGestures {
     return this.liveRects
   }
 
+  /** The group a drag in progress has lit (./groupDropFeedback.ts). */
+  get litGroup(): NodeId | null {
+    return this.groupFeedback.lit
+  }
+
   // -----------------------------------------------------------------------
   // Card press: click-to-select vs. drag-to-move, disambiguated by
   // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) selects
@@ -1057,6 +1062,8 @@ export class DragGestures {
       tag = {
         leaving: drop.leaving,
         at: { x: covered.x, y: covered.y },
+        color:
+          !drop.leaving && target?.type === 'group' ? target.color : undefined,
         text: drop.leaving
           ? this.core.t('group.dropOut')
           : name

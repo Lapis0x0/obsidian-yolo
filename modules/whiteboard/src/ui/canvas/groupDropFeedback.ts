@@ -15,6 +15,7 @@
 
 import type { NodeId } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
+import { applyColorToElement } from '../selectionToolbar'
 
 import type { CanvasCore } from './core'
 
@@ -30,12 +31,21 @@ export type GroupDropTag = Readonly<{
   leaving: boolean
   /** The top-left corner of what is being dragged. */
   at: Readonly<{ x: number; y: number }>
+  /** The colour of the group they are going into, worn as its frame wears
+   * it lit; none for a group without one, or going out. */
+  color?: string
 }>
 
 export class GroupDropFeedback {
   /** Groups shown at a frame the board does not have. */
   private held = new Set<NodeId>()
   private target: NodeId | null = null
+
+  /** The group lit as the one the drag's cards would be in, if any — whose
+   * wash the board draws deeper (overviewLayer.ts's `drawGroupWashes`). */
+  get lit(): NodeId | null {
+    return this.target
+  }
   private tagEl: HTMLElement | null = null
 
   constructor(
@@ -96,6 +106,7 @@ export class GroupDropFeedback {
     const el = this.tagEl
     if (el.textContent !== tag.text) el.textContent = tag.text
     el.classList.toggle(TAG_LEAVING_CLASS, tag.leaving)
+    applyColorToElement(el, tag.color)
     el.style.translate = `${tag.at.x}px ${tag.at.y - TAG_LIFT}px`
   }
 }

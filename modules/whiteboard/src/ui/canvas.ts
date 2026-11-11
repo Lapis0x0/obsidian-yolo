@@ -2151,6 +2151,9 @@ export class WhiteboardCanvas {
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       titleBadge: (node) => titleBadgeOf(node, this.core.t),
       getGroupNodes: () => this.groupNodes,
+      portalClipOf: (id) =>
+        portalOf(id, this.sources.composition.portals)?.clip ?? null,
+      litGroup: () => this.interaction.litGroup,
       getEdges: () => this.ownEdges,
       getPortalLayers: () => this.livePortalLayers(),
       getNode: this.core.getNode,
