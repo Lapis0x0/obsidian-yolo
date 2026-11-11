@@ -84,7 +84,6 @@ import {
   type TitleBadgeTone,
   type TitleMeasure,
   titleBox,
-  titleScale,
 } from './nodeTitle'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
@@ -228,6 +227,9 @@ export type OverviewLayerCallbacks = Readonly<{
   getCardNodes: () => readonly BoardNode[]
   /** The title a card wears (./nodeTitle.ts's `titleOf`), or null. */
   titleOf: (node: BoardNode) => Title | null
+  /** How much a node's title is scaled up to be read (canvas.ts's
+   * `titleScaleOf`). */
+  titleScale: (id: NodeId) => number
   /** How wide titles lay out, in the DOM's font (./nodeTitle.ts). */
   titleMeasure: () => TitleMeasure
   /** The groups. Their frames, titles and borders are their DOM's at every
@@ -1411,11 +1413,7 @@ export class OverviewLayer {
     const measure = this.callbacks.titleMeasure()
     // What a pixel of the title's own measures on screen, before it is held.
     const typeScale = view.scale * unit
-    const scale = titleScale(typeScale)
-    const u = typeScale * scale
     const look = TITLE_LOOK
-    const font = (size: number, weight: number) =>
-      `${weight} ${size * u}px ${measure.family}`
     const width = (text: string, size: number, weight: number) =>
       measure.text(text, size, weight)
     ctx.globalAlpha = 1
@@ -1423,6 +1421,12 @@ export class OverviewLayer {
     ctx.textAlign = 'left'
     for (const line of titles) {
       const { title, turn } = line
+      // Held at a size on screen where it is a landmark (canvas.ts's
+      // `titleScaleOf`).
+      const scale = this.callbacks.titleScale(line.node.id)
+      const u = typeScale * scale
+      const font = (size: number, weight: number) =>
+        `${weight} ${size * u}px ${measure.family}`
       const content = measure.width(title)
       const box = titleBox(line.node, line, content, scale, typeScale)
       if (!box) continue

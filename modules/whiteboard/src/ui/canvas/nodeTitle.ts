@@ -141,13 +141,16 @@ export function titleContentWidth(title: Title, measure: MeasureText): number {
 
 /**
  * How much a title is scaled up from its bottom-left corner for a node seen
- * at `seen` (the camera's scale, times the portals' it is behind): 1 while
- * its name is at least TITLE_MIN_SCREEN_PX on screen, and as much as holds
- * it there past that. At every zoom, whichever hand draws it: a title is what
- * a board seen from far away is read by.
+ * at `seen` (the camera's scale, times the portals' it is behind), `depth`
+ * groups deep: 1 while its name is at least its level's TITLE_MIN_SCREEN_PX
+ * on screen, and as much as holds it there past that. At every zoom,
+ * whichever hand draws it: a title is what a board seen from far away is
+ * read by.
  */
-export function titleScale(seen: number): number {
-  return Math.max(1, TITLE_MIN_SCREEN_PX / (TITLE_LOOK.label.size * seen))
+export function titleScale(seen: number, depth = 0): number {
+  const floors = TITLE_MIN_SCREEN_PX
+  const floor = floors[Math.min(depth, floors.length - 1)]
+  return Math.max(1, floor / (TITLE_LOOK.label.size * seen))
 }
 
 type Rect = Readonly<{ x: number; y: number; w: number; h: number }>

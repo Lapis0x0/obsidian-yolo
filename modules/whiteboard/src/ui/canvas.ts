@@ -72,6 +72,7 @@ import {
   createGroup,
   groupMemberCount,
   groupMemberExtent,
+  groupParents,
   nodesToDragWith,
   releaseBounds,
   withCarried,
@@ -465,6 +466,9 @@ export class WhiteboardCanvas {
    * separately — see `recomputeVisibility`.
    */
   private groupNodes: readonly BoardNode[] = []
+  /** The group each node is directly in (domain/groups.ts's
+   * `groupParents`). */
+  private parentGroups: ReadonlyMap<NodeId, NodeId> = new Map()
   /** Card DOM/content lifecycle — mount/unmount, the hidden pool, per-card
    * rendering. Owns `NodeRuntime`; constructed once in `ensureDom` (see
    * ./canvas/cardRenderer.ts's own doc comment for the split's rationale). */
@@ -2161,6 +2165,7 @@ export class WhiteboardCanvas {
       getView: this.core.getView,
       getCardNodes: () => this.ownCardNodes,
       titleOf: (node) => this.titleOf(node),
+      titleScale: (id) => this.titleScaleOf(id),
       titleMeasure: () => this.titleMeasure(),
       getGroupNodes: () => this.groupNodes,
       portalClipOf: (id) =>
@@ -2452,7 +2457,7 @@ export class WhiteboardCanvas {
       sourcePathOf: (id) => this.sourcePathOf(id),
       scaleOf: (id) => this.scaleOf(id),
       titleOf: (node) => this.titleOf(node),
-      titleScale: (id) => titleScale(this.seenScaleOf(id)),
+      titleScale: (id) => this.titleScaleOf(id),
       groupMemberCount: (id) => this.memberCountOf(id),
       expandGroup: (id) => this.runGroupAction(id, 'expand'),
       passageMarks: (id) => this.passageMarks(id),
@@ -3889,6 +3894,19 @@ export class WhiteboardCanvas {
     this.setSelection([id])
   }
 
+  /**
+   * How much `id`'s title is scaled up to be read on screen
+   * (./canvas/nodeTitle.ts's `titleScale`), at its level: how many groups it
+   * is in, a size down for each (constants.ts's TITLE_MIN_SCREEN_PX).
+   */
+  private titleScaleOf(id: NodeId): number {
+    let depth = 0
+    for (let at = this.parentGroups.get(id); at; at = this.parentGroups.get(at)) {
+      depth += 1
+    }
+    return titleScale(this.seenScaleOf(id), depth)
+  }
+
   /** The title `node` wears, as everything that draws or places one is
    * told (./canvas/nodeTitle.ts). */
   private titleOf(node: BoardNode): Title | null {
@@ -3945,7 +3963,7 @@ export class WhiteboardCanvas {
       node,
       folded,
       this.titleMeasure().width(title),
-      titleScale(this.seenScaleOf(id)),
+      this.titleScaleOf(id),
       unit,
     )
   }
@@ -6054,6 +6072,7 @@ export class WhiteboardCanvas {
     this.gpuBoard?.setNodes(this.drawableNodes())
     this.find?.boardChanged()
     this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
+    this.parentGroups = groupParents(this.board.nodes)
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),
     )

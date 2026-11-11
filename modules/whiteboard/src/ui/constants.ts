@@ -385,7 +385,13 @@ export const EDGE_HIT_STROKE_WORLD_PX = 16
 
 /**
  * The smallest a node's title is shown on screen, however far the board is
- * zoomed out (ui/canvas/nodeTitle.ts's `titleScale`): the size of its name.
+ * zoomed out (ui/canvas/nodeTitle.ts's `titleScale`): the size of its name,
+ * by how deep in groups it is — like a document's headings, a level down a
+ * size down. A title in no group is the board's; one in a group is that
+ * group's, read under its name — as large beside it, it took over from it
+ * and covered its neighbours'; and no floor at all, it could not be read
+ * where a group holds a document as large as a region. Past the last, the
+ * last.
  *
  * Everything else in the world layer shrinks with the board, which is right for
  * a card — far enough out a card is a tile, and its title is not the point. A
@@ -398,7 +404,7 @@ export const EDGE_HIT_STROKE_WORLD_PX = 16
  * the way out at the board's scale there — half this — and shrank by half as
  * the board grew.
  */
-export const TITLE_MIN_SCREEN_PX = 12
+export const TITLE_MIN_SCREEN_PX = [12, 10, 8] as const
 
 /**
  * Dot-grid spacing in world units — the finest the lattice ever gets, and the
