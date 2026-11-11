@@ -42,6 +42,35 @@ describe('snapMove', () => {
     expect(result.dx).toBe(-3)
   })
 
+  it("sets a card below a column at the column's own spacing", () => {
+    // A column with a 40 gap; the moving card is 44 below the last card,
+    // and its left edge lines up with nothing (it is offset by 37).
+    const column = [rect(0, 0, 100, 60), rect(0, 100, 100, 60)]
+    const result = snapMove([rect(37, 204, 100, 60)], column, {
+      ...options,
+      movedX: false,
+      movedY: true,
+    })
+    expect(result.dy).toBe(-4)
+    // Both 40 gaps marked: the one there, and the one it makes.
+    const gaps = result.guides.filter((guide) => guide.axis === 'x')
+    expect(gaps.map((guide) => [guide.from, guide.to])).toEqual([
+      [60, 100],
+      [160, 200],
+    ])
+  })
+
+  it('offers a spacing only between neighbours in line', () => {
+    // The same column, the moving card off to the side of it.
+    const column = [rect(0, 0, 100, 60), rect(0, 100, 100, 60)]
+    const result = snapMove([rect(500, 204, 100, 60)], column, {
+      ...options,
+      movedX: false,
+      movedY: true,
+    })
+    expect(result).toEqual({ dx: 0, dy: 0, guides: [] })
+  })
+
   it('leaves a miss beyond the tolerance alone', () => {
     const result = snapMove([rect(115, 200)], [rect(100, 0)], {
       ...options,

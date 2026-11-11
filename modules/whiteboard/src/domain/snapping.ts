@@ -247,26 +247,168 @@ export function snapMove(
   if (moving.length === 0) return NO_SNAP
   const sources = moving.flatMap(anchorsOf)
   const targets = candidates.flatMap(anchorsOf)
+  const block = boundsOf(moving)
   const x = options.movedX
     ? alignAxis(sources, targets, options.tolerance, 'x')
     : null
   const y = options.movedY
     ? alignAxis(sources, targets, options.tolerance, 'y')
     : null
+  const spaceX = options.movedX
+    ? spaceAxis(block, candidates, options.tolerance, 'x')
+    : null
+  const spaceY = options.movedY
+    ? spaceAxis(block, candidates, options.tolerance, 'y')
+    : null
+  const pickX = nearer(x, spaceX)
+  const pickY = nearer(y, spaceY)
   // The grid is measured from the selection's top-left corner: one point for
   // however many cards are travelling together, so a multi-card drag keeps
   // its internal spacing instead of collapsing each card onto the lattice.
   const dx =
-    x?.delta ??
-    (options.movedX
-      ? gridDelta(Math.min(...moving.map((rect) => rect.x)), options, 'x')
-      : 0)
+    pickX?.delta ?? (options.movedX ? gridDelta(block.x, options, 'x') : 0)
   const dy =
-    y?.delta ??
-    (options.movedY
-      ? gridDelta(Math.min(...moving.map((rect) => rect.y)), options, 'y')
-      : 0)
-  return result(x, y, dx, dy)
+    pickY?.delta ?? (options.movedY ? gridDelta(block.y, options, 'y') : 0)
+  return {
+    dx,
+    dy,
+    guides: [
+      ...guidesFor(pickX?.align ? x : null, 'x', dx, dy),
+      ...guidesFor(pickY?.align ? y : null, 'y', dx, dy),
+      ...(pickX?.space ? (spaceX?.guides(dx, dy) ?? []) : []),
+      ...(pickY?.space ? (spaceY?.guides(dx, dy) ?? []) : []),
+    ],
+  }
+}
+
+/** The rectangle `rects` cover together. */
+function boundsOf(rects: readonly CardRect[]): CardRect {
+  const x = Math.min(...rects.map((rect) => rect.x))
+  const y = Math.min(...rects.map((rect) => rect.y))
+  return {
+    x,
+    y,
+    w: Math.max(...rects.map((rect) => rect.x + rect.w)) - x,
+    h: Math.max(...rects.map((rect) => rect.y + rect.h)) - y,
+  }
+}
+
+/** Which of an axis's two offers wins — the smaller correction — and,
+ * offering the same, both. */
+function nearer(
+  align: AxisMatch | null,
+  space: Spacing | null,
+): Readonly<{ delta: number; align: boolean; space: boolean }> | null {
+  if (!align && !space) return null
+  if (!space) return { delta: align?.delta ?? 0, align: true, space: false }
+  if (!align) return { delta: space.delta, align: false, space: true }
+  if (Math.abs(align.delta - space.delta) <= SAME_CORRECTION) {
+    return { delta: align.delta, align: true, space: true }
+  }
+  return Math.abs(align.delta) < Math.abs(space.delta)
+    ? { delta: align.delta, align: true, space: false }
+    : { delta: space.delta, align: false, space: true }
+}
+
+/** An even spacing on offer (`spaceAxis`): the correction, and the gaps it
+ * makes equal, drawn once the corrections on both axes are known. */
+type Spacing = Readonly<{
+  delta: number
+  guides: (dx: number, dy: number) => SnapGuide[]
+}>
+
+/**
+ * The smallest correction along `axis` that puts the moving block as far
+ * from a neighbour in line with it — in its column for `y`, its row for `x`
+ * — as two neighbours in that line already are from each other, or null
+ * when no such spacing is within `tolerance`. A card added below a column is
+ * set the column's own distance below the last card in it, which alignment
+ * alone cannot say: it lines up edges, not the gaps between them.
+ *
+ * Only a neighbour with nothing in between counts, and only gaps between
+ * neighbours: a spacing is a distance between two things side by side.
+ */
+function spaceAxis(
+  block: CardRect,
+  candidates: readonly CardRect[],
+  tolerance: number,
+  axis: 'x' | 'y',
+): Spacing | null {
+  const size = axis === 'x' ? 'w' : 'h'
+  const across = axis === 'x' ? 'y' : 'x'
+  const acrossSize = axis === 'x' ? 'h' : 'w'
+  const end = (rect: CardRect) => rect[axis] + rect[size]
+  const inLine = (a: CardRect, b: CardRect) =>
+    a[across] < b[across] + b[acrossSize] &&
+    a[across] + a[acrossSize] > b[across]
+  const line = candidates
+    .filter((rect) => inLine(rect, block))
+    .sort((a, b) => a[axis] - b[axis])
+  const clear = (from: number, to: number, except: CardRect) =>
+    !line.some((rect) => rect !== except && rect[axis] < to && end(rect) > from)
+  const pairs: { a: CardRect; b: CardRect; gap: number }[] = []
+  for (let i = 0; i + 1 < line.length; i += 1) {
+    const a = line[i]
+    const b = line[i + 1]
+    const gap = b[axis] - end(a)
+    if (gap > 0 && clear(end(a), b[axis], a)) pairs.push({ a, b, gap })
+  }
+  let best: {
+    delta: number
+    gap: number
+    beside: CardRect
+    after: boolean
+  } | null = null
+  for (const beside of line) {
+    for (const { gap } of pairs) {
+      for (const after of [true, false]) {
+        const delta = after
+          ? end(beside) + gap - block[axis]
+          : beside[axis] - gap - end(block)
+        if (Math.abs(delta) > tolerance) continue
+        if (best && Math.abs(delta) >= Math.abs(best.delta) - SAME_CORRECTION)
+          continue
+        const from = after ? end(beside) : beside[axis] - gap
+        if (!clear(from, from + gap, beside)) continue
+        best = { delta, gap, beside, after }
+      }
+    }
+  }
+  if (!best) return null
+  const { delta, gap, beside, after } = best
+  return {
+    delta,
+    guides: (dx, dy) => {
+      const shift = { x: dx, y: dy }
+      const placed: CardRect = {
+        ...block,
+        x: block.x + shift.x,
+        y: block.y + shift.y,
+      }
+      const spans = [
+        ...pairs
+          .filter((pair) => Math.abs(pair.gap - gap) <= SAME_CORRECTION)
+          .map((pair) => ({ a: pair.a, b: pair.b })),
+        after ? { a: beside, b: placed } : { a: placed, b: beside },
+      ]
+      // A line across each equal gap, through the middle of what the two
+      // sides of it share: a vertical line for a gap in a column.
+      return spans.map(({ a, b }) => {
+        const low = Math.max(a[across], b[across])
+        const high = Math.min(
+          a[across] + a[acrossSize],
+          b[across] + b[acrossSize],
+        )
+        return {
+          axis: across,
+          position: (low + high) / 2,
+          from: end(a),
+          to: b[axis],
+          marks: [end(a), b[axis]],
+        }
+      })
+    },
+  }
 }
 
 /**
