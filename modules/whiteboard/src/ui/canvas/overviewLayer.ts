@@ -226,9 +226,6 @@ export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
   /** Every non-group node, in board order — groups keep their DOM. */
   getCardNodes: () => readonly BoardNode[]
-  /** How wide an open spread's title may run before its name is cut
-   * short, in world units (domain/spread.ts's `spreadTitleMaxWidth`). */
-  spreadTitleMaxWidth: (id: NodeId) => number
   /** The title a card wears (./nodeTitle.ts's `titleOf`), or null. */
   titleOf: (node: BoardNode) => Title | null
   /** How wide titles lay out, in the DOM's font (./nodeTitle.ts). */
@@ -1192,9 +1189,6 @@ export class OverviewLayer {
           y,
           w,
           h,
-          room:
-            (title.own ? this.callbacks.spreadTitleMaxWidth(node.id) : node.w) /
-            unit,
           turn: pose?.rotate
             ? { x: x + w / 2, y: y + h / 2, angle: pose.rotate }
             : undefined,
@@ -1429,14 +1423,15 @@ export class OverviewLayer {
     ctx.textAlign = 'left'
     for (const line of titles) {
       const { title, turn } = line
+      const content = measure.width(title)
+      const box = titleBox(line.node, line, content, scale, typeScale)
+      if (!box) continue
       if (turn) {
         ctx.save()
         ctx.translate(turn.x, turn.y)
         ctx.rotate(turn.angle)
         ctx.translate(-turn.x, -turn.y)
       }
-      const content = measure.width(title)
-      const box = titleBox(line, title, content, scale, typeScale, line.room)
       const toWorld = (rect: CardRect): CardRect => ({
         x: (rect.x - view.tx) / view.scale,
         y: (rect.y - view.ty) / view.scale,
@@ -2017,8 +2012,6 @@ type TitleLine = Readonly<{
   y: number
   w: number
   h: number
-  /** What it heads, in the node's own units (`titleBox`). */
-  room: number
   /** Turned with its card, picked up: by `angle` radians about the card's
    * centre, screen pixels. */
   turn?: Readonly<{ x: number; y: number; angle: number }>

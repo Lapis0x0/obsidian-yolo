@@ -20,8 +20,8 @@
 
 import type { BoardNode, NodeId } from '../../domain/fileFormat'
 import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
-import { isSpreadTitle } from '../../domain/spread'
 import { NODE_TITLE } from '../../domain/title'
+import { titleRoom, titleStand } from '../../domain/titlePlace'
 import type { WhiteboardTranslation } from '../../i18n'
 import { TITLE_MIN_SCREEN_PX } from '../constants'
 
@@ -57,8 +57,12 @@ export type TitleContext = Readonly<{
   memberCount: (id: NodeId) => number
 }>
 
-/** The title `node` wears, or null for a node that wears none. */
+/** The title `node` wears, or null for a node that wears none
+ * (domain/titlePlace.ts's `titleStand` says which do). */
 export function titleOf(node: BoardNode, about: TitleContext): Title | null {
+  const stand = titleStand(node)
+  if (stand === null) return null
+  const own = stand === 'own'
   const { t } = about
   if (node.type === 'group') {
     const count = about.memberCount(node.id)
@@ -69,30 +73,18 @@ export function titleOf(node: BoardNode, about: TitleContext): Title | null {
         count === 1
           ? t('group.countOne')
           : t('group.count').replace('{count}', String(count)),
-      own: false,
+      own,
     }
   }
   if (node.type !== 'file') return null
-  const label = basenameWithoutExtension(node.file)
-  switch (fileNodeKind(node.file)) {
-    case 'pdf': {
-      const open = isSpreadTitle(node)
-      return {
-        badge: { text: 'PDF', tone: 'red' },
-        label,
-        note: null,
-        own: open,
-      }
-    }
-    case 'board':
-      return {
-        badge: { text: t('card.boardBadge'), tone: 'blue' },
-        label,
-        note: null,
-        own: false,
-      }
-    default:
-      return null
+  return {
+    badge:
+      fileNodeKind(node.file) === 'pdf'
+        ? { text: 'PDF', tone: 'red' }
+        : { text: t('card.boardBadge'), tone: 'blue' },
+    label: basenameWithoutExtension(node.file),
+    note: null,
+    own,
   }
 }
 
@@ -161,27 +153,22 @@ export function titleScale(seen: number): number {
 type Rect = Readonly<{ x: number; y: number; w: number; h: number }>
 
 /**
- * Where `title` is on the board, in world units, over `node` as it is shown
- * now: scaled by `scale` (`titleScale`) inside a node drawn at `unit` (its
- * portals' scale, 1 for the board's own), on `room` of its own units —
- * what it heads, a group's frame or a document's width.
- *
- * As wide as it lays out (`content`), up to `room` — or up to NODE_TITLE.room
- * on screen when `room` is less, a small card's or a shrinking board's —
- * and past that its name is cut short: one line, so one height.
+ * Where `title` is over `node` shown at `rect` — in whatever units `rect` is
+ * in, `unit` of them to one of the node's own — held `scale` times its size
+ * (`titleScale`): the room the board gives it (domain/titlePlace.ts's
+ * `titleRoom`), as wide as it lays out (`content`) inside that. Past that
+ * its name is cut short: one line, so one height. Null for a node that
+ * wears none.
  */
 export function titleBox(
-  node: Rect,
-  title: Title,
+  node: BoardNode,
+  rect: Rect,
   content: number,
   scale: number,
   unit: number,
-  room: number,
-): Rect {
-  const width = Math.min(content, Math.max(room / scale, NODE_TITLE.room))
-  const h = NODE_TITLE.height * scale * unit
-  const bottom = title.own ? node.y + node.h : node.y - NODE_TITLE.gap * unit
-  return { x: node.x, y: bottom - h, w: width * scale * unit, h }
+): Rect | null {
+  const room = titleRoom(node, rect, unit, scale)
+  return room && { ...room, w: Math.min(content * scale * unit, room.w) }
 }
 
 // ---------------------------------------------------------------------------

@@ -26,10 +26,10 @@
   content: none;
 }
 
-/* The node is its title's box (node-title.css's `-own`): the bar as wide as
- * what it says, up to as wide as the document is (cardRenderer.ts's
- * `applySpreadTitleMaxWidth`). Only the bar takes the pointer — the rest of
- * the node's width is the board's, as it is beside any other title. */
+/* The node is its title's box (node-title.css's `-own`), one page wide: the
+ * bar as wide as what it says, up to that. Only the bar takes the pointer —
+ * the rest of the node's width is the board's, as it is beside any other
+ * title. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
   pointer-events: none;
 }

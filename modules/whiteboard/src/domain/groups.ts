@@ -28,6 +28,7 @@ import { fileNodeKind } from './naming'
 import { isPortal } from './portals'
 import { isSpreadTitle, withTitleAbove } from './spread'
 import { NODE_TITLE } from './title'
+import { titleRoom } from './titlePlace'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
@@ -149,29 +150,6 @@ export function groupMemberParts(
       (node) => node.type === 'pdf-page' && node.parent === member.id,
     ),
   ]
-}
-
-/**
- * Where `node`'s title is on the board (domain/title.ts), drawn at `scale`
- * (its portals'), or null for a node that wears none: a group's over its
- * frame, a PDF card's or a portal's over the card, and an open spread's
- * title node, which is its title. As wide as the room a title can count on,
- * or the card it heads — the bar itself is as wide as its words, which only
- * the UI measures.
- */
-export function nodeTitleRect(node: BoardNode, scale = 1): GroupRect | null {
-  if (isSpreadTitle(node)) return { x: node.x, y: node.y, w: node.w, h: node.h }
-  const headed =
-    node.type === 'group' ||
-    (node.type === 'file' && ['pdf', 'board'].includes(fileNodeKind(node.file)))
-  if (!headed) return null
-  const h = NODE_TITLE.height * scale
-  return {
-    x: node.x,
-    y: node.y - NODE_TITLE.gap * scale - h,
-    w: node.type === 'group' ? NODE_TITLE.room * scale : node.w,
-    h,
-  }
 }
 
 /** The rectangle `groupMemberParts` covers. */
@@ -803,7 +781,7 @@ export function gapBetween(a: GroupRect, b: GroupRect): number {
  * The things dragged are the ones nothing else in the drag carries, each
  * judged by where its edges are — what is shown, whatever its size and
  * wherever it was taken hold of — or, for one that wears a title (a group,
- * a PDF, a portal), by its title's (`nodeTitleRect`): that is what it is
+ * a PDF, a portal), by its title's (titlePlace.ts's `titleRoom`): that is what it is
  * held by, and an open spread's sheets reach far past it. Judged
  * by their centre, a card twice the size of another had to be pushed twice as
  * far into a group before the group would take it. `leave` is in the
@@ -843,7 +821,7 @@ export function groupDropDecision(
   // an open spread's sheets reach far past where it is being taken.
   const extents = dragged.map(
     (node) =>
-      nodeTitleRect(node, scaleOf(node.id)) ??
+      titleRoom(node, node, scaleOf(node.id)) ??
       groupMemberExtent(node, board.nodes),
   )
   const gap = (frame: GroupRect): number =>

@@ -231,9 +231,6 @@ export type NodeRuntime = {
  */
 export type CardRendererCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
-  /** How wide an open spread's title may run before its name is cut short:
-   * as wide as its document (domain/spread.ts's `spreadTitleMaxWidth`). */
-  spreadTitleMaxWidth: (id: NodeId) => number
   /** A PDF card's reader scrolled, or loaded a page: an edge reaching a
    * passage in it may now be drawn somewhere else. */
   onPassagesMove: (id: NodeId) => void
@@ -789,7 +786,6 @@ export class CardRenderer {
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, node: FileNode): void {
     el.classList.add(SPREAD_TITLE_CLASS)
-    this.applySpreadTitleMaxWidth(id, el)
     this.attachTitle(id, el, node)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
@@ -808,23 +804,6 @@ export class CardRenderer {
       picture: null,
       drawnUnder: false,
     })
-  }
-
-  /** Re-reads how wide every mounted spread title may run: its sheets are
-   * laid out again, scaled or moved without the title itself changing. */
-  syncSpreadTitleWidths(): void {
-    for (const [id, runtime] of this.runtimeByNodeId) {
-      if (runtime.el?.classList.contains(SPREAD_TITLE_CLASS)) {
-        this.applySpreadTitleMaxWidth(id, runtime.el)
-      }
-    }
-  }
-
-  private applySpreadTitleMaxWidth(id: NodeId, el: HTMLElement): void {
-    el.style.setProperty(
-      '--yolo-whiteboard-title-room',
-      `${this.callbacks.spreadTitleMaxWidth(id)}px`,
-    )
   }
 
   /** A copy of the picture a mounted PDF card or sheet shows `page` with

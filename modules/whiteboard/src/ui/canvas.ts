@@ -129,7 +129,6 @@ import {
   reflowSpread,
   scaleSpread,
   spreadPages,
-  spreadTitleMaxWidth,
 } from '../domain/spread'
 import { resolveTextAnchor, textAnchorAt } from '../domain/textAnchor'
 import { tidyRects } from '../domain/tidy'
@@ -2156,7 +2155,6 @@ export class WhiteboardCanvas {
     this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
       getView: this.core.getView,
       getCardNodes: () => this.ownCardNodes,
-      spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       titleOf: (node) => this.titleOf(node),
       titleMeasure: () => this.titleMeasure(),
       getGroupNodes: () => this.groupNodes,
@@ -2453,7 +2451,6 @@ export class WhiteboardCanvas {
       titleScale: (id) => titleScale(this.seenScaleOf(id)),
       groupMemberCount: (id) => this.memberCountOf(id),
       expandGroup: (id) => this.runGroupAction(id, 'expand'),
-      spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
         this.edgeLayer.redrawPassageEdges(id)
@@ -3921,28 +3918,19 @@ export class WhiteboardCanvas {
   }
 
   /** Where `id`'s title is on the board over its node shown at `rect`, world
-   * units, for the toolbar to stand over (./canvas/nodeTitle.ts's
-   * `titleBox`); null for a node that wears none.
-   *
-   * On its node's own width: an open spread's title node is one page wide,
-   * as wide as the card the PDF folds into, so the toolbar is in the same
-   * place either way — on the room the DOM gives a spread's title, as wide
-   * as the document, it moved across by the difference whenever the name
-   * was longer than a page. Held at a size on screen far out, the box grows
-   * with the title, and the toolbar stays centred over it. */
+   * units, as the DOM and the overview draw it (./canvas/nodeTitle.ts's
+   * `titleBox`) — for the toolbar to stand over; null for a node that wears
+   * none. */
   private titleRectOf(id: NodeId, rect: CardRect): CardRect | null {
     const node = this.nodesById.get(id)
     const title = node ? this.titleOf(node) : null
-    if (!title) return null
-    const unit = this.scaleOf(id)
-    const room = rect.w
+    if (!node || !title) return null
     return titleBox(
+      node,
       rect,
-      title,
       this.titleMeasure().width(title),
       titleScale(this.seenScaleOf(id)),
-      unit,
-      room / unit,
+      this.scaleOf(id),
     )
   }
 
@@ -5973,14 +5961,6 @@ export class WhiteboardCanvas {
     )
   }
 
-  /** How wide an open spread's title may run (domain/spread.ts's
-   * `spreadTitleMaxWidth`). */
-  private spreadTitleMaxWidthOf(id: NodeId): number {
-    const title = this.nodesById.get(id)
-    if (!title) return 0
-    return spreadTitleMaxWidth(title, spreadPages(this.board, id))
-  }
-
   private syncBoardIndex(): void {
     this.nodesById = new Map(this.board.nodes.map((node) => [node.id, node]))
     this.portalNodes = this.board.nodes.filter(isPortal)
@@ -6005,7 +5985,6 @@ export class WhiteboardCanvas {
     this.spreadFrame?.sync()
     this.passagePoints?.sync()
     this.passageHandles?.sync()
-    this.cardRenderer.syncSpreadTitleWidths()
     this.pictures?.retain()
     const pdfs = new Set<string>()
     for (const wanted of this.wantedPictures()) {
