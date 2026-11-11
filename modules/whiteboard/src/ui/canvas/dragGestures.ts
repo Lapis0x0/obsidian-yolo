@@ -55,6 +55,9 @@ import {
   GRID_WORLD_STEP_PX,
   MIN_CARD_SIZE,
   PLAIN_TEXT_AUTO_CLASS,
+  SNAP_AIM_LEAVE_SPEED,
+  SNAP_AIM_SETTLE_MS,
+  SNAP_AIM_SPEED,
   SNAP_SCREEN_PX,
 } from '../constants'
 
@@ -218,6 +221,18 @@ export class DragGestures {
   private isMacOS: boolean | null = null
   /** Makes each Alt-drag's history key its own. */
   private duplicateDrags = 0
+  /** How the pointer is moving in a drag: where it last was, when, how fast
+   * it has been going (screen px per ms, smoothed), and whether it is
+   * looking for a place to put what it carries (`aiming`). */
+  private pace: {
+    x: number
+    y: number
+    t: number
+    speed: number
+    aiming: boolean
+  } | null = null
+  /** Lines a drag up once the pointer has been still long enough. */
+  private aimTimer: number | null = null
 
   /** What a drag shows about the groups it would change (`groupPreview`). */
   private readonly groupFeedback: GroupDropFeedback
@@ -430,6 +445,11 @@ export class DragGestures {
     if (!rects) {
       this.carried = null
       this.groupFeedback.clear()
+      this.pace = null
+      if (this.aimTimer !== null) {
+        this.core.context.getWindow().clearTimeout(this.aimTimer)
+        this.aimTimer = null
+      }
     }
     this.deps.onLiveRectsChange()
   }
@@ -625,15 +645,15 @@ export class DragGestures {
    * have to agree exactly: recomputing from the same event is a few hundred
    * comparisons, and any drift between them would move the card on release.
    */
+  /** Where a drag would put what it carries: lined up with what it nears,
+   * and — `grid` — any axis lined up with nothing on the grid. */
   private draggedDelta(
     interaction: NodeInteraction,
     e: PointerEvent,
+    grid = true,
   ): Readonly<{ dx: number; dy: number; guides: readonly SnapGuide[] }> {
     const world = this.core.worldPointFromEvent(e)
-    const raw = {
-      dx: world.x - interaction.startWorld.x,
-      dy: world.y - interaction.startWorld.y,
-    }
+    const raw = this.rawDelta(interaction, e)
     if (!this.snappingWanted(e)) return { ...raw, guides: [] }
     const moving: CardRect[] = []
     for (const id of interaction.ids) {
@@ -658,6 +678,7 @@ export class DragGestures {
         // The board the cards would land on, put down here (canvas.ts's
         // `commitMove`).
         ...this.snapOptions(this.core.portalAtPoint(world)),
+        ...(grid ? {} : { gridStep: 0 }),
         movedX: raw.dx !== 0,
         movedY: raw.dy !== 0,
       },
@@ -756,11 +777,23 @@ export class DragGestures {
     return this.isMacOS
   }
 
+  /**
+   * Moves what a drag carries with the pointer — exactly while the pointer
+   * is travelling, lined up with what it nears once it is looking for a
+   * place (`aiming`, SNAP_AIM_SPEED). Never onto the grid on the way: that
+   * would step it from line to line for no reason the user can see, and the
+   * grid is only the board keeping tidy — the drop puts it there
+   * (`finishNode`), and setting it down from where it was held covers the
+   * few pixels between.
+   */
   private updateNodeDragPositions(
     interaction: NodeInteraction,
     e: PointerEvent,
+    still = false,
   ): void {
-    const { dx, dy, guides } = this.draggedDelta(interaction, e)
+    const { dx, dy, guides } = this.aiming(interaction, e, still)
+      ? this.draggedDelta(interaction, e, false)
+      : { ...this.rawDelta(interaction, e), guides: [] }
     this.deps.snapGuides.show(guides)
     const overrides = new Map<NodeId, CardRect>()
     for (const id of interaction.ids) {
@@ -789,6 +822,64 @@ export class DragGestures {
     // one of them, so a drag has to carry it along explicitly.
     const dragged = overrides.get(this.deps.getLayerNodeId() ?? '')
     if (dragged) this.deps.placeLayer(dragged)
+  }
+
+  /**
+   * Whether the pointer at `e` is looking for a place to put what it
+   * carries (SNAP_AIM_SPEED): slow, or — `still` — stopped. One going too
+   * fast to be is looked at again once it has stopped for a moment.
+   */
+  private aiming(
+    interaction: NodeInteraction,
+    e: PointerEvent,
+    still: boolean,
+  ): boolean {
+    const win = this.core.context.getWindow()
+    if (this.aimTimer !== null) {
+      win.clearTimeout(this.aimTimer)
+      this.aimTimer = null
+    }
+    const last = this.pace
+    if (still) {
+      if (last) last.aiming = true
+      return true
+    }
+    const dt = last ? e.timeStamp - last.t : 0
+    const instant =
+      last && dt > 0
+        ? Math.hypot(e.clientX - last.x, e.clientY - last.y) / dt
+        : 0
+    const speed = last ? (last.speed + instant) / 2 : 0
+    // The first move says nothing about speed yet, and is a hand just
+    // setting off: not aiming — or a card dragged from where it lined up
+    // would be caught there again at once.
+    const aiming = !last
+      ? false
+      : last.aiming
+        ? speed <= SNAP_AIM_LEAVE_SPEED
+        : speed <= SNAP_AIM_SPEED
+    this.pace = { x: e.clientX, y: e.clientY, t: e.timeStamp, speed, aiming }
+    if (!aiming) {
+      this.aimTimer = win.setTimeout(() => {
+        this.aimTimer = null
+        if (this.carried === interaction) {
+          this.updateNodeDragPositions(interaction, e, true)
+        }
+      }, SNAP_AIM_SETTLE_MS)
+    }
+    return aiming
+  }
+
+  /** How far the pointer has carried a drag, as it is. */
+  private rawDelta(
+    interaction: NodeInteraction,
+    e: PointerEvent,
+  ): Readonly<{ dx: number; dy: number }> {
+    const world = this.core.worldPointFromEvent(e)
+    return {
+      dx: world.x - interaction.startWorld.x,
+      dy: world.y - interaction.startWorld.y,
+    }
   }
 
   /** A press on a card that never moved, alone — on the card itself or on

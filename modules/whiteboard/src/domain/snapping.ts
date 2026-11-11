@@ -11,7 +11,11 @@
 //   1. Object alignment. Both rectangles' anchors — four corners and the
 //      centre — are candidates, so edge-to-edge and centre-to-centre are the
 //      same rule rather than two. It has a tolerance, because it is an offer:
-//      nothing lines up unless something is already nearly lined up.
+//      nothing lines up unless something is already nearly lined up. Only
+//      like lines up with like — an edge with an edge, a centre with a
+//      centre: an edge on another card's centre is a coincidence nobody
+//      aims for, and on a board of cards there is always one within reach,
+//      so offering it kept a drag caught on lines that meant nothing.
 //   2. The grid, on whichever axis found no object to align to. No tolerance:
 //      a free axis always lands on the lattice, so a board stays on its grid
 //      without the user thinking about it.
@@ -75,17 +79,37 @@ const NO_SNAP: SnapResult = Object.freeze({ dx: 0, dy: 0, guides: [] })
  */
 const SAME_CORRECTION = 1e-6
 
+/** Which of its rectangle's lines an anchor is on, along one axis: its
+ * near edge, its centre, its far edge. */
+type Line = 'start' | 'mid' | 'end'
+
+/** A point that may line up, and which line of its rectangle it is on along
+ * each axis. */
+type Anchor = SnapPoint & Readonly<{ lineX: Line; lineY: Line }>
+
+/** Whether anchors on these two lines may line up: an edge with an edge —
+ * the same one, or the two meeting side by side — and a centre with a
+ * centre. */
+function alike(a: Line, b: Line): boolean {
+  return (a === 'mid') === (b === 'mid')
+}
+
 /** The four corners and the centre — the whole candidate set, for both the
  * thing being moved and the things it might line up with. */
-function anchorsOf(rect: CardRect): readonly SnapPoint[] {
+function anchorsOf(rect: CardRect): readonly Anchor[] {
   const right = rect.x + rect.w
   const bottom = rect.y + rect.h
   return [
-    { x: rect.x, y: rect.y },
-    { x: rect.x, y: bottom },
-    { x: right, y: rect.y },
-    { x: right, y: bottom },
-    { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 },
+    { x: rect.x, y: rect.y, lineX: 'start', lineY: 'start' },
+    { x: rect.x, y: bottom, lineX: 'start', lineY: 'end' },
+    { x: right, y: rect.y, lineX: 'end', lineY: 'start' },
+    { x: right, y: bottom, lineX: 'end', lineY: 'end' },
+    {
+      x: rect.x + rect.w / 2,
+      y: rect.y + rect.h / 2,
+      lineX: 'mid',
+      lineY: 'mid',
+    },
   ]
 }
 
@@ -93,8 +117,8 @@ function anchorsOf(rect: CardRect): readonly SnapPoint[] {
  * already there. */
 type AxisGroup = Readonly<{
   position: number
-  sources: SnapPoint[]
-  targets: SnapPoint[]
+  sources: Anchor[]
+  targets: Anchor[]
 }>
 
 type AxisMatch = Readonly<{ delta: number; groups: readonly AxisGroup[] }>
@@ -115,15 +139,17 @@ type AxisMatch = Readonly<{ delta: number; groups: readonly AxisGroup[] }>
  * which buys nothing at that size.
  */
 function alignAxis(
-  sources: readonly SnapPoint[],
-  targets: readonly SnapPoint[],
+  sources: readonly Anchor[],
+  targets: readonly Anchor[],
   tolerance: number,
   axis: 'x' | 'y',
 ): AxisMatch | null {
+  const line = axis === 'x' ? 'lineX' : 'lineY'
   let delta: number | null = null
   let groups = new Map<number, AxisGroup>()
   for (const source of sources) {
     for (const target of targets) {
+      if (!alike(source[line], target[line])) continue
       const candidate = target[axis] - source[axis]
       if (Math.abs(candidate) > tolerance) continue
       if (
@@ -270,24 +296,24 @@ export function snapResize(
   const movingY =
     edges.y === null ? null : edges.y === 'start' ? rect.y : bottom
   const x =
-    movingX === null
+    movingX === null || edges.x === null
       ? null
       : alignAxis(
           [
-            { x: movingX, y: rect.y },
-            { x: movingX, y: bottom },
+            { x: movingX, y: rect.y, lineX: edges.x, lineY: 'start' },
+            { x: movingX, y: bottom, lineX: edges.x, lineY: 'end' },
           ],
           targets,
           options.tolerance,
           'x',
         )
   const y =
-    movingY === null
+    movingY === null || edges.y === null
       ? null
       : alignAxis(
           [
-            { x: rect.x, y: movingY },
-            { x: right, y: movingY },
+            { x: rect.x, y: movingY, lineX: 'start', lineY: edges.y },
+            { x: right, y: movingY, lineX: 'end', lineY: edges.y },
           ],
           targets,
           options.tolerance,

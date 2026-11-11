@@ -776,10 +776,25 @@ export const CONNECT_SNAP_WORLD_PX = 12
  *
  * Screen rather than world: this is a statement about the pointer, which has
  * the same precision however far the board is zoomed, so the canvas divides
- * it by the scale before handing it over. 15 is Obsidian Canvas's
- * `objectSnapDistance`, and it does the same division.
+ * it by the scale before handing it over. Obsidian Canvas offers 15; at that
+ * reach a card on a busy board was nearly always within it of something, and
+ * an offer that is always open is a pull, not an offer.
  */
-export const SNAP_SCREEN_PX = 15
+export const SNAP_SCREEN_PX = 8
+
+/**
+ * When a drag lines up with what it nears: once the hand is looking for a
+ * place, not while it is still travelling — a card pulled onto every line it
+ * crosses on the way does not follow the hand, and a guide flashed at each is
+ * noise. Looking means slowing under `SNAP_AIM_SPEED` (screen pixels per ms,
+ * smoothed over the last few moves), or stopping for `SNAP_AIM_SETTLE_MS`
+ * at any speed; it lasts until the pointer is going faster than
+ * `SNAP_AIM_LEAVE_SPEED` again, so a hand hovering about the threshold does
+ * not catch and let go by turns.
+ */
+export const SNAP_AIM_SPEED = 0.4
+export const SNAP_AIM_LEAVE_SPEED = 0.8
+export const SNAP_AIM_SETTLE_MS = 100
 
 /**
  * Clear space between the selection toolbar and the selection it acts on, in

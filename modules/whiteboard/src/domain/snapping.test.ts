@@ -21,6 +21,27 @@ describe('snapMove', () => {
     expect(result.dy).toBe(0)
   })
 
+  it('never lines an edge up with a centre', () => {
+    // Moving left edge x = 152 is 2 from the target's centre (150), and
+    // nothing alike is within reach.
+    const result = snapMove([rect(152, 200)], [rect(100, 0)], {
+      ...options,
+      movedX: true,
+      movedY: false,
+    })
+    expect(result).toEqual({ dx: 0, dy: 0, guides: [] })
+  })
+
+  it('lines one card up beside another, edge against edge', () => {
+    // Moving left edge x = 203 is 3 from the target's right edge (200).
+    const result = snapMove([rect(203, 0)], [rect(100, 0)], {
+      ...options,
+      movedX: true,
+      movedY: false,
+    })
+    expect(result.dx).toBe(-3)
+  })
+
   it('leaves a miss beyond the tolerance alone', () => {
     const result = snapMove([rect(115, 200)], [rect(100, 0)], {
       ...options,
