@@ -67,8 +67,8 @@ import {
 import type { DropImport } from './dropImport'
 import type { EdgeLayer } from './edgeLayer'
 import type { EditingController } from './editingController'
-import { GROUP_TITLE_CLASS, isGroupTitleAction } from './groupTitle'
 import { isTypingIntoField } from './keymapController'
+import { TITLE_CLASS } from './nodeTitle'
 import type { PassagePoints } from './passagePoints'
 import type { PdfIntegration } from './pdfIntegration'
 import { type HoldPointer, holdPointerOn } from './pointerHold'
@@ -1582,16 +1582,15 @@ export class InteractionController {
     return asElement(target)?.closest(`.${CARD_BODY_LIVE_CLASS}`) != null
   }
 
-  /** The group whose title bar this event landed on — anywhere on it but
-   * its buttons — or null for anything else. */
+  /** The group whose title this event landed on, or null for anything
+   * else. */
   private groupLabelIdFromEventTarget(
     target: EventTarget | null,
   ): NodeId | null {
     const el = asElement(target)
-    if (!el?.closest(`.${GROUP_TITLE_CLASS}`) || isGroupTitleAction(el)) {
-      return null
-    }
-    return nodeIdFromEventTarget(el)
+    if (!el?.closest(`.${TITLE_CLASS}`)) return null
+    const id = nodeIdFromEventTarget(el)
+    return id !== null && this.core.getNode(id)?.type === 'group' ? id : null
   }
 }
 

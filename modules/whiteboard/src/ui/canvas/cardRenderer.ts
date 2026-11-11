@@ -35,7 +35,6 @@ import {
   CARD_FOCUSED_CLASS,
   CARD_HANDOFF_CLASS,
   CARD_SELECTED_CLASS,
-  GROUP_LABEL_WORLD_FONT_PX,
   NODE_EXIT_EASING,
   NODE_EXIT_MS,
   NODE_EXIT_TO_SCALE,
@@ -69,14 +68,14 @@ import {
 import {
   GROUP_COLLAPSED_CLASS,
   GROUP_THUMBS_CLASS,
-  GROUP_TITLE_CLASS,
-  GROUP_TITLE_HELD_CLASS,
-  type GroupTitleAction,
   createGroupThumbs,
-  createGroupTitle,
-  groupTitleLabel,
-} from './groupTitle'
-import { createTitleLine, titleBadgeOf } from './titleLine'
+} from './groupThumbs'
+import {
+  type Title,
+  applyTitleScale,
+  createTitle,
+  titleLabel,
+} from './nodeTitle'
 
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
  * standing on the board for the whole of it — no frame, no body. */
@@ -93,10 +92,6 @@ const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
 const PORTAL_CLASS = 'yolo-whiteboard-portal'
 const PORTAL_EDGE_CLASS = 'yolo-whiteboard-portal-edge'
 const PORTAL_NOTICE_CLASS = 'yolo-whiteboard-portal-notice'
-/** A card's title that is a title line (./titleLine.ts) — a PDF's, in the
- * place its spread's title stands, so the two are one title, and a
- * portal's. */
-const CARD_TITLE_BADGED_CLASS = 'yolo-whiteboard-card-title-badged'
 const CARD_TITLE_BLOCK_CLASS = 'yolo-whiteboard-card-title-block'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
@@ -236,8 +231,8 @@ export type NodeRuntime = {
  */
 export type CardRendererCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
-  /** How wide an open spread's title may run before its name wraps
-   * (domain/spread.ts's `spreadTitleMaxWidth`). */
+  /** How wide an open spread's title may run before its name is cut short:
+   * as wide as its document (domain/spread.ts's `spreadTitleMaxWidth`). */
   spreadTitleMaxWidth: (id: NodeId) => number
   /** A PDF card's reader scrolled, or loaded a page: an edge reaching a
    * passage in it may now be drawn somewhere else. */
@@ -305,14 +300,15 @@ export type CardRendererCallbacks = Readonly<{
   /** What a card is drawn at: the scale of the portals it is behind
    * (domain/portals.ts's `ComposedPortal`), 1 for the board's own. */
   scaleOf: (id: NodeId) => number
-  /** The size a group's label is held at, in its own units, while it is
-   * seen smaller than the overview tier's threshold; null while the
-   * stylesheet's own value stands (canvas.ts's `syncGroupLabelScale`). */
-  groupLabelFontPx: (id: NodeId) => number | null
-  /** How many things a group directly holds — what its title bar counts. */
+  /** The title a node wears, or null (./nodeTitle.ts's `titleOf`). */
+  titleOf: (node: BoardNode) => Title | null
+  /** How much a node's title is scaled to be read on screen, 1 for not at
+   * all (./nodeTitle.ts's `titleScale`, at the scale it is seen at). */
+  titleScale: (id: NodeId) => number
+  /** How many things a group directly holds — how many its box shows. */
   groupMemberCount: (id: NodeId) => number
-  /** A button on a group's title bar was clicked. */
-  onGroupAction: (id: NodeId, action: GroupTitleAction) => void
+  /** A collapsed group's box was clicked: it opens. */
+  expandGroup: (id: NodeId) => void
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -347,6 +343,9 @@ export type CardRendererCallbacks = Readonly<{
  */
 export class CardRenderer {
   private readonly runtimeByNodeId = new Map<NodeId, NodeRuntime>()
+  /** The title each mounted node wears (`attachTitle`): a few dozen, and the
+   * ones a zoom resizes (`syncTitleScales`). */
+  private readonly titles = new Map<NodeId, HTMLElement>()
   /** Deleted cards still playing their exit (`playExit`): no longer cards,
    * but still holding content that has to be released when they finish. */
   private readonly exiting = new Set<NodeRuntime>()
@@ -463,6 +462,7 @@ export class CardRenderer {
     const runtime = this.runtimeByNodeId.get(id)
     this.runtimeByNodeId.delete(id)
     this.parkedCards.delete(id)
+    this.titles.delete(id)
     if (!runtime) return
     const el = runtime.el
     const exit = options?.exit ?? false
@@ -640,13 +640,9 @@ export class CardRenderer {
     // here — selection, dragging, resizing, edges — it gets for free, because
     // it goes through the same runtime as a card.
     if (node.type === 'group') {
-      const title = this.buildGroupTitle(id, node)
-      el.appendChild(title)
+      this.attachTitle(id, el, node)
       this.syncGroupThumbs(id, el, node)
       this.worldEl.appendChild(el)
-      // A group mounting while the overview tier holds titles at a screen
-      // size has to arrive at that size, not at the stylesheet's.
-      this.applyGroupTitleScale(id, el)
       this.runtimeByNodeId.set(id, {
         el,
         bodyEl: null,
@@ -698,25 +694,23 @@ export class CardRenderer {
       return
     }
 
+    // A document of its own — a PDF, a board behind a portal — is named by a
+    // title (./nodeTitle.ts), the bar a group and an open spread wear; any
+    // other card from outside the board by a plain label.
     const chromeTitle =
       node.type === 'file'
         ? basenameWithoutExtension(node.file)
         : node.type === 'link'
           ? node.url
           : null
-    if (chromeTitle !== null) {
+    if (this.callbacks.titleOf(node)) {
+      this.attachTitle(id, el, node)
+      if (isPortal(node)) this.dressPortal(el)
+    } else if (chromeTitle !== null) {
       const title = doc.createElement('div')
       title.className = CARD_TITLE_CLASS
-      const badge = titleBadgeOf(node, this.callbacks.t)
-      const line = badge ? createTitleLine(doc, badge, chromeTitle) : null
-      if (line) {
-        title.classList.add(CARD_TITLE_BADGED_CLASS)
-        title.appendChild(line)
-      } else {
-        title.textContent = chromeTitle
-      }
+      title.textContent = chromeTitle
       el.appendChild(title)
-      if (isPortal(node)) this.dressPortal(el)
     }
 
     const body = createCardBody(doc)
@@ -794,15 +788,9 @@ export class CardRenderer {
    * upwards from there (spread.css).
    */
   private mountSpreadTitle(id: NodeId, el: HTMLElement, node: FileNode): void {
-    const doc = el.ownerDocument
     el.classList.add(SPREAD_TITLE_CLASS)
     this.applySpreadTitleMaxWidth(id, el)
-    const badge = titleBadgeOf(node, this.callbacks.t)
-    if (badge) {
-      el.appendChild(
-        createTitleLine(doc, badge, basenameWithoutExtension(node.file)),
-      )
-    }
+    this.attachTitle(id, el, node)
     this.worldEl.appendChild(el)
     this.runtimeByNodeId.set(id, {
       el,
@@ -834,7 +822,7 @@ export class CardRenderer {
 
   private applySpreadTitleMaxWidth(id: NodeId, el: HTMLElement): void {
     el.style.setProperty(
-      '--yolo-whiteboard-title-line-max-width',
+      '--yolo-whiteboard-title-room',
       `${this.callbacks.spreadTitleMaxWidth(id)}px`,
     )
   }
@@ -1067,29 +1055,32 @@ export class CardRenderer {
   }
 
   /**
-   * A group's title bar, as its node has it now. The name is renamed in
-   * place (see beginRename), so it is given the two listeners that end a
-   * rename, for the bar's whole life: both are no-ops until this group is
-   * the one being renamed.
+   * Puts the title `node` wears (./nodeTitle.ts) on its element, in place of
+   * the one it had. A group's name is renamed in place (see beginRename), so
+   * it is given the two listeners that end a rename, for the bar's whole
+   * life: both are no-ops until this group is the one being renamed.
    */
-  private buildGroupTitle(id: NodeId, node: GroupNode): HTMLElement {
-    const title = createGroupTitle(
-      this.context.getDocument(),
-      {
-        label: node.label ?? '',
-        count: this.callbacks.groupMemberCount(id),
-        sized: node.bounds !== undefined,
-        collapsed: node.stash !== undefined,
-      },
-      this.callbacks.t,
-      (action) => this.callbacks.onGroupAction(id, action),
-    )
-    const label = groupTitleLabel(title)
-    label?.addEventListener('keydown', (event) =>
-      this.callbacks.onGroupLabelKeyDown(id, event),
-    )
-    label?.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
-    return title
+  private attachTitle(id: NodeId, el: HTMLElement, node: BoardNode): void {
+    const title = this.callbacks.titleOf(node)
+    const old = this.titles.get(id)
+    if (!title) {
+      old?.remove()
+      this.titles.delete(id)
+      return
+    }
+    const bar = createTitle(this.context.getDocument(), title)
+    if (node.type === 'group') {
+      const label = titleLabel(bar)
+      label?.addEventListener('keydown', (event) =>
+        this.callbacks.onGroupLabelKeyDown(id, event),
+      )
+      label?.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
+    }
+    if (old?.parentElement === el) old.replaceWith(bar)
+    else el.appendChild(bar)
+    this.titles.set(id, bar)
+    // Arriving at the size every other title is held at now.
+    applyTitleScale(bar, this.callbacks.titleScale(id))
   }
 
   /** What each collapsed group's pictures were drawn from. */
@@ -1123,7 +1114,7 @@ export class CardRenderer {
         : null
     el.appendChild(
       createGroupThumbs(this.context.getDocument(), more, () =>
-        this.callbacks.onGroupAction(id, 'expand'),
+        this.callbacks.expandGroup(id),
       ),
     )
   }
@@ -1147,49 +1138,23 @@ export class CardRenderer {
     applyColorToElement(el, node.color)
     this.syncGroupThumbs(id, el, node)
     if (this.callbacks.isRenamingGroup(id)) return
-    const old = el.querySelector(`:scope > .${GROUP_TITLE_CLASS}`)
-    const title = this.buildGroupTitle(id, node)
-    if (old) old.replaceWith(title)
-    else el.appendChild(title)
-    this.applyGroupTitleScale(id, el)
+    this.attachTitle(id, el, node)
   }
 
   /**
-   * Holds every group's title bar at the size `groupTitleScale` gives it, or
-   * hands it back to the stylesheet (see constants.ts's
-   * OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX).
+   * Holds every mounted title at the size `titleScale` gives it now.
    *
-   * Written on the title bars themselves rather than as a custom property
-   * on the world layer, which would be the shorter code and is the trap
+   * Written on the titles themselves rather than as a custom property on the
+   * world layer, which would be the shorter code and is the trap
    * cameraController.ts's `applyZoomScale` documents: a custom property written
    * on an element invalidates the style of its whole subtree, and the world's
    * subtree includes every edge path on the board. There are a few dozen
-   * groups; this touches exactly their bars, and only those whose size
-   * changed.
+   * titles; this touches exactly them, and only those whose size changed.
    */
-  syncGroupLabelFontSizes(): void {
-    for (const [id, runtime] of this.runtimeByNodeId) {
-      if (this.callbacks.getNode(id)?.type !== 'group' || !runtime.el) continue
-      this.applyGroupTitleScale(id, runtime.el)
+  syncTitleScales(): void {
+    for (const [id, bar] of this.titles) {
+      applyTitleScale(bar, this.callbacks.titleScale(id))
     }
-  }
-
-  /**
-   * A whole bar is scaled, from its bottom-left corner — where it meets the
-   * frame — rather than its text set larger: the bar is a fixed width (the
-   * domain fits frames around it), and only all of it at once keeps its name,
-   * count and buttons in proportion.
-   */
-  private applyGroupTitleScale(id: NodeId, el: HTMLElement): void {
-    const bar = el.querySelector<HTMLElement>(`.${GROUP_TITLE_CLASS}`)
-    if (!bar) return
-    const fontPx = this.callbacks.groupLabelFontPx(id)
-    const transform =
-      fontPx === null ? '' : `scale(${fontPx / GROUP_LABEL_WORLD_FONT_PX})`
-    if (bar.style.transform !== transform) {
-      bar.setCssProps({ transform })
-    }
-    bar.classList.toggle(GROUP_TITLE_HELD_CLASS, fontPx !== null)
   }
 
   private evictParkedCard(id: NodeId): void {

@@ -48,7 +48,7 @@ import type {
 } from '../../domain/pdfAnnotations'
 import { fileNodeOf, isPortal, portalWeight } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
-import { SPREAD_METRICS, isSpreadTitle } from '../../domain/spread'
+import { isSpreadTitle } from '../../domain/spread'
 import {
   type CanvasView,
   computeWorldViewportRect,
@@ -63,13 +63,11 @@ import {
   LIFT_SHADOW,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
-  OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_LABEL_MIN_FONT_PX,
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
-  SPREAD_TITLE_WORLD,
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
@@ -81,10 +79,13 @@ import { READER_METRICS } from '../pdf/readerLayout'
 import type { Pose } from '../tween'
 
 import {
-  type TitleBadge,
+  TITLE_LOOK,
+  type Title,
   type TitleBadgeTone,
-  wearsTitleLine,
-} from './titleLine'
+  type TitleMeasure,
+  titleBox,
+  titleScale,
+} from './nodeTitle'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
@@ -196,8 +197,8 @@ type Palette = Readonly<{
   /** What each PDF annotation colour paints with (styles/pdf/
    * annotations.css). */
   annotations: Readonly<Record<AnnotationColor, string>>
-  /** What each title line badge is tinted with (styles/cards/
-   * title-line.css). */
+  /** What each title's badge is tinted with (styles/cards/
+   * node-title.css). */
   badges: Readonly<Record<TitleBadgeTone, string>>
   /** A dark theme, which shows PDF pages inverted (styles/pdf/card.css). */
   dark: boolean
@@ -225,12 +226,13 @@ export type OverviewLayerCallbacks = Readonly<{
   getView: () => CanvasView
   /** Every non-group node, in board order — groups keep their DOM. */
   getCardNodes: () => readonly BoardNode[]
-  /** How wide an open spread's title may run before its name wraps, in
-   * world units (domain/spread.ts's `spreadTitleMaxWidth`). */
+  /** How wide an open spread's title may run before its name is cut
+   * short, in world units (domain/spread.ts's `spreadTitleMaxWidth`). */
   spreadTitleMaxWidth: (id: NodeId) => number
-  /** What a card's title line says it is (./titleLine.ts's
-   * `titleBadgeOf`), or null for a card without one. */
-  titleBadge: (node: BoardNode) => TitleBadge | null
+  /** The title a card wears (./nodeTitle.ts's `titleOf`), or null. */
+  titleOf: (node: BoardNode) => Title | null
+  /** How wide titles lay out, in the DOM's font (./nodeTitle.ts). */
+  titleMeasure: () => TitleMeasure
   /** The groups. Their frames, titles and borders are their DOM's at every
    * tier, but their washes are drawn here, under the cards
    * (`drawGroupWashes`); the minimap draws them whole (`paintBoard`). */
@@ -315,11 +317,12 @@ export class OverviewLayer {
    * Kept in world units, so a zoom does not invalidate them; dropped with the
    * palette, whose font they were measured in. */
   private readonly titleLines = new Map<string, readonly string[]>()
-  /** Where each title line was last drawn, in world units. */
+  /** Where each title was last drawn, in world units. */
   private readonly titleRects = new Map<
     NodeId,
     Readonly<{ x: number; y: number; w: number; h: number }>
   >()
+
   /** Viewport size in CSS pixels, pushed in rather than measured: reading it
    * here would force a layout flush on a frame that has just written the
    * world's transform. `WhiteboardCanvas` already measures the viewport on its
@@ -1172,30 +1175,33 @@ export class OverviewLayer {
         continue
       }
       const item = { node, x, y, w, h }
-      // Its title line stands where a spread's title does (title-line.css)
-      // — and a PDF's stays drawn here while the card fades in under it: a
-      // spread folding keeps its title in place throughout.
-      const badge = this.callbacks.titleBadge(node)
-      // One in motion carries its title line along while it keeps its size
-      // (an arrangement, a card arriving) or is picked up, and turns it as it
+      // Its title stands over it as the DOM's does (./nodeTitle.ts) — and a
+      // PDF's stays drawn here while the card fades in under it: a spread
+      // folding keeps its title in place throughout.
+      const title = this.callbacks.titleOf(node)
+      // One in motion carries its title along while it keeps its size (an
+      // arrangement, a card arriving) or is picked up, and turns it as it
       // turns; shrinking into a fold, it goes.
       const scale = pose ? pose.w / node.w : 1
-      if (badge && wearsTitleLine(node) && scale > 0.99) {
-        const th = SPREAD_METRICS.titleHeight * typeScale
+      if (title && scale > 0.99) {
         titles.push({
           node,
-          badge,
+          title,
           x,
-          y: y - SPREAD_METRICS.titleGap * typeScale - th,
+          y,
           w,
-          h: th,
-          // Its own width, never under a page's default (title-line.css).
-          maxW: Math.max(w, SPREAD_METRICS.pageWidth * typeScale),
+          h,
+          room:
+            (title.own ? this.callbacks.spreadTitleMaxWidth(node.id) : node.w) /
+            unit,
           turn: pose?.rotate
             ? { x: x + w / 2, y: y + h / 2, angle: pose.rotate }
             : undefined,
         })
       }
+      // An open spread's title node is its title and nothing else: still or
+      // carried, there is no card of it to draw.
+      if (title?.own) continue
       if (pose) {
         const laidOut = { x: pose.x, y: pose.y, w: node.w, h: node.h }
         if (!content?.claim(node, laidOut, lookOf(node, pose))) {
@@ -1205,13 +1211,7 @@ export class OverviewLayer {
       }
       if (content?.claim(node, rect)) continue
       if (isPlainText(node)) texts.push(item)
-      else if (badge && isSpreadTitle(node)) {
-        titles.push({
-          ...item,
-          badge,
-          maxW: this.callbacks.spreadTitleMaxWidth(node.id) * view.scale,
-        })
-      } else if (!isPortal(node)) visible.push(item)
+      else if (!isPortal(node)) visible.push(item)
     }
     // Bare text has no card to draw: at this distance it is its picture of
     // itself (../pictures/cardPictures.ts) where it has one, and a block of
@@ -1242,7 +1242,7 @@ export class OverviewLayer {
     }
     const drew = texts.length > 0 || (surface.text && titles.length > 0)
     if (visible.length === 0) {
-      if (surface.text) this.drawTitleLines(ctx, view, titles, unit)
+      if (surface.text) this.drawTitles(ctx, view, titles, unit)
       return drew
     }
 
@@ -1392,17 +1392,20 @@ export class OverviewLayer {
         ctx.fillText(lines[i], card.x + card.w / 2, top + i * lineHeight)
       }
     }
-    // 6. Title lines, over every card, as the stylesheet stacks them
-    //    (title-line.css).
-    this.drawTitleLines(ctx, view, titles, unit)
+    // 6. Titles, over every card, as the stylesheet stacks them
+    //    (node-title.css).
+    this.drawTitles(ctx, view, titles, unit)
     return true
   }
 
-  /** Title lines as the DOM draws them (title-line.css): the badge and the
-   * name, no box — and a card's ring when it is selected. An open spread's
-   * and its folded card's are the same line in the same place, so folding
-   * one changes nothing about it. */
-  private drawTitleLines(
+  /**
+   * Titles as the DOM draws them (./nodeTitle.ts, node-title.css): the bar,
+   * its mark, the name — cut short where the bar runs out of room — and the
+   * note, at the size `titleScale` holds it at and where
+   * `titleBox` puts it, which is where everything asking about it is told
+   * it is. And a node's ring when it is selected.
+   */
+  private drawTitles(
     ctx: CanvasRenderingContext2D,
     view: CanvasView,
     titles: readonly TitleLine[],
@@ -1410,116 +1413,117 @@ export class OverviewLayer {
   ): void {
     const palette = this.palette
     if (!palette || titles.length === 0) return
-    // What a world unit inside these cards measures on screen (`drawCards`).
+    const measure = this.callbacks.titleMeasure()
+    // What a pixel of the title's own measures on screen, before it is held.
     const typeScale = view.scale * unit
-    // Held at a floor on screen, as a group's label is (constants.ts's
-    // OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX): the name is what an overview is
-    // for. Everything in the line grows by the same factor, upwards from the
-    // title's bottom edge so it never covers the paper, and as far right as
-    // the whole name needs up to the document's width on screen; past that
-    // the name wraps, and the line grows further up — the paper never moves
-    // for it. A grown name wraps sooner, so it can take more lines the
-    // further out the board is. Never narrower than the title's own node
-    // grown, though: a one-column document far out would leave the name a
-    // character or two a line.
-    const grow = Math.max(
-      1,
-      OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX /
-        (SPREAD_TITLE_WORLD.nameFont * typeScale),
-    )
-    const u = typeScale * grow
-    const gap = SPREAD_TITLE_WORLD.gap * u
-    const badgeFont = `600 ${SPREAD_TITLE_WORLD.badgeFont * u}px ${palette.fontFamily}`
-    const nameFont = `500 ${SPREAD_TITLE_WORLD.nameFont * u}px ${palette.fontFamily}`
+    const scale = titleScale(typeScale)
+    const u = typeScale * scale
+    const look = TITLE_LOOK
+    const font = (size: number, weight: number) =>
+      `${weight} ${size * u}px ${measure.family}`
+    const width = (text: string, size: number, weight: number) =>
+      measure.text(text, size, weight)
     ctx.globalAlpha = 1
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'left'
-    for (const title of titles) {
-      const { turn } = title
+    for (const line of titles) {
+      const { title, turn } = line
       if (turn) {
         ctx.save()
         ctx.translate(turn.x, turn.y)
         ctx.rotate(turn.angle)
         ctx.translate(-turn.x, -turn.y)
       }
-      const name = nodeTitleText(title.node)
-      const badgeText = title.badge.text
-      const pad = SPREAD_TITLE_WORLD.padding * u
-      ctx.font = badgeFont
-      const badgeW =
-        ctx.measureText(badgeText).width +
-        SPREAD_TITLE_WORLD.badgePadding * 2 * u
-      ctx.font = nameFont
-      const measure = (text: string) => ctx.measureText(text).width
-      const lines = wrapTitleLines(
-        name,
-        Math.max(title.maxW, title.w * grow) - pad - badgeW - gap - pad,
-        Number.MAX_SAFE_INTEGER,
-        measure,
-      )
-      const nameW = Math.max(0, ...lines.map(measure))
-      const lineH =
-        SPREAD_TITLE_WORLD.nameFont * SPREAD_TITLE_WORLD.nameLineHeight * u
-      const h = Math.max(
-        title.h * grow,
-        lines.length * lineH + SPREAD_TITLE_WORLD.paddingBlock * 2 * u,
-      )
-      const box = {
-        x: title.x,
-        y: title.y + title.h - h,
-        w: Math.max(title.w, pad + badgeW + gap + nameW + pad),
-        h,
-      }
-      // Where it was drawn is where it is pointed at: the line reaches past
-      // the node's rectangle, and a press on any of it is a press on the
-      // title (`titleLineAt`).
-      this.titleRects.set(title.node.id, {
-        x: (box.x - view.tx) / view.scale,
-        y: (box.y - view.ty) / view.scale,
-        w: box.w / view.scale,
-        h: box.h / view.scale,
+      const content = measure.width(title)
+      const box = titleBox(line, title, content, scale, typeScale, line.room)
+      const toWorld = (rect: CardRect): CardRect => ({
+        x: (rect.x - view.tx) / view.scale,
+        y: (rect.y - view.ty) / view.scale,
+        w: rect.w / view.scale,
+        h: rect.h / view.scale,
       })
-      if (this.callbacks.isSelected(title.node.id)) {
-        ctx.strokeStyle = palette.accent
-        ctx.lineWidth = 2
+      // Where it was drawn is where it is pointed at: a press on any of it is
+      // a press on its node (`titleLineAt`).
+      this.titleRects.set(line.node.id, toWorld(box))
+      // The bar: its surface, where it has one, and the selection's ring.
+      const selected = this.callbacks.isSelected(line.node.id)
+      if (title.boxed || selected) {
         ctx.beginPath()
-        this.strokeRectPath(ctx, box)
+        ctx.roundRect(box.x, box.y, box.w, box.h, look.radius * u)
+        if (title.boxed) {
+          ctx.fillStyle = palette.background
+          ctx.fill()
+        }
+        ctx.strokeStyle = selected ? palette.accent : palette.border
+        ctx.lineWidth = selected ? 2 : 1
         ctx.stroke()
       }
       const mid = box.y + box.h / 2
-      // The type, on its tint.
-      const badgeH = SPREAD_TITLE_WORLD.badgeHeight * u
-      ctx.globalAlpha = 0.12
-      ctx.fillStyle = palette.badges[title.badge.tone]
-      ctx.fillRect(box.x + pad, mid - badgeH / 2, badgeW, badgeH)
-      ctx.globalAlpha = 1
-      ctx.font = badgeFont
+      let x = box.x + (look.border + look.paddingStart) * u
+      // The mark.
+      if (title.mark.kind === 'group') {
+        const size = look.icon * u
+        ctx.strokeStyle = palette.muted
+        ctx.lineWidth = 2 * (size / 24)
+        ctx.beginPath()
+        ctx.roundRect(
+          x + size / 8,
+          mid - size * 0.375,
+          size * 0.75,
+          size * 0.75,
+          size / 6,
+        )
+        ctx.moveTo(x + size / 8, mid - size / 8)
+        ctx.lineTo(x + size * 0.875, mid - size / 8)
+        ctx.stroke()
+        x += size
+      } else {
+        const badge = look.badge
+        const text = title.mark.text
+        const badgeW =
+          (width(text, badge.size, badge.weight) +
+            text.length * badge.spacing * badge.size +
+            badge.padding * 2) *
+          u
+        const badgeH = badge.height * u
+        ctx.fillStyle = palette.badges[title.mark.tone]
+        ctx.globalAlpha = 0.12
+        ctx.beginPath()
+        ctx.roundRect(x, mid - badgeH / 2, badgeW, badgeH, 4 * u)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        ctx.font = font(badge.size, badge.weight)
+        ctx.fillText(text, x + badge.padding * u, mid)
+        x += badgeW
+      }
+      x += look.gap * u
+      // The name, in what the rest leaves it.
+      const labelW = width(title.label, look.label.size, look.label.weight)
+      const room = Math.max(0, labelW - (content - box.w / typeScale / scale))
+      ctx.font = font(look.label.size, look.label.weight)
+      ctx.fillStyle = palette.text
       ctx.fillText(
-        badgeText,
-        box.x + pad + SPREAD_TITLE_WORLD.badgePadding * u,
+        fitText(title.label, room, (text) =>
+          width(text, look.label.size, look.label.weight),
+        ),
+        x,
         mid,
       )
-      ctx.font = nameFont
-      ctx.fillStyle = palette.text
-      const top = mid - ((lines.length - 1) * lineH) / 2
-      for (let i = 0; i < lines.length; i += 1) {
-        ctx.fillText(lines[i], box.x + pad + badgeW + gap, top + i * lineH)
+      x += (room + look.gap) * u
+      if (title.note !== null) {
+        ctx.font = font(look.note.size, look.note.weight)
+        ctx.fillStyle = palette.muted
+        ctx.fillText(title.note, x, mid)
+        x +=
+          (width(title.note, look.note.size, look.note.weight) + look.gap) * u
       }
       if (turn) ctx.restore()
     }
     ctx.lineWidth = 1
   }
 
-  /** Where the canvas last drew a card's title line (world units), which at
-   * this tier grows past its node to stay readable; null when it drew none,
-   * or the tier is not showing. */
-  titleRect(id: NodeId): CardRect | null {
-    if (!this.active) return null
-    return this.titleRects.get(id) ?? null
-  }
-
-  /** The card whose drawn title line is under `point` (world units), if
-   * any — the line reaches past its node's rectangle at this tier. */
+  /** The card whose drawn title is under `point` (world units), if any — a
+   * title reaches past its node's rectangle. */
   titleLineAt(point: Readonly<{ x: number; y: number }>): NodeId | null {
     if (!this.active) return null
     for (const [id, rect] of this.titleRects) {
@@ -2026,22 +2030,39 @@ export class OverviewLayer {
   }
 }
 
-/** A title line the canvas draws: an open spread's title node, or the
- * strip over a card that wears one (`drawTitleLines`). Screen pixels. */
+/** A title the canvas draws (`drawTitles`) over the node at `x, y, w, h`,
+ * screen pixels: an open spread's, which is its node, or one over a card. */
 type TitleLine = Readonly<{
   node: BoardNode
-  badge: TitleBadge
+  title: Title
   x: number
   y: number
   w: number
   h: number
-  /** How wide its line may run before the name wraps (title-line.css): the
-   * document's width, a folded card's being its own. Screen pixels. */
-  maxW: number
+  /** What it heads, in the node's own units (`titleBox`). */
+  room: number
   /** Turned with its card, picked up: by `angle` radians about the card's
    * centre, screen pixels. */
   turn?: Readonly<{ x: number; y: number; angle: number }>
 }>
+
+/** `text`, cut short with an ellipsis to fit in `room` as `measure`
+ * measures it. */
+function fitText(
+  text: string,
+  room: number,
+  measure: (text: string) => number,
+): string {
+  if (measure(text) <= room + 0.5) return text
+  let low = 0
+  let high = text.length
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (measure(`${text.slice(0, mid)}…`) <= room) low = mid
+    else high = mid - 1
+  }
+  return low === 0 ? '' : `${text.slice(0, low)}…`
+}
 
 /** A PDF card as its reader: not an open spread's title. */
 function isFoldedPdf(

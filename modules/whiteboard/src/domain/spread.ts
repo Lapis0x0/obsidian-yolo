@@ -33,6 +33,7 @@ import type {
   SpreadPage,
   SpreadRect,
 } from './fileFormat'
+import { NODE_TITLE } from './title'
 
 /**
  * How a spread is first laid out, in world units — whole cells of the board's
@@ -55,11 +56,12 @@ export const SPREAD_METRICS: SpreadMetrics = Object.freeze({
   /** Between two sheets, across and down: enough to read them as separate
    * pieces of paper rather than one long page. */
   gap: 26,
-  /** The title's height; it is one sheet wide (`layoutSpreadGrid`). */
-  titleHeight: 39,
-  /** Between the title and the first row of sheets: enough that a
-   * selected title's ring clears the paper, no more. */
-  titleGap: 6,
+  /** The title's height (domain/title.ts); it is one sheet wide
+   * (`layoutSpreadGrid`). */
+  titleHeight: NODE_TITLE.height,
+  /** Between the title and the first row of sheets, as between any title
+   * and what it heads. */
+  titleGap: NODE_TITLE.gap,
 })
 
 /** A page's own proportions — its width and height in any one unit. */

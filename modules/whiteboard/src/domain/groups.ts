@@ -27,6 +27,7 @@ import {
 import { fileNodeKind } from './naming'
 import { isPortal } from './portals'
 import { isSpreadTitle, withTitleAbove } from './spread'
+import { NODE_TITLE } from './title'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
@@ -36,15 +37,6 @@ export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
  * (`I8(P8(bboxes), 20)`), and now the margin the frame always keeps.
  */
 export const GROUP_PADDING = 20
-
-/**
- * A group's title bar: a fixed-width strip outside the frame, over its
- * top-left corner, left edges aligned — `gap` above the frame. Whole cells of
- * the board's 13-unit grid where it can be; the height and gap are an open
- * PDF spread's title's (domain/spread.ts's SPREAD_METRICS), so the two read
- * as one kind of heading. A frame is never narrower than its title bar.
- */
-export const GROUP_TITLE = Object.freeze({ width: 312, height: 39, gap: 6 })
 
 /**
  * A collapsed group's box: as wide as its title bar, under it where the
@@ -69,7 +61,7 @@ export function collapsedGroupSize(
   const { padding, gap, columns, rows: most, cellHeight } = GROUP_COLLAPSED
   const rows = Math.max(1, Math.min(most, Math.ceil(count / columns)))
   return {
-    w: GROUP_TITLE.width * scale,
+    w: NODE_TITLE.room * scale,
     h: (padding * 2 + rows * cellHeight + (rows - 1) * gap) * scale,
   }
 }
@@ -83,8 +75,7 @@ export function collapsedGroupCells(
 ): GroupRect[] {
   const { padding, gap, columns, rows, cellHeight } = GROUP_COLLAPSED
   const shown = Math.min(count, columns * rows)
-  const cellW =
-    (GROUP_TITLE.width - padding * 2 - gap * (columns - 1)) / columns
+  const cellW = (NODE_TITLE.room - padding * 2 - gap * (columns - 1)) / columns
   const cells: GroupRect[] = []
   for (let index = 0; index < shown; index += 1) {
     const column = index % columns
@@ -448,11 +439,11 @@ const UNIT_SCALE: ScaleOf = () => 1
 /** The whole of a group seen from outside: its frame and the title bar over
  * it. */
 export function groupOuterRect(frame: GroupRect, scale = 1): GroupRect {
-  const lead = (GROUP_TITLE.height + GROUP_TITLE.gap) * scale
+  const lead = (NODE_TITLE.height + NODE_TITLE.gap) * scale
   return {
     x: frame.x,
     y: frame.y - lead,
-    w: Math.max(frame.w, GROUP_TITLE.width * scale),
+    w: Math.max(frame.w, NODE_TITLE.room * scale),
     h: frame.h + lead,
   }
 }
@@ -561,7 +552,7 @@ function computeFrame(
   path.delete(group.id)
   const union = groupRectForNodes(parts, 0)
   const frame = union
-    ? { ...union, w: Math.max(union.w, GROUP_TITLE.width * scale) }
+    ? { ...union, w: Math.max(union.w, NODE_TITLE.room * scale) }
     : null
   memo.set(group.id, frame)
   return frame

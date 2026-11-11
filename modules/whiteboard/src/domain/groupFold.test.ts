@@ -8,8 +8,9 @@ import {
   isFolded,
   settleGroups,
 } from './groupFold'
-import { GROUP_TITLE, collapsedGroupSize, groupDropDecision } from './groups'
+import { collapsedGroupSize, groupDropDecision } from './groups'
 import { moveNodes } from './operations'
+import { NODE_TITLE } from './title'
 
 const card = (id: string, x: number, y: number): BoardNode => ({
   id,
@@ -65,7 +66,7 @@ describe('collapsing a group', () => {
       y: node(open, 'g')?.y,
       ...collapsedGroupSize(2),
     })
-    expect(box?.w).toBe(GROUP_TITLE.width)
+    expect(box?.w).toBe(NODE_TITLE.room)
     // An edge among them goes with them; one from outside goes to the box.
     expect(folded.edges).toEqual([
       { ...edge('ax', 'g', 'out'), fromMember: 'a' },

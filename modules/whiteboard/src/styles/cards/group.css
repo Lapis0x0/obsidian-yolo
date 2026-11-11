@@ -34,8 +34,8 @@
   contain: layout style;
 }
 
-/* An unselected frame takes no pointer events — only its title bar does
- * (below).
+/* An unselected frame takes no pointer events — only its title does
+ * (node-title.css).
  * A group is mostly empty space: if its interior were grabbable, every press
  * aimed at the canvas inside it — a marquee, a double-click to make a card —
  * would hit the group instead. So until it is spoken for, the label is the
@@ -96,152 +96,6 @@
   box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
 }
 
-/* The title bar (ui/canvas/groupTitle.ts): outside the frame, over its
- * top-left corner, left edges aligned — the group's name, how much it holds,
- * and what is done to it as a whole. Its width, height and gap are set from
- * domain/groups.ts's GROUP_TITLE, which frames are fitted around. Sized in
- * world units, like everything on the board: it belongs to the group, so it
- * shrinks with it (in the overview tier it is held at a floor on screen, by a
- * scale from its bottom-left corner — cardRenderer.ts's
- * `applyGroupTitleScale`).
- *
- * The same kind of heading as an open PDF's title (title-line.css): the name
- * at 16px/500, a muted note beside it — here a surface of its own, since it
- * stands for a region rather than over a sheet of paper. */
-.yolo-whiteboard-group-title {
-  position: absolute;
-  left: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  padding: 0 6px 0 11px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 9px;
-  background: var(--background-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  font-family: var(--font-interface);
-  transform-origin: 0 100%;
-  /* The group's handle: what selects it, what drags it (carrying what it
-   * holds), and what a double-click renames. */
-  pointer-events: auto;
-}
-
-.yolo-whiteboard-root .yolo-whiteboard-group-title {
-  cursor: grab;
-}
-
-.yolo-whiteboard-root .yolo-whiteboard-group-title:active {
-  cursor: grabbing;
-}
-
-/* Held at a size on screen from far away (the overview tier): there the
- * bar is only the group's name — what an overview is for — not a strip of
- * controls blown up across the board. */
-.yolo-whiteboard-group-title.yolo-whiteboard-group-title-held {
-  /* Over the inline width the bar is given from GROUP_TITLE. */
-  width: max-content !important;
-  max-width: none;
-}
-
-.yolo-whiteboard-group-title-held
-  > :is(
-    .yolo-whiteboard-group-count,
-    .yolo-whiteboard-group-title-spacer,
-    .yolo-whiteboard-group-action
-  ) {
-  display: none;
-}
-
-/* Selected, the bar wears the selection ring with the frame. */
-.yolo-whiteboard-group.yolo-whiteboard-card-selected
-  > .yolo-whiteboard-group-title {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
-}
-
-.yolo-whiteboard-group.yolo-whiteboard-themed.yolo-whiteboard-card-selected
-  > .yolo-whiteboard-group-title {
-  border-color: var(--yolo-whiteboard-color);
-  box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
-}
-
-.yolo-whiteboard-group-title-icon {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.yolo-whiteboard-group-label {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--text-normal);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.yolo-whiteboard-group-count {
-  flex: none;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.yolo-whiteboard-group-title-spacer {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-/* A text button: the bar's chrome, quiet until pointed at. Obsidian styles
- * every <button>; these are reset to the bar's own look. */
-button.yolo-whiteboard-group-action {
-  flex: none;
-  height: 26px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  box-shadow: none;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-button.yolo-whiteboard-group-action:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
-
-/* Being renamed (editingController.ts makes the name itself editable). The
- * text does not move, change size or change weight — all that happens is
- * that it stops being clipped and gains the chrome of a field, so the rename
- * reads as the name opening up rather than as a box appearing over it. The
- * negative margin cancels the padding, which keeps the first glyph on the
- * pixel it was already on. */
-.yolo-whiteboard-group-label[contenteditable] {
-  flex: 1 1 auto;
-  overflow: visible;
-  text-overflow: clip;
-  padding: 0 4px;
-  margin-left: -4px;
-  border-radius: var(--radius-s, 4px);
-  background: var(--background-primary);
-  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
-  outline: none;
-  cursor: text;
-}
-
 /* The pointer is inside this frame and on nothing else there
  * (interactionController.ts's `setHintedGroup`). The frame takes no pointer
  * events, so it cannot answer a hover itself — and "why can't I grab this
@@ -259,7 +113,7 @@ button.yolo-whiteboard-group-action:hover {
   border-color: var(--yolo-whiteboard-color);
 }
 
-.yolo-whiteboard-group-hinted > .yolo-whiteboard-group-title {
+.yolo-whiteboard-group-hinted > .yolo-whiteboard-title {
   border-color: var(--background-modifier-border-focus);
 }
 
@@ -274,7 +128,7 @@ button.yolo-whiteboard-group-action:hover {
   box-shadow: inset 0 0 0 1px var(--interactive-accent);
 }
 
-.yolo-whiteboard-group-drop-target > .yolo-whiteboard-group-title {
+.yolo-whiteboard-group-drop-target > .yolo-whiteboard-title {
   border-color: var(--interactive-accent);
 }
 
@@ -284,7 +138,7 @@ button.yolo-whiteboard-group-action:hover {
 }
 
 .yolo-whiteboard-themed.yolo-whiteboard-group-drop-target
-  > .yolo-whiteboard-group-title {
+  > .yolo-whiteboard-title {
   border-color: var(--yolo-whiteboard-color);
 }
 

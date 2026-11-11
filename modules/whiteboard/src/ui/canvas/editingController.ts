@@ -28,17 +28,14 @@ import { isMarkdownPath } from '../../domain/naming'
 import { updateEdge, updateNode } from '../../domain/operations'
 import { isPortal } from '../../domain/portals'
 import { resolveCardContext } from '../../host/cardContext'
-import {
-  CARD_ENTERED_CLASS,
-  EDIT_PERSIST_THROTTLE_MS,
-  GROUP_LABEL_CLASS,
-} from '../constants'
+import { CARD_ENTERED_CLASS, EDIT_PERSIST_THROTTLE_MS } from '../constants'
 import { blockStartLine } from '../lod'
 
 import type { CardRenderer } from './cardRenderer'
 import type { CanvasCore } from './core'
 import type { EdgeLayer } from './edgeLayer'
 import { KEY_LAYER_RANK, type KeyLayers } from './keymapController'
+import { TITLE_LABEL_CLASS } from './nodeTitle'
 
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 /** On a card whose body is being written into by rung one
@@ -799,7 +796,7 @@ export class EditingController {
     return (
       this.deps.cards
         .getRuntime(target.id)
-        ?.el?.querySelector<HTMLElement>(`.${GROUP_LABEL_CLASS}`) ?? null
+        ?.el?.querySelector<HTMLElement>(`.${TITLE_LABEL_CLASS}`) ?? null
     )
   }
 

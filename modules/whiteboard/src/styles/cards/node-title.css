@@ -1,0 +1,166 @@
+/* --- a node's title ---------------------------------------------------------
+ * The one bar over a node that says what it is and what it is called
+ * (ui/canvas/nodeTitle.ts): a group's, a PDF's — folded into its card or
+ * spread out — and a portal's are the same bar. A mark, the name, a note.
+ *
+ * Over its node's top-left corner, left edges aligned, NODE_TITLE.gap above
+ * it and NODE_TITLE.height tall (domain/title.ts — set inline, since the
+ * board's layout keeps that room clear). An open spread's title is a node of
+ * its own, and the bar is that node's whole box (`-own`).
+ *
+ * Sized in world units, like everything on the board: it belongs to its node,
+ * so it shrinks with it — down to a floor on screen, where it is held by a
+ * scale from its bottom-left corner (`--yolo-whiteboard-title-scale`,
+ * nodeTitle.ts's `titleScale`). As wide as what it says, up to what it heads
+ * (its node, or `--yolo-whiteboard-title-room`, an open spread's document) —
+ * or up to NODE_TITLE.room on screen where that is less — and past that the
+ * name is cut short: one line, so one height.
+ *
+ * Every number here is nodeTitle.ts's TITLE_LOOK too: the overview canvas
+ * draws the bars the DOM does not with them, and everything asking where a
+ * bar is is told from them. Change one, change both. */
+.yolo-whiteboard-title {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: max(
+    calc(
+      var(--yolo-whiteboard-title-room, 100%) /
+        var(--yolo-whiteboard-title-scale, 1)
+    ),
+    312px
+  );
+  padding: 0 6px 0 11px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 9px;
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  font-family: var(--font-interface);
+  white-space: nowrap;
+  transform: scale(var(--yolo-whiteboard-title-scale, 1));
+  transform-origin: 0 100%;
+  /* The node's handle: what selects it and what drags it, wherever the rest
+   * of it lets the pointer through — a group's frame does not. */
+  pointer-events: auto;
+}
+
+.yolo-whiteboard-title.yolo-whiteboard-title-own {
+  bottom: 0;
+}
+
+/* A document's title (nodeTitle.ts's `boxed`): a heading over its paper, on
+ * no surface of its own — its border is there only to show the selection's
+ * ring. */
+.yolo-whiteboard-title.yolo-whiteboard-title-bare {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.yolo-whiteboard-root .yolo-whiteboard-title {
+  cursor: grab;
+}
+
+.yolo-whiteboard-root .yolo-whiteboard-title:active {
+  cursor: grabbing;
+}
+
+/* Over every other card: a title hidden under the sheets of a neighbouring
+ * spread, or a card set down near it, no longer names anything. Cards
+ * otherwise stack in mount order (drag.css), and each is its own stacking
+ * context (card.css's `contain`), so the lift is the node's. A dragged card
+ * still goes over it, a portal stays behind everything (portal.css) — what
+ * shows through it are cards of their own, which it must not cover — and a
+ * group's frame stays behind what it holds (group.css). The overview canvas
+ * draws these titles last for the same reason (overviewLayer.ts). */
+.yolo-whiteboard-card.yolo-whiteboard-spread-title,
+.yolo-whiteboard-card:not(.yolo-whiteboard-portal):has(
+    > .yolo-whiteboard-title
+  ) {
+  z-index: 1;
+}
+
+/* Selected, the bar wears the node's selection ring. */
+.yolo-whiteboard-card-selected > .yolo-whiteboard-title {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.yolo-whiteboard-themed.yolo-whiteboard-card-selected > .yolo-whiteboard-title {
+  border-color: var(--yolo-whiteboard-color);
+  box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
+}
+
+/* The marks: a group's frame, or the kind of document. */
+.yolo-whiteboard-title-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.yolo-whiteboard-title-badge {
+  flex: none;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+}
+
+.yolo-whiteboard-title-badge-red {
+  color: var(--color-red);
+  background-color: rgba(var(--color-red-rgb), 0.12);
+}
+
+.yolo-whiteboard-title-badge-blue {
+  color: var(--color-blue);
+  background-color: rgba(var(--color-blue-rgb), 0.12);
+}
+
+.yolo-whiteboard-title-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-normal);
+  text-overflow: ellipsis;
+}
+
+.yolo-whiteboard-title-note {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* A group's name being renamed (editingController.ts makes the name itself
+ * editable). The text does not move, change size or change weight — all
+ * that happens is that it stops being clipped and gains the chrome of a
+ * field, so the rename reads as the name opening up rather than as a box
+ * appearing over it. The negative margin cancels the padding, which keeps
+ * the first glyph on the pixel it was already on. */
+.yolo-whiteboard-title-label[contenteditable] {
+  flex: 1 1 auto;
+  overflow: visible;
+  text-overflow: clip;
+  padding: 0 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+  outline: none;
+  cursor: text;
+}

@@ -168,7 +168,6 @@ import { ExportController } from './canvas/exportController'
 import { FindController, type FindHit } from './canvas/findController'
 import { FindMarks } from './canvas/findMarks'
 import { FramePace } from './canvas/framePace'
-import type { GroupTitleAction } from './canvas/groupTitle'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -177,6 +176,14 @@ import {
 import { KEY_LAYER_RANK, KeymapController } from './canvas/keymapController'
 import { Minimap } from './canvas/minimap'
 import { Motions } from './canvas/motions'
+import {
+  type Title,
+  type TitleMeasure,
+  createTitleMeasure,
+  titleBox,
+  titleOf,
+  titleScale,
+} from './canvas/nodeTitle'
 import { OverviewLayer, type PortalLayer } from './canvas/overviewLayer'
 import { PassageHandles } from './canvas/passageHandles'
 import { PassagePoints } from './canvas/passagePoints'
@@ -195,8 +202,7 @@ import {
   selectionAnchor,
   textPassageEnds,
 } from './canvas/textPassages'
-import { titleBadgeOf } from './canvas/titleLine'
-import { ToolbarController } from './canvas/toolbarController'
+import { type GroupAction, ToolbarController } from './canvas/toolbarController'
 import { CanvasControls } from './canvasControls'
 import {
   ARRANGE_ANIMATION_EASING,
@@ -212,12 +218,10 @@ import {
   FOLD_COVER_MAX_MS,
   FRAME_ON_TIME_PERIODS,
   GRID_WORLD_STEP_PX,
-  GROUP_LABEL_WORLD_FONT_PX,
   INTERACTING_TIMEOUT_MS,
   MIN_SCALE_FIT_MARGIN,
   MOUNT_QUOTA_PER_FRAME,
   NODE_ENTER_FROM_SCALE,
-  OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
   PORTAL_BORDER_WORLD_PX,
@@ -683,6 +687,10 @@ export class WhiteboardCanvas {
    * `updateOverviewState`. Updated at recomputeVisibility's ~70ms throttle,
    * behind a hysteresis band. */
   private overview = false
+  /** The camera scale titles were last sized for. */
+  private titlesScaledAt = 0
+  /** How wide titles lay out (`titleMeasure`), once the font is known. */
+  private titleMeasureOf: TitleMeasure | null = null
   /**
    * The tier has been left and the cards it unmounted are not all back yet, so
    * the canvas is still drawing them and the edge DOM is still out of the
@@ -2149,7 +2157,8 @@ export class WhiteboardCanvas {
       getView: this.core.getView,
       getCardNodes: () => this.ownCardNodes,
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
-      titleBadge: (node) => titleBadgeOf(node, this.core.t),
+      titleOf: (node) => this.titleOf(node),
+      titleMeasure: () => this.titleMeasure(),
       getGroupNodes: () => this.groupNodes,
       portalClipOf: (id) =>
         portalOf(id, this.sources.composition.portals)?.clip ?? null,
@@ -2440,14 +2449,10 @@ export class WhiteboardCanvas {
       clipOf: (id) => this.clipOf(id),
       sourcePathOf: (id) => this.sourcePathOf(id),
       scaleOf: (id) => this.scaleOf(id),
-      groupLabelFontPx: (id) => this.groupLabelFontPx(id),
-      groupMemberCount: (id) => {
-        const group = this.nodesById.get(id)
-        return group?.type === 'group'
-          ? groupMemberCount(group, this.board.nodes)
-          : 0
-      },
-      onGroupAction: (id, action) => this.runGroupAction(id, action),
+      titleOf: (node) => this.titleOf(node),
+      titleScale: (id) => titleScale(this.seenScaleOf(id)),
+      groupMemberCount: (id) => this.memberCountOf(id),
+      expandGroup: (id) => this.runGroupAction(id, 'expand'),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -2599,6 +2604,13 @@ export class WhiteboardCanvas {
       // Which pictures are nearest moved with it — the ones held past the
       // budget are the nearest ones.
       this.pictures?.invalidate()
+      // A title stops shrinking at a size on screen, and comes to it on the
+      // frame the zoom does, not the next visibility pass.
+      const { scale } = this.cameraController.view
+      if (scale !== this.titlesScaledAt) {
+        this.titlesScaledAt = scale
+        this.cardRenderer.syncTitleScales()
+      }
     })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
@@ -2608,8 +2620,8 @@ export class WhiteboardCanvas {
       getBoard: this.core.getBoard,
       getNode: this.core.getNode,
       getLiveRects: () => this.interaction.liveNodeRects,
-      getDrawnTitleRect: (id) => this.overviewLayer?.titleRect(id) ?? null,
-      scaleOf: (id) => this.scaleOf(id),
+      titleRectOf: (id, rect) => this.titleRectOf(id, rect),
+      groupAction: (id, action) => this.runGroupAction(id, action),
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
@@ -3876,10 +3888,61 @@ export class WhiteboardCanvas {
     this.setSelection([id])
   }
 
-  /** What a button on a group's title bar asks for (./canvas/groupTitle.ts).
-   * "Fit to content" lets go of the size the frame was given by hand, and
-   * the frame is its members' again. */
-  private runGroupAction(id: NodeId, action: GroupTitleAction): void {
+  /** The title `node` wears, as everything that draws or places one is
+   * told (./canvas/nodeTitle.ts). */
+  private titleOf(node: BoardNode): Title | null {
+    return titleOf(node, {
+      t: this.core.t,
+      memberCount: (id) => this.memberCountOf(id),
+    })
+  }
+
+  private memberCountOf(id: NodeId): number {
+    const group = this.nodesById.get(id)
+    return group?.type === 'group'
+      ? groupMemberCount(group, this.board.nodes)
+      : 0
+  }
+
+  /** How wide titles lay out, in the font the DOM sets them in — read once,
+   * as the first is asked about. */
+  private titleMeasure(): TitleMeasure {
+    if (!this.titleMeasureOf) {
+      const style = this.context
+        .getWindow()
+        .getComputedStyle(this.context.contentEl)
+      const family =
+        style.getPropertyValue('--font-interface').trim() ||
+        style.fontFamily ||
+        'sans-serif'
+      this.titleMeasureOf = createTitleMeasure(family)
+    }
+    return this.titleMeasureOf
+  }
+
+  /** Where `id`'s title is on the board over its node shown at `rect`, world
+   * units — the same box the DOM and the overview draw it in
+   * (./canvas/nodeTitle.ts's `titleBox`); null for a node that wears none. */
+  private titleRectOf(id: NodeId, rect: CardRect): CardRect | null {
+    const node = this.nodesById.get(id)
+    const title = node ? this.titleOf(node) : null
+    if (!title) return null
+    const unit = this.scaleOf(id)
+    const room = title.own ? this.spreadTitleMaxWidthOf(id) : rect.w
+    return titleBox(
+      rect,
+      title,
+      this.titleMeasure().width(title),
+      titleScale(this.seenScaleOf(id)),
+      unit,
+      room / unit,
+    )
+  }
+
+  /** What the toolbar asks of a group, or a click on its collapsed box.
+   * "Fit to content" lets go of the size the frame was given by hand, and the
+   * frame is its members' again. */
+  private runGroupAction(id: NodeId, action: GroupAction): void {
     if (!this.canEdit) return
     switch (action) {
       case 'fit':
@@ -4837,7 +4900,9 @@ export class WhiteboardCanvas {
     if (!this.overview) {
       this.edgeLayer.updateVisibility(rect, this.edgePinnedIds(moved))
     }
-    this.syncGroupLabelScale()
+    // Portals zoom on their own: what is behind one is seen at a new scale
+    // without the camera's changing.
+    this.cardRenderer.syncTitleScales()
   }
 
   /** Which open portals show what is behind them at a size the overview
@@ -5385,39 +5450,6 @@ export class WhiteboardCanvas {
     this.worldEl.classList.remove(WORLD_OVERVIEW_CLASS)
     this.overviewLayer?.setActive(false)
     this.editing.syncEdgeRenameChrome()
-  }
-
-  /**
-   * Keeps a group's label readable in the overview tier.
-   *
-   * The label is drawn in world units like everything else in the world layer,
-   * so at 0.05 it is a third of a pixel of type — and the frames are the only
-   * landmarks left down there, which unreadable ones are not. Counter-scaled
-   * to a floor of ~12 screen pixels while the tier lasts, and handed back to
-   * the stylesheet on the way out, where the label is part of the drawing
-   * again.
-   *
-   * Not the world layer's `--yolo-whiteboard-zoom-multiplier` treatment: that
-   * law (1/sqrt) is for chrome that should still grow with the zoom, and this
-   * is a floor. Written on the few dozen label elements rather than as a
-   * custom property — see cardRenderer's `setGroupLabelFontSize`.
-   */
-  private syncGroupLabelScale(): void {
-    this.cardRenderer.syncGroupLabelFontSizes()
-  }
-
-  /** The floor `syncGroupLabelScale` holds a group's label to, in the
-   * group's own units: by the scale the group is seen at, and while the
-   * cards around it are drawn rather than built — the board's own in the
-   * tier, a portal's while it draws what is behind it. */
-  private groupLabelFontPx(id: NodeId): number | null {
-    const tier = this.portalTierOf(id)
-    if (tier === null ? !this.overview : tier === 'built') return null
-    const seen = this.seenScaleOf(id)
-    return Math.max(
-      GROUP_LABEL_WORLD_FONT_PX,
-      OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX / seen,
-    )
   }
 
   /** One of this frame's content builds, if any is left (`contentBuildsLeft`). */

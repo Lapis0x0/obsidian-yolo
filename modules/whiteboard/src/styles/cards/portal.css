@@ -23,7 +23,7 @@
   pointer-events: none;
 }
 
-.yolo-whiteboard-portal > .yolo-whiteboard-card-title,
+.yolo-whiteboard-portal > .yolo-whiteboard-title,
 .yolo-whiteboard-portal > .yolo-whiteboard-portal-edge {
   pointer-events: auto;
 }

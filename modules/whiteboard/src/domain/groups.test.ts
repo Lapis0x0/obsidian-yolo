@@ -6,7 +6,6 @@ import {
 } from './fileFormat'
 import {
   GROUP_PADDING,
-  GROUP_TITLE,
   arrangeTargets,
   boardBlocks,
   carryGroupMembers,
@@ -26,6 +25,7 @@ import {
   setMembership,
   sizeGroup,
 } from './groups'
+import { NODE_TITLE } from './title'
 
 function group(
   id: string,
@@ -228,7 +228,7 @@ describe('fitGroups', () => {
     const small = fitGroups(
       boardWith([group('g', 0, 0, 10, 10, ['a']), card('a', 0, 0, 50, 50)]),
     )
-    expect(node(small, 'g').w).toBe(GROUP_TITLE.width)
+    expect(node(small, 'g').w).toBe(NODE_TITLE.room)
   })
 
   it('is its bounds and its members together — never less than what it holds', () => {
@@ -267,7 +267,7 @@ describe('fitGroups', () => {
     expect(inner).toMatchObject({ x: 80, y: 180, w: 440, h: 140 })
     expect(node(board, 'outer')).toMatchObject({
       x: inner.x - GROUP_PADDING,
-      y: inner.y - GROUP_TITLE.height - GROUP_TITLE.gap - GROUP_PADDING,
+      y: inner.y - NODE_TITLE.height - NODE_TITLE.gap - GROUP_PADDING,
     })
   })
 

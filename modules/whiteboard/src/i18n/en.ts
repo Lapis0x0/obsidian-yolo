@@ -109,6 +109,9 @@ export const en = {
     openReader: 'Open in reader',
     openSpread: 'Spread out pages',
     closeSpread: 'Collapse to reader',
+    collapseGroup: 'Collapse group',
+    expandGroup: 'Expand group',
+    fitGroup: 'Fit to content',
   },
   // The six preset names are Obsidian's own canvas palette.
   color: {
@@ -186,9 +189,6 @@ export const en = {
   group: {
     count: '{count} items',
     countOne: '1 item',
-    fitToContent: 'Fit to content',
-    collapse: 'Collapse',
-    expand: 'Expand',
     dropInto: 'Move into {name}',
     dropIntoUnnamed: 'Move into group',
     dropOut: 'Remove from group',

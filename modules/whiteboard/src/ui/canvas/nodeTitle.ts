@@ -1,0 +1,316 @@
+// A node's title (styles/cards/node-title.css): the one bar over a node that
+// says what it is and what it is called. A group, a PDF — folded into its
+// card or spread out — and a portal each wear one, and it is the same bar on
+// all of them: a mark (a group's frame, or a badge naming the kind of
+// document), the name, and a note (how much a group holds). It is the node's
+// handle: a press on it selects the node, a drag moves it, and a group's is
+// renamed by a double-click. What is done to the node as a whole is the
+// selection toolbar's, which stands over the title.
+//
+// What it says is `titleOf`'s, and how large it is drawn `titleBox`'s: both
+// hands that draw a board draw it from them — the DOM (`createTitle`), and
+// the overview canvas for a card it draws (overviewLayer.ts's `drawTitles`) —
+// and everything that asks where it is (the toolbar standing over it, a press
+// landing on it) asks `titleBox` too. So the bar is one thing however it is
+// drawn, and wherever it is asked about.
+//
+// The room it takes on the board is domain/title.ts's NODE_TITLE: as tall as
+// that, that far above what it heads, left edges aligned — except an open
+// spread's, which is a node of its own and is its own box (`own`).
+
+import type { BoardNode, NodeId } from '../../domain/fileFormat'
+import { basenameWithoutExtension, fileNodeKind } from '../../domain/naming'
+import { isSpreadTitle } from '../../domain/spread'
+import { NODE_TITLE } from '../../domain/title'
+import type { WhiteboardTranslation } from '../../i18n'
+import { TITLE_MIN_SCREEN_PX } from '../constants'
+
+export const TITLE_CLASS = 'yolo-whiteboard-title'
+/** An open spread's title, which is its own node's whole box. */
+const OWN_CLASS = 'yolo-whiteboard-title-own'
+/** A title with no surface of its own (`boxed`). */
+const BARE_CLASS = 'yolo-whiteboard-title-bare'
+/** The name, where a group's rename edits it (editingController.ts). */
+export const TITLE_LABEL_CLASS = 'yolo-whiteboard-title-label'
+const ICON_CLASS = 'yolo-whiteboard-title-icon'
+const BADGE_CLASS = 'yolo-whiteboard-title-badge'
+const NOTE_CLASS = 'yolo-whiteboard-title-note'
+
+/** A badge's tint: the theme's colour of that name. */
+export type TitleBadgeTone = 'red' | 'blue'
+
+/** What a title is marked with: a group's frame, or the kind of document. */
+export type TitleMark =
+  | Readonly<{ kind: 'group' }>
+  | Readonly<{ kind: 'badge'; text: string; tone: TitleBadgeTone }>
+
+export type Title = Readonly<{
+  mark: TitleMark
+  label: string
+  /** Beside the name, muted: how much a group holds. */
+  note: string | null
+  /** An open spread's: the node is the title's box, rather than headed by
+   * it. */
+  own: boolean
+  /** On a surface of its own — a group's, which heads a region of the board
+   * and would otherwise stand on nothing. A document's stands over its
+   * paper as a heading does, with none: the bar's border shows only as the
+   * selection's ring. */
+  boxed: boolean
+}>
+
+/** What `titleOf` needs to know beyond the node. */
+export type TitleContext = Readonly<{
+  t: WhiteboardTranslation
+  memberCount: (id: NodeId) => number
+}>
+
+/** The title `node` wears, or null for a node that wears none. */
+export function titleOf(node: BoardNode, about: TitleContext): Title | null {
+  const { t } = about
+  if (node.type === 'group') {
+    const count = about.memberCount(node.id)
+    return {
+      mark: { kind: 'group' },
+      label: node.label ?? '',
+      note:
+        count === 1
+          ? t('group.countOne')
+          : t('group.count').replace('{count}', String(count)),
+      own: false,
+      boxed: true,
+    }
+  }
+  if (node.type !== 'file') return null
+  const label = basenameWithoutExtension(node.file)
+  switch (fileNodeKind(node.file)) {
+    case 'pdf': {
+      const open = isSpreadTitle(node)
+      return {
+        mark: { kind: 'badge', text: 'PDF', tone: 'red' },
+        label,
+        note: null,
+        own: open,
+        boxed: false,
+      }
+    }
+    case 'board':
+      return {
+        mark: { kind: 'badge', text: t('card.boardBadge'), tone: 'blue' },
+        label,
+        note: null,
+        own: false,
+        boxed: false,
+      }
+    default:
+      return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Its size. The stylesheet's numbers (node-title.css), stated once here for
+// everything that has to agree with what the DOM lays out: the canvas that
+// draws a title the DOM does not, and whatever asks where one is.
+// ---------------------------------------------------------------------------
+
+/** The bar's insides, in its own pixels — node-title.css's. */
+export const TITLE_LOOK = Object.freeze({
+  paddingStart: 11,
+  paddingEnd: 6,
+  border: 1,
+  radius: 9,
+  gap: 8,
+  icon: 15,
+  label: Object.freeze({ size: 16, weight: 500 }),
+  note: Object.freeze({ size: 12, weight: 400 }),
+  badge: Object.freeze({
+    size: 12,
+    weight: 600,
+    padding: 6,
+    height: 20,
+    /** letter-spacing, in em. */
+    spacing: 0.02,
+  }),
+})
+
+/** How wide `text` is at `size` px and `weight`, in the title's font. */
+export type MeasureText = (text: string, size: number, weight: number) => number
+
+/** How wide `title` lays out with nothing cut short, in its own pixels — the
+ * width it takes when it has room for all of it. */
+export function titleContentWidth(title: Title, measure: MeasureText): number {
+  const look = TITLE_LOOK
+  const badge = look.badge
+  const parts = [
+    title.mark.kind === 'group'
+      ? look.icon
+      : measure(title.mark.text, badge.size, badge.weight) +
+        title.mark.text.length * badge.spacing * badge.size +
+        badge.padding * 2,
+    measure(title.label, look.label.size, look.label.weight),
+    ...(title.note === null
+      ? []
+      : [measure(title.note, look.note.size, look.note.weight)]),
+  ]
+  return (
+    look.border * 2 +
+    look.paddingStart +
+    parts.reduce((sum, part) => sum + part, 0) +
+    look.gap * (parts.length - 1) +
+    look.paddingEnd
+  )
+}
+
+/**
+ * How much a title is scaled up from its bottom-left corner for a node seen
+ * at `seen` (the camera's scale, times the portals' it is behind): 1 while
+ * its name is at least TITLE_MIN_SCREEN_PX on screen, and as much as holds
+ * it there past that. At every zoom, whichever hand draws it: a title is what
+ * a board seen from far away is read by.
+ */
+export function titleScale(seen: number): number {
+  return Math.max(1, TITLE_MIN_SCREEN_PX / (TITLE_LOOK.label.size * seen))
+}
+
+type Rect = Readonly<{ x: number; y: number; w: number; h: number }>
+
+/**
+ * Where `title` is on the board, in world units, over `node` as it is shown
+ * now: scaled by `scale` (`titleScale`) inside a node drawn at `unit` (its
+ * portals' scale, 1 for the board's own), on `room` of its own units —
+ * what it heads, a group's frame or a document's width.
+ *
+ * As wide as it lays out (`content`), up to `room` — or up to NODE_TITLE.room
+ * on screen when `room` is less, a small card's or a shrinking board's —
+ * and past that its name is cut short: one line, so one height.
+ */
+export function titleBox(
+  node: Rect,
+  title: Title,
+  content: number,
+  scale: number,
+  unit: number,
+  room: number,
+): Rect {
+  const width = Math.min(content, Math.max(room / scale, NODE_TITLE.room))
+  const h = NODE_TITLE.height * scale * unit
+  const bottom = title.own ? node.y + node.h : node.y - NODE_TITLE.gap * unit
+  return { x: node.x, y: bottom - h, w: width * scale * unit, h }
+}
+
+// ---------------------------------------------------------------------------
+// The DOM's bar.
+// ---------------------------------------------------------------------------
+
+/** The bar for `title`, built once per mount: a node's element is rebuilt
+ * or its title replaced whenever what it says changes, so there is nothing
+ * here to keep in step. */
+export function createTitle(doc: Document, title: Title): HTMLElement {
+  const bar = doc.createElement('div')
+  bar.className = [
+    TITLE_CLASS,
+    ...(title.own ? [OWN_CLASS] : []),
+    ...(title.boxed ? [] : [BARE_CLASS]),
+  ].join(' ')
+  bar.style.height = `${NODE_TITLE.height}px`
+  if (!title.own) bar.style.bottom = `calc(100% + ${NODE_TITLE.gap}px)`
+
+  if (title.mark.kind === 'group') {
+    bar.appendChild(groupIcon(doc))
+  } else {
+    const badge = doc.createElement('span')
+    badge.className = `${BADGE_CLASS} ${BADGE_CLASS}-${title.mark.tone}`
+    badge.textContent = title.mark.text
+    bar.appendChild(badge)
+  }
+
+  const label = doc.createElement('span')
+  label.className = TITLE_LABEL_CLASS
+  label.textContent = title.label
+  // The whole name, where it is cut short.
+  label.title = title.label
+  label.spellcheck = false
+  bar.appendChild(label)
+
+  if (title.note !== null) {
+    const note = doc.createElement('span')
+    note.className = NOTE_CLASS
+    note.textContent = title.note
+    bar.appendChild(note)
+  }
+  return bar
+}
+
+/** The name, where a group's rename edits it. */
+export function titleLabel(bar: Element): HTMLElement | null {
+  return bar.querySelector<HTMLElement>(`.${TITLE_LABEL_CLASS}`)
+}
+
+/** Shows `bar` at `scale` (`titleScale`). A custom property on the bar,
+ * which its transform and its widest are both written from: it has a handful
+ * of descendants, so writing one restyles nothing else. */
+export function applyTitleScale(bar: HTMLElement, scale: number): void {
+  const value = String(scale)
+  if (bar.style.getPropertyValue('--yolo-whiteboard-title-scale') !== value) {
+    bar.setCssProps({ '--yolo-whiteboard-title-scale': value })
+  }
+}
+
+/** A frame with a heading: what a group is. */
+function groupIcon(doc: Document): SVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = doc.createElementNS(ns, 'svg')
+  svg.setAttribute('class', ICON_CLASS)
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  const rect = doc.createElementNS(ns, 'rect')
+  for (const [key, value] of Object.entries({
+    x: '3',
+    y: '3',
+    width: '18',
+    height: '18',
+    rx: '4',
+  })) {
+    rect.setAttribute(key, value)
+  }
+  const line = doc.createElementNS(ns, 'path')
+  line.setAttribute('d', 'M3 9h18')
+  svg.append(rect, line)
+  return svg
+}
+
+/** How wide titles lay out, in the font the DOM lays them out in — one for
+ * the board, which everything asking where a title is shares. */
+export type TitleMeasure = Readonly<{
+  /** The font family the DOM's titles are in. */
+  family: string
+  text: MeasureText
+  /** `titleContentWidth`, remembered: asked of the same few dozen titles on
+   * every frame that draws or places them. */
+  width: (title: Title) => number
+}>
+
+const TITLE_WIDTHS_LIMIT = 2000
+
+export function createTitleMeasure(family: string): TitleMeasure {
+  const ctx = new OffscreenCanvas(1, 1).getContext('2d')
+  const text: MeasureText = (value, size, weight) => {
+    if (!ctx) return value.length * size * 0.6
+    ctx.font = `${weight} ${size}px ${family}`
+    return ctx.measureText(value).width
+  }
+  const widths = new Map<string, number>()
+  return {
+    family,
+    text,
+    width: (title) => {
+      const key = JSON.stringify([title.mark, title.label, title.note])
+      const known = widths.get(key)
+      if (known !== undefined) return known
+      if (widths.size >= TITLE_WIDTHS_LIMIT) widths.clear()
+      const width = titleContentWidth(title, text)
+      widths.set(key, width)
+      return width
+    },
+  }
+}

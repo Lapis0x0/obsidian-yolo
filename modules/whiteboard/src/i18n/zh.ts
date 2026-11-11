@@ -104,6 +104,9 @@ export const zh = {
     openReader: '展开阅读',
     openSpread: '平铺页面',
     closeSpread: '收起为阅读器',
+    collapseGroup: '收起分组',
+    expandGroup: '展开分组',
+    fitGroup: '贴合内容',
   },
   color: {
     default: '不设颜色',
@@ -179,9 +182,6 @@ export const zh = {
   group: {
     count: '{count} 项',
     countOne: '1 项',
-    fitToContent: '贴合内容',
-    collapse: '收起',
-    expand: '展开',
     dropInto: '放进 {name}',
     dropIntoUnnamed: '放进分组',
     dropOut: '移出分组',

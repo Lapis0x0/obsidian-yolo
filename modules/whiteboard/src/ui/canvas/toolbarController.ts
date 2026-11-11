@@ -33,10 +33,10 @@ import {
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
-import { arrangeTargets, groupOuterRect } from '../../domain/groups'
+import { arrangeTargets } from '../../domain/groups'
 import { isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
-import { isSpreadTitle, withTitleAbove } from '../../domain/spread'
+import { isSpreadTitle } from '../../domain/spread'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
 import type { CanvasView } from '../../domain/virtualization'
 import { TOOLBAR_GAP_PX, TOOLBAR_MARGIN_PX } from '../constants'
@@ -50,8 +50,6 @@ import {
   type ToolbarMenuControl,
   type ToolbarModel,
 } from '../selectionToolbar'
-
-import { wearsTitleLine } from './titleLine'
 
 /** i18n key and icon per arrowhead direction (domain/edges.ts's
  * `ArrowDirection`). The icon is the arrangement it writes, drawn the way the
@@ -104,6 +102,10 @@ export const DISTRIBUTE_MENU: Readonly<
  * board-mutating command it offers, all without this class importing the
  * canvas.
  */
+/** What the toolbar does to a group as a whole: folds it into its box,
+ * opens it out, or lets go of the size its frame was given by hand. */
+export type GroupAction = 'collapse' | 'expand' | 'fit'
+
 export type ToolbarControllerCallbacks = Readonly<{
   isParseFailed: () => boolean
   canEdit: () => boolean
@@ -112,11 +114,9 @@ export type ToolbarControllerCallbacks = Readonly<{
   /** Where a drag or resize has the cards it carries right now, before the
    * board is told (canvas.ts's `liveNodeRects`). */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
-  /** Where a PDF's title line is drawn when that is not its node's
-   * rectangle — the overview tier grows it to stay readable. */
-  getDrawnTitleRect: (id: NodeId) => CardRect | null
-  /** What a node is drawn at: its portals' scale, 1 for the board's own. */
-  scaleOf: (id: NodeId) => number
+  /** Where a node's title is over it shown at `rect`, or null for a node
+   * that wears none (canvas.ts's `titleRectOf`). */
+  titleRectOf: (id: NodeId, rect: CardRect) => CardRect | null
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
@@ -133,6 +133,8 @@ export type ToolbarControllerCallbacks = Readonly<{
   /** Spreads a PDF's pages out on the board, or puts them away
    * (the canvas's `toggleSpread`). */
   toggleSpread: (id: NodeId) => void
+  /** Collapses, expands or fits a group (the canvas's `runGroupAction`). */
+  groupAction: (id: NodeId, action: GroupAction) => void
   /** World point an edge's toolbar anchors to — canvas.ts's own
    * `edgeAnchorPoint`, which needs the edge layer's live geometry this class
    * does not own. */
@@ -299,10 +301,10 @@ export class ToolbarController {
    * World rectangle the toolbar is anchored to: the union of the selected
    * nodes, or — for an edge — a zero-size rect at the point its label hangs
    * from, which is the only place on a curve that reads as "the edge itself".
-   * A folded PDF card counts its title with it, so the toolbar stands over
-   * the title, where it stands over an open spread's. A card a gesture is
-   * carrying counts where it is drawn, and so does a title the overview tier
-   * draws larger than its node.
+   * A node counts its title with it, wherever and however large it is shown
+   * (canvas.ts's `titleRectOf`), so the toolbar stands over the title — a
+   * group's, a PDF's, a portal's alike. A card a gesture is carrying counts
+   * where it is drawn.
    */
   private toolbarBounds(): ToolbarBounds | null {
     const selectedEdgeIds = this.callbacks.getSelectedEdgeIds()
@@ -321,15 +323,9 @@ export class ToolbarController {
       if (!node) continue
       const rect = live?.get(id) ?? node
       const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
-      rects.push(
-        node.type === 'group'
-          ? groupOuterRect(bounds, this.callbacks.scaleOf(id))
-          : wearsTitleLine(node)
-            ? withTitleAbove(bounds)
-            : bounds,
-      )
-      const drawn = this.callbacks.getDrawnTitleRect(id)
-      if (drawn) rects.push(drawn)
+      rects.push(bounds)
+      const title = this.callbacks.titleRectOf(id, bounds)
+      if (title) rects.push(title)
     }
     return rects.length > 0 ? unionRect(rects) : null
   }
@@ -453,6 +449,28 @@ export class ToolbarController {
         ),
         icon: open ? 'minimize-2' : 'maximize-2',
         onSelect: () => this.callbacks.toggleSpread(single.id),
+      })
+    }
+    // A group folds into its box and opens out of it — the same pair of
+    // buttons, and the same icons, as a PDF folding into its card — and lets
+    // go of a size its frame was given by hand.
+    if (single?.type === 'group' && canEdit) {
+      const group = single
+      const folded = group.stash !== undefined
+      if (group.bounds !== undefined && !folded) {
+        items.push({
+          label: this.callbacks.t('toolbar.fitGroup'),
+          icon: 'shrink',
+          onSelect: () => this.callbacks.groupAction(group.id, 'fit'),
+        })
+      }
+      items.push({
+        label: this.callbacks.t(
+          folded ? 'toolbar.expandGroup' : 'toolbar.collapseGroup',
+        ),
+        icon: folded ? 'maximize-2' : 'minimize-2',
+        onSelect: () =>
+          this.callbacks.groupAction(group.id, folded ? 'expand' : 'collapse'),
       })
     }
     // A group has no content to type into, so its pencil renames it — the

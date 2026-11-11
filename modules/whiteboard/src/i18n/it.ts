@@ -107,6 +107,9 @@ export const it = {
     openReader: 'Apri nel lettore',
     openSpread: 'Distribuisci le pagine',
     closeSpread: 'Riduci a lettore',
+    collapseGroup: 'Comprimi gruppo',
+    expandGroup: 'Espandi gruppo',
+    fitGroup: 'Adatta al contenuto',
   },
   color: {
     default: 'Nessun colore',
@@ -183,9 +186,6 @@ export const it = {
   group: {
     count: '{count} elementi',
     countOne: '1 elemento',
-    fitToContent: 'Adatta al contenuto',
-    collapse: 'Comprimi',
-    expand: 'Espandi',
     dropInto: 'Sposta in {name}',
     dropIntoUnnamed: 'Sposta nel gruppo',
     dropOut: 'Togli dal gruppo',

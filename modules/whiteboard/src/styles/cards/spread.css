@@ -26,14 +26,12 @@
   content: none;
 }
 
-/* The node is one line tall, and the first row of sheets is right under it,
- * so a name too long for its line (title-line.css) wraps upwards: the line
- * keeps its bottom edge and grows from the top (`flex-end`, which overflows
- * at the start), and nothing it covers is moved. Its width is the name's, up
- * to as wide as the document is (cardRenderer.ts's
- * `applySpreadTitleMaxWidth`). */
+/* The node is its title's box (node-title.css's `-own`): the bar as wide as
+ * what it says, up to as wide as the document is (cardRenderer.ts's
+ * `applySpreadTitleMaxWidth`). Only the bar takes the pointer — the rest of
+ * the node's width is the board's, as it is beside any other title. */
 .yolo-whiteboard-card.yolo-whiteboard-spread-title {
-  justify-content: flex-end;
+  pointer-events: none;
 }
 
 /* The sheets of the document whose title is under the pointer (the canvas's

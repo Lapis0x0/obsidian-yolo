@@ -303,20 +303,6 @@ export const TITLE_BLOCK_WORLD_FONT_PX = 32
 export const TITLE_BLOCK_LINE_HEIGHT = 1.25
 export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
 
-/** A PDF spread's title line, in world units — spread.css's
- * `.yolo-whiteboard-spread-title` and its parts, which the overview canvas
- * draws at the same sizes so the title keeps its face below the tier. */
-export const SPREAD_TITLE_WORLD = {
-  padding: 12,
-  paddingBlock: 6,
-  gap: 8,
-  badgeFont: 12,
-  badgePadding: 6,
-  badgeHeight: 20,
-  nameFont: 16,
-  nameLineHeight: 1.5,
-} as const
-
 /** Alpha of the colour wash over an overview card with no picture yet —
  * style.css's `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
@@ -397,23 +383,22 @@ export const OVERVIEW_LABEL_MIN_FONT_PX = 6
  */
 export const EDGE_HIT_STROKE_WORLD_PX = 16
 
-/** Font size of a group's label in world units — style.css's
- * `.yolo-whiteboard-group-label`. The two must stay in step: the overview tier
- * counter-scales this value rather than replacing it. */
-export const GROUP_LABEL_WORLD_FONT_PX = 15
-
 /**
- * Screen size a group's label is held at in the overview tier, however far the
- * board is zoomed out.
+ * The smallest a node's title is shown on screen, however far the board is
+ * zoomed out (ui/canvas/nodeTitle.ts's `titleScale`): the size of its name.
  *
  * Everything else in the world layer shrinks with the board, which is right for
- * a card — at this zoom a card is a tile, and its title is not the point. A
- * group's label is: the whole value of an overview is seeing which region is
- * which, and a 20-unit label at 0.1 is two pixels of grey. So it is
- * counter-scaled and pinned, like a place name on a map, which stays the same
- * size whether you are looking at a city or a country.
+ * a card — far enough out a card is a tile, and its title is not the point. A
+ * title is: seeing which region is which, and which document, is what looking
+ * at a board from far away is for, and a 16-unit name at 0.1 is two pixels of
+ * grey. So it shrinks with the board until it reaches this, and stays this,
+ * like a place name on a map, which stays the same size whether you are
+ * looking at a city or a country. At every zoom, whatever draws the cards
+ * around it: held only while the overview tier lasted, it was handed back on
+ * the way out at the board's scale there — half this — and shrank by half as
+ * the board grew.
  */
-export const OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX = 12
+export const TITLE_MIN_SCREEN_PX = 12
 
 /**
  * Dot-grid spacing in world units — the finest the lattice ever gets, and the
@@ -841,7 +826,6 @@ export const WEB_URL_PATTERN = /^https?:\/\//i
 export const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 /** The single-selected card, mirroring Obsidian Canvas's `is-focused`. */
 export const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
-export const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
 /** On every sheet of a spread whose title is selected: where the document
  * the selection names is on the board. */
 export const SPREAD_SHEET_OF_SELECTED_CLASS =
