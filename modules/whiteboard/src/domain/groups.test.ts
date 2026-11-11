@@ -5,7 +5,6 @@ import {
   emptyBoard,
 } from './fileFormat'
 import {
-  GROUP_JOIN_DISTANCE,
   GROUP_LEAVE_DISTANCE,
   GROUP_PADDING,
   GROUP_TITLE,
@@ -15,8 +14,8 @@ import {
   collapsedGroupCells,
   collapsedGroupPlaces,
   createGroup,
-  distanceToRect,
   fitGroups,
+  gapBetween,
   groupDropDecision,
   groupFrameWithout,
   groupMemberExtent,
@@ -426,9 +425,9 @@ describe('groupDropDecision', () => {
     nodes: board.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)),
   })
 
-  it('puts a card dropped near a frame into the group', () => {
-    // Centre just outside the frame's right edge.
-    const x = frame.x + frame.w + GROUP_JOIN_DISTANCE - 1 - 50
+  it('puts a card touching a frame into the group', () => {
+    // Its left edge just over the frame's right edge.
+    const x = frame.x + frame.w - 1
     const moved = at(base, 'loose', x, 20)
     expect(groupDropDecision(moved, new Set(['loose']))).toEqual({
       target: 'g',
@@ -436,8 +435,38 @@ describe('groupDropDecision', () => {
     })
   })
 
-  it('leaves a card dropped further off where it was', () => {
-    const x = frame.x + frame.w + GROUP_JOIN_DISTANCE + 1 - 50
+  it('takes a big card in by its edge, however far its centre is', () => {
+    const big = {
+      ...base,
+      nodes: [...base.nodes, card('big', 5000, 0, 900, 900)],
+    }
+    // Its top edge just over the frame's bottom; its centre 450 below.
+    const moved = at(big, 'big', 0, frame.y + frame.h - 1)
+    expect(groupDropDecision(moved, new Set(['big']))).toEqual({
+      target: 'g',
+      leaving: false,
+    })
+  })
+
+  it('keeps reaching for a card it has reached for until it is clearly away', () => {
+    const near = at(base, 'loose', frame.x + frame.w + 50, 20)
+    expect(groupDropDecision(near, new Set(['loose']))).toBeNull()
+    expect(groupDropDecision(near, new Set(['loose']), undefined, 'g')).toEqual(
+      { target: 'g', leaving: false },
+    )
+    const away = at(
+      base,
+      'loose',
+      frame.x + frame.w + GROUP_LEAVE_DISTANCE + 1,
+      20,
+    )
+    expect(
+      groupDropDecision(away, new Set(['loose']), undefined, 'g'),
+    ).toBeNull()
+  })
+
+  it('leaves a card that does not reach the frame where it was', () => {
+    const x = frame.x + frame.w + 1
     expect(
       groupDropDecision(at(base, 'loose', x, 20), new Set(['loose'])),
     ).toBeNull()
@@ -450,7 +479,7 @@ describe('groupDropDecision', () => {
       base.nodes,
       new Set(['b']),
     )
-    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE - 1 - 150
+    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE - 1
     expect(groupDropDecision(at(base, 'b', x, 20), new Set(['b']))).toBeNull()
   })
 
@@ -460,7 +489,7 @@ describe('groupDropDecision', () => {
       base.nodes,
       new Set(['b']),
     )
-    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE + 1 - 150
+    const x = rest.x + rest.w + GROUP_LEAVE_DISTANCE + 1
     expect(groupDropDecision(at(base, 'b', x, 20), new Set(['b']))).toEqual({
       target: null,
       leaving: true,
@@ -520,11 +549,12 @@ describe('groupDropDecision', () => {
   })
 })
 
-describe('distanceToRect', () => {
-  it('is zero inside and the straight-line gap outside', () => {
+describe('gapBetween', () => {
+  it('is zero where they touch or overlap, and the gap between otherwise', () => {
     const rect = { x: 0, y: 0, w: 10, h: 10 }
-    expect(distanceToRect(rect, { x: 5, y: 5 })).toBe(0)
-    expect(distanceToRect(rect, { x: 13, y: 14 })).toBe(5)
+    expect(gapBetween(rect, { x: 5, y: 5, w: 10, h: 10 })).toBe(0)
+    expect(gapBetween(rect, { x: 10, y: 0, w: 10, h: 10 })).toBe(0)
+    expect(gapBetween(rect, { x: 13, y: 14, w: 2, h: 2 })).toBe(5)
   })
 })
 

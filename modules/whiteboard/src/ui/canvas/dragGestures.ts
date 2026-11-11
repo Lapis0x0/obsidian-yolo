@@ -233,6 +233,10 @@ export class DragGestures {
   } | null = null
   /** Lines a drag up once the pointer has been still long enough. */
   private aimTimer: number | null = null
+  /** The group a drag in progress was last shown joining, which holds on to
+   * it until it is taken clearly away (domain/groups.ts's
+   * `groupDropDecision`). */
+  private reaching: NodeId | null = null
 
   /** What a drag shows about the groups it would change (`groupPreview`). */
   private readonly groupFeedback: GroupDropFeedback
@@ -445,6 +449,7 @@ export class DragGestures {
     if (!rects) {
       this.carried = null
       this.groupFeedback.clear()
+      this.reaching = null
       this.pace = null
       if (this.aimTimer !== null) {
         this.core.context.getWindow().clearTimeout(this.aimTimer)
@@ -994,14 +999,20 @@ export class DragGestures {
     const first = ids[0]
     if (first === undefined) return null
     if (this.core.portalAtPoint(point) !== homePortalOf(first)) return null
-    return groupDropDecision(moved, new Set(ids), this.core.scaleOf)
+    return groupDropDecision(
+      moved,
+      new Set(ids),
+      this.core.scaleOf,
+      this.reaching,
+    )
   }
 
   /**
    * The frames of the groups a drag would change if it were put down now,
-   * by id — shown on their elements, with the group it would join lit and a
-   * tag saying which way the dragged cards are going (./groupDropFeedback.ts).
-   * Groups the drag carries move with it and are not among them.
+   * by id — shown on their elements, with the group the dragged cards would
+   * be in lit and a tag saying which way they are going
+   * (./groupDropFeedback.ts). Groups the drag carries move with it and are
+   * not among them.
    */
   private groupPreview(
     interaction: NodeInteraction,
@@ -1015,6 +1026,7 @@ export class DragGestures {
     const point = this.core.worldPointFromEvent(e)
     const moving = new Set(interaction.ids)
     const drop = this.dropDecision(moved, interaction.ids, point)
+    this.reaching = drop && !drop.leaving ? drop.target : null
     // A collapsed group's box stays as it is: what is dropped on it is put
     // away, and only the box lighting up says so — the frame it came from
     // lets go of it all the same.
@@ -1054,10 +1066,37 @@ export class DragGestures {
     }
     this.groupFeedback.show(
       frames,
-      drop && !drop.leaving ? drop.target : null,
+      drop
+        ? drop.leaving
+          ? null
+          : drop.target
+        : this.stayingIn(board, moving, point),
       tag,
     )
     return frames
+  }
+
+  /**
+   * The group a drag that changes no membership leaves its cards in — the
+   * one they were all taken from — lit as a group they are joining is: what
+   * is lit is where they will be if let go, whether they came from there or
+   * not, so the moment they are taken far enough to leave is the moment it
+   * goes out. Null when they came from no group, or from several, or are
+   * over a portal's board, which a drop puts them on instead.
+   */
+  private stayingIn(
+    board: Board,
+    moving: ReadonlySet<NodeId>,
+    point: ScreenPoint,
+  ): NodeId | null {
+    const [first] = moving
+    if (first === undefined) return null
+    if (this.core.portalAtPoint(point) !== homePortalOf(first)) return null
+    const parents = groupParents(board.nodes)
+    const homes = new Set(
+      draggedRoots(board.nodes, moving).map((id) => parents.get(id) ?? null),
+    )
+    return homes.size === 1 ? (homes.values().next().value ?? null) : null
   }
 
   /**

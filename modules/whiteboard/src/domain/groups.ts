@@ -197,14 +197,12 @@ export function groupMemberCount(
   return group.members.filter((id) => present.has(id)).length
 }
 
-/** How near a dragged card's centre has to come to a frame for dropping it
- * to put it in that group. A fitted frame hugs what it holds, so "on the
- * frame" has to include a little of the outside. */
-export const GROUP_JOIN_DISTANCE = 39
-
-/** How far a member's centre has to be taken from the frame the rest of its
- * group makes for dropping it to take it out. Far more than joining: a card
- * nudged off line is not a card being taken away. */
+/** How far a member has to be taken from the frame the rest of its group
+ * makes — the gap between its nearest edge and that frame — for dropping it
+ * to take it out. A frame hugs what it holds, so a member is clear of the
+ * frame the rest makes before it has moved at all: leaving has to be
+ * further than that, and a card nudged off line is not a card being taken
+ * away. */
 export const GROUP_LEAVE_DISTANCE = 91
 
 /** True when `outer` completely encloses `inner`. */
@@ -785,13 +783,10 @@ export function createGroup(
  */
 export type GroupDrop = Readonly<{ target: NodeId | null; leaving: boolean }>
 
-/** How far `point` is from `rect`: 0 inside it. */
-export function distanceToRect(
-  rect: GroupRect,
-  point: Readonly<{ x: number; y: number }>,
-): number {
-  const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.w))
-  const dy = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.h))
+/** How far apart two rectangles are: 0 where they touch or overlap. */
+export function gapBetween(a: GroupRect, b: GroupRect): number {
+  const dx = Math.max(b.x - (a.x + a.w), 0, a.x - (b.x + b.w))
+  const dy = Math.max(b.y - (a.y + a.h), 0, a.y - (b.y + b.h))
   return Math.hypot(dx, dy)
 }
 
@@ -799,12 +794,21 @@ export function distanceToRect(
  * What dropping the nodes `moving` — a drag's whole set, with what its groups
  * carry — where `board` has them now does to membership, or null for nothing.
  *
- * The things dragged are the ones nothing else in the drag carries, judged as
- * one by the centre of what they cover. Every group they could go into is
- * asked whether that centre is on it:
- *   - the group they are all in, generously — they stay unless taken
- *     `GROUP_LEAVE_DISTANCE` from the frame the rest of it makes;
- *   - any other, strictly — within `GROUP_JOIN_DISTANCE` of its frame.
+ * The things dragged are the ones nothing else in the drag carries, each as
+ * far as it reaches (a PDF with its pages), judged by where their edges are:
+ * what is shown, whatever its size and wherever it was taken hold of. Judged
+ * by their centre, a card twice the size of another had to be pushed twice as
+ * far into a group before the group would take it. Every group they could go
+ * into is asked whether they are on it:
+ *   - the group they are all in, generously — they stay unless all of them
+ *     are taken `GROUP_LEAVE_DISTANCE` clear of the frame the rest of it makes;
+ *   - any other — a frame, or a collapsed group's box — as soon as one of
+ *     them touches it; and the one it has already reached out for
+ *     (`reaching`, what a drag in progress showed it joining), until they
+ *     are taken as far from it as from a group they were in. The frame that
+ *     reaches out takes them in, and a frame that let go the moment they
+ *     slid past the edge it had before would snatch back the hand it held
+ *     out.
  * Of the groups that say yes the innermost wins. None, and they leave for no
  * group — unless they came from several, when nothing changes: a drag that
  * gathers cards from different groups is not a drag out of all of them.
@@ -813,6 +817,7 @@ export function groupDropDecision(
   board: Board,
   moving: ReadonlySet<NodeId>,
   scaleOf: ScaleOf = UNIT_SCALE,
+  reaching: NodeId | null = null,
 ): GroupDrop | null {
   const parents = groupParents(board.nodes)
   const roots = new Set(draggedRoots(board.nodes, moving))
@@ -820,11 +825,9 @@ export function groupDropDecision(
   if (dragged.length === 0) return null
   const from = new Set(dragged.map((node) => parents.get(node.id) ?? null))
   const home = from.size === 1 ? (from.values().next().value ?? null) : null
-  const covered = groupRectForNodes(dragged, 0) as GroupRect
-  const centre = {
-    x: covered.x + covered.w / 2,
-    y: covered.y + covered.h / 2,
-  }
+  const extents = dragged.map((node) => groupMemberExtent(node, board.nodes))
+  const gap = (frame: GroupRect): number =>
+    Math.min(...extents.map((extent) => gapBetween(frame, extent)))
   const depth = (id: NodeId) => {
     let count = 0
     for (let at = parents.get(id); at; at = parents.get(at)) count += 1
@@ -832,18 +835,16 @@ export function groupDropDecision(
   }
   const nearFrame = (node: GroupNode): boolean => {
     const frame = groupFrameWithout(node, board.nodes, moving, scaleOf)
-    const distance = distanceToRect(frame, centre)
-    return node.id === home
-      ? distance <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
-      : distance < GROUP_JOIN_DISTANCE * scaleOf(node.id)
+    return node.id === home || node.id === reaching
+      ? gap(frame) <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
+      : gap(frame) === 0
   }
   let best: GroupNode | null = null
   for (const node of board.nodes) {
     if (node.type !== 'group' || moving.has(node.id)) continue
-    // A collapsed group takes in what is dropped on it — its box or its
-    // title bar — and nothing that is only near.
+    // A collapsed group takes in what touches it — its box or its title bar.
     const near = node.stash
-      ? distanceToRect(groupOuterRect(node, scaleOf(node.id)), centre) === 0
+      ? gap(groupOuterRect(node, scaleOf(node.id))) === 0
       : nearFrame(node)
     if (!near) continue
     if (
