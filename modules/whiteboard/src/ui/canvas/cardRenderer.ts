@@ -12,6 +12,7 @@
 import {
   type BoardNode,
   type FileNode,
+  type GroupNode,
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
@@ -31,7 +32,7 @@ import {
   CARD_FOCUSED_CLASS,
   CARD_HANDOFF_CLASS,
   CARD_SELECTED_CLASS,
-  GROUP_LABEL_CLASS,
+  GROUP_LABEL_WORLD_FONT_PX,
   NODE_ENTER_FROM_SCALE,
   NODE_ENTER_MS,
   NODE_EXIT_EASING,
@@ -64,6 +65,12 @@ import {
   renderClippedMarkdown,
   scaleNodeElement,
 } from './cardContent'
+import {
+  GROUP_TITLE_CLASS,
+  type GroupTitleAction,
+  createGroupTitle,
+  groupTitleLabel,
+} from './groupTitle'
 import { createTitleLine, titleBadgeOf } from './titleLine'
 
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
@@ -290,6 +297,10 @@ export type CardRendererCallbacks = Readonly<{
    * seen smaller than the overview tier's threshold; null while the
    * stylesheet's own value stands (canvas.ts's `syncGroupLabelScale`). */
   groupLabelFontPx: (id: NodeId) => number | null
+  /** How many things a group directly holds — what its title bar counts. */
+  groupMemberCount: (id: NodeId) => number
+  /** A button on a group's title bar was clicked. */
+  onGroupAction: (id: NodeId, action: GroupTitleAction) => void
   /** What a portal says instead of what is behind it, when it shows
    * nothing: null while it shows the board, or nothing at all. */
   portalNotice: (id: NodeId) => Readonly<{ title: string; hint: string }> | null
@@ -615,25 +626,12 @@ export class CardRenderer {
     // here — selection, dragging, resizing, edges — it gets for free, because
     // it goes through the same runtime as a card.
     if (node.type === 'group') {
-      const label = doc.createElement('div')
-      label.className = GROUP_LABEL_CLASS
-      label.textContent = node.label ?? ''
-      // The label is renamed in place (see beginRename), so it needs the
-      // two listeners that end a rename. They are attached here, for the
-      // element's whole life, rather than for the duration of a session:
-      // both are no-ops until this group is the one being renamed, and a
-      // listener that outlives its session cannot leak one that doesn't.
-      label.spellcheck = false
-      label.addEventListener('keydown', (event) =>
-        this.callbacks.onGroupLabelKeyDown(id, event),
-      )
-      label.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
-      el.appendChild(label)
+      const title = this.buildGroupTitle(id, node)
+      el.appendChild(title)
       this.worldEl.appendChild(el)
-      // A group mounting while the overview tier holds labels at a screen size
-      // has to arrive at that size, not at the stylesheet's.
-      const fontPx = this.callbacks.groupLabelFontPx(id)
-      if (fontPx !== null) label.style.fontSize = `${fontPx}px`
+      // A group mounting while the overview tier holds titles at a screen
+      // size has to arrive at that size, not at the stylesheet's.
+      this.applyGroupTitleScale(id, el)
       this.runtimeByNodeId.set(id, {
         el,
         bodyEl: null,
@@ -1054,40 +1052,90 @@ export class CardRenderer {
   }
 
   /**
-   * Holds every group's label at the size `groupLabelFontPx` gives it, or
+   * A group's title bar, as its node has it now. The name is renamed in
+   * place (see beginRename), so it is given the two listeners that end a
+   * rename, for the bar's whole life: both are no-ops until this group is
+   * the one being renamed.
+   */
+  private buildGroupTitle(id: NodeId, node: GroupNode): HTMLElement {
+    const title = createGroupTitle(
+      this.context.getDocument(),
+      {
+        label: node.label ?? '',
+        count: this.callbacks.groupMemberCount(id),
+        sized: node.bounds !== undefined,
+      },
+      this.callbacks.t,
+      (action) => this.callbacks.onGroupAction(id, action),
+    )
+    const label = groupTitleLabel(title)
+    label?.addEventListener('keydown', (event) =>
+      this.callbacks.onGroupLabelKeyDown(id, event),
+    )
+    label?.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
+    return title
+  }
+
+  /**
+   * Puts a mounted group's element in step with its node after the group
+   * changed — its frame moved or resized as what it holds did, its members
+   * or its hand-set size changed. Done in place rather than by a rebuild: a
+   * frame follows every move of every card in it. A bar whose name is being
+   * typed into is left alone until the rename ends.
+   */
+  refreshGroup(id: NodeId): void {
+    const node = this.callbacks.getNode(id)
+    const el = this.runtimeByNodeId.get(id)?.el
+    if (node?.type !== 'group' || !el) return
+    const scale = this.callbacks.scaleOf(id)
+    el.style.left = `${node.x}px`
+    el.style.top = `${node.y}px`
+    el.style.width = `${node.w / scale}px`
+    el.style.height = `${node.h / scale}px`
+    applyColorToElement(el, node.color)
+    if (this.callbacks.isRenamingGroup(id)) return
+    const old = el.querySelector(`:scope > .${GROUP_TITLE_CLASS}`)
+    const title = this.buildGroupTitle(id, node)
+    if (old) old.replaceWith(title)
+    else el.appendChild(title)
+    this.applyGroupTitleScale(id, el)
+  }
+
+  /**
+   * Holds every group's title bar at the size `groupTitleScale` gives it, or
    * hands it back to the stylesheet (see constants.ts's
    * OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX).
    *
-   * Written on the label elements themselves rather than as a custom property
+   * Written on the title bars themselves rather than as a custom property
    * on the world layer, which would be the shorter code and is the trap
    * cameraController.ts's `applyZoomScale` documents: a custom property written
    * on an element invalidates the style of its whole subtree, and the world's
-   * subtree includes every edge path on the board. There are a few dozen group
-   * labels; this touches exactly them, and only those whose size changed.
+   * subtree includes every edge path on the board. There are a few dozen
+   * groups; this touches exactly their bars, and only those whose size
+   * changed.
    */
   syncGroupLabelFontSizes(): void {
     for (const [id, runtime] of this.runtimeByNodeId) {
-      if (this.callbacks.getNode(id)?.type !== 'group') continue
-      this.applyGroupLabelFontSize(id, runtime)
+      if (this.callbacks.getNode(id)?.type !== 'group' || !runtime.el) continue
+      this.applyGroupTitleScale(id, runtime.el)
     }
   }
 
   /**
-   * A group element's only child is its label — this class built it, so the
-   * cast states what it already knows.
-   *
-   * Deliberately not `instanceof HTMLElement`: in an Obsidian popout the node
-   * belongs to another window, whose `HTMLElement` is a different constructor,
-   * and the check would answer false for every group on the board (CLAUDE.md,
-   * Popout / Multi-window). Measured: it silently left every label at its
-   * stylesheet size in a popped-out view.
+   * A whole bar is scaled, from its bottom-left corner — where it meets the
+   * frame — rather than its text set larger: the bar is a fixed width (the
+   * domain fits frames around it), and only all of it at once keeps its name,
+   * count and buttons in proportion.
    */
-  private applyGroupLabelFontSize(id: NodeId, runtime: NodeRuntime): void {
-    const label = runtime.el?.firstElementChild as HTMLElement | null
-    if (!label) return
+  private applyGroupTitleScale(id: NodeId, el: HTMLElement): void {
+    const bar = el.querySelector<HTMLElement>(`.${GROUP_TITLE_CLASS}`)
+    if (!bar) return
     const fontPx = this.callbacks.groupLabelFontPx(id)
-    const fontSize = fontPx === null ? '' : `${fontPx}px`
-    if (label.style.fontSize !== fontSize) label.style.fontSize = fontSize
+    const transform =
+      fontPx === null ? '' : `scale(${fontPx / GROUP_LABEL_WORLD_FONT_PX})`
+    if (bar.style.transform !== transform) {
+      bar.setCssProps({ transform })
+    }
   }
 
   private evictParkedCard(id: NodeId): void {

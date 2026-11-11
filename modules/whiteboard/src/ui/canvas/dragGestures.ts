@@ -17,12 +17,15 @@ import {
 } from '../../domain/clipboard'
 import { type Board, type NodeId, isPlainText } from '../../domain/fileFormat'
 import {
+  type GroupDrop,
   boardBlocks,
   draggedRoots,
+  fitGroups,
   groupDropDecision,
   groupParents,
   nodesToDragWith,
   setMembership,
+  sizeGroup,
 } from '../../domain/groups'
 import { joinNodePath, splitNodePath } from '../../domain/nodePath'
 import { moveNodes, updateNode } from '../../domain/operations'
@@ -57,6 +60,7 @@ import type { CameraController } from './cameraController'
 import { nodeElementScale } from './cardContent'
 import type { CanvasCore } from './core'
 import type { EdgeLayer } from './edgeLayer'
+import { GroupDropFeedback, type GroupDropTag } from './groupDropFeedback'
 import type { SnapGuideLayer } from './snapGuideLayer'
 
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
@@ -210,8 +214,12 @@ export class DragGestures {
   /** Makes each Alt-drag's history key its own. */
   private duplicateDrags = 0
 
+  /** What a drag shows about the groups it would change (`groupPreview`). */
+  private readonly groupFeedback: GroupDropFeedback
+
   constructor(private readonly deps: DragGesturesDeps) {
     this.core = deps.core
+    this.groupFeedback = new GroupDropFeedback(deps.core, deps.worldEl)
   }
 
   /** What the overview tier draws a moving card from; see the field. */
@@ -369,6 +377,11 @@ export class DragGestures {
   ): CardRect {
     const el = this.core.getRuntime(interaction.nodeId)?.el
     let rect = resized
+    // A group is given a range by hand, and its frame is that range and what
+    // it holds together: shown as it will be, never smaller than what it
+    // holds — and the groups round it following.
+    const frames = this.groupResizeFrames(interaction.nodeId, resized)
+    if (frames) rect = frames.get(interaction.nodeId) ?? rect
     // Its own size, which a portal at another scale draws larger or
     // smaller (cardContent.ts's `scaleNodeElement`).
     const scale = el ? nodeElementScale(el) : 1
@@ -389,12 +402,18 @@ export class DragGestures {
       el.style.width = `${rect.w / scale}px`
       el.style.height = `${rect.h / scale}px`
     }
-    const live = new Map([[interaction.nodeId, rect]])
+    const live = new Map(frames ?? [])
+    live.set(interaction.nodeId, rect)
     // As in a drag: with no element to write to, this is what the overview
     // tier draws the card being resized from.
     this.setLiveNodeRects(live)
+    if (frames) {
+      const others = new Map(frames)
+      others.delete(interaction.nodeId)
+      this.groupFeedback.show(others, null, null)
+    }
     this.deps.placeLayer(rect)
-    this.deps.edges.redrawEdgesForNodes(new Set([interaction.nodeId]), live)
+    this.deps.edges.redrawEdgesForNodes(new Set(live.keys()), live)
     return rect
   }
 
@@ -403,7 +422,10 @@ export class DragGestures {
    * would otherwise have to be told separately by every caller. */
   setLiveNodeRects(rects: ReadonlyMap<NodeId, CardRect> | null): void {
     this.liveRects = rects
-    if (!rects) this.carried = null
+    if (!rects) {
+      this.carried = null
+      this.groupFeedback.clear()
+    }
     this.deps.onLiveRectsChange()
   }
 
@@ -435,6 +457,8 @@ export class DragGestures {
     const node = this.core.getNode(interaction.nodeId)
     const plain = isPlainText(node)
     const view = node ? this.core.portalViewOf(node.id) : null
+    // What was asked for, not the frame shown: that is the range kept.
+    const asked = this.resizedRect(interaction, e).rect
     const portalPatch =
       node && view && (rect.x !== node.x || rect.y !== node.y)
         ? {
@@ -446,15 +470,20 @@ export class DragGestures {
           }
         : {}
     this.core.applyBoardChange(
-      updateNode(
-        this.core.getBoard(),
-        interaction.nodeId,
-        plain
-          ? { ...rect, autoWidth: undefined }
-          : node?.type === 'group'
-            ? { ...rect, bounds: rect }
-            : { ...rect, ...portalPatch },
-      ),
+      node?.type === 'group'
+        ? sizeGroup(
+            this.core.getBoard(),
+            interaction.nodeId,
+            asked,
+            this.core.scaleOf,
+          )
+        : updateNode(
+            this.core.getBoard(),
+            interaction.nodeId,
+            plain
+              ? { ...rect, autoWidth: undefined }
+              : { ...rect, ...portalPatch },
+          ),
     )
     // The board holds this rectangle now; the gesture's copy of it retires.
     this.setLiveNodeRects(null)
@@ -734,10 +763,15 @@ export class DragGestures {
       const el = this.core.getRuntime(id)?.el
       if (el) el.style.translate = `${dx}px ${dy}px`
     }
+    // Frames move with what they hold, and reach for or let go of what is
+    // joining or leaving them — and edges on a frame go with it.
+    for (const [id, frame] of this.groupPreview(interaction, dx, dy, e)) {
+      overrides.set(id, frame)
+    }
     // In the overview tier those elements do not exist and this map is the
     // drag's only feedback — see `liveNodeRects`.
     this.setLiveNodeRects(overrides)
-    this.deps.edges.redrawEdgesForNodes(new Set(interaction.ids), overrides)
+    this.deps.edges.redrawEdgesForNodes(new Set(overrides.keys()), overrides)
     // The handle layer sits in the same world space as the cards but is not
     // one of them, so a drag has to carry it along explicitly.
     const dragged = overrides.get(this.deps.getLayerNodeId() ?? '')
@@ -815,13 +849,103 @@ export class DragGestures {
     ids: readonly NodeId[],
     point: ScreenPoint,
   ): Board {
-    const first = ids[0]
-    if (first === undefined) return moved
-    if (this.core.portalAtPoint(point) !== homePortalOf(first)) return moved
-    const moving = new Set(ids)
-    const drop = groupDropDecision(moved, moving, this.core.scaleOf)
+    const drop = this.dropDecision(moved, ids, point)
     if (!drop) return moved
-    return setMembership(moved, draggedRoots(moved.nodes, moving), drop.target)
+    return setMembership(
+      moved,
+      draggedRoots(moved.nodes, new Set(ids)),
+      drop.target,
+    )
+  }
+
+  /** What dropping `ids` at `point` — the board `moved` with them there —
+   * does to membership, or null for nothing. A drop through a portal onto
+   * the board behind it is that board's business, and changes no group here
+   * (canvas.ts's `commitMove`). */
+  private dropDecision(
+    moved: Board,
+    ids: readonly NodeId[],
+    point: ScreenPoint,
+  ): GroupDrop | null {
+    const first = ids[0]
+    if (first === undefined) return null
+    if (this.core.portalAtPoint(point) !== homePortalOf(first)) return null
+    return groupDropDecision(moved, new Set(ids), this.core.scaleOf)
+  }
+
+  /**
+   * The frames of the groups a drag would change if it were put down now,
+   * by id — shown on their elements, with the group it would join lit and a
+   * tag saying which way the dragged cards are going (./groupDropFeedback.ts).
+   * Groups the drag carries move with it and are not among them.
+   */
+  private groupPreview(
+    interaction: NodeInteraction,
+    dx: number,
+    dy: number,
+    e: PointerEvent,
+  ): ReadonlyMap<NodeId, CardRect> {
+    const board = this.core.getBoard()
+    if (!board.nodes.some((node) => node.type === 'group')) return new Map()
+    const moved = moveNodes(board, interaction.ids, dx, dy)
+    const point = this.core.worldPointFromEvent(e)
+    const moving = new Set(interaction.ids)
+    const drop = this.dropDecision(moved, interaction.ids, point)
+    const settled = drop
+      ? setMembership(moved, draggedRoots(moved.nodes, moving), drop.target)
+      : moved
+    const frames = changedFrames(
+      board,
+      fitGroups(settled, this.core.scaleOf),
+      moving,
+    )
+    let tag: GroupDropTag | null = null
+    const roots = new Set(draggedRoots(moved.nodes, moving))
+    const covered = unionRect(
+      moved.nodes.filter((node) => roots.has(node.id)).map(rectOfCard),
+    )
+    if (drop && covered) {
+      const target =
+        drop.target === null ? null : this.core.getNode(drop.target)
+      const name = target?.type === 'group' ? (target.label ?? '') : ''
+      tag = {
+        leaving: drop.leaving,
+        at: { x: covered.x, y: covered.y },
+        text: drop.leaving
+          ? this.core.t('group.dropOut')
+          : name
+            ? this.core.t('group.dropInto').replace('{name}', name)
+            : this.core.t('group.dropIntoUnnamed'),
+      }
+    }
+    this.groupFeedback.show(
+      frames,
+      drop && !drop.leaving ? drop.target : null,
+      tag,
+    )
+    return frames
+  }
+
+  /**
+   * The frames a group resized to `rect` by hand would show, by id: its own
+   * — that range and what it holds together — and those of the groups round
+   * it, which follow. Null for a node that is not a group.
+   */
+  private groupResizeFrames(
+    id: NodeId,
+    rect: CardRect,
+  ): ReadonlyMap<NodeId, CardRect> | null {
+    const board = this.core.getBoard()
+    const group = this.core.getNode(id)
+    if (group?.type !== 'group') return null
+    const fitted = fitGroups(
+      sizeGroup(board, id, rect, this.core.scaleOf),
+      this.core.scaleOf,
+    )
+    const frames = new Map(changedFrames(board, fitted, new Set()))
+    const own = fitted.nodes.find((node) => node.id === id)
+    if (own) frames.set(id, rectOfCard(own))
+    return frames
   }
 
   // -- creating from the bar ----------------------------------------------
@@ -953,6 +1077,32 @@ export class DragGestures {
     if (!next.delete(id)) next.add(id)
     this.core.setSelection(Array.from(next))
   }
+}
+
+/** The groups whose frame `after` has somewhere `before` does not, but for
+ * those in `skip`, by id. */
+function changedFrames(
+  before: Board,
+  after: Board,
+  skip: ReadonlySet<NodeId>,
+): Map<NodeId, CardRect> {
+  const was = new Map(before.nodes.map((node) => [node.id, node]))
+  const frames = new Map<NodeId, CardRect>()
+  for (const node of after.nodes) {
+    if (node.type !== 'group' || skip.has(node.id)) continue
+    const old = was.get(node.id)
+    if (
+      old &&
+      old.x === node.x &&
+      old.y === node.y &&
+      old.w === node.w &&
+      old.h === node.h
+    ) {
+      continue
+    }
+    frames.set(node.id, rectOfCard(node))
+  }
+  return frames
 }
 
 /** Whether `id` is the one and only selected node. */

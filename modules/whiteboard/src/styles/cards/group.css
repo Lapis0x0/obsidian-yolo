@@ -19,7 +19,7 @@
   z-index: -1;
   display: flex;
   flex-direction: column;
-  /* The label sits above the frame, so neither overflow nor `paint`
+  /* The title bar sits above the frame, so neither overflow nor `paint`
    * containment may clip to the border box. A group has no content of its
    * own to spill, so nothing is lost by it. */
   overflow: visible;
@@ -31,7 +31,8 @@
   contain: layout style;
 }
 
-/* An unselected frame takes no pointer events — only its label does (below).
+/* An unselected frame takes no pointer events — only its title bar does
+ * (below).
  * A group is mostly empty space: if its interior were grabbable, every press
  * aimed at the canvas inside it — a marquee, a double-click to make a card —
  * would hit the group instead. So until it is spoken for, the label is the
@@ -92,65 +93,132 @@
   box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
 }
 
-/* Sized in world units like the degraded card title, and for the same reason:
- * a group's label belongs to the group, so it shrinks with it rather than
- * being counter-scaled into a constant screen size. */
-.yolo-whiteboard-group-label {
-  /* Above the frame, not in it — the same rule a card's title follows, and
-   * for a group it also gives back the strip of interior the label used to
-   * cover, which was interior a card could be dropped into. */
+/* The title bar (ui/canvas/groupTitle.ts): outside the frame, over its
+ * top-left corner, left edges aligned — the group's name, how much it holds,
+ * and what is done to it as a whole. Its width, height and gap are set from
+ * domain/groups.ts's GROUP_TITLE, which frames are fitted around. Sized in
+ * world units, like everything on the board: it belongs to the group, so it
+ * shrinks with it (in the overview tier it is held at a floor on screen, by a
+ * scale from its bottom-left corner — cardRenderer.ts's
+ * `applyGroupTitleScale`).
+ *
+ * The same kind of heading as an open PDF's title (title-line.css): the name
+ * at 16px/500, a muted note beside it — here a surface of its own, since it
+ * stands for a region rather than over a sheet of paper. */
+.yolo-whiteboard-group-title {
   position: absolute;
-  left: 2px;
-  bottom: calc(100% + 1px);
-  /* Vertical slop only: the text is the handle, and horizontal padding would
-   * push it out of line with a card title's left edge. */
-  padding: 2px 0;
-  overflow: hidden;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 0 6px 0 11px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 9px;
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   font-family: var(--font-interface);
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.3;
-  color: var(--text-muted);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  /* The group's only handle: what selects it, what drags it (carrying the
-   * nodes inside), and what a double-click renames. */
+  transform-origin: 0 100%;
+  /* The group's handle: what selects it, what drags it (carrying what it
+   * holds), and what a double-click renames. */
   pointer-events: auto;
-  /* `max-content` rather than the frame's full width: an empty or short label
-   * should not make a grabbable bar the length of the group, in a band the
-   * pointer otherwise passes straight through. */
-  width: max-content;
-  max-width: 100%;
-  min-width: 2em;
 }
 
-/* Being renamed (ui/canvas.ts's beginGroupRename makes the label itself
- * editable). The text does not move, change size or change weight — all that
- * happens is that it stops being clipped to the frame and gains the chrome of
- * a field, so the rename reads as the label opening up rather than as a box
- * appearing over it. The negative margin cancels the padding, which is what
- * keeps the first glyph on the pixel it was already on. */
+.yolo-whiteboard-root .yolo-whiteboard-group-title {
+  cursor: grab;
+}
+
+.yolo-whiteboard-root .yolo-whiteboard-group-title:active {
+  cursor: grabbing;
+}
+
+/* Selected, the bar wears the selection ring with the frame. */
+.yolo-whiteboard-group.yolo-whiteboard-card-selected
+  > .yolo-whiteboard-group-title {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.yolo-whiteboard-group.yolo-whiteboard-themed.yolo-whiteboard-card-selected
+  > .yolo-whiteboard-group-title {
+  border-color: var(--yolo-whiteboard-color);
+  box-shadow: 0 0 0 1px var(--yolo-whiteboard-color);
+}
+
+.yolo-whiteboard-group-title-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.yolo-whiteboard-group-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-normal);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.yolo-whiteboard-group-count {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.yolo-whiteboard-group-title-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* A text button: the bar's chrome, quiet until pointed at. Obsidian styles
+ * every <button>; these are reset to the bar's own look. */
+button.yolo-whiteboard-group-action {
+  flex: none;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.yolo-whiteboard-group-action:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Being renamed (editingController.ts makes the name itself editable). The
+ * text does not move, change size or change weight — all that happens is
+ * that it stops being clipped and gains the chrome of a field, so the rename
+ * reads as the name opening up rather than as a box appearing over it. The
+ * negative margin cancels the padding, which keeps the first glyph on the
+ * pixel it was already on. */
 .yolo-whiteboard-group-label[contenteditable] {
+  flex: 1 1 auto;
   overflow: visible;
-  max-width: none;
   text-overflow: clip;
-  padding: 2px 4px;
+  padding: 0 4px;
   margin-left: -4px;
   border-radius: var(--radius-s, 4px);
-  color: var(--text-normal);
   background: var(--background-primary);
   box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
   outline: none;
   cursor: text;
-}
-
-.yolo-whiteboard-root .yolo-whiteboard-group-label:not([contenteditable]) {
-  cursor: grab;
-}
-
-.yolo-whiteboard-root
-  .yolo-whiteboard-group-label:not([contenteditable]):active {
-  cursor: grabbing;
 }
 
 /* The pointer is inside this frame and on nothing else there
@@ -170,6 +238,47 @@
   border-color: var(--yolo-whiteboard-color);
 }
 
-.yolo-whiteboard-group-hinted .yolo-whiteboard-group-label {
-  color: var(--text-normal);
+.yolo-whiteboard-group-hinted > .yolo-whiteboard-group-title {
+  border-color: var(--background-modifier-border-focus);
+}
+
+/* --- a drag over groups (ui/canvas/groupDropFeedback.ts) ------------------
+ * The group a drag would put its cards in, if it were let go now: the frame
+ * lights in the accent and its wash deepens, as the frame reaches out to take
+ * the card in. */
+.yolo-whiteboard-group.yolo-whiteboard-group-drop-target {
+  border-color: var(--interactive-accent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 7%, transparent);
+}
+
+.yolo-whiteboard-group-drop-target > .yolo-whiteboard-group-title {
+  border-color: var(--interactive-accent);
+}
+
+/* Over the dragged cards, saying which way they are going: into a group, in
+ * the accent, or out of one, muted. In front of everything (cards are at most
+ * 2 while dragged, drag.css), and never in the way of the drag. */
+.yolo-whiteboard-group-drop-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  height: 22px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  font-family: var(--font-interface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-group-drop-tag.yolo-whiteboard-group-drop-tag-leaving {
+  color: var(--background-primary);
+  background: var(--text-muted);
 }

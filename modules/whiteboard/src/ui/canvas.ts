@@ -60,6 +60,7 @@ import {
   createGroup,
   fitGroups,
   nodesToDragWith,
+  releaseBounds,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
@@ -152,6 +153,7 @@ import { ExportController } from './canvas/exportController'
 import { FindController, type FindHit } from './canvas/findController'
 import { FindMarks } from './canvas/findMarks'
 import { FramePace } from './canvas/framePace'
+import type { GroupTitleAction } from './canvas/groupTitle'
 import {
   InteractionController,
   buildInteractionLayer,
@@ -2360,6 +2362,13 @@ export class WhiteboardCanvas {
       sourcePathOf: (id) => this.sourcePathOf(id),
       scaleOf: (id) => this.scaleOf(id),
       groupLabelFontPx: (id) => this.groupLabelFontPx(id),
+      groupMemberCount: (id) => {
+        const group = this.nodesById.get(id)
+        if (group?.type !== 'group') return 0
+        return group.members.filter((member) => this.nodesById.has(member))
+          .length
+      },
+      onGroupAction: (id, action) => this.runGroupAction(id, action),
       spreadTitleMaxWidth: (id) => this.spreadTitleMaxWidthOf(id),
       passageMarks: (id) => this.passageMarks(id),
       onPassagesMove: (id) => {
@@ -2521,6 +2530,7 @@ export class WhiteboardCanvas {
       getNode: this.core.getNode,
       getLiveRects: () => this.interaction.liveNodeRects,
       getDrawnTitleRect: (id) => this.overviewLayer?.titleRect(id) ?? null,
+      scaleOf: (id) => this.scaleOf(id),
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
@@ -3026,6 +3036,17 @@ export class WhiteboardCanvas {
       if (!before.has(node.id)) this.unrecordedCreations.add(node.id)
     }
     this.takeComposedBoard(next)
+    this.refreshChangedGroups(before)
+  }
+
+  /** Puts every mounted group that changed since `previous` in step with its
+   * node: a frame follows what it holds, so an edit to one card can change
+   * it (./canvas/cardRenderer.ts's `refreshGroup`). */
+  private refreshChangedGroups(previous: ReadonlyMap<NodeId, BoardNode>): void {
+    for (const node of this.groupNodes) {
+      const was = previous.get(node.id)
+      if (was && was !== node) this.cardRenderer.refreshGroup(node.id)
+    }
   }
 
   /**
@@ -3115,6 +3136,7 @@ export class WhiteboardCanvas {
     this.unrecordedCreations.clear()
     this.history.push(step, historyKey)
     this.takeComposedBoard(next)
+    this.refreshChangedGroups(previous)
     this.markEntering(previous)
   }
 
@@ -3755,6 +3777,14 @@ export class WhiteboardCanvas {
     this.recomputeVisibility()
     this.drainQueues()
     this.setSelection([id])
+  }
+
+  /** What a button on a group's title bar asks for (./canvas/groupTitle.ts).
+   * "Fit to content" lets go of the size the frame was given by hand, and
+   * the frame is its members' again. */
+  private runGroupAction(id: NodeId, action: GroupTitleAction): void {
+    if (!this.canEdit) return
+    if (action === 'fit') this.applyBoardChange(releaseBounds(this.board, id))
   }
 
   /**

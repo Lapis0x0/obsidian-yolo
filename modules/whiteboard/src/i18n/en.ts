@@ -183,6 +183,16 @@ export const en = {
   pictureCache: {
     activity: 'Processing whiteboard cache',
   },
+  group: {
+    count: '{count} items',
+    countOne: '1 item',
+    fitToContent: 'Fit to content',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    dropInto: 'Move into {name}',
+    dropIntoUnnamed: 'Move into group',
+    dropOut: 'Remove from group',
+  },
   card: {
     missingFile: 'File missing',
     missingFileHint: 'This card refers to "{path}", which no longer exists.',

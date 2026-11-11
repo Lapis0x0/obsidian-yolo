@@ -42,7 +42,6 @@ import {
   EDGE_HIT_CLASS,
   EDGE_HIT_STROKE_WORLD_PX,
   EDGE_LABEL_CLASS,
-  GROUP_LABEL_CLASS,
   PAN_FLING_MAX_IDLE_MS,
   PAN_FLING_MIN_SPEED,
   PAN_FLING_SAMPLE_MS,
@@ -67,6 +66,7 @@ import {
 import type { DropImport } from './dropImport'
 import type { EdgeLayer } from './edgeLayer'
 import type { EditingController } from './editingController'
+import { GROUP_TITLE_CLASS, isGroupTitleAction } from './groupTitle'
 import { isTypingIntoField } from './keymapController'
 import type { PassagePoints } from './passagePoints'
 import type { PdfIntegration } from './pdfIntegration'
@@ -1536,12 +1536,15 @@ export class InteractionController {
     return asElement(target)?.closest(`.${CARD_BODY_LIVE_CLASS}`) != null
   }
 
-  /** The group whose label this event landed on, or null for anything else. */
+  /** The group whose title bar this event landed on — anywhere on it but
+   * its buttons — or null for anything else. */
   private groupLabelIdFromEventTarget(
     target: EventTarget | null,
   ): NodeId | null {
     const el = asElement(target)
-    if (!el?.classList.contains(GROUP_LABEL_CLASS)) return null
+    if (!el?.closest(`.${GROUP_TITLE_CLASS}`) || isGroupTitleAction(el)) {
+      return null
+    }
     return nodeIdFromEventTarget(el)
   }
 }

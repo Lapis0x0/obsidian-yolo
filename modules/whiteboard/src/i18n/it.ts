@@ -180,6 +180,16 @@ export const it = {
   pictureCache: {
     activity: 'Elaborazione della cache della lavagna',
   },
+  group: {
+    count: '{count} elementi',
+    countOne: '1 elemento',
+    fitToContent: 'Adatta al contenuto',
+    collapse: 'Comprimi',
+    expand: 'Espandi',
+    dropInto: 'Sposta in {name}',
+    dropIntoUnnamed: 'Sposta nel gruppo',
+    dropOut: 'Togli dal gruppo',
+  },
   card: {
     missingFile: 'File mancante',
     missingFileHint:

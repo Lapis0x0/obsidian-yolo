@@ -520,6 +520,55 @@ export function setMembership(
 }
 
 /**
+ * `board` with group `id` no longer keeping a size set by hand: its frame is
+ * what it holds again, once fitted. The same board when it kept none.
+ */
+export function releaseBounds(board: Board, id: NodeId): Board {
+  let changed = false
+  const nodes = board.nodes.map((node) => {
+    if (node.id !== id || node.type !== 'group' || !node.bounds) return node
+    changed = true
+    const { bounds: _bounds, ...rest } = node
+    return rest
+  })
+  return changed ? { ...board, nodes } : board
+}
+
+/**
+ * `board` with group `id` sized by hand to `rect`: the range its frame keeps
+ * (`GroupNode.bounds`), with what it holds round it. A range wholly inside
+ * the frame its contents make asks for nothing that frame does not already
+ * give — the frame dragged in as far as it goes — and the group is left
+ * hugging its contents instead. Frames are left for `fitGroups`.
+ */
+export function sizeGroup(
+  board: Board,
+  id: NodeId,
+  rect: GroupRect,
+  scaleOf: ScaleOf = UNIT_SCALE,
+): Board {
+  const group = board.nodes.find((node) => node.id === id)
+  if (group?.type !== 'group') return board
+  const { bounds: _kept, ...bare } = group
+  const hugging = computeFrame(
+    bare,
+    frameContext(board.nodes, scaleOf, new Set()),
+    new Map(),
+    new Set(),
+  )
+  const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
+  const nodes = board.nodes.map((node) => {
+    if (node.id !== id || node.type !== 'group') return node
+    if (hugging && rectContains(hugging, bounds)) {
+      const { bounds: _bounds, ...rest } = node
+      return rest
+    }
+    return { ...node, ...bounds, bounds }
+  })
+  return { ...board, nodes }
+}
+
+/**
  * `board` with a new group round the nodes `ids`, fitted to them. The group
  * holds those of them no other of them carries (a selected group brings what
  * it holds); they leave the groups they were in, and the new group takes

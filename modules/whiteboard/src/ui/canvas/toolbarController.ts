@@ -33,7 +33,7 @@ import {
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
-import { arrangeTargets } from '../../domain/groups'
+import { arrangeTargets, groupOuterRect } from '../../domain/groups'
 import { isPortal } from '../../domain/portals'
 import type { CardRect } from '../../domain/resize'
 import { isSpreadTitle, withTitleAbove } from '../../domain/spread'
@@ -115,6 +115,8 @@ export type ToolbarControllerCallbacks = Readonly<{
   /** Where a PDF's title line is drawn when that is not its node's
    * rectangle — the overview tier grows it to stay readable. */
   getDrawnTitleRect: (id: NodeId) => CardRect | null
+  /** What a node is drawn at: its portals' scale, 1 for the board's own. */
+  scaleOf: (id: NodeId) => number
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
   getEdge: (id: EdgeId) => Edge | undefined
@@ -319,7 +321,13 @@ export class ToolbarController {
       if (!node) continue
       const rect = live?.get(id) ?? node
       const bounds = { x: rect.x, y: rect.y, w: rect.w, h: rect.h }
-      rects.push(wearsTitleLine(node) ? withTitleAbove(bounds) : bounds)
+      rects.push(
+        node.type === 'group'
+          ? groupOuterRect(bounds, this.callbacks.scaleOf(id))
+          : wearsTitleLine(node)
+            ? withTitleAbove(bounds)
+            : bounds,
+      )
       const drawn = this.callbacks.getDrawnTitleRect(id)
       if (drawn) rects.push(drawn)
     }

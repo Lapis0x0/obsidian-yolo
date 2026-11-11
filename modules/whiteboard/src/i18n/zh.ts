@@ -176,6 +176,16 @@ export const zh = {
   pictureCache: {
     activity: '正在处理白板缓存',
   },
+  group: {
+    count: '{count} 项',
+    countOne: '1 项',
+    fitToContent: '贴合内容',
+    collapse: '收起',
+    expand: '展开',
+    dropInto: '放进 {name}',
+    dropIntoUnnamed: '放进分组',
+    dropOut: '移出分组',
+  },
   card: {
     missingFile: '文件丢失',
     missingFileHint: '此卡片引用的「{path}」已不存在。',

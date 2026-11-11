@@ -23,6 +23,7 @@ import {
   nodesToDragWith,
   rectContains,
   setMembership,
+  sizeGroup,
 } from './groups'
 
 function group(
@@ -521,5 +522,30 @@ describe('distanceToRect', () => {
     const rect = { x: 0, y: 0, w: 10, h: 10 }
     expect(distanceToRect(rect, { x: 5, y: 5 })).toBe(0)
     expect(distanceToRect(rect, { x: 13, y: 14 })).toBe(5)
+  })
+})
+
+describe('sizeGroup', () => {
+  const board = fitGroups(
+    boardWith([group('g', 0, 0, 1, 1, ['a']), card('a', 0, 0, 400, 100)]),
+  )
+
+  it('keeps a range larger than what the group holds', () => {
+    const rect = { x: -20, y: -20, w: 900, h: 600 }
+    const sized = fitGroups(sizeGroup(board, 'g', rect))
+    expect(node(sized, 'g')).toMatchObject({ ...rect, bounds: rect })
+  })
+
+  it('lets go of a range wholly inside what the group holds', () => {
+    const sized = sizeGroup(
+      fitGroups(sizeGroup(board, 'g', { x: -20, y: -20, w: 900, h: 600 })),
+      'g',
+      { x: 0, y: 0, w: 50, h: 50 },
+    )
+    expect(node(sized, 'g')).not.toHaveProperty('bounds')
+    expect(node(fitGroups(sized), 'g')).toMatchObject({
+      x: -GROUP_PADDING,
+      w: 400 + GROUP_PADDING * 2,
+    })
   })
 })
