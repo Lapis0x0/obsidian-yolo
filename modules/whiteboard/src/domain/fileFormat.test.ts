@@ -153,6 +153,136 @@ describe('parseBoard / serializeBoard', () => {
     expect(board.edges[0].toSide).toBeUndefined()
   })
 
+  describe('group membership', () => {
+    const parse = (nodes: unknown[]) =>
+      requireOk(parseBoard(JSON.stringify({ version: 1, nodes })))
+    const group = (board: Board, id: string) => {
+      const node = board.nodes.find((candidate) => candidate.id === id)
+      if (node?.type !== 'group') throw new Error(`no group ${id}`)
+      return node
+    }
+
+    it('reads an old group: its rectangle as bounds, what is wholly in it as members', () => {
+      const board = parse([
+        { id: 'g', type: 'group', x: 0, y: 0, w: 500, h: 500 },
+        { id: 'in', type: 'text', x: 10, y: 10, w: 100, h: 100, text: '' },
+        { id: 'half', type: 'text', x: 450, y: 10, w: 100, h: 100, text: '' },
+        { id: 'out', type: 'text', x: 900, y: 0, w: 100, h: 100, text: '' },
+      ])
+      expect(group(board, 'g')).toMatchObject({
+        x: 0,
+        y: 0,
+        w: 500,
+        h: 500,
+        members: ['in'],
+        bounds: { x: 0, y: 0, w: 500, h: 500 },
+      })
+    })
+
+    it('gives a node inside nested old frames to the innermost', () => {
+      const board = parse([
+        { id: 'outer', type: 'group', x: 0, y: 0, w: 1000, h: 1000 },
+        { id: 'inner', type: 'group', x: 10, y: 10, w: 300, h: 300 },
+        { id: 'deep', type: 'text', x: 20, y: 20, w: 50, h: 50, text: '' },
+        { id: 'loose', type: 'text', x: 600, y: 600, w: 50, h: 50, text: '' },
+      ])
+      expect(group(board, 'outer').members).toEqual(['inner', 'loose'])
+      expect(group(board, 'inner').members).toEqual(['deep'])
+    })
+
+    it('does not let two old frames of one size hold each other', () => {
+      const board = parse([
+        { id: 'a', type: 'group', x: 0, y: 0, w: 100, h: 100 },
+        { id: 'b', type: 'group', x: 0, y: 0, w: 100, h: 100 },
+      ])
+      expect(group(board, 'a').members).toEqual(['b'])
+      expect(group(board, 'b').members).toEqual([])
+    })
+
+    it('judges an open spread in an old frame by its title', () => {
+      const board = parse([
+        { id: 'g', type: 'group', x: 0, y: 0, w: 500, h: 100 },
+        {
+          id: 'p',
+          type: 'file',
+          file: 'a.pdf',
+          x: 2000,
+          y: 2000,
+          w: 400,
+          h: 500,
+          spread: {
+            open: true,
+            title: [10, 10, 400, 39],
+            pages: [[2000, 2000, 400, 500]],
+          },
+        },
+      ])
+      expect(group(board, 'g').members).toEqual(['p'])
+    })
+
+    it('keeps recorded members as written, dropping what cannot be', () => {
+      const board = parse([
+        {
+          id: 'g',
+          type: 'group',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          members: ['far', 'gone', 'g', 'far'],
+        },
+        {
+          id: 'h',
+          type: 'group',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          members: ['far', 'g'],
+        },
+        { id: 'far', type: 'text', x: 5000, y: 0, w: 10, h: 10, text: '' },
+      ])
+      expect(group(board, 'g').members).toEqual(['far'])
+      // A node is in one group at most, and no group holds its holder.
+      expect(group(board, 'h').members).toEqual(['g'])
+      expect(group(board, 'g')).not.toHaveProperty('bounds')
+    })
+
+    it('drops a membership that would make a group hold itself', () => {
+      const board = parse([
+        { id: 'a', type: 'group', x: 0, y: 0, w: 10, h: 10, members: ['b'] },
+        { id: 'b', type: 'group', x: 0, y: 0, w: 10, h: 10, members: ['a'] },
+      ])
+      expect(group(board, 'a').members).toEqual(['b'])
+      expect(group(board, 'b').members).toEqual([])
+    })
+
+    it('round-trips members and bounds, leaving out a member no longer there', () => {
+      const board = parse([
+        {
+          id: 'g',
+          type: 'group',
+          x: 0,
+          y: 0,
+          w: 600,
+          h: 400,
+          members: ['a'],
+          bounds: [0, 0, 600, 400],
+        },
+        { id: 'a', type: 'text', x: 10, y: 10, w: 10, h: 10, text: '' },
+      ])
+      expect(requireOk(parseBoard(serializeBoard(board)))).toEqual(board)
+      const without = {
+        ...board,
+        nodes: board.nodes.filter((n) => n.id !== 'a'),
+      }
+      expect(JSON.parse(serializeBoard(without)).nodes[0]).toMatchObject({
+        members: [],
+        bounds: [0, 0, 600, 400],
+      })
+    })
+  })
+
   it('accepts a group node with no label', () => {
     const raw = JSON.stringify({
       version: 1,

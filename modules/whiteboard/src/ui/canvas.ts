@@ -45,7 +45,6 @@ import {
   type EdgeAnchor,
   type EdgeId,
   type FileNode,
-  type GroupNode,
   type NodeColor,
   type NodeId,
   type PortalView,
@@ -58,7 +57,8 @@ import {
 import {
   arrangeTargets,
   carryGroupMembers,
-  groupRectForNodes,
+  createGroup,
+  fitGroups,
   nodesToDragWith,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
@@ -265,14 +265,6 @@ import {
   spreadMotions,
 } from './spreadMotion'
 import { TypesetClient, typesetWorkerSource } from './typesetting/typesetClient'
-
-/**
- * Size of a group created around a selection is derived from that selection
- * (domain/groups.ts), so this is only the fallback a group gets when it is
- * created around nothing — which cannot happen today, but keeps the geometry
- * total.
- */
-const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
 
 /** How long an edit asked for in the overview tier waits for its card to come
  * back into the DOM before it is dropped — a glide in plus the mount queue,
@@ -877,6 +869,7 @@ export class WhiteboardCanvas {
       worldViewportRect: (buffer) => this.worldViewportRect(buffer),
       worldPointFromEvent: (e) => this.worldPointFromEvent(e),
       getRuntime: (id) => this.cardRenderer.getRuntime(id),
+      scaleOf: (id) => this.scaleOf(id),
       recomputeVisibility: () => this.recomputeVisibility(),
       drainQueues: () => this.drainQueues(),
       getSourcePath: () => this.sourcePathForBoard(),
@@ -3021,7 +3014,8 @@ export class WhiteboardCanvas {
   /** The write path for board state that is not a step anyone would undo
    * (where a card is being read): written and saved, never recorded — the
    * same deal the camera has. */
-  private commitWithoutHistory(next: Board): void {
+  private commitWithoutHistory(proposed: Board): void {
+    const next = this.fitFrames(proposed)
     if (next === this.board) return
     const before = this.nodesById
     const changes = this.sources.commit(next)
@@ -3102,7 +3096,15 @@ export class WhiteboardCanvas {
     return this.cardRenderer.getRuntime(id)?.noteText ?? null
   }
 
-  private applyBoardChange(next: Board, historyKey?: string): void {
+  /** `board` with every group's frame on what it holds now (domain/
+   * groups.ts's `fitGroups`): what every write of the board goes through, so
+   * no caller has to remember that moving a card can move a frame. */
+  private fitFrames(board: Board): Board {
+    return fitGroups(board, (id) => this.scaleOf(id))
+  }
+
+  private applyBoardChange(proposed: Board, historyKey?: string): void {
+    const next = this.fitFrames(proposed)
     if (next === this.board) return
     const previous = this.nodesById
     const changes = this.sources.commit(next)
@@ -3274,7 +3276,7 @@ export class WhiteboardCanvas {
       const path = this.sourcePathForBoard()
       const changes = changesBetween(
         composeBoard(own, path, () => null),
-        expandBoard(edited),
+        fitGroups(expandBoard(edited)),
         path,
       )
       this.sources.apply(changes)
@@ -3741,27 +3743,18 @@ export class WhiteboardCanvas {
    */
   private createGroupFromSelection(): void {
     if (!this.canEdit) return
-    const nodes = this.board.nodes.filter((node) =>
-      this.selectedIds.has(node.id),
+    const id = this.nextNodeId()
+    const next = createGroup(
+      this.board,
+      { id, type: 'group', extra: {} },
+      this.selectedIds,
+      (node) => this.scaleOf(node),
     )
-    const rect = groupRectForNodes(nodes)
-    if (!rect) return
-    const group: GroupNode = {
-      id: this.nextNodeId(),
-      type: 'group',
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      w: Math.max(MIN_GROUP_SIZE.w, Math.round(rect.w)),
-      h: Math.max(MIN_GROUP_SIZE.h, Math.round(rect.h)),
-      extra: {},
-    }
-    this.applyBoardChange({
-      ...this.board,
-      nodes: [group, ...this.board.nodes],
-    })
+    if (!next) return
+    this.applyBoardChange(next)
     this.recomputeVisibility()
     this.drainQueues()
-    this.setSelection([group.id])
+    this.setSelection([id])
   }
 
   /**

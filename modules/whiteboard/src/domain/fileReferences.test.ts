@@ -16,7 +16,16 @@ function textNode(id: string, text = ''): TextNode {
 }
 
 function groupNode(id: string): GroupNode {
-  return { id, type: 'group', x: 0, y: 0, w: 400, h: 400, extra: {} }
+  return {
+    id,
+    type: 'group',
+    x: 0,
+    y: 0,
+    w: 400,
+    h: 400,
+    members: [],
+    extra: {},
+  }
 }
 
 function boardWith(nodes: Board['nodes']): Board {

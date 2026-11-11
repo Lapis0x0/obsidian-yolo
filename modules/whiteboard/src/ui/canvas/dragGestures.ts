@@ -15,8 +15,15 @@ import {
   fragmentFromSelection,
   placeFragment,
 } from '../../domain/clipboard'
-import { type NodeId, isPlainText } from '../../domain/fileFormat'
-import { boardBlocks, nodesToDragWith } from '../../domain/groups'
+import { type Board, type NodeId, isPlainText } from '../../domain/fileFormat'
+import {
+  boardBlocks,
+  draggedRoots,
+  groupDropDecision,
+  groupParents,
+  nodesToDragWith,
+  setMembership,
+} from '../../domain/groups'
 import { joinNodePath, splitNodePath } from '../../domain/nodePath'
 import { moveNodes, updateNode } from '../../domain/operations'
 import {
@@ -414,10 +421,10 @@ export class DragGestures {
       interaction,
       this.resizedRect(interaction, e).rect,
     )
-    // A group's contents deliberately stay where they are: growing a frame is
-    // how more cards are taken in and shrinking it is how they are let go,
-    // which is only possible if resizing moves nothing (Obsidian Canvas's
-    // group resize behaves identically).
+    // A group's contents stay where they are: what is resized is the range
+    // the frame keeps by hand (fileFormat.ts's `GroupNode.bounds`), and the
+    // frame is that and its members together — never smaller than what it
+    // holds.
     //
     // Bare text given a width keeps it: its width no longer follows its
     // longest line.
@@ -442,7 +449,11 @@ export class DragGestures {
       updateNode(
         this.core.getBoard(),
         interaction.nodeId,
-        plain ? { ...rect, autoWidth: undefined } : { ...rect, ...portalPatch },
+        plain
+          ? { ...rect, autoWidth: undefined }
+          : node?.type === 'group'
+            ? { ...rect, bounds: rect }
+            : { ...rect, ...portalPatch },
       ),
     )
     // The board holds this rectangle now; the gesture's copy of it retires.
@@ -535,11 +546,21 @@ export class DragGestures {
     const board = this.core.getBoard()
     const fragment = fragmentFromSelection(board, new Set(interaction.ids))
     if (fragment.nodes.length === 0) return
-    const { board: next } = placeFragment(
+    const { board: placed, copies } = placeFragment(
       board,
       fragment,
       boundsCenter(fragment.nodes),
     )
+    // A copy stays where its original was, and so in the group it was in:
+    // what leaves with the drag is the original.
+    const parents = groupParents(board.nodes)
+    let next = placed
+    for (const [original, copy] of copies) {
+      const parent = parents.get(original)
+      if (parent !== undefined && !copies.has(parent)) {
+        next = setMembership(next, [copy], parent)
+      }
+    }
     interaction.historyKey = `duplicate-drag-${String(++this.duplicateDrags)}`
     this.core.applyBoardChange(next, interaction.historyKey)
     this.core.recomputeVisibility()
@@ -745,10 +766,15 @@ export class DragGestures {
 
     const { dx, dy } = this.draggedDelta(interaction, e)
     if (dx !== 0 || dy !== 0) {
+      const point = this.core.worldPointFromEvent(e)
       this.core.commitMove(
-        moveNodes(this.core.getBoard(), interaction.ids, dx, dy),
+        this.withDropMembership(
+          moveNodes(this.core.getBoard(), interaction.ids, dx, dy),
+          interaction.ids,
+          point,
+        ),
         interaction.ids,
-        this.core.worldPointFromEvent(e),
+        point,
         interaction.historyKey,
       )
     }
@@ -776,6 +802,26 @@ export class DragGestures {
     // (mirrors onResize()'s direct call).
     this.core.recomputeVisibility()
     this.core.drainQueues()
+  }
+
+  /**
+   * `moved` — the board with a drag's cards where it dropped them — with them
+   * in the group the drop puts them in, or out of the one they left
+   * (domain/groups.ts's `groupDropDecision`). A drop through a portal onto
+   * the board behind it is that board's business, and changes no group here.
+   */
+  private withDropMembership(
+    moved: Board,
+    ids: readonly NodeId[],
+    point: ScreenPoint,
+  ): Board {
+    const first = ids[0]
+    if (first === undefined) return moved
+    if (this.core.portalAtPoint(point) !== homePortalOf(first)) return moved
+    const moving = new Set(ids)
+    const drop = groupDropDecision(moved, moving, this.core.scaleOf)
+    if (!drop) return moved
+    return setMembership(moved, draggedRoots(moved.nodes, moving), drop.target)
   }
 
   // -- creating from the bar ----------------------------------------------

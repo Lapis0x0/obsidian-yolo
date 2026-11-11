@@ -143,6 +143,41 @@ describe('importCanvas', () => {
     })
   })
 
+  it('records what lies wholly inside a Canvas group as its members', () => {
+    const board = requireOk(
+      importCanvas(
+        JSON.stringify({
+          nodes: [
+            { id: 'g', type: 'group', x: 0, y: 0, width: 500, height: 500 },
+            {
+              id: 'in',
+              type: 'text',
+              x: 10,
+              y: 10,
+              width: 50,
+              height: 50,
+              text: '',
+            },
+            {
+              id: 'out',
+              type: 'text',
+              x: 600,
+              y: 0,
+              width: 50,
+              height: 50,
+              text: '',
+            },
+          ],
+        }),
+      ),
+    )
+    expect(board.nodes[0]).toMatchObject({
+      type: 'group',
+      members: ['in'],
+      bounds: { x: 0, y: 0, w: 500, h: 500 },
+    })
+  })
+
   it('reuses the canvas ids, so edges keep pointing at the same nodes', () => {
     const board = requireOk(importCanvas(SAMPLE_CANVAS))
     expect(board.nodes.map((node) => node.id)).toEqual([

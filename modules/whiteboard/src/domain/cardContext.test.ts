@@ -21,8 +21,9 @@ function group(
   id: string,
   rect: { x: number; y: number; w: number; h: number },
   label?: string,
+  members: string[] = [],
 ): BoardNode {
-  return { id, type: 'group', ...rect, label, extra: {} }
+  return { id, type: 'group', ...rect, label, members, extra: {} }
 }
 
 function edge(id: string, fromNode: string, toNode: string): Board['edges'][0] {
@@ -72,7 +73,7 @@ describe('cardSourceNotePaths', () => {
   it('expands a source group into the notes inside it', () => {
     const board = boardWith(
       [
-        group('g-1', { x: 0, y: 0, w: 400, h: 400 }),
+        group('g-1', { x: 0, y: 0, w: 400, h: 400 }, undefined, ['c-1', 'c-2']),
         file('c-1', 'notes/a.md', 10, 10),
         file('c-2', 'notes/b.md', 10, 200),
         file('c-3', 'notes/away.md', 900, 900),
@@ -154,7 +155,7 @@ describe('buildCardContext', () => {
   it('expands a source group into every member, in full', () => {
     const board = boardWith(
       [
-        group('g-1', { x: 0, y: 0, w: 400, h: 400 }, 'Theme'),
+        group('g-1', { x: 0, y: 0, w: 400, h: 400 }, 'Theme', ['c-1', 'c-2']),
         text('c-1', 'inside one', 10, 10),
         text('c-2', 'inside two', 10, 200),
         text('c-3', 'far away', 900, 900),

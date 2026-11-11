@@ -274,6 +274,55 @@ describe('changesBetween', () => {
   })
 })
 
+describe('groups behind a portal', () => {
+  const sub = board([
+    {
+      id: 'g',
+      type: 'group',
+      x: 0,
+      y: 0,
+      w: 400,
+      h: 200,
+      members: ['a'],
+      bounds: { x: 0, y: 0, w: 400, h: 200 },
+      extra: {},
+    },
+    text('a', 10, 20),
+  ])
+  const own = board([
+    portal('p', 'Sub.yoloboard', 1000, 500, { x: 0, y: 0, scale: 0.5 }),
+  ])
+  const compose = () =>
+    composeBoard(own, 'Own.yoloboard', files({ 'Sub.yoloboard': sub }))
+
+  it('names its members, and places its bounds, as the board around sees them', () => {
+    const group = compose().board.nodes.find((node) => node.id === 'p/g')
+    expect(group).toMatchObject({
+      members: ['p/a'],
+      bounds: { x: 1000, y: 500, w: 200, h: 100 },
+    })
+  })
+
+  it('writes back only what really changed', () => {
+    const before = compose()
+    const after: Board = {
+      ...before.board,
+      nodes: before.board.nodes.map((node) =>
+        node.id === 'p/g' ? { ...node, label: 'named' } : node,
+      ),
+    }
+    const change = changesBetween(before, after, 'Own.yoloboard')
+      .get('Sub.yoloboard')
+      ?.nodes.get('g')
+    const was = sub.nodes[0]
+    expect(change?.after).toMatchObject({ label: 'named', members: ['a'] })
+    // The file's own arrays, not copies of them: nothing else changed.
+    expect(change?.after?.type === 'group' && change.after.members).toBe(
+      was.type === 'group' && was.members,
+    )
+  })
+})
+
 describe('clipThrough', () => {
   const inner = board([text('a', 0, 0)])
   const middle = board([portal('q', 'inner.yoloboard', 100, 100)])

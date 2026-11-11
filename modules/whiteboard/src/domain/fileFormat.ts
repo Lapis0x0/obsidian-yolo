@@ -218,14 +218,29 @@ export type LinkNode = BoardNodeBase &
   }>
 
 /**
- * JSON Canvas group node: a labelled frame behind the cards. Membership is
- * geometric (a node inside the frame is in the group) rather than stored, the
- * same way Canvas does it.
+ * JSON Canvas group node: a labelled frame behind the cards.
+ *
+ * Unlike Canvas, membership is recorded, not read off the geometry: `members`
+ * names the nodes the group directly holds (a nested group holds its own),
+ * and the frame follows them (domain/groups.ts's `fitGroups`) — the node's
+ * `x`/`y`/`w`/`h` are always the frame as it is drawn, so a reader that does
+ * not know the fields (Obsidian Canvas) shows the frame where it is. A node is
+ * directly in one group at most, and no group holds itself, however deep.
+ *
+ * `bounds` is the range someone dragged the frame out to by hand, when they
+ * did: the frame is that range and its members' together, never less than
+ * what it holds. Absent, the frame is exactly its members plus a margin.
+ *
+ * A group read without `members` was written before membership was recorded
+ * (or by Canvas): its rectangle becomes its `bounds`, and the nodes wholly
+ * inside it become its members (`recordMembership`).
  */
 export type GroupNode = BoardNodeBase &
   Readonly<{
     type: 'group'
     label?: string
+    members: readonly NodeId[]
+    bounds?: SpreadRect
   }>
 
 /**
@@ -468,7 +483,11 @@ export function parseBoardValue(json: unknown): BoardParseResult {
   }
 
   const issues: BoardParseIssue[] = []
-  const nodes = parseNodes(Array.isArray(rawNodes) ? rawNodes : [], issues)
+  const legacyGroups = new Set<NodeId>()
+  const nodes = recordMembership(
+    parseNodes(Array.isArray(rawNodes) ? rawNodes : [], issues, legacyGroups),
+    legacyGroups,
+  )
   const nodeIds = new Set(nodes.map((node) => node.id))
   const edges = parseEdges(
     Array.isArray(rawEdges) ? rawEdges : [],
@@ -492,7 +511,7 @@ export function serializeBoard(board: Board): string {
   const out: Record<string, unknown> = {
     version: board.version,
     camera: { x: board.camera.x, y: board.camera.y, scale: board.camera.scale },
-    nodes: board.nodes.map(serializeNode),
+    nodes: board.nodes.map((node) => serializeNode(node, nodeIds)),
     edges: board.edges.map((edge) => serializeEdge(edge, nodeIds)),
     ...board.extra,
   }
@@ -520,11 +539,17 @@ const FILE_NODE_KEYS = [
   'view',
 ] as const
 const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
-const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
+const GROUP_NODE_KEYS = [
+  ...NODE_COMMON_KEYS,
+  'label',
+  'members',
+  'bounds',
+] as const
 
 function parseNodes(
   raw: readonly unknown[],
   issues: BoardParseIssue[],
+  legacyGroups: Set<NodeId>,
 ): BoardNode[] {
   const nodes: BoardNode[] = []
   const seenIds = new Set<string>()
@@ -537,8 +562,112 @@ function parseNodes(
     }
     seenIds.add(node.id)
     nodes.push(node)
+    if (
+      node.type === 'group' &&
+      !Array.isArray((entry as Record<string, unknown>).members)
+    ) {
+      legacyGroups.add(node.id)
+    }
   })
   return nodes
+}
+
+/**
+ * Makes every group's `members` a list the rest of the module can trust, and
+ * gives the groups in `legacy` — read from a file written before membership
+ * was recorded, or from Obsidian Canvas — the members the geometry gave them.
+ *
+ * A legacy group keeps its rectangle as `bounds`, so it looks as it did, and
+ * holds what is wholly inside it: the rule Canvas applies, and the one this
+ * module applied until membership was recorded. A node inside several frames
+ * belongs to the innermost; an open PDF spread is judged by its title, the
+ * thing that stands for the document.
+ *
+ * Then, for every group: members that are not nodes of this board, repeats,
+ * and the group itself are dropped; a node named by two groups stays with the
+ * first; and a membership that would make a group hold itself, however deep,
+ * is dropped. The same tolerance an edge to a missing node gets — the file is
+ * read, not rejected.
+ */
+export function recordMembership(
+  nodes: readonly BoardNode[],
+  legacy: ReadonlySet<NodeId>,
+): BoardNode[] {
+  const out = nodes.slice()
+  if (legacy.size > 0) {
+    const index = new Map(nodes.map((node, at) => [node.id, at]))
+    const area = (rect: SpreadRect) => rect.w * rect.h
+    // Which of two frames is outside the other, when each contains the
+    // other's rectangle: the larger, or, the same size, the one drawn first.
+    const outside = (a: BoardNode, b: BoardNode) =>
+      area(a) > area(b) ||
+      (area(a) === area(b) && (index.get(a.id) ?? 0) < (index.get(b.id) ?? 0))
+    const frames = nodes.filter((node) => legacy.has(node.id))
+    const held = new Map<NodeId, NodeId[]>(frames.map((f) => [f.id, []]))
+    for (const node of nodes) {
+      const rect = containmentRect(node)
+      let parent: BoardNode | null = null
+      for (const frame of frames) {
+        if (frame.id === node.id || !containsRect(frame, rect)) continue
+        if (node.type === 'group' && !outside(frame, node)) continue
+        if (!parent || outside(parent, frame)) parent = frame
+      }
+      if (parent) held.get(parent.id)?.push(node.id)
+    }
+    for (const [at, node] of out.entries()) {
+      if (node.type !== 'group' || !legacy.has(node.id)) continue
+      out[at] = {
+        ...node,
+        members: held.get(node.id) ?? [],
+        bounds: { x: node.x, y: node.y, w: node.w, h: node.h },
+      }
+    }
+  }
+
+  const ids = new Set(
+    out.filter((node) => node.type !== 'pdf-page').map((node) => node.id),
+  )
+  const parentOf = new Map<NodeId, NodeId>()
+  const holds = (group: NodeId, id: NodeId): boolean => {
+    for (let at: NodeId | undefined = group; at; at = parentOf.get(at)) {
+      if (at === id) return true
+    }
+    return false
+  }
+  for (const [at, node] of out.entries()) {
+    if (node.type !== 'group') continue
+    const members: NodeId[] = []
+    for (const id of node.members) {
+      if (!ids.has(id) || parentOf.has(id) || holds(node.id, id)) continue
+      parentOf.set(id, node.id)
+      members.push(id)
+    }
+    if (
+      members.length !== node.members.length ||
+      members.some((id, i) => id !== node.members[i])
+    ) {
+      out[at] = { ...node, members }
+    }
+  }
+  return out
+}
+
+/** What of a node a legacy frame has to contain for the node to be in it:
+ * its rectangle, or for an open spread its title. */
+function containmentRect(node: BoardNode): SpreadRect {
+  if (node.type === 'file' && node.spread?.open === true) {
+    return node.spread.title
+  }
+  return node
+}
+
+function containsRect(outer: SpreadRect, inner: SpreadRect): boolean {
+  return (
+    outer.x <= inner.x &&
+    outer.y <= inner.y &&
+    outer.x + outer.w >= inner.x + inner.w &&
+    outer.y + outer.h >= inner.y + inner.h
+  )
 }
 
 function parseNode(
@@ -629,10 +758,17 @@ function parseNode(
     }
     case 'group': {
       const label = typeof entry.label === 'string' ? entry.label : undefined
+      // Checked whole by `recordMembership`, once every node is known.
+      const members = Array.isArray(entry.members)
+        ? entry.members.filter(isNonEmptyString)
+        : []
+      const bounds = parseSpreadRect(entry.bounds)
       return {
         ...base,
         type: 'group',
         ...(label === undefined ? {} : { label }),
+        members,
+        ...(bounds ? { bounds } : {}),
         extra: extractExtra(entry, GROUP_NODE_KEYS),
       }
     }
@@ -776,7 +912,15 @@ function parseNodeGeometry(
   }
 }
 
-export function serializeNode(node: BoardNode): Record<string, unknown> {
+/**
+ * `nodeIds` are the ids of the nodes written beside this one: a group's
+ * member that is not among them (deleted — an undo may bring it back) is
+ * left out, as an edge to it is. Without them, every member is written.
+ */
+export function serializeNode(
+  node: BoardNode,
+  nodeIds?: ReadonlySet<NodeId>,
+): Record<string, unknown> {
   const common = {
     id: node.id,
     type: node.type,
@@ -821,7 +965,17 @@ export function serializeNode(node: BoardNode): Record<string, unknown> {
     case 'link':
       return { ...common, url: node.url, ...node.extra }
     case 'group':
-      return { ...common, label: node.label, ...node.extra }
+      return {
+        ...common,
+        label: node.label,
+        members: nodeIds
+          ? node.members.filter((id) => nodeIds.has(id))
+          : node.members,
+        bounds: node.bounds
+          ? [node.bounds.x, node.bounds.y, node.bounds.w, node.bounds.h]
+          : undefined,
+        ...node.extra,
+      }
     case 'pdf-page':
       // A board is folded back (domain/spread.ts's `collapseBoard`) before
       // anything writes it; a sheet reaching here would be written as a node

@@ -47,7 +47,7 @@ import type {
   TextNode,
 } from './fileFormat'
 import { isNodeSide } from './fileFormat'
-import { groupRectForNodes } from './groups'
+import { carryGroupMembers, createGroup, fitGroups } from './groups'
 import { fileNodeKind } from './naming'
 import {
   addEdge,
@@ -212,7 +212,8 @@ export function applyBoardEdit(
     next = applyArranges(next, edit.arrange ?? [], context)
     return {
       ok: true,
-      board: next,
+      // Frames follow what they hold, whatever moved them.
+      board: fitGroups(next),
       createdCardIds,
       createdEdgeIds,
       createdGroupIds,
@@ -338,6 +339,14 @@ function applyUpdates(board: Board, ops: readonly UpdateOp[]): Board {
   for (const [index, op] of ops.entries()) {
     const where = `update[${index}]`
     const node = next.nodes.find((candidate) => candidate.id === op.id)
+    if (node?.type === 'group' && hasGeometry(op)) {
+      next = updateGroupGeometry(next, node, geometryPatch(op, where))
+      next = updateNode(next, op.id, {
+        ...colorField(op.color, `${where}.color`),
+        ...textPatch(node, op, where),
+      })
+      continue
+    }
     if (node) {
       next = updateNode(next, op.id, {
         ...geometryPatch(op, where),
@@ -388,6 +397,37 @@ function textPatch(
     ...(op.text !== undefined ? { text: op.text } : {}),
     ...(op.label !== undefined ? { label: op.label } : {}),
   }
+}
+
+/**
+ * A group's frame is where its cards are, so a new position moves them — the
+ * whole group goes there — and a new size is a size the frame keeps
+ * (`GroupNode.bounds`) from its new top-left corner, never less than its
+ * cards take up.
+ */
+function updateGroupGeometry(
+  board: Board,
+  group: GroupNode,
+  patch: { x?: number; y?: number; w?: number; h?: number },
+): Board {
+  const x = patch.x ?? group.x
+  const y = patch.y ?? group.y
+  const dx = x - group.x
+  const dy = y - group.y
+  let next = board
+  if (dx !== 0 || dy !== 0) {
+    next = setNodePositions(
+      next,
+      carryGroupMembers(next.nodes, new Map([[group.id, { x, y }]])),
+    )
+  }
+  const bounds =
+    patch.w !== undefined || patch.h !== undefined
+      ? { x, y, w: patch.w ?? group.w, h: patch.h ?? group.h }
+      : group.bounds
+        ? { ...group.bounds, x: group.bounds.x + dx, y: group.bounds.y + dy }
+        : undefined
+  return bounds ? updateNode(next, group.id, { bounds }) : next
 }
 
 function hasGeometry(op: UpdateOp): boolean {
@@ -467,23 +507,21 @@ function applyGroups(
   for (const [index, op] of ops.entries()) {
     const where = `group[${index}]`
     if (op.ids.length === 0) fail(`${where}: give at least one card to group.`)
-    const members = op.ids.map((id) => requireNode(next, id, `${where}.ids`))
-    const rect = groupRectForNodes(members)
-    if (!rect) fail(`${where}: give at least one card to group.`)
-    const group: GroupNode = {
-      id: context.newNodeId(next),
-      type: 'group',
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      w: Math.round(rect.w),
-      h: Math.round(rect.h),
-      ...(op.label !== undefined ? { label: op.label } : {}),
-      extra: {},
-    }
-    // Prepended rather than appended: a group is a frame drawn *behind* its
-    // members, and paint order is node order.
-    next = { ...next, nodes: [group, ...next.nodes] }
-    ids.push(group.id)
+    for (const id of op.ids) requireNode(next, id, `${where}.ids`)
+    const id = context.newNodeId(next)
+    const grouped = createGroup(
+      next,
+      {
+        id,
+        type: 'group',
+        ...(op.label !== undefined ? { label: op.label } : {}),
+        extra: {},
+      },
+      op.ids,
+    )
+    if (!grouped) fail(`${where}: give at least one card to group.`)
+    next = grouped
+    ids.push(id)
   }
   return { board: next, ids }
 }

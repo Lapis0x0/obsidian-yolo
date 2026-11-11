@@ -416,7 +416,7 @@ export function moveToBoard(
     if (name) {
       const fromScale = portalOf(node.id, portals)?.scale ?? 1
       const ratio = toScale / fromScale
-      moved.push(
+      const placed: BoardNode =
         ratio === 1
           ? { ...node, id: name }
           : {
@@ -426,8 +426,32 @@ export function moveToBoard(
               y: at.y + (node.y - at.y) * ratio,
               w: tidy(node.w / fromScale) * toScale,
               h: tidy(node.h / fromScale) * toScale,
-            },
-      )
+            }
+      // A group goes with the members that go with it, by their new names;
+      // the ones left behind are no longer on its board. Its hand-set range
+      // grows or shrinks with it.
+      if (placed.type === 'group') {
+        const bounds = placed.bounds
+        moved.push({
+          ...placed,
+          members: placed.members.flatMap((id) => {
+            const now = renamed.get(id)
+            return now === undefined ? [] : [now]
+          }),
+          ...(bounds && ratio !== 1
+            ? {
+                bounds: {
+                  x: at.x + (bounds.x - at.x) * ratio,
+                  y: at.y + (bounds.y - at.y) * ratio,
+                  w: bounds.w * ratio,
+                  h: bounds.h * ratio,
+                },
+              }
+            : {}),
+        })
+        continue
+      }
+      moved.push(placed)
       continue
     }
     nodes.push(node)
@@ -574,7 +598,22 @@ function project(
   const made: BoardNode =
     moved.type === 'pdf-page'
       ? { ...moved, parent: `${prefix}${moved.parent}` }
-      : moved
+      : moved.type === 'group'
+        ? {
+            ...moved,
+            members: moved.members.map((id) => `${prefix}${id}`),
+            ...(moved.bounds
+              ? {
+                  bounds: {
+                    x: moved.bounds.x * scale + dx,
+                    y: moved.bounds.y * scale + dy,
+                    w: moved.bounds.w * scale,
+                    h: moved.bounds.h * scale,
+                  },
+                }
+              : {}),
+          }
+        : moved
   projectedFrom.set(made, node)
   return remember(node, key, made)
 }
@@ -955,9 +994,43 @@ function unproject(
     w: back(node.w, 0, source?.w),
     h: back(node.h, 0, source?.h),
   }
-  return moved.type === 'pdf-page' && moved.parent.startsWith(`${portalId}/`)
-    ? { ...moved, parent: strip(moved.parent) }
-    : moved
+  if (moved.type === 'pdf-page' && moved.parent.startsWith(`${portalId}/`)) {
+    return { ...moved, parent: strip(moved.parent) }
+  }
+  if (moved.type !== 'group') return moved
+  // What did not change is what the file has, so the node is the file's
+  // unless it really was changed.
+  const was = source?.type === 'group' ? source : null
+  const members = moved.members.map(strip)
+  const bounds = moved.bounds
+    ? {
+        x: back(moved.bounds.x, dx, was?.bounds?.x),
+        y: back(moved.bounds.y, dy, was?.bounds?.y),
+        w: back(moved.bounds.w, 0, was?.bounds?.w),
+        h: back(moved.bounds.h, 0, was?.bounds?.h),
+      }
+    : undefined
+  return {
+    ...moved,
+    members:
+      was &&
+      was.members.length === members.length &&
+      was.members.every((id, i) => id === members[i])
+        ? was.members
+        : members,
+    ...(bounds
+      ? {
+          bounds:
+            was?.bounds &&
+            was.bounds.x === bounds.x &&
+            was.bounds.y === bounds.y &&
+            was.bounds.w === bounds.w &&
+            was.bounds.h === bounds.h
+              ? was.bounds
+              : bounds,
+        }
+      : {}),
+  }
 }
 
 function unprojectEdge(edge: Edge, prefix: string): Edge {

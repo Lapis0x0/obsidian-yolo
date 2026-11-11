@@ -447,30 +447,27 @@ describe('the document as a whole', () => {
     })
   })
 
-  it('counts a spread in a group by its title alone', () => {
-    const aroundTitle: GroupNode = {
+  it('holds a spread as a whole: the title, and every sheet with it', () => {
+    const holding: GroupNode = {
       id: 'g',
       type: 'group',
       x: 990,
       y: -10,
       w: 410,
       h: 60,
+      members: ['p'],
       extra: {},
     }
-    expect(nodesInsideGroup(aroundTitle, open.nodes)).toEqual([
+    expect(nodesInsideGroup(holding, open.nodes)).toEqual([
       'p',
       'p/p1',
       'p/p2',
       'p/p3',
     ])
-    const aroundSheet: GroupNode = {
-      ...aroundTitle,
-      x: threePages.pages[0].x - 10,
-      y: threePages.pages[0].y - 10,
-      w: 410,
-      h: 600,
-    }
-    expect(nodesInsideGroup(aroundSheet, open.nodes)).toEqual([])
+    // A sheet is never a member on its own.
+    expect(
+      nodesInsideGroup({ ...holding, members: ['p/p1'] }, open.nodes),
+    ).toEqual([])
   })
 })
 

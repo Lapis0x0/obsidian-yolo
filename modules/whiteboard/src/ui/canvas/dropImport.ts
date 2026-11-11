@@ -27,7 +27,7 @@ import {
   emptyBoard,
   serializeBoard,
 } from '../../domain/fileFormat'
-import { GROUP_SELECTION_PADDING, arrangeTargets } from '../../domain/groups'
+import { GROUP_PADDING, arrangeTargets } from '../../domain/groups'
 import {
   basenameWithoutExtension,
   cardNoteContent,
@@ -1025,19 +1025,26 @@ export class DropImport {
   }
 
   /** An empty group centered on the clicked point, sized to hold one default
-   * card with the same breathing room a selection-made group gets. Selected on
-   * creation so the double-click-to-name affordance is one gesture away. */
+   * card with the same breathing room a selection-made group gets — a size
+   * set by hand, since there is nothing in it to fit (fileFormat.ts's
+   * `GroupNode.bounds`). Selected on creation so the double-click-to-name
+   * affordance is one gesture away. */
   private createEmptyGroupAt(world: ScreenPoint): void {
     if (!this.core.canEdit()) return
-    const w = NEW_CARD_SIZE.w + GROUP_SELECTION_PADDING * 2
-    const h = NEW_CARD_SIZE.h + GROUP_SELECTION_PADDING * 2
-    const group: GroupNode = {
-      id: this.core.nextNodeId(),
-      type: 'group',
+    const w = NEW_CARD_SIZE.w + GROUP_PADDING * 2
+    const h = NEW_CARD_SIZE.h + GROUP_PADDING * 2
+    const rect = {
       x: Math.round(world.x - w / 2),
       y: Math.round(world.y - h / 2),
       w,
       h,
+    }
+    const group: GroupNode = {
+      id: this.core.nextNodeId(),
+      type: 'group',
+      ...rect,
+      members: [],
+      bounds: rect,
       extra: {},
     }
     this.core.applyBoardChange({

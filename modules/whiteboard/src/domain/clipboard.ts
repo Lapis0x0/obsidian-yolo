@@ -58,9 +58,18 @@ export function fragmentFromSelection(
   // A spread comes along whole or not at all: its title brings every sheet
   // (`nodesToDragWith`), and a sheet selected without it is part of a PDF that
   // is not being copied — the fold below drops it.
+  // A group copied holds what was copied with it, and nothing else.
+  const nodes = board.nodes.flatMap((node): BoardNode[] => {
+    if (!ids.has(node.id)) return []
+    if (node.type !== 'group') return [node]
+    const members = node.members.filter((id) => ids.has(id))
+    return [
+      members.length === node.members.length ? node : { ...node, members },
+    ]
+  })
   const folded = collapseBoard({
     ...board,
-    nodes: board.nodes.filter((node) => ids.has(node.id)),
+    nodes,
     edges: board.edges.filter(
       (edge) => ids.has(edge.fromNode) && ids.has(edge.toNode),
     ),
@@ -126,7 +135,12 @@ export function placeFragment(
   board: Board,
   fragment: BoardFragment,
   at: ScreenPoint,
-): Readonly<{ board: Board; nodeIds: NodeId[] }> {
+): Readonly<{
+  board: Board
+  nodeIds: NodeId[]
+  /** Each copied node's id in the fragment, to its copy's. */
+  copies: ReadonlyMap<NodeId, NodeId>
+}> {
   // Placed in the board's shape, so an open spread lands as the title and
   // sheets it was copied as, and is centred on what was on screen.
   const opened = expandBoard({ ...board, ...fragment })
@@ -148,6 +162,15 @@ export function placeFragment(
     }
     const id = mintNodeId(next)
     idMap.set(node.id, id)
+    if (moved.type === 'group' && moved.bounds) {
+      const bounds = moved.bounds
+      next = addNode(next, {
+        ...moved,
+        id,
+        bounds: { ...bounds, x: bounds.x + dx, y: bounds.y + dy },
+      })
+      continue
+    }
     if (moved.type === 'file' && moved.readerRect) {
       const reader = moved.readerRect
       next = addNode(next, {
@@ -159,6 +182,24 @@ export function placeFragment(
     }
     next = addNode(next, { ...moved, id })
   }
+  // A pasted group holds the pasted copies of its members.
+  if (opened.nodes.some((node) => node.type === 'group')) {
+    const placed = new Set(idMap.values())
+    next = {
+      ...next,
+      nodes: next.nodes.map((node) =>
+        node.type === 'group' && placed.has(node.id)
+          ? {
+              ...node,
+              members: node.members.flatMap((id) => {
+                const copy = idMap.get(id)
+                return copy === undefined ? [] : [copy]
+              }),
+            }
+          : node,
+      ),
+    }
+  }
   for (const edge of opened.edges) {
     const fromNode = idMap.get(edge.fromNode)
     const toNode = idMap.get(edge.toNode)
@@ -167,6 +208,7 @@ export function placeFragment(
   }
   return {
     board: next,
+    copies: idMap,
     nodeIds: opened.nodes.flatMap((node) => {
       const id = idMap.get(node.id)
       return id === undefined ? [] : [id]

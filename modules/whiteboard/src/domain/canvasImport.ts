@@ -29,6 +29,7 @@ import {
   YOLOBOARD_SCHEMA_VERSION,
   isEdgeEnd,
   isNodeSide,
+  recordMembership,
 } from './fileFormat'
 
 export type CanvasImportIssue =
@@ -191,7 +192,13 @@ function convertNodes(
     seenIds.add(id)
     nodes.push(node)
   })
-  return nodes
+  // A Canvas group's members are what lies wholly inside it; they are
+  // recorded the way a board written before membership was recorded has its
+  // recorded (fileFormat.ts).
+  return recordMembership(
+    nodes,
+    new Set(nodes.filter((node) => node.type === 'group').map((n) => n.id)),
+  )
 }
 
 function convertNodeBody(
@@ -288,6 +295,7 @@ function convertNodeBody(
         ...base,
         type: 'group',
         ...(label === undefined ? {} : { label }),
+        members: [],
         extra: extraExcept(entry, [
           'id',
           'type',

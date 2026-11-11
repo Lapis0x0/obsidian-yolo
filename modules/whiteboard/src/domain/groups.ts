@@ -1,43 +1,62 @@
-// Group membership and the rectangle a new group takes — pure geometry over
-// board nodes, no DOM (Module Boundaries, CLAUDE.md).
+// Groups: who is in one, how big its frame is, and what a drag does to
+// membership — pure logic over board nodes, no DOM (Module Boundaries,
+// CLAUDE.md).
 //
-// Membership is **spatial, not stored**: a node belongs to a group while it
-// sits inside the group's rectangle, and stops belonging the moment either one
-// moves. There is no parent field on a node and nothing to keep in sync — the
-// same model Obsidian Canvas uses, verified against its running 1.13.7 build,
-// where `getContainingNodes` re-runs a spatial query every time a group is
-// grabbed:
+// Membership is **recorded**: a group names the nodes it directly holds
+// (fileFormat.ts's `GroupNode.members`), and a nested group holds its own. It
+// used to be read off the geometry, the way Obsidian Canvas does it — a node
+// wholly inside the frame was in the group — which made the frame the thing
+// the user had to manage: grow it to take a card in, and a card nudged past
+// its edge silently left. Now the frame follows what it holds (`fitGroups`),
+// and joining or leaving is something a drag decides on purpose
+// (`groupDropDecision`), with slack in both directions.
 //
-//   getContainingNodes = function(e){ return this.nodeIndex.search(e)
-//     .filter(function(t){ return L8(e, t.getBBox()) }) }
-//   function L8(e,t){ return e.minX<=t.minX && e.minY<=t.minY
-//     && e.maxX>=t.maxX && e.maxY>=t.maxY }
-//
-// `L8` is **full containment** — a node hanging half out of a group is not in
-// it. Copied rather than chosen: centre-point containment would carry away a
-// card whose visible bulk is outside the frame, and intersection would carry
-// away anything the frame merely grazed.
+// Two rules about what a member is carry over from the geometric model:
+//   - a PDF spread is held as a whole — the group names its title, and every
+//     sheet goes where the title goes, wherever it lies;
+//   - a group holds only nodes of its own board: what shows through a portal
+//     is the board behind it, and goes where its portal goes.
 
 import {
   type Board,
   type BoardNode,
+  type GroupNode,
   NODE_PATH_SEPARATOR,
   type NodeId,
 } from './fileFormat'
+import { fileNodeKind } from './naming'
 import { isPortal } from './portals'
-import { isSpreadTitle } from './spread'
+import { isSpreadTitle, withTitleAbove } from './spread'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
 /**
- * Padding between a selection and the group created around it, in world
- * units. Obsidian Canvas's own figure, read off the closure its "create group"
- * action runs (`I8(P8(bboxes), 20)`): the union of the selection, inflated by
- * 20 on every side.
+ * The margin between what a group holds and its frame, in world units.
+ * Obsidian Canvas's own figure for a group made from a selection
+ * (`I8(P8(bboxes), 20)`), and now the margin the frame always keeps.
  */
-export const GROUP_SELECTION_PADDING = 20
+export const GROUP_PADDING = 20
 
-/** True when `outer` completely encloses `inner` — Canvas's `L8`, above. */
+/**
+ * A group's title bar: a fixed-width strip outside the frame, over its
+ * top-left corner, left edges aligned — `gap` above the frame. Whole cells of
+ * the board's 13-unit grid where it can be; the height and gap are an open
+ * PDF spread's title's (domain/spread.ts's SPREAD_METRICS), so the two read
+ * as one kind of heading. A frame is never narrower than its title bar.
+ */
+export const GROUP_TITLE = Object.freeze({ width: 312, height: 39, gap: 6 })
+
+/** How near a dragged card's centre has to come to a frame for dropping it
+ * to put it in that group. A fitted frame hugs what it holds, so "on the
+ * frame" has to include a little of the outside. */
+export const GROUP_JOIN_DISTANCE = 39
+
+/** How far a member's centre has to be taken from the frame the rest of its
+ * group makes for dropping it to take it out. Far more than joining: a card
+ * nudged off line is not a card being taken away. */
+export const GROUP_LEAVE_DISTANCE = 91
+
+/** True when `outer` completely encloses `inner`. */
 export function rectContains(outer: GroupRect, inner: GroupRect): boolean {
   return (
     outer.x <= inner.x &&
@@ -47,45 +66,67 @@ export function rectContains(outer: GroupRect, inner: GroupRect): boolean {
   )
 }
 
+/** The group each node on the board is directly in, by the node's id. */
+export function groupParents(
+  nodes: readonly BoardNode[],
+): ReadonlyMap<NodeId, NodeId> {
+  const present = new Set(nodes.map((node) => node.id))
+  const parents = new Map<NodeId, NodeId>()
+  for (const node of nodes) {
+    if (node.type !== 'group') continue
+    for (const id of node.members) {
+      if (present.has(id) && !parents.has(id)) parents.set(id, node.id)
+    }
+  }
+  return parents
+}
+
+/** The members of `group` that are on the board — a deleted member's id
+ * stays in the list until the file is written, so an undo brings it back. */
+function presentMembers(
+  group: GroupNode,
+  byId: ReadonlyMap<NodeId, BoardNode>,
+): BoardNode[] {
+  const out: BoardNode[] = []
+  for (const id of group.members) {
+    const node = byId.get(id)
+    if (node && node.type !== 'pdf-page') out.push(node)
+  }
+  return out
+}
+
 /**
- * Ids of every node that sits wholly inside `group`, excluding the group
- * itself. Other groups count: a group nested inside another is carried by it,
- * and so (being inside the outer one too) is everything the inner group holds.
- *
- * A spread's pages are the one exception to geometry (domain/spread.ts): the
- * PDF is in the group when its title is, and then all of it is — a sheet
- * placed outside the frame included — while a sheet inside the frame whose
- * title is elsewhere is not. A document is held or not held as a whole.
- *
- * And a group holds only what is on its own board: a card behind a portal
- * (domain/portals.ts) that happens to be inside a frame of the board around
- * it belongs to the board behind the portal, and goes where its portal goes.
+ * Ids of every node `group` holds, at any depth, excluding the group itself,
+ * in board order: its members, what its nested groups hold, and the sheets of
+ * every open spread among them.
  */
 export function nodesInsideGroup(
   group: BoardNode,
   nodes: readonly BoardNode[],
 ): NodeId[] {
-  const board = boardOf(group.id)
-  const inside = nodes.filter(
-    (node) =>
-      node.id !== group.id &&
-      node.type !== 'pdf-page' &&
-      boardOf(node.id) === board &&
-      rectContains(group, node),
-  )
-  const titles = new Set(inside.filter(isSpreadTitle).map((node) => node.id))
-  if (titles.size === 0) return inside.map((node) => node.id)
-  const ids = new Set(inside.map((node) => node.id))
-  for (const node of nodes) {
-    if (node.type === 'pdf-page' && titles.has(node.parent)) ids.add(node.id)
+  if (group.type !== 'group') return []
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const ids = new Set<NodeId>()
+  const visit = (holder: GroupNode) => {
+    for (const member of presentMembers(holder, byId)) {
+      if (ids.has(member.id) || member.id === group.id) continue
+      ids.add(member.id)
+      if (member.type === 'group') visit(member)
+    }
   }
-  return nodes.filter((node) => ids.has(node.id)).map((node) => node.id)
-}
-
-/** The way in to the board a node is on: '' for the board's own. */
-function boardOf(id: NodeId): string {
-  const end = id.lastIndexOf(NODE_PATH_SEPARATOR)
-  return end < 0 ? '' : id.slice(0, end)
+  visit(group)
+  const titles = new Set(
+    nodes
+      .filter((node) => ids.has(node.id) && isSpreadTitle(node))
+      .map((n) => n.id),
+  )
+  return nodes
+    .filter(
+      (node) =>
+        ids.has(node.id) ||
+        (node.type === 'pdf-page' && titles.has(node.parent)),
+    )
+    .map((node) => node.id)
 }
 
 /**
@@ -108,14 +149,8 @@ function carriedBy(node: BoardNode, nodes: readonly BoardNode[]): NodeId[] {
 
 /**
  * Every node a drag of `selectedIds` must actually move: the selection itself,
- * plus the contents of any group in it.
- *
- * Resolved here, at the moment the drag begins, because membership is
- * positional — asking any earlier would answer for a layout that has since
- * changed. Resizing a group deliberately does not go through this (Canvas's
- * group resize leaves its contents where they are, so a group can be grown
- * around more cards or shrunk off them), and neither does anything else that
- * moves a single node.
+ * plus what each selected group holds (and each spread title its sheets, each
+ * portal what is behind it).
  */
 export function nodesToDragWith(
   selectedIds: ReadonlySet<NodeId>,
@@ -135,9 +170,10 @@ export function nodesToDragWith(
  * arrange button, canvas.ts's own selection menu).
  *
  * Normally the selection. The exception is a lone selected group, where the
- * target is what the group *holds* — Obsidian Canvas does exactly this, and
- * it is what makes a group worth having: tidying a cluster becomes "select
- * its frame, align", rather than rubber-banding its members first.
+ * target is what the group directly *holds* — Obsidian Canvas does the same,
+ * and it is what makes a group worth having: tidying a cluster becomes
+ * "select its frame, align", rather than rubber-banding its members first. A
+ * nested group is one of those things, and takes what it holds along.
  */
 export function arrangeTargets(
   board: Board,
@@ -145,8 +181,11 @@ export function arrangeTargets(
 ): readonly BoardNode[] {
   const selected = board.nodes.filter((node) => selectedIds.has(node.id))
   if (selected.length === 1 && selected[0].type === 'group') {
-    const contained = new Set(nodesInsideGroup(selected[0], board.nodes))
-    return board.nodes.filter((node) => contained.has(node.id))
+    const byId = new Map(board.nodes.map((node) => [node.id, node]))
+    const direct = new Set(
+      presentMembers(selected[0], byId).map((node) => node.id),
+    )
+    return board.nodes.filter((node) => direct.has(node.id))
   }
   // A node its own group is carrying is not a target beside it: it has no
   // position of its own to align, it goes where the frame goes. Leaving it in
@@ -160,12 +199,9 @@ export function arrangeTargets(
 
 /**
  * The moves `positions` really implies: a group that moves carries what it
- * holds, so each of its members moves by the same delta.
- *
- * The counterpart of `nodesToDragWith` for a move that is computed rather than
- * dragged (align, distribute). Both say the one thing — a group carries its
- * contents — and both resolve membership against the layout as it stands
- * before the move, so a frame cannot pick up the nodes it travels past.
+ * holds, so each of its members moves by the same delta — the counterpart of
+ * `nodesToDragWith` for a move that is computed rather than dragged (align,
+ * distribute).
  *
  * A node that has a move of its own keeps it. `arrangeTargets` never returns a
  * carried node beside its group, so the two cannot disagree unless a caller
@@ -197,8 +233,8 @@ export function carryGroupMembers(
  * The board as the overview tier arranges it: one rectangle per thing that
  * stands on its own. A group is its frame and whatever it holds is part of
  * it; an open spread is its title and every sheet, as one box; anything else
- * not inside a group is its own rectangle. Nodes in `exclude` — what a drag
- * is carrying — are left out, and so is a spread whose title is.
+ * not in a group is its own rectangle. Nodes in `exclude` — what a drag is
+ * carrying — are left out, and so is a spread whose title is.
  *
  * What a drag lines up with from far away (ui/canvas/dragGestures.ts): at
  * that zoom the board is arranged by its blocks, and a sheet's corner or a
@@ -232,13 +268,12 @@ export function boardBlocks(
 }
 
 /**
- * The rectangle a group created from `nodes` takes: their union, inflated so
- * the frame reads as holding them rather than touching them. Null when there
- * is nothing to enclose.
+ * The union of `nodes`' rectangles, inflated by `padding`. Null when there is
+ * nothing to enclose.
  */
 export function groupRectForNodes(
-  nodes: readonly BoardNode[],
-  padding: number = GROUP_SELECTION_PADDING,
+  nodes: readonly GroupRect[],
+  padding: number = GROUP_PADDING,
 ): GroupRect | null {
   if (nodes.length === 0) return null
   let minX = Infinity
@@ -257,4 +292,385 @@ export function groupRectForNodes(
     w: maxX - minX + padding * 2,
     h: maxY - minY + padding * 2,
   }
+}
+
+// ---------------------------------------------------------------------------
+// The frame
+// ---------------------------------------------------------------------------
+
+/** How large a node shows at — a portal's scale for one behind it, 1 for the
+ * board's own. A frame's margins and title are in its own board's units. */
+export type ScaleOf = (id: NodeId) => number
+
+const UNIT_SCALE: ScaleOf = () => 1
+
+/** The whole of a group seen from outside: its frame and the title bar over
+ * it. */
+export function groupOuterRect(frame: GroupRect, scale = 1): GroupRect {
+  const lead = (GROUP_TITLE.height + GROUP_TITLE.gap) * scale
+  return {
+    x: frame.x,
+    y: frame.y - lead,
+    w: Math.max(frame.w, GROUP_TITLE.width * scale),
+    h: frame.h + lead,
+  }
+}
+
+/**
+ * What of the board a node takes up, as a frame around it must see it: its
+ * rectangle, with what is drawn outside it — the title line over a PDF or a
+ * portal card, an open spread's sheets, a nested group's title bar.
+ */
+function nodeExtent(
+  node: BoardNode,
+  sheetsOf: ReadonlyMap<NodeId, readonly BoardNode[]>,
+  scale: number,
+): GroupRect {
+  if (node.type === 'group') return groupOuterRect(node, scale)
+  if (isSpreadTitle(node)) {
+    return (
+      groupRectForNodes([node, ...(sheetsOf.get(node.id) ?? [])], 0) ?? node
+    )
+  }
+  if (node.type === 'file') {
+    // The file's shape of an open spread: the card's box is not what shows.
+    if (node.spread?.open === true) {
+      return (
+        groupRectForNodes([node.spread.title, ...node.spread.pages], 0) ?? node
+      )
+    }
+    if (['pdf', 'board'].includes(fileNodeKind(node.file))) {
+      const lead = -withTitleAbove({ x: 0, y: 0, w: 0, h: 0 }).y * scale
+      return { x: node.x, y: node.y - lead, w: node.w, h: node.h + lead }
+    }
+  }
+  return node
+}
+
+type FrameContext = Readonly<{
+  byId: ReadonlyMap<NodeId, BoardNode>
+  sheetsOf: ReadonlyMap<NodeId, readonly BoardNode[]>
+  scaleOf: ScaleOf
+  exclude: ReadonlySet<NodeId>
+}>
+
+function frameContext(
+  nodes: readonly BoardNode[],
+  scaleOf: ScaleOf,
+  exclude: ReadonlySet<NodeId>,
+): FrameContext {
+  const sheetsOf = new Map<NodeId, BoardNode[]>()
+  for (const node of nodes) {
+    if (node.type !== 'pdf-page') continue
+    const list = sheetsOf.get(node.parent)
+    if (list) list.push(node)
+    else sheetsOf.set(node.parent, [node])
+  }
+  return {
+    byId: new Map(nodes.map((node) => [node.id, node])),
+    sheetsOf,
+    scaleOf,
+    exclude,
+  }
+}
+
+/**
+ * The frame `group` should have: its `bounds` and its members — each with a
+ * margin round it — together, at least its title bar wide. Null when it has
+ * neither, for the caller to decide (a group that held its last member keeps
+ * the frame it had).
+ */
+function computeFrame(
+  group: GroupNode,
+  context: FrameContext,
+  memo: Map<NodeId, GroupRect | null>,
+  path: Set<NodeId>,
+): GroupRect | null {
+  const known = memo.get(group.id)
+  if (known !== undefined) return known
+  // Membership is kept acyclic (fileFormat.ts's `recordMembership`); this
+  // only keeps a board that breaks the rule from looping.
+  if (path.has(group.id)) return null
+  path.add(group.id)
+  const scale = context.scaleOf(group.id)
+  const pad = GROUP_PADDING * scale
+  const parts: GroupRect[] = group.bounds ? [group.bounds] : []
+  for (const member of presentMembers(group, context.byId)) {
+    if (context.exclude.has(member.id)) continue
+    let extent: GroupRect
+    if (member.type === 'group') {
+      const frame =
+        computeFrame(member, context, memo, path) ?? (member as GroupRect)
+      extent = groupOuterRect(frame, scale)
+    } else {
+      extent = nodeExtent(member, context.sheetsOf, scale)
+    }
+    parts.push({
+      x: extent.x - pad,
+      y: extent.y - pad,
+      w: extent.w + pad * 2,
+      h: extent.h + pad * 2,
+    })
+  }
+  path.delete(group.id)
+  const union = groupRectForNodes(parts, 0)
+  const frame = union
+    ? { ...union, w: Math.max(union.w, GROUP_TITLE.width * scale) }
+    : null
+  memo.set(group.id, frame)
+  return frame
+}
+
+/**
+ * The board with every group's frame where its members and `bounds` put it
+ * (`computeFrame`), inner groups first. A group that changes nothing is the
+ * same object, and a board where none changes is the same board.
+ *
+ * Every write of a board goes through this, so a group node's own rectangle
+ * is always the frame as drawn — and everything that reads node rectangles
+ * (virtualization, hit-testing, snapping, the minimap, export) reads frames
+ * without knowing about membership.
+ */
+export function fitGroups(board: Board, scaleOf: ScaleOf = UNIT_SCALE): Board {
+  if (!board.nodes.some((node) => node.type === 'group')) return board
+  const context = frameContext(board.nodes, scaleOf, new Set())
+  const memo = new Map<NodeId, GroupRect | null>()
+  let changed = false
+  const nodes = board.nodes.map((node) => {
+    if (node.type !== 'group') return node
+    const frame = computeFrame(node, context, memo, new Set())
+    if (
+      !frame ||
+      (frame.x === node.x &&
+        frame.y === node.y &&
+        frame.w === node.w &&
+        frame.h === node.h)
+    ) {
+      return node
+    }
+    changed = true
+    return { ...node, x: frame.x, y: frame.y, w: frame.w, h: frame.h }
+  })
+  return changed ? { ...board, nodes } : board
+}
+
+/**
+ * The frame `group` would have without the nodes in `exclude` — what the rest
+ * of it makes while some of it is being dragged. A group left with nothing
+ * keeps the rectangle it has.
+ */
+export function groupFrameWithout(
+  group: GroupNode,
+  nodes: readonly BoardNode[],
+  exclude: ReadonlySet<NodeId>,
+  scaleOf: ScaleOf = UNIT_SCALE,
+): GroupRect {
+  const context = frameContext(nodes, scaleOf, exclude)
+  return computeFrame(group, context, new Map(), new Set()) ?? group
+}
+
+// ---------------------------------------------------------------------------
+// Changing membership
+// ---------------------------------------------------------------------------
+
+/**
+ * `board` with `ids` moved into the group `target` (null: into no group),
+ * each out of the group that held it. Nothing is moved into a group it holds,
+ * or into itself — that would make a group hold itself — and a spread's sheet
+ * is never a member on its own. The same board when nothing changes. Frames
+ * are left for `fitGroups`.
+ */
+export function setMembership(
+  board: Board,
+  ids: Iterable<NodeId>,
+  target: NodeId | null,
+): Board {
+  const byId = new Map(board.nodes.map((node) => [node.id, node]))
+  const targetNode = target === null ? null : byId.get(target)
+  if (target !== null && targetNode?.type !== 'group') return board
+  const parents = groupParents(board.nodes)
+  const isAncestor = (id: NodeId, of: NodeId | null): boolean => {
+    for (let at = of; at !== null; at = parents.get(at) ?? null) {
+      if (at === id) return true
+    }
+    return false
+  }
+  const moving = new Set<NodeId>()
+  for (const id of ids) {
+    const node = byId.get(id)
+    if (!node || node.type === 'pdf-page') continue
+    if ((parents.get(id) ?? null) === target) continue
+    if (isAncestor(id, target)) continue
+    moving.add(id)
+  }
+  if (moving.size === 0) return board
+  const nodes = board.nodes.map((node) => {
+    if (node.type !== 'group') return node
+    const kept = node.members.filter((id) => !moving.has(id))
+    const added =
+      node.id === target
+        ? board.nodes
+            .filter((other) => moving.has(other.id))
+            .map((other) => other.id)
+        : []
+    if (kept.length === node.members.length && added.length === 0) return node
+    return { ...node, members: [...kept, ...added] }
+  })
+  return { ...board, nodes }
+}
+
+/**
+ * `board` with a new group round the nodes `ids`, fitted to them. The group
+ * holds those of them no other of them carries (a selected group brings what
+ * it holds); they leave the groups they were in, and the new group takes
+ * their place in the group they all shared, if they shared one. It is put
+ * just before the first of them in board order, which is paint order: a frame
+ * behind what it holds. Null when there is nothing to group.
+ */
+export function createGroup(
+  board: Board,
+  group: Omit<GroupNode, 'members' | 'x' | 'y' | 'w' | 'h'>,
+  ids: Iterable<NodeId>,
+  scaleOf: ScaleOf = UNIT_SCALE,
+): Board | null {
+  const asked = new Set(ids)
+  const carried = new Set<NodeId>()
+  for (const node of board.nodes) {
+    if (!asked.has(node.id)) continue
+    for (const id of carriedBy(node, board.nodes)) carried.add(id)
+  }
+  const top = board.nodes.filter(
+    (node) =>
+      asked.has(node.id) && !carried.has(node.id) && node.type !== 'pdf-page',
+  )
+  if (top.length === 0) return null
+  const parents = groupParents(board.nodes)
+  const shared = parents.get(top[0].id) ?? null
+  const parent = top.every((node) => (parents.get(node.id) ?? null) === shared)
+    ? shared
+    : null
+  const frame = groupRectForNodes(top) as GroupRect
+  const made: GroupNode = {
+    ...group,
+    ...frame,
+    members: top.map((node) => node.id),
+  }
+  const at = board.nodes.indexOf(top[0])
+  const memberIds = new Set(made.members)
+  const nodes = board.nodes.map((node) =>
+    node.type === 'group' && node.members.some((id) => memberIds.has(id))
+      ? { ...node, members: node.members.filter((id) => !memberIds.has(id)) }
+      : node,
+  )
+  nodes.splice(at, 0, made)
+  let next: Board = { ...board, nodes }
+  if (parent !== null) next = setMembership(next, [made.id], parent)
+  return fitGroups(next, scaleOf)
+}
+
+// ---------------------------------------------------------------------------
+// What a drag does to membership
+// ---------------------------------------------------------------------------
+
+/**
+ * What dropping a drag where it is does to membership: the dragged things go
+ * into `target` (null: out of any group). `leaving` says the move is a way
+ * out — of the group they were in, to no group or to one it sits in — and not
+ * into somewhere new.
+ */
+export type GroupDrop = Readonly<{ target: NodeId | null; leaving: boolean }>
+
+/** How far `point` is from `rect`: 0 inside it. */
+export function distanceToRect(
+  rect: GroupRect,
+  point: Readonly<{ x: number; y: number }>,
+): number {
+  const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.w))
+  const dy = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.h))
+  return Math.hypot(dx, dy)
+}
+
+/**
+ * What dropping the nodes `moving` — a drag's whole set, with what its groups
+ * carry — where `board` has them now does to membership, or null for nothing.
+ *
+ * The things dragged are the ones nothing else in the drag carries, judged as
+ * one by the centre of what they cover. Every group they could go into is
+ * asked whether that centre is on it:
+ *   - the group they are all in, generously — they stay unless taken
+ *     `GROUP_LEAVE_DISTANCE` from the frame the rest of it makes;
+ *   - any other, strictly — within `GROUP_JOIN_DISTANCE` of its frame.
+ * Of the groups that say yes the innermost wins. None, and they leave for no
+ * group — unless they came from several, when nothing changes: a drag that
+ * gathers cards from different groups is not a drag out of all of them.
+ */
+export function groupDropDecision(
+  board: Board,
+  moving: ReadonlySet<NodeId>,
+  scaleOf: ScaleOf = UNIT_SCALE,
+): GroupDrop | null {
+  const parents = groupParents(board.nodes)
+  const roots = new Set(draggedRoots(board.nodes, moving))
+  const dragged = board.nodes.filter((node) => roots.has(node.id))
+  if (dragged.length === 0) return null
+  const from = new Set(dragged.map((node) => parents.get(node.id) ?? null))
+  const home = from.size === 1 ? (from.values().next().value ?? null) : null
+  const covered = groupRectForNodes(dragged, 0) as GroupRect
+  const centre = {
+    x: covered.x + covered.w / 2,
+    y: covered.y + covered.h / 2,
+  }
+  const depth = (id: NodeId) => {
+    let count = 0
+    for (let at = parents.get(id); at; at = parents.get(at)) count += 1
+    return count
+  }
+  let best: GroupNode | null = null
+  for (const node of board.nodes) {
+    if (node.type !== 'group' || moving.has(node.id)) continue
+    const frame = groupFrameWithout(node, board.nodes, moving, scaleOf)
+    const distance = distanceToRect(frame, centre)
+    const near =
+      node.id === home
+        ? distance <= GROUP_LEAVE_DISTANCE * scaleOf(node.id)
+        : distance < GROUP_JOIN_DISTANCE * scaleOf(node.id)
+    if (!near) continue
+    if (
+      !best ||
+      depth(node.id) > depth(best.id) ||
+      (depth(node.id) === depth(best.id) && node.w * node.h < best.w * best.h)
+    ) {
+      best = node
+    }
+  }
+  const target = best?.id ?? null
+  if (target === null && from.size > 1) return null
+  if (dragged.every((node) => (parents.get(node.id) ?? null) === target)) {
+    return null
+  }
+  let leaving = false
+  if (home !== null) {
+    leaving = target === null
+    for (let at = parents.get(home); at && !leaving; at = parents.get(at)) {
+      if (at === target) leaving = true
+    }
+  }
+  return { target, leaving }
+}
+
+/** The things a drag of `moving` decides membership for (`groupDropDecision`):
+ * what nothing else in it carries. */
+export function draggedRoots(
+  nodes: readonly BoardNode[],
+  moving: ReadonlySet<NodeId>,
+): NodeId[] {
+  const parents = groupParents(nodes)
+  return nodes
+    .filter(
+      (node) =>
+        moving.has(node.id) &&
+        node.type !== 'pdf-page' &&
+        !moving.has(parents.get(node.id) ?? ''),
+    )
+    .map((node) => node.id)
 }

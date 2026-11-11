@@ -24,6 +24,7 @@ import type {
   NodeId,
   NodeSide,
   PortalView,
+  SpreadRect,
 } from './fileFormat'
 import { behindPortal } from './nodePath'
 
@@ -44,6 +45,9 @@ export type NodePatch = Readonly<{
   /** Where a portal looks into the board behind it, and at what scale
    * (fileFormat.ts's `BoardWindow`). Replaces the whole view. */
   view?: PortalView
+  /** A group's hand-set range (fileFormat.ts's `GroupNode.bounds`);
+   * `undefined` clears it. */
+  bounds?: SpreadRect
 }>
 
 /** Fields `updateEdge` may patch: where an edge is attached, and everything
@@ -193,7 +197,22 @@ export function removeNode(board: Board, id: NodeId): Board {
   if (!board.nodes.some((node) => node.id === id)) {
     throw new Error(`removeNode: node "${id}" not found`)
   }
-  const nodes = board.nodes.filter((node) => node.id !== id)
+  const removed = board.nodes.find((node) => node.id === id)
+  // A group deleted is its frame gone: what it held stays where it is, in
+  // the group that held the group, if one did.
+  const handedOn = removed?.type === 'group' ? removed.members : []
+  const nodes = board.nodes.flatMap((node): BoardNode[] => {
+    if (node.id === id) return []
+    if (node.type !== 'group' || !node.members.includes(id)) return [node]
+    return [
+      {
+        ...node,
+        members: node.members.flatMap((member) =>
+          member === id ? handedOn : [member],
+        ),
+      },
+    ]
+  })
   // An edge ends on the node, or on a card behind it when it is a portal
   // (domain/nodePath.ts): either way it has nothing left to end on.
   const behind = behindPortal(id, '')

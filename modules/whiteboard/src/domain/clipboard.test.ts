@@ -17,8 +17,15 @@ function text(id: string, x: number, y: number, body = ''): TextNode {
   return { id, type: 'text', x, y, w: 100, h: 50, text: body, extra: {} }
 }
 
-function group(id: string, x: number, y: number, w: number, h: number) {
-  return { id, type: 'group', x, y, w, h, extra: {} } as const
+function group(
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  members: readonly string[] = [],
+): BoardNode {
+  return { id, type: 'group', x, y, w, h, members, extra: {} }
 }
 
 function edge(id: string, fromNode: string, toNode: string): Edge {
@@ -30,14 +37,29 @@ function board(nodes: BoardNode[], edges: Edge[] = []): Board {
 }
 
 describe('fragmentFromSelection', () => {
-  it('takes a selected group with what it frames, in board order', () => {
+  it('takes a selected group with what it holds, in board order', () => {
     const b = board([
       text('a', 10, 10),
-      group('g', 0, 0, 300, 300),
+      group('g', 0, 0, 300, 300, ['a']),
+      text('inside', 50, 50),
       text('outside', 500, 500),
     ])
     const fragment = fragmentFromSelection(b, new Set(['g']))
     expect(fragment.nodes.map((node) => node.id)).toEqual(['a', 'g'])
+  })
+
+  it('copies a group holding only what was copied with it', () => {
+    const b = board([
+      group('g', 0, 0, 300, 300, ['a', 'b']),
+      text('a', 10, 10),
+      text('b', 60, 10),
+    ])
+    const fragment = fragmentFromSelection(b, new Set(['g']))
+    const copied = fragment.nodes.find((node) => node.id === 'g')
+    expect(copied?.type === 'group' && copied.members).toEqual(['a', 'b'])
+    // A member copied alone is copied out of its group.
+    const alone = fragmentFromSelection(b, new Set(['a']))
+    expect(alone.nodes.map((node) => node.id)).toEqual(['a'])
   })
 
   it('keeps only edges whose two ends are both taken', () => {
@@ -120,6 +142,21 @@ describe('fragmentPlainText', () => {
       edges: [],
     }
     expect(fragmentPlainText(fragment)).toBe('one\n\ntwo')
+  })
+})
+
+describe('placeFragment — groups', () => {
+  it('pastes a group holding the pasted copies of its members', () => {
+    const fragment = {
+      nodes: [group('g', 0, 0, 300, 300, ['a']), text('a', 20, 20)],
+      edges: [],
+    }
+    const { board: next, nodeIds } = placeFragment(board([]), fragment, {
+      x: 1000,
+      y: 1000,
+    })
+    const pasted = next.nodes.find((node) => node.id === nodeIds[0])
+    expect(pasted?.type === 'group' && pasted.members).toEqual([nodeIds[1]])
   })
 })
 

@@ -38,7 +38,6 @@ import {
   NODE_PATH_SEPARATOR,
   type NodeId,
 } from './fileFormat'
-import { nodesInsideGroup } from './groups'
 import { fileNodeKind } from './naming'
 import { expandBoard, isSpreadTitle, spreadPages } from './spread'
 
@@ -69,10 +68,12 @@ export function summarizeBoard(
 
   if (groups.length > 0) {
     lines.push('', 'groups')
+    const present = new Set(board.nodes.map((node) => node.id))
     for (const group of groups) {
-      const members = nodesInsideGroup(group, cards)
-      const label =
-        group.type === 'group' && group.label ? ` "${group.label}"` : ''
+      if (group.type !== 'group') continue
+      // Direct members: a nested group is listed with its own.
+      const members = group.members.filter((id) => present.has(id))
+      const label = group.label ? ` "${group.label}"` : ''
       lines.push(
         `  ${group.id}${label} at ${position(group)}${
           members.length > 0 ? ` — ${members.join(' ')}` : ' — (empty)'
@@ -156,12 +157,10 @@ export function readBoardCard(board: Board, cardId: NodeId): string | null {
     case 'link':
       return `This card embeds the web page ${card.url}.`
     case 'group': {
-      const members = nodesInsideGroup(
-        card,
-        board.nodes.filter((node) => node.type !== 'group'),
-      )
+      const present = new Set(board.nodes.map((node) => node.id))
+      const members = card.members.filter((id) => present.has(id))
       const label = card.label ? ` "${card.label}"` : ''
-      return `Group${label} containing ${members.length} card(s): ${members.join(' ')}`
+      return `Group${label} holding ${members.length} card(s) or group(s): ${members.join(' ')}`
     }
     case 'pdf-page':
       return `This card is page ${card.page} of ${card.file} — read that file for its content.`

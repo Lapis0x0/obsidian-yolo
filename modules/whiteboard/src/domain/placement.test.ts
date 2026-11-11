@@ -16,7 +16,16 @@ describe('collectObstacles', () => {
   it('leaves group frames out — a card landing inside one is how it joins', () => {
     const nodes: BoardNode[] = [
       card('c-1', 0, 0),
-      { id: 'g-1', type: 'group', x: 0, y: 0, w: 900, h: 900, extra: {} },
+      {
+        id: 'g-1',
+        type: 'group',
+        x: 0,
+        y: 0,
+        w: 900,
+        h: 900,
+        members: ['c-1'],
+        extra: {},
+      },
     ]
     expect(collectObstacles(nodes)).toEqual([{ x: 0, y: 0, w: 100, h: 100 }])
   })

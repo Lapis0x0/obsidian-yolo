@@ -1,5 +1,5 @@
 import { type Board, type BoardNode, type Edge, emptyBoard } from './fileFormat'
-import { GROUP_SELECTION_PADDING } from './groups'
+import { GROUP_PADDING } from './groups'
 import { changesBetween, composeBoard } from './portals'
 import { splitOff } from './split'
 
@@ -26,7 +26,7 @@ const board = (nodes: BoardNode[], edges: Edge[] = []): Board => ({
   nodes,
   edges,
 })
-const pad = GROUP_SELECTION_PADDING
+const pad = GROUP_PADDING
 
 describe('splitOff', () => {
   it('moves the part to its own board and leaves a portal looking at it where it was', () => {

@@ -87,6 +87,9 @@ export type CanvasCore = Readonly<{
   ) => ScreenPoint
   /** A mounted card's runtime (element, body, readers), or undefined. */
   getRuntime: (id: NodeId) => NodeRuntime | undefined
+  /** What a card is drawn at: the scale of the portals it is behind, 1 for
+   * the board's own. */
+  scaleOf: (id: NodeId) => number
   /** Re-decides which cards are mounted after geometry changed. */
   recomputeVisibility: () => void
   /** Mounts/unmounts what the last recompute queued, now. */

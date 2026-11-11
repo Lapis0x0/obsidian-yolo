@@ -46,6 +46,7 @@ const groupNode = {
   w: 400,
   h: 400,
   label: 'Group',
+  members: [],
   extra: {},
 }
 

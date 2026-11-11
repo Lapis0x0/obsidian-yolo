@@ -94,8 +94,8 @@ export function cardSourcePdfPages(
  * Vault paths whose *whole* text this card's context needs: every note card
  * that is a source, plus every note card inside a source group.
  *
- * A group stores no member list — membership is geometry (`nodesInsideGroup`)
- * — so it is resolved here rather than read off the node.
+ * A group's cards are what it holds at any depth (`nodesInsideGroup`), so
+ * they are resolved here rather than read off its member list.
  */
 export function cardSourceNotePaths(board: Board, nodeId: NodeId): string[] {
   const paths: string[] = []
@@ -200,7 +200,8 @@ export function describeCardContent(
       return `(this card embeds the web page ${card.url})`
     case 'group':
       // A group nested in a source group: its own members are already in the
-      // list, because containment is transitive (`nodesInsideGroup`).
+      // list, because what a group holds is held at any depth
+      // (`nodesInsideGroup`).
       return `(a group${card.label ? ` "${card.label}"` : ''})`
     case 'pdf-page': {
       const text = noteTexts.get(pdfPageTextKey(card.file, card.page))
@@ -227,9 +228,10 @@ function expandedSources(board: Board, nodeId: NodeId): BoardNode[] {
   return expanded
 }
 
-/** The cards a group carries — membership is geometry, not a stored list. */
+/** The cards a group holds, at any depth, in board order. */
 export function cardsInsideGroup(board: Board, group: BoardNode): BoardNode[] {
-  const cards = board.nodes.filter((node) => node.type !== 'group')
-  const memberIds = new Set(nodesInsideGroup(group, cards))
-  return cards.filter((node) => memberIds.has(node.id))
+  const memberIds = new Set(nodesInsideGroup(group, board.nodes))
+  return board.nodes.filter(
+    (node) => node.type !== 'group' && memberIds.has(node.id),
+  )
 }

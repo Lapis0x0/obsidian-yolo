@@ -137,12 +137,13 @@ const connectItem = {
 const groupItem = {
   type: 'object',
   description:
-    'A labelled frame drawn behind the given cards. Membership is where the cards are, not a list stored anywhere: a card dragged out later stops being in the group, and a card dropped in joins it.',
+    'A labelled frame drawn behind the given cards. The group remembers its cards, and its frame follows them: moving a card in it grows or shrinks the frame rather than taking the card out. Moving the group (update its x/y) moves its cards with it; giving it w/h sets a size the frame keeps even when its cards take up less.',
   properties: {
     ids: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Cards the frame should enclose.',
+      description:
+        'Cards the group holds. A card already in another group moves to this one.',
     },
     label: { type: 'string', description: 'Name shown on the frame.' },
   },

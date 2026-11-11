@@ -354,6 +354,51 @@ describe('applyBoardEdit — connect and group', () => {
     })
   })
 
+  it('records the cards it groups, taking them from the group they were in', () => {
+    const board = boardWith([
+      {
+        id: 'old',
+        type: 'group',
+        x: 0,
+        y: 0,
+        w: 1000,
+        h: 1000,
+        members: ['c-a', 'c-b'],
+        extra: {},
+      },
+      card('c-a', 0, 0),
+      card('c-b', 200, 0),
+    ])
+    const result = ok(apply(board, { group: [{ ids: ['c-a'] }] }))
+    const made = result.board.nodes.find(
+      (n) => n.id === result.createdGroupIds[0],
+    )
+    expect(made?.type === 'group' && made.members).toEqual(['c-a'])
+    const old = result.board.nodes.find((n) => n.id === 'old')
+    expect(old?.type === 'group' && old.members).toEqual(['c-b', made?.id])
+  })
+
+  it('moves a group with its cards, and keeps a size it is given', () => {
+    const board = ok(
+      apply(boardWith([card('c-a', 0, 0)]), { group: [{ ids: ['c-a'] }] }),
+    ).board
+    const id = board.nodes[0].id
+    const frame = board.nodes[0]
+    const moved = ok(
+      apply(board, { update: [{ id, x: frame.x + 500, y: frame.y }] }),
+    ).board
+    expect(moved.nodes.find((n) => n.id === 'c-a')).toMatchObject({
+      x: 500,
+      y: 0,
+    })
+    expect(moved.nodes[0]).toMatchObject({ x: frame.x + 500, w: frame.w })
+    const sized = ok(apply(moved, { update: [{ id, w: 2000 }] })).board
+    expect(sized.nodes[0]).toMatchObject({ w: 2000 })
+    // A card moved in it later moves the frame no smaller than that.
+    const nudged = ok(apply(sized, { update: [{ id: 'c-a', x: 520 }] })).board
+    expect(nudged.nodes[0]).toMatchObject({ w: 2000 })
+  })
+
   it('frames the cards it groups, behind them', () => {
     const board = boardWith([card('c-a', 0, 0), card('c-b', 200, 0)])
     const result = ok(

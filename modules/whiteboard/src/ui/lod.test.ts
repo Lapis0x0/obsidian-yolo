@@ -57,6 +57,7 @@ function groupNode(label?: string): GroupNode {
     y: 0,
     w: 400,
     h: 400,
+    members: [],
     ...(label === undefined ? {} : { label }),
     extra: {},
   }

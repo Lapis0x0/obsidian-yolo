@@ -97,6 +97,7 @@ describe('summarizeBoard', () => {
         w: 400,
         h: 400,
         label: 'why',
+        members: ['c-1'],
         extra: {},
       },
       text('c-1', 'inside', 50, 50),

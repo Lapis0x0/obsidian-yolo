@@ -449,10 +449,32 @@ describe('boardWithReadingWindow', () => {
       y: 0,
       w: 1,
       h: 1,
+      members: [],
       extra: {},
     }
     const board = boardWith([group])
     expect(boardWithReadingWindow(board, 'g', 20)).toBe(board)
     expect(boardWithReadingWindow(board, 'missing', 20)).toBe(board)
+  })
+})
+
+describe('removeNode — groups', () => {
+  it('hands what a deleted group held to the group that held it', () => {
+    const group = (id: string, members: string[]): BoardNode => ({
+      id,
+      type: 'group',
+      x: 0,
+      y: 0,
+      w: 10,
+      h: 10,
+      members,
+      extra: {},
+    })
+    const board: Board = {
+      ...emptyBoard(),
+      nodes: [group('outer', ['x', 'inner', 'y']), group('inner', ['a', 'b'])],
+    }
+    const next = removeNode(board, 'inner')
+    expect(next.nodes).toEqual([group('outer', ['x', 'a', 'b', 'y'])])
   })
 })
