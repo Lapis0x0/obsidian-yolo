@@ -72,18 +72,19 @@ export function SubagentCard({
     [response],
   )
 
-  const effectiveStatus = resolveSubagentEffectiveStatus({
-    subagentResult,
-    stream,
-    response,
-  })
-  const isRunning = effectiveStatus === ToolCallResponseStatus.Running
-
   const title =
     args?.title || subagentResult?.title || accepted.title || toolCallId
   const modelName = subagentResult?.modelName || accepted.modelName
   const taskId = subagentResult?.taskId || accepted.taskId
   const liveTask = useSubagentTask(taskId)
+
+  const effectiveStatus = resolveSubagentEffectiveStatus({
+    subagentResult,
+    stream,
+    response,
+    taskStatus: liveTask?.status,
+  })
+  const isRunning = effectiveStatus === ToolCallResponseStatus.Running
 
   const fallbackError =
     response.status === ToolCallResponseStatus.Error
