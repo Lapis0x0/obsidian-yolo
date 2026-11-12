@@ -130,6 +130,70 @@ export function resolveModuleSkillPackageName(
   return segments[segments.length - 2]
 }
 
+/** How many skill packages one declaration (a chat mode's, a tool set's)
+ * may name — a small curated set, not a bulk asset manifest. */
+export const MAX_MODULE_SKILL_PACKAGES = 16
+
+/**
+ * Validates and freezes a module's skill declaration — a chat mode's or a
+ * tool set's `skills`. Format only: each entry must be a safe
+ * artifact-relative package path ending in `SKILL.md`, deduped and capped.
+ * Whether the verified manifest actually ships it can only be checked once
+ * the artifact is published, when the package is projected
+ * (`planModuleSkillPackages`). `subject` names the declaration in errors.
+ */
+export function snapshotModuleSkillPaths(
+  skills: readonly string[],
+  subject: string,
+): readonly string[] {
+  if (!Array.isArray(skills)) {
+    throw new TypeError(`${subject} skills must be an array`)
+  }
+  if (skills.length > MAX_MODULE_SKILL_PACKAGES) {
+    throw new Error(
+      `${subject} skills must not exceed ${MAX_MODULE_SKILL_PACKAGES}`,
+    )
+  }
+  const seen = new Set<string>()
+  // Canonical keys, matching `planModuleSkillPackages`: two declarations that
+  // differ only in case or Unicode form are distinct manifest paths but one
+  // projected directory on macOS and Windows.
+  const packageNames = new Set<string>()
+  const normalized = skills.map((skill) => {
+    if (typeof skill !== 'string') {
+      throw new TypeError(`${subject} skill path must be a string`)
+    }
+    let normalizedPath: string
+    try {
+      normalizedPath = normalizeModuleArtifactFilePath(skill)
+    } catch {
+      throw new Error(
+        `${subject} skill path "${skill}" must be a safe relative artifact path`,
+      )
+    }
+    const packageName = resolveModuleSkillPackageName(normalizedPath)
+    if (!packageName) {
+      throw new Error(
+        `${subject} skill "${skill}" must be a package path ending in "${SKILL_PACKAGE_ENTRY_FILE_NAME}"`,
+      )
+    }
+    const canonicalPath = canonicalArtifactPath(normalizedPath)
+    const packageKey = canonicalArtifactPath(packageName)
+    if (seen.has(canonicalPath)) {
+      throw new Error(`${subject} skill "${normalizedPath}" is duplicated`)
+    }
+    if (packageNames.has(packageKey)) {
+      throw new Error(
+        `${subject} skill package "${packageName}" is declared twice`,
+      )
+    }
+    seen.add(canonicalPath)
+    packageNames.add(packageKey)
+    return normalizedPath
+  })
+  return Object.freeze(normalized)
+}
+
 /**
  * The Vault path a declared module skill is projected to. This is the single
  * definition shared by the materializer and by skill resolution, so a skill

@@ -4774,15 +4774,19 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           moduleSkillMaterializer.materialize(
             moduleId,
             artifact,
-            // A module's modes may share a package; the projection is
-            // per-module, so declarations are unioned.
+            // A module's modes and tool sets may share a package; the
+            // projection is per-module, so declarations are unioned.
             [
-              ...new Set(
-                this.moduleChatModeRegistry
+              ...new Set([
+                ...this.moduleChatModeRegistry
                   .getSnapshot()
                   .filter((entry) => entry.moduleId === moduleId)
                   .flatMap((entry) => entry.mode.skills ?? []),
-              ),
+                ...this.moduleToolSetRegistry
+                  .getSnapshot()
+                  .filter((entry) => entry.moduleId === moduleId)
+                  .flatMap((entry) => entry.set.skills ?? []),
+              ]),
             ],
             signal,
           ),
@@ -4860,6 +4864,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         this.moduleChatModeRegistry
           .getSnapshot()
           .map((entry) => entry.fullModeId),
+      listToolSetSkills: () =>
+        this.moduleToolSetRegistry
+          .getSnapshot()
+          .filter((entry) => entry.availability.status === 'available')
+          .map((entry) => ({
+            moduleId: entry.moduleId,
+            skillPaths: entry.set.skills ?? [],
+          })),
       resolveSkillPath: (moduleId, declaredSkillPath) =>
         resolveModuleSkillVaultPath(
           getYoloModuleSkillsDir(moduleId, this.settings),

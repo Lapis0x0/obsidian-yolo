@@ -1070,6 +1070,7 @@ describe('module chat mode skill scope', () => {
         ? { moduleId: 'learning', skillPaths: [DECLARED_SKILL] }
         : undefined,
     listModeIds: () => [MODE_ID],
+    listToolSetSkills: () => [],
     resolveSkillPath: (moduleId, declaredSkillPath) =>
       moduleId === 'learning' && declaredSkillPath === DECLARED_SKILL
         ? SKILL_PATH
@@ -1246,6 +1247,114 @@ describe('module chat mode skill scope', () => {
 
     expect(entries.map((entry) => entry.name)).toContain('outline-skill')
     expect(entries.map((entry) => entry.name)).not.toContain('missing-skill')
+  })
+})
+
+describe('module tool set skills', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } }
+  const DECLARED_SKILL = 'skills/page-cards/SKILL.md'
+  const SKILL_PATH = 'YOLO/modules/whiteboard/skills/page-cards/SKILL.md'
+  const SKILL_TEXT = [
+    '---',
+    'name: page-cards',
+    'description: Interactive pages on a board',
+    '---',
+    'module body',
+  ].join('\n')
+
+  afterEach(() => {
+    configureModuleChatModeSkillSource(null)
+  })
+
+  const configure = (skillPaths: readonly string[] = [DECLARED_SKILL]) =>
+    configureModuleChatModeSkillSource({
+      getMode: () => undefined,
+      listModeIds: () => [],
+      listToolSetSkills: () => [{ moduleId: 'whiteboard', skillPaths }],
+      resolveSkillPath: (moduleId, declaredSkillPath) =>
+        moduleId === 'whiteboard' && declaredSkillPath === DECLARED_SKILL
+          ? SKILL_PATH
+          : null,
+    })
+
+  it('lists a tool set skill in every chat, read-only, scoped or not', async () => {
+    configure()
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: { [SKILL_PATH]: SKILL_TEXT },
+    })
+
+    const unscoped = await listLiteSkillEntries(app, { settings })
+    const entry = unscoped.find((candidate) => candidate.name === 'page-cards')
+    expect(entry?.path).toBe(SKILL_PATH)
+    expect(entry?.isReadOnly).toBe(true)
+
+    const scoped = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: 'module:learning:chat' },
+    })
+    expect(scoped.map((candidate) => candidate.name)).toContain('page-cards')
+  })
+
+  it('resolves a tool set skill by name and by path', async () => {
+    configure()
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: { [SKILL_PATH]: SKILL_TEXT },
+    })
+
+    const byName = await getLiteSkillDocument({
+      app,
+      name: 'page-cards',
+      settings,
+    })
+    expect(byName?.content).toContain('module body')
+    const byPath = await getLiteSkillDocumentByPath({
+      app,
+      path: SKILL_PATH,
+      settings,
+    })
+    expect(byPath?.entry.name).toBe('page-cards')
+  })
+
+  it('lets a same-named user/global vault skill win over a tool set skill', async () => {
+    configure()
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': { files: [], folders: ['YOLO/skills/page-cards'] },
+        'YOLO/skills/page-cards': {
+          files: ['YOLO/skills/page-cards/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/page-cards/SKILL.md': [
+          '---',
+          'name: page-cards',
+          '---',
+          'user body',
+        ].join('\n'),
+        [SKILL_PATH]: SKILL_TEXT,
+      },
+    })
+
+    const entries = (await listLiteSkillEntries(app, { settings })).filter(
+      (candidate) => candidate.name === 'page-cards',
+    )
+    expect(entries).toHaveLength(1)
+    expect(entries[0].path).toBe('YOLO/skills/page-cards/SKILL.md')
+  })
+
+  it('lists nothing for a module whose tool set declares no skills', async () => {
+    configure([])
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: { [SKILL_PATH]: SKILL_TEXT },
+    })
+    const entries = await listLiteSkillEntries(app, { settings })
+    expect(entries.map((candidate) => candidate.name)).not.toContain(
+      'page-cards',
+    )
   })
 })
 

@@ -1,6 +1,5 @@
 import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import { RESERVED_MODULE_MODE_SERVER_PREFIX } from '../mcp/tool-name-utils'
-import { SKILL_PACKAGE_ENTRY_FILE_NAME } from '../skills/liteSkills'
 
 import {
   MAX_MODULE_AGENT_TOOLS,
@@ -8,11 +7,10 @@ import {
   snapshotModuleAgentToolBase,
 } from './moduleAgent'
 import { snapshotLocalizedText } from './moduleI18n'
-import { resolveModuleSkillPackageName } from './moduleSkillMaterializer'
 import {
-  canonicalArtifactPath,
-  normalizeModuleArtifactFilePath,
-} from './moduleStore'
+  MAX_MODULE_SKILL_PACKAGES,
+  snapshotModuleSkillPaths,
+} from './moduleSkillMaterializer'
 import type {
   YoloModuleAgentCapabilityV1,
   YoloModuleChatModeToolV1,
@@ -22,9 +20,7 @@ import type {
 /** Mode-local id format — see `YoloModuleChatModeV1.id`. */
 export const MODULE_CHAT_MODE_LOCAL_ID_RE = /^[a-z][a-z0-9-]*$/
 export const MAX_MODULE_CHAT_MODES_PER_MODULE = 4
-/** Matches `MAX_MODULE_ARTIFACT_FILES` headroom — a mode's skills are a
- * small curated set, not a bulk asset manifest. */
-export const MAX_MODULE_CHAT_MODE_SKILLS = 16
+export const MAX_MODULE_CHAT_MODE_SKILLS = MAX_MODULE_SKILL_PACKAGES
 
 const MODULE_CHAT_MODE_CAPABILITIES: ReadonlySet<YoloModuleAgentCapabilityV1> =
   new Set(['none', 'vault-read', 'vault-write'])
@@ -162,10 +158,9 @@ function sameAvailability(
  * description, inputSchema, handler) so the two tool contracts cannot
  * validate divergently, then layers on `requiresApproval`.
  *
- * `skills` validation here is format-only: each entry must be a safe
- * artifact-relative package path ending in `SKILL.md` (reusing
- * `normalizeModuleArtifactFilePath`'s rules), deduped and capped.
- * Cross-checking an entry against the module's actual verified manifest
+ * `skills` validation here is format-only (`snapshotModuleSkillPaths`, shared
+ * with tool sets): each entry must be a safe artifact-relative package path
+ * ending in `SKILL.md`, deduped and capped. Cross-checking an entry against the module's actual verified manifest
  * (does a `role: 'data'` file exist at this path?) cannot happen here — this
  * function runs synchronously inside `chat.registerMode(...)`, called from
  * the module's own `activate()`, before the module's `VerifiedModuleArtifact`
@@ -206,7 +201,9 @@ export function snapshotModuleChatMode(
   const tools =
     mode.tools === undefined ? undefined : snapshotChatModeTools(mode.tools)
   const skills =
-    mode.skills === undefined ? undefined : snapshotChatModeSkills(mode.skills)
+    mode.skills === undefined
+      ? undefined
+      : snapshotModuleSkillPaths(mode.skills, 'Module chat mode')
   return Object.freeze({
     id: mode.id,
     label,
@@ -217,57 +214,6 @@ export function snapshotModuleChatMode(
     ...(tools !== undefined ? { tools } : {}),
     ...(skills !== undefined ? { skills } : {}),
   })
-}
-
-function snapshotChatModeSkills(skills: readonly string[]): readonly string[] {
-  if (!Array.isArray(skills)) {
-    throw new TypeError('Module chat mode skills must be an array')
-  }
-  if (skills.length > MAX_MODULE_CHAT_MODE_SKILLS) {
-    throw new Error(
-      `Module chat mode skills must not exceed ${MAX_MODULE_CHAT_MODE_SKILLS}`,
-    )
-  }
-  const seen = new Set<string>()
-  // Canonical keys, matching `planModuleSkillPackages`: two declarations that
-  // differ only in case or Unicode form are distinct manifest paths but one
-  // projected directory on macOS and Windows.
-  const packageNames = new Set<string>()
-  const normalized = skills.map((skill) => {
-    if (typeof skill !== 'string') {
-      throw new TypeError('Module chat mode skill path must be a string')
-    }
-    let normalizedPath: string
-    try {
-      normalizedPath = normalizeModuleArtifactFilePath(skill)
-    } catch {
-      throw new Error(
-        `Module chat mode skill path "${skill}" must be a safe relative artifact path`,
-      )
-    }
-    const packageName = resolveModuleSkillPackageName(normalizedPath)
-    if (!packageName) {
-      throw new Error(
-        `Module chat mode skill "${skill}" must be a package path ending in "${SKILL_PACKAGE_ENTRY_FILE_NAME}"`,
-      )
-    }
-    const canonicalPath = canonicalArtifactPath(normalizedPath)
-    const packageKey = canonicalArtifactPath(packageName)
-    if (seen.has(canonicalPath)) {
-      throw new Error(
-        `Module chat mode skill "${normalizedPath}" is duplicated`,
-      )
-    }
-    if (packageNames.has(packageKey)) {
-      throw new Error(
-        `Module chat mode skill package "${packageName}" is declared twice`,
-      )
-    }
-    seen.add(canonicalPath)
-    packageNames.add(packageKey)
-    return normalizedPath
-  })
-  return Object.freeze(normalized)
 }
 
 function snapshotChatModeTools(

@@ -11,6 +11,7 @@ import {
   snapshotModuleAgentToolBase,
 } from './moduleAgent'
 import { snapshotLocalizedText } from './moduleI18n'
+import { snapshotModuleSkillPaths } from './moduleSkillMaterializer'
 import type {
   YoloModuleAgentToolV1,
   YoloModuleToolSetCategoryV1,
@@ -201,12 +202,17 @@ export function snapshotModuleToolSet(
   if (!MODULE_TOOL_SET_CATEGORIES.has(set.category)) {
     throw new Error('Module tool set category is invalid')
   }
+  const skills =
+    set.skills === undefined
+      ? undefined
+      : snapshotModuleSkillPaths(set.skills, 'Module tool set')
   return Object.freeze({
     id: set.id,
     label,
     ...(description !== undefined ? { description } : {}),
     category: set.category,
     tools: snapshotToolSetTools(set.tools),
+    ...(skills !== undefined ? { skills } : {}),
   })
 }
 

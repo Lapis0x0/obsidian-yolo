@@ -73,6 +73,10 @@ export type ModuleChatModeSkillSourceV1 = Readonly<{
    * scope) to search across modes, since a path alone already identifies
    * its file unambiguously. */
   listModeIds(): readonly string[]
+  /** The skills every active module tool set declares
+   * (`YoloModuleToolSetV1.skills`): unlike a mode's, they join the
+   * user/global bucket in every chat, scoped or not. */
+  listToolSetSkills(): readonly ModuleChatModeSkillModeSourceV1[]
   /** Vault path the module's declared skill package was projected to (see
    * `moduleSkillMaterializer.ts`). `null` when the declaration is not a valid
    * package path. Pure path derivation from host-owned settings — the file
@@ -395,37 +399,71 @@ const buildModuleSkillRecords = async (
   app: App,
   fullModeId: string,
 ): Promise<SkillRegistryRecord[]> => {
+  const mode = moduleChatModeSkillSource?.getMode(fullModeId)
+  return mode ? buildDeclaredSkillRecords(app, [mode], fullModeId) : []
+}
+
+/**
+ * The read-only skill records active module tool sets contribute — the same
+ * projected vault files as a mode's (`buildModuleSkillRecords`), but part of
+ * every chat's candidate set, behind the user's own skills.
+ */
+const buildModuleToolSetSkillRecords = async (
+  app: App,
+): Promise<SkillRegistryRecord[]> => {
+  const sets = moduleChatModeSkillSource?.listToolSetSkills() ?? []
+  return sets.length > 0
+    ? buildDeclaredSkillRecords(app, sets, 'module tool sets')
+    : []
+}
+
+const buildDeclaredSkillRecords = async (
+  app: App,
+  declarations: readonly ModuleChatModeSkillModeSourceV1[],
+  owner: string,
+): Promise<SkillRegistryRecord[]> => {
   const source = moduleChatModeSkillSource
   if (!source) {
     return []
   }
-  const mode = source.getMode(fullModeId)
-  if (!mode) {
-    return []
-  }
   const records: SkillRegistryRecord[] = []
-  for (const declaredSkillPath of mode.skillPaths) {
-    try {
-      const path = source.resolveSkillPath(mode.moduleId, declaredSkillPath)
-      if (!path) {
-        continue
+  for (const { moduleId, skillPaths } of declarations) {
+    for (const declaredSkillPath of skillPaths) {
+      try {
+        const path = source.resolveSkillPath(moduleId, declaredSkillPath)
+        if (!path) {
+          continue
+        }
+        const file = app.vault.getFileByPath(path)
+        const frontmatter = await resolveSkillFrontmatter(app, path, file)
+        const entry = toLiteSkillEntry({ path, frontmatter, isReadOnly: true })
+        if (!entry) {
+          continue
+        }
+        records.push({ entry, file })
+      } catch (error) {
+        console.warn(
+          `[YOLO] Failed to load module skill "${declaredSkillPath}" for "${owner}"`,
+          error,
+        )
       }
-      const file = app.vault.getFileByPath(path)
-      const frontmatter = await resolveSkillFrontmatter(app, path, file)
-      const entry = toLiteSkillEntry({ path, frontmatter, isReadOnly: true })
-      if (!entry) {
-        continue
-      }
-      records.push({ entry, file })
-    } catch (error) {
-      console.warn(
-        `[YOLO] Failed to load module chat mode skill "${declaredSkillPath}" for "${fullModeId}"`,
-        error,
-      )
     }
   }
   return records
 }
+
+/**
+ * The user/global bucket: builtins and vault skills, then the skills of
+ * active module tool sets in the names those left unclaimed.
+ */
+const listGlobalSkillRecords = async (
+  app: App,
+  settings?: SkillSettings,
+): Promise<SkillRegistryRecord[]> =>
+  mergeModuleSkillRecords(
+    [...(await getRegistryService(app).getRegistry(settings)).values()],
+    await buildModuleToolSetSkillRecords(app),
+  )
 
 /**
  * Merges module-mode skill records into a user/global candidate set. The
@@ -619,9 +657,7 @@ export async function listLiteSkillEntries(
     scope?: LiteSkillScope
   },
 ): Promise<LiteSkillEntry[]> {
-  const base = [
-    ...(await getRegistryService(app).getRegistry(options?.settings)).values(),
-  ]
+  const base = await listGlobalSkillRecords(app, options?.settings)
   const combined = options?.scope?.moduleChatModeId
     ? mergeModuleSkillRecords(
         base,
@@ -655,6 +691,11 @@ export async function getLiteSkillDocument({
   // — same tie-break as `mergeModuleSkillRecords`.
   const registry = await getRegistryService(app).getRegistry(settings)
   let record = registry.get(target)
+  if (!record) {
+    record = (await buildModuleToolSetSkillRecords(app)).find(
+      (candidate) => candidate.entry.name === target,
+    )
+  }
   if (!record && scope?.moduleChatModeId) {
     const moduleRecords = await buildModuleSkillRecords(
       app,
@@ -743,8 +784,7 @@ export async function getLiteSkillDocumentByPath({
     return null
   }
 
-  const registry = await getRegistryService(app).getRegistry(settings)
-  for (const record of registry.values()) {
+  for (const record of await listGlobalSkillRecords(app, settings)) {
     if (record.entry.path === targetPath) {
       return getLiteSkillDocument({
         app,

@@ -355,6 +355,17 @@ export type YoloModuleToolSetV1 = Readonly<{
   description?: LocalizedTextV1
   category: YoloModuleToolSetCategoryV1
   tools: readonly YoloModuleAgentToolV1[]
+  /**
+   * Skill packages that apply wherever this set does: in ordinary chat, for
+   * as long as the module is active. Declared and projected exactly like
+   * `YoloModuleChatModeV1.skills` — each entry the artifact-relative path of
+   * a package's `SKILL.md`, copied on activation into
+   * `<yolo base>/modules/<moduleId>/skills/<package>/` — but listed with the
+   * user's own skills rather than only inside a mode: the same assistant
+   * preferences and global switch apply, and a same-named user/vault skill
+   * wins. Since 1.14.0.
+   */
+  skills?: readonly string[]
 }>
 
 /**

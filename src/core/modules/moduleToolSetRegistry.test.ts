@@ -32,6 +32,28 @@ describe('snapshotModuleToolSet', () => {
     expect(snapshot.tools).toHaveLength(1)
   })
 
+  it('keeps declared skill packages, normalized and frozen', () => {
+    const snapshot = snapshotModuleToolSet(
+      baseToolSet({ skills: ['skills/page-cards/SKILL.md'] }),
+    )
+    expect(snapshot.skills).toEqual(['skills/page-cards/SKILL.md'])
+    expect(Object.isFrozen(snapshot.skills)).toBe(true)
+    expect('skills' in snapshotModuleToolSet(baseToolSet())).toBe(false)
+  })
+
+  it('rejects a skill that is not a package entry, or one declared twice', () => {
+    expect(() =>
+      snapshotModuleToolSet(baseToolSet({ skills: ['skills/page.md'] })),
+    ).toThrow(/Module tool set skill .* must be a package path/)
+    expect(() =>
+      snapshotModuleToolSet(
+        baseToolSet({
+          skills: ['skills/a/SKILL.md', 'skills/a/SKILL.md'],
+        }),
+      ),
+    ).toThrow(/duplicated/)
+  })
+
   it('rejects an id that is not a legal server name segment', () => {
     // The id becomes `yolo_<id>`, which rides the model-facing catalog — a
     // hyphen or capital there would produce a name the tool-name parser and
