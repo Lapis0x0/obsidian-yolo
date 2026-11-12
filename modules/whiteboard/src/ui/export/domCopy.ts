@@ -236,7 +236,10 @@ function tagLive(live: HTMLElement, hooks: CopyHooks): Map<string, Tagged> {
     } else if (el.tagName === 'VIDEO') {
       tag(el, { kind: 'video', el: el as HTMLVideoElement })
     } else if (el.tagName === 'IFRAME') {
-      tag(el, { kind: 'frame', src: (el as HTMLIFrameElement).src })
+      // A page handed over as `srcdoc` has no address; its title says what
+      // it is instead.
+      const frame = el as HTMLIFrameElement
+      tag(el, { kind: 'frame', src: frame.src || frame.title })
     }
   }
   return tagged

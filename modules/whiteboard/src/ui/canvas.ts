@@ -3901,7 +3901,11 @@ export class WhiteboardCanvas {
    */
   private titleScaleOf(id: NodeId): number {
     let depth = 0
-    for (let at = this.parentGroups.get(id); at; at = this.parentGroups.get(at)) {
+    for (
+      let at = this.parentGroups.get(id);
+      at;
+      at = this.parentGroups.get(at)
+    ) {
       depth += 1
     }
     return titleScale(this.seenScaleOf(id), depth)
@@ -6157,8 +6161,9 @@ export class WhiteboardCanvas {
         void this.refreshMountedNoteCard(id, runtime, path)
         continue
       }
-      // Anything else has no text to re-read, and its resource URL carries
-      // the file's mtime — so the way to show new bytes is a new element.
+      // Anything else has no text kept to compare, and what it shows is
+      // keyed by the file's mtime (a resource URL, an HTML page's
+      // `livePage`) — so a re-render shows the new bytes.
       void this.cardRenderer.renderCardPreview(id)
     }
   }

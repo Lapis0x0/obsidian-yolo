@@ -76,6 +76,7 @@ import {
   createTitle,
   titleLabel,
 } from './nodeTitle'
+import { withPageBridge } from './pageBridge'
 
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
  * standing on the board for the whole of it — no frame, no body. */
@@ -142,6 +143,21 @@ const WEB_FRAME_SANDBOX =
   'allow-forms allow-presentation allow-same-origin allow-scripts allow-modals'
 
 /**
+ * What an HTML card's frame is allowed to do: the web card's, less
+ * `allow-same-origin`.
+ *
+ * An HTML card's page is handed to its frame as `srcdoc`, and a `srcdoc`
+ * document allowed its own origin has *this window's* — measured on 1.15, it
+ * reaches `parent.app`, and with it the whole vault. Without it the page has
+ * an opaque origin of its own: its scripts, CDN scripts and `fetch` work,
+ * while `parent.app`, `parent.document`, `require` and `process` are all out
+ * of reach. The price is that the page's own `localStorage` throws, which
+ * the bridge (./pageBridge.ts) stands in for.
+ */
+const HTML_FRAME_SANDBOX =
+  'allow-forms allow-presentation allow-scripts allow-modals'
+
+/**
  * How many *web* cards may keep a live page while parked off screen.
  *
  * An `<iframe>` removed from the document tree loses its browsing context, and
@@ -195,12 +211,14 @@ export type NodeRuntime = {
    */
   releaseContent: (() => void) | null
   /**
-   * The URL this card's live web frame was built for, or null when its body
-   * holds anything else. Set only for web cards, and the flag that decides
-   * whether an unmount parks the card in the hidden pool instead of tearing it
-   * down (see WEB_FRAME_POOL_CAPACITY and `unmountNode`).
+   * What this card's live page was built from — a web card's URL, an HTML
+   * card's file and its version (`htmlPageKey`) — or null when its body holds
+   * anything else. What a re-render compares to know the page it would build
+   * is the one already showing, and the flag that decides whether an unmount
+   * parks the card in the hidden pool instead of tearing it down (see
+   * WEB_FRAME_POOL_CAPACITY and `unmountNode`).
    */
-  webFrameUrl: string | null
+  livePage: string | null
   /**
    * A PDF card's reader, or null when the body holds anything else. Like a
    * rendered note it is parked rather than destroyed when the card leaves the
@@ -649,7 +667,7 @@ export class CardRenderer {
         contentMarkdown: null,
         contentSourcePath: null,
         releaseContent: null,
-        webFrameUrl: null,
+        livePage: null,
         pdfReader: null,
         missingFile: false,
         noteText: null,
@@ -762,7 +780,7 @@ export class CardRenderer {
       contentMarkdown: null,
       contentSourcePath: null,
       releaseContent: null,
-      webFrameUrl: null,
+      livePage: null,
       pdfReader: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
@@ -797,7 +815,7 @@ export class CardRenderer {
       contentMarkdown: null,
       contentSourcePath: null,
       releaseContent: null,
-      webFrameUrl: null,
+      livePage: null,
       pdfReader: null,
       missingFile: false,
       noteText: null,
@@ -859,7 +877,7 @@ export class CardRenderer {
     // placeholders, groups — is torn down here, because
     // rebuilding it costs nothing worth keeping DOM for.
     if (
-      runtime.webFrameUrl !== null ||
+      runtime.livePage !== null ||
       runtime.pdfReader !== null ||
       runtime.contentRenderer !== null ||
       runtime.contentView !== null
@@ -897,7 +915,7 @@ export class CardRenderer {
     // A page has to leave layout to be suspended; a rendered note has to keep
     // its boxes so the measurements that make coming back free survive.
     runtime.el?.classList.add(
-      runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
+      runtime.livePage !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
     )
     // A parked card is skipped with its contents, which leaves a box sized by
     // its content with nothing to size it by: bare text is held at the size
@@ -964,7 +982,7 @@ export class CardRenderer {
    */
   private evictExcessParkedCards(): void {
     const livePages = [...this.parkedCards].filter(
-      (id) => this.runtimeByNodeId.get(id)?.webFrameUrl != null,
+      (id) => this.runtimeByNodeId.get(id)?.livePage != null,
     )
     for (const id of livePages.slice(
       0,
@@ -1017,7 +1035,7 @@ export class CardRenderer {
       this.parkedCards.size + this.callbacks.getMountedCount()
     let livePages = 0
     for (const runtime of this.runtimeByNodeId.values()) {
-      if (runtime.webFrameUrl !== null) livePages += 1
+      if (runtime.livePage !== null) livePages += 1
     }
     this.frozenWebFramePoolCapacity = livePages
   }
@@ -1211,7 +1229,7 @@ export class CardRenderer {
     runtime.contentView = null
     runtime.contentSourcePath = null
     runtime.contentMarkdown = null
-    runtime.webFrameUrl = null
+    runtime.livePage = null
     runtime.pdfReader?.destroy()
     runtime.pdfReader = null
     this.runContentRelease(runtime)
@@ -1270,7 +1288,7 @@ export class CardRenderer {
         } else if (kind === 'unsupported') {
           this.renderUnsupportedFilePlaceholder(runtime, node.file)
         } else if (kind === 'html') {
-          this.renderFileFrameInto(runtime, node.file)
+          void this.renderHtmlFrameInto(id, runtime, node.file, entry.mtime)
         } else {
           this.renderMediaInto(id, runtime, node.file, kind)
         }
@@ -1896,8 +1914,8 @@ export class CardRenderer {
    *
    * Only http(s) loads, exactly as in Canvas's own `setFrameUrl`; anything
    * else is a card that says what it points at rather than a frame pointed
-   * somewhere it should not be. That gate is this method's whole job — the
-   * frame itself is `mountFrame`, shared with the HTML card.
+   * somewhere it should not be. The frame itself is `mountFrame`'s, shared
+   * with the HTML card.
    */
   private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
     if (!WEB_URL_PATTERN.test(url)) {
@@ -1910,73 +1928,106 @@ export class CardRenderer {
       )
       return
     }
-    this.mountFrame(runtime, url)
-  }
-
-  /**
-   * Puts a vault HTML document on a card — the same frame a web card gets,
-   * pointed at the file's own `app://` URL (`vault.getResourceUrl`, as media
-   * cards do) rather than at the network.
-   *
-   * What such a page can and cannot do was measured against a running 1.13
-   * instance before this shipped, and the second half is a real product
-   * boundary rather than a detail:
-   *
-   *   - the document loads and its scripts run, in an ordinary browser
-   *     context: no `require`, no `process`, no reach into this window, and
-   *     `fetch` of any other `app://` file is refused. It is exactly as
-   *     privileged as the remote page in a web card, which is why it can share
-   *     that card's sandbox verbatim;
-   *   - **no sub-resource of a framed `app://` document loads at all** —
-   *     relative or absolute, stylesheet, script or image, with or without the
-   *     sandbox attribute. Only the frame's own top-level navigation is
-   *     served. So a self-contained document (inline CSS/JS, `data:` URIs, or
-   *     a CDN) renders exactly as it does in a browser, while a multi-file
-   *     export renders as unstyled markup. We do not detect and warn about the
-   *     second case: the card shows the file, and what the file depends on is
-   *     the file's business.
-   *
-   * The URL carries the file's mtime as a query (Obsidian's own cache-buster),
-   * so an edit on disk changes it and the identity check below reloads the
-   * frame rather than leaving a stale page mounted.
-   */
-  private renderFileFrameInto(runtime: NodeRuntime, path: string): void {
-    this.mountFrame(runtime, this.host.vault.getResourceUrl(path))
-  }
-
-  /**
-   * Builds the frame both web and HTML cards show. Callers have already
-   * decided that `url` is one this card may load.
-   *
-   * A sandboxed `<iframe>` — see WEB_FRAME_SANDBOX for why this and not the
-   * Electron `<webview>` Obsidian Canvas uses on desktop.
-   */
-  private mountFrame(runtime: NodeRuntime, url: string): void {
     // Already showing this exact page: leave it alone. Without this, a
     // re-render of a card whose body already holds the right page — a parked
     // web card revealed again, a content resync — would tear it down and
     // reload it, the reload the hidden pool exists to avoid, arrived at from
     // the other direction.
-    if (runtime.webFrameUrl === url) return
+    if (runtime.livePage === url) return
+    this.destroyCardContent(runtime)
+    const frame = this.createFrame(WEB_FRAME_SANDBOX)
+    frame.src = url
+    runtime.livePage = url
+    this.mountFrame(runtime, frame)
+  }
+
+  /**
+   * Puts a vault HTML document on a card: the file's text, with the bridge
+   * in front of it (./pageBridge.ts), handed to a frame as `srcdoc` and run
+   * in HTML_FRAME_SANDBOX.
+   *
+   * Not the file's own `app://` URL, which is what this used to load: a page
+   * served from there is a different origin from the board, so the board
+   * could neither put a script in front of it nor hear from it. As text, the
+   * page is the board's to prepare, and the bridge is how its scroll and its
+   * `localStorage` outlive the frame.
+   *
+   * What the page can load is unchanged: a `srcdoc` document has no address
+   * of its own, so a relative sub-resource resolves to nothing, exactly as
+   * the `app://` page's sub-resources were refused. A self-contained document
+   * (inline CSS/JS, `data:` URIs, or a CDN) renders as it does in a browser;
+   * a multi-file export renders as unstyled markup, and that is the file's
+   * business.
+   *
+   * The identity is the file and its mtime (`htmlPageKey`), claimed before
+   * the read: a re-render while the page shows, or while it is still being
+   * read, leaves it alone, and an edit on disk changes the mtime and so
+   * loads the new text.
+   */
+  private async renderHtmlFrameInto(
+    id: NodeId,
+    runtime: NodeRuntime,
+    path: string,
+    mtime: number,
+  ): Promise<void> {
+    const key = htmlPageKey(path, mtime)
+    if (runtime.livePage === key) return
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl
     if (!bodyEl) return
-    const doc = this.context.getDocument()
-    const frame = doc.createElement('iframe')
+    bodyEl.replaceChildren()
+    bodyEl.classList.add(CARD_BODY_LIVE_CLASS, CARD_BODY_LOADING_CLASS)
+    runtime.livePage = key
+    let html: string
+    try {
+      html = await this.host.vault.readText(path)
+    } catch (error) {
+      if (runtime.livePage !== key) return
+      this.callbacks.reportError('readText (html card)', error)
+      this.destroyCardContent(runtime)
+      runtime.missingFile = true
+      this.renderMissingFilePlaceholder(runtime, path)
+      return
+    }
+    // Unmounted, rebuilt or superseded while the file was being read.
+    if (this.runtimeByNodeId.get(id) !== runtime) return
+    if (runtime.livePage !== key) return
+    const frame = this.createFrame(HTML_FRAME_SANDBOX)
+    // The frame's accessible name — and, having no address, what an export
+    // writes in its place (../export/domCopy.ts).
+    frame.title = path
+    frame.srcdoc = withPageBridge(html, {})
+    this.mountFrame(runtime, frame)
+  }
+
+  /** A card's frame, not yet loading anything. See WEB_FRAME_SANDBOX for
+   * why a sandboxed `<iframe>` and not the Electron `<webview>` Obsidian
+   * Canvas uses on desktop. */
+  private createFrame(sandbox: string): HTMLIFrameElement {
+    const frame = this.context.getDocument().createElement('iframe')
     frame.className = CARD_WEB_FRAME_CLASS
-    frame.setAttribute('sandbox', WEB_FRAME_SANDBOX)
+    frame.setAttribute('sandbox', sandbox)
     frame.setAttribute('allow', 'fullscreen')
-    frame.src = url
+    return frame
+  }
+
+  /**
+   * Puts the frame both web and HTML cards show into the card's body.
+   * Callers have already claimed `livePage` for what it loads.
+   */
+  private mountFrame(runtime: NodeRuntime, frame: HTMLIFrameElement): void {
+    const bodyEl = runtime.bodyEl
+    if (!bodyEl) return
     bodyEl.replaceChildren(frame)
     bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
     this.showLoadingUntil(bodyEl, frame)
-    runtime.webFrameUrl = url
     // A detached frame keeps its page (and its timers, media and sockets)
     // running until it is collected; navigating it away first is what ends
     // them. Reached only on a real teardown now — the node was deleted, the
     // board closed, or the card was evicted from the pool — because an
     // ordinary unmount parks the card instead.
     runtime.releaseContent = () => {
+      frame.removeAttribute('srcdoc')
       frame.src = 'about:blank'
       frame.remove()
     }
@@ -2113,4 +2164,9 @@ export class CardRenderer {
     placeholder.append(title, hint)
     runtime.bodyEl.replaceChildren(placeholder)
   }
+}
+
+/** An HTML card's `livePage`: the file, at the version it was read. */
+function htmlPageKey(path: string, mtime: number): string {
+  return `${path}\n${mtime}`
 }
