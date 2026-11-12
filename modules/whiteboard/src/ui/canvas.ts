@@ -87,6 +87,7 @@ import {
 } from '../domain/naming'
 import { behindPortal, joinNodePath, splitNodePath } from '../domain/nodePath'
 import {
+  boardWithPageMemory,
   boardWithPageWindow,
   boardWithReadingWindow,
   removeEdge,
@@ -186,6 +187,7 @@ import {
   titleScale,
 } from './canvas/nodeTitle'
 import { OverviewLayer, type PortalLayer } from './canvas/overviewLayer'
+import type { PageMemory, PageReport } from './canvas/pageBridge'
 import { PassageHandles } from './canvas/passageHandles'
 import { PassagePoints } from './canvas/passagePoints'
 import { PdfIntegration, isPdfNode } from './canvas/pdfIntegration'
@@ -225,6 +227,7 @@ import {
   NODE_ENTER_FROM_SCALE,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
+  PAGE_MEMORY_WRITE_MS,
   PORTAL_BORDER_WORLD_PX,
   PORTAL_OPEN_MIN_PX,
   PORTAL_PAN_STEP_GAP_MS,
@@ -415,6 +418,15 @@ export class WhiteboardCanvas {
   private unrecorded: BoardChanges | null = null
   /** Nodes made by unrecorded changes, which no step has ever had. */
   private readonly unrecordedCreations = new Set<NodeId>()
+  /**
+   * What HTML cards' pages have reported of themselves (./canvas/
+   * pageBridge.ts) that their nodes do not have yet: written together, at
+   * most once every PAGE_MEMORY_WRITE_MS (`writePageMemories`), because a
+   * scroll or a slider reports on every frame and each write is a save of
+   * the board. `getViewData` folds in what is still waiting.
+   */
+  private readonly unwrittenPages = new Map<NodeId, PageMemory>()
+  private pageWriteTimer: number | null = null
   /** The portals on the board, whether open or not. */
   private portalNodes: FileNode[] = []
   /** Every node a visibility pass may mount: a node behind a portal only
@@ -1768,6 +1780,7 @@ export class WhiteboardCanvas {
         board = boardWithPageWindow(board, this.focusedNodeId, page)
       }
     }
+    board = this.withUnwrittenPages(board)
     board = this.editing.foldLiveEdit(board)
     // A generation in flight holds its text in the DOM and nowhere else until
     // it settles — the same race the live editor above is folded in for.
@@ -1785,6 +1798,7 @@ export class WhiteboardCanvas {
   clear(): void {
     // The panel reads a card of the board that is leaving.
     this.pdf.closeReaderPanel()
+    this.dropUnwrittenPages()
     this.teardownAllCards()
     this.board = emptyBoard()
     this.syncBoardIndex()
@@ -1828,6 +1842,7 @@ export class WhiteboardCanvas {
   dispose(): void {
     this.editing.forceCommitActiveEdit()
     this.sources.dispose()
+    this.dropUnwrittenPages()
     const win = this.context.getWindow()
     if (this.rafId !== null) {
       win.cancelAnimationFrame(this.rafId)
@@ -2523,6 +2538,8 @@ export class WhiteboardCanvas {
       getMountedCount: () => this.engine.mounted.size,
       purgeNode: (id) => this.purgeNodeRuntime(id),
       seenScaleOf: (id) => this.seenScaleOf(id),
+      pageMemoryOf: (id) => this.pageMemoryOf(id),
+      onPageReport: (id, report) => this.rememberPage(id, report),
       getPdfStartPosition: (id) => {
         const node = this.core.getNode(id)
         return node?.type === 'file' ? node.startPage : undefined
@@ -3065,6 +3082,57 @@ export class WhiteboardCanvas {
           ? boardWithPageWindow(this.board, id, page)
           : this.board
     this.commitWithoutHistory(next)
+  }
+
+  /** What an HTML card's page last reported of itself: what is waiting to
+   * be written, else what its node has. */
+  private pageMemoryOf(id: NodeId): PageMemory {
+    const waiting = this.unwrittenPages.get(id)
+    if (waiting) return waiting
+    const node = this.nodesById.get(id)
+    return node?.type === 'file'
+      ? { scroll: node.startScroll ?? 0, storage: node.storage ?? {} }
+      : { scroll: 0, storage: {} }
+  }
+
+  /**
+   * Takes what an HTML card's page reported, to be written to its node with
+   * the next batch. Not a step, for the reason a reading window is not
+   * (`commitReadingWindow`): where a page was scrolled, or what its controls
+   * were set to, is not an edit anyone undoes one notch at a time.
+   */
+  private rememberPage(id: NodeId, report: PageReport): void {
+    if (this.parseFailed || this.nodesById.get(id)?.type !== 'file') return
+    this.unwrittenPages.set(id, { ...this.pageMemoryOf(id), ...report })
+    if (this.pageWriteTimer !== null) return
+    this.pageWriteTimer = this.context.getWindow().setTimeout(() => {
+      this.pageWriteTimer = null
+      this.writePageMemories()
+    }, PAGE_MEMORY_WRITE_MS)
+  }
+
+  private writePageMemories(): void {
+    if (this.unwrittenPages.size === 0 || this.parseFailed) return
+    const next = this.withUnwrittenPages(this.board)
+    this.unwrittenPages.clear()
+    this.commitWithoutHistory(next)
+  }
+
+  /** `board` with what HTML cards' pages reported and is not written yet. */
+  private withUnwrittenPages(board: Board): Board {
+    let next = board
+    for (const [id, memory] of this.unwrittenPages) {
+      next = boardWithPageMemory(next, id, memory)
+    }
+    return next
+  }
+
+  private dropUnwrittenPages(): void {
+    if (this.pageWriteTimer !== null) {
+      this.context.getWindow().clearTimeout(this.pageWriteTimer)
+      this.pageWriteTimer = null
+    }
+    this.unwrittenPages.clear()
   }
 
   /** Where a card is being read: as the GPU scene has it for one it draws,

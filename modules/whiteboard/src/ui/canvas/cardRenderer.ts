@@ -76,7 +76,12 @@ import {
   createTitle,
   titleLabel,
 } from './nodeTitle'
-import { withPageBridge } from './pageBridge'
+import {
+  type PageMemory,
+  type PageReport,
+  readPageMessage,
+  withPageBridge,
+} from './pageBridge'
 
 /** The title of an open PDF spread (domain/spread.ts): the document's name,
  * standing on the board for the whole of it — no frame, no body. */
@@ -337,6 +342,11 @@ export type CardRendererCallbacks = Readonly<{
   /** How large a card is on screen (canvas.ts's `seenScaleOf`) — what a
    * PDF card's pages are drawn sharp for. */
   seenScaleOf: (id: NodeId) => number
+  /** What an HTML card's page opens with: what it reported of itself last
+   * (./pageBridge.ts). */
+  pageMemoryOf: (id: NodeId) => PageMemory
+  /** An HTML card's page reported where it is scrolled, or what it stored. */
+  onPageReport: (id: NodeId, report: PageReport) => void
   /** Where a PDF card's reader opens: the node's `startPage`. */
   getPdfStartPosition: (id: NodeId) => number | undefined
   /** The annotations of a PDF, for a reader to hold until it goes. */
@@ -384,6 +394,26 @@ export class CardRenderer {
   /** Cards that hold (or held) a PDF reader — what a camera move has to
    * reach (`setViewScale`). Pruned lazily as their readers go. */
   private readonly pdfCards = new Set<NodeId>()
+  /** The frames of the HTML cards that have one: who a message from a page
+   * is from (`onPageMessage`). */
+  private readonly pageFrames = new Map<NodeId, HTMLIFrameElement>()
+  /** The window `onPageMessage` listens on, from the first HTML card on. */
+  private pageMessagesFrom: Window | null = null
+  /**
+   * A message from some frame to this card's window. A sandboxed page's
+   * origin is `"null"`, which says nothing about who sent it, so the sender
+   * is known by `source`: the one frame it is the window of. Anything else
+   * posted to this window — another card's, another plugin's — is not ours.
+   */
+  private readonly onPageMessage = (event: MessageEvent): void => {
+    if (event.source === null) return
+    for (const [id, frame] of this.pageFrames) {
+      if (frame.contentWindow !== event.source) continue
+      const report = readPageMessage(event.data)
+      if (report) this.callbacks.onPageReport(id, report)
+      return
+    }
+  }
   /** Watches every mounted bare text for its size; created with the first. */
   private textObserver: ResizeObserver | null = null
 
@@ -462,6 +492,8 @@ export class CardRenderer {
     this.parkedCards.clear()
     this.textObserver?.disconnect()
     this.textObserver = null
+    this.pageMessagesFrom?.removeEventListener('message', this.onPageMessage)
+    this.pageMessagesFrom = null
   }
 
   /**
@@ -1950,7 +1982,9 @@ export class CardRenderer {
    * served from there is a different origin from the board, so the board
    * could neither put a script in front of it nor hear from it. As text, the
    * page is the board's to prepare, and the bridge is how its scroll and its
-   * `localStorage` outlive the frame.
+   * `localStorage` outlive the frame: it opens with what the card last
+   * remembered (`pageMemoryOf`) and reports every change back
+   * (`onPageMessage`), which the board writes to the node.
    *
    * What the page can load is unchanged: a `srcdoc` document has no address
    * of its own, so a relative sub-resource resolves to nothing, exactly as
@@ -1996,8 +2030,24 @@ export class CardRenderer {
     // The frame's accessible name — and, having no address, what an export
     // writes in its place (../export/domCopy.ts).
     frame.title = path
-    frame.srcdoc = withPageBridge(html, {})
+    frame.srcdoc = withPageBridge(html, this.callbacks.pageMemoryOf(id))
     this.mountFrame(runtime, frame)
+    this.listenToPages()
+    this.pageFrames.set(id, frame)
+    const release = runtime.releaseContent
+    runtime.releaseContent = () => {
+      if (this.pageFrames.get(id) === frame) this.pageFrames.delete(id)
+      release?.()
+    }
+  }
+
+  /** Starts hearing from pages, on the window the board is in — in a popout,
+   * the popout's, which is where its cards' frames post to. */
+  private listenToPages(): void {
+    if (this.pageMessagesFrom) return
+    const win = this.context.getWindow()
+    win.addEventListener('message', this.onPageMessage)
+    this.pageMessagesFrom = win
   }
 
   /** A card's frame, not yet loading anything. See WEB_FRAME_SANDBOX for

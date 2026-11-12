@@ -112,6 +112,28 @@ type PageWindow = Readonly<{ startPage?: number }>
  */
 type BoardWindow = Readonly<{ view?: PortalView }>
 
+/**
+ * What an HTML card's page keeps of itself (ui/canvas/pageBridge.ts): where
+ * it was scrolled to, and what it wrote to its `localStorage`. The same idea
+ * as `startPage` — the card is a window onto its document and the window's
+ * place is written on the node — extended to the one thing a script-driven
+ * page has that a document does not: state of its own.
+ *
+ * On the node rather than in a file beside the page, so two cards onto the
+ * same page keep two states, and the state travels with the board the way a
+ * card's position does. Not in JSON Canvas.
+ *
+ * `startScroll` is the fraction of the page's height scrolled past its top
+ * edge — 0.25 is a quarter of the way down — for `startPage`'s reason: a
+ * card can be resized, which re-lays the page at a new width, and the same
+ * place has to come back. Absent means the top. `storage` is the page's
+ * `localStorage`, key to value, as the page wrote it; absent means empty.
+ */
+type PageMemory = Readonly<{
+  startScroll?: number
+  storage?: Readonly<Record<string, string>>
+}>
+
 export type PortalView = Readonly<{ x: number; y: number; scale?: number }>
 
 /** A rectangle in world units — what a spread remembers for its title and
@@ -198,6 +220,7 @@ export type TextNode = BoardNodeBase &
 export type FileNode = BoardNodeBase &
   ReadingWindow &
   PageWindow &
+  PageMemory &
   SpreadDisplay &
   BoardWindow &
   Readonly<{
@@ -563,6 +586,8 @@ const FILE_NODE_KEYS = [
   'startLine',
   'startOffset',
   'startPage',
+  'startScroll',
+  'storage',
   'spread',
   'view',
 ] as const
@@ -762,6 +787,7 @@ function parseNode(
         file,
         ...parseReadingWindow(entry),
         ...parsePageWindow(entry),
+        ...parsePageMemory(entry),
         ...parseSpread(entry),
         ...parseBoardWindow(entry),
         extra: extractExtra(entry, FILE_NODE_KEYS),
@@ -850,6 +876,28 @@ function parsePageWindow(entry: Record<string, unknown>): {
   const value = entry.startPage
   if (!isFiniteNumber(value) || value <= 1) return {}
   return { startPage: value }
+}
+
+/** A scroll is a fraction of the page strictly inside it, and storage keeps
+ * the entries that are strings — the only thing `localStorage` can hold. */
+function parsePageMemory(entry: Record<string, unknown>): PageMemory {
+  const scroll = entry.startScroll
+  const raw = entry.storage
+  // `fromEntries` rather than assignment, so a key such as `__proto__` is
+  // kept as the entry it is.
+  const storage: Record<string, string> = isPlainObject(raw)
+    ? Object.fromEntries(
+        Object.entries(raw).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+      )
+    : {}
+  return {
+    ...(isFiniteNumber(scroll) && scroll > 0 && scroll < 1
+      ? { startScroll: scroll }
+      : {}),
+    ...(Object.keys(storage).length > 0 ? { storage } : {}),
+  }
 }
 
 /** A portal's window is a finite point, or there is none. */
@@ -979,6 +1027,8 @@ export function serializeNode(
         startLine: node.startLine,
         startOffset: node.startOffset,
         startPage: node.startPage,
+        startScroll: node.startScroll,
+        storage: node.storage,
         spread: serializeSpread(node.spread),
         view: node.view
           ? {

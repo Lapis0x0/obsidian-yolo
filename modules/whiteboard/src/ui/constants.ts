@@ -595,6 +595,13 @@ export const NUDGE_SHIFT_STEPS = 4
  * file write, and the board's own save is debounced downstream anyway. */
 export const EDIT_PERSIST_THROTTLE_MS = 400
 
+/** How long what an HTML card's page reported of itself — its scroll, its
+ * `localStorage` — may wait to be written to its node. A page reports on
+ * every frame it scrolls or a slider moves; each write is a save of the
+ * board, and a closing board writes what is waiting anyway (canvas.ts's
+ * `getViewData`), so this only bounds what a crash costs. */
+export const PAGE_MEMORY_WRITE_MS = 1000
+
 /**
  * How long a card takes to travel to the place an align, distribute or tidy
  * put it, and on what curve.

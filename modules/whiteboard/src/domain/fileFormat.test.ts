@@ -484,6 +484,72 @@ describe('parseBoard / serializeBoard', () => {
     })
   })
 
+  describe('page memory', () => {
+    const htmlNode = (extra: Record<string, unknown>): string =>
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 'h1',
+            type: 'file',
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 10,
+            file: 'pages/demo.html',
+            ...extra,
+          },
+        ],
+      })
+
+    it('round-trips an HTML card scroll and storage as known fields', () => {
+      // `__proto__` is a key a page may write like any other.
+      const raw = htmlNode({ startScroll: 0.4 }).replace(
+        '"startScroll"',
+        '"storage":{"count":"3","__proto__":"kept"},"startScroll"',
+      )
+      const board = requireOk(parseBoard(raw))
+      const node = board.nodes[0] as { startScroll?: number; storage?: object }
+      expect(node.startScroll).toBe(0.4)
+      expect(Object.entries(node.storage ?? {})).toEqual([
+        ['count', '3'],
+        ['__proto__', 'kept'],
+      ])
+      expect(board.nodes[0].extra).toEqual({})
+      const written = JSON.parse(serializeBoard(board)).nodes[0]
+      expect(written.startScroll).toBe(0.4)
+      expect(Object.entries(written.storage)).toEqual([
+        ['count', '3'],
+        ['__proto__', 'kept'],
+      ])
+    })
+
+    it('writes neither field for a page at its top with nothing stored', () => {
+      const written = JSON.parse(
+        serializeBoard(requireOk(parseBoard(htmlNode({})))),
+      ).nodes[0]
+      expect('startScroll' in written).toBe(false)
+      expect('storage' in written).toBe(false)
+    })
+
+    it('drops a scroll outside the page and storage values that are not strings', () => {
+      for (const value of [0, 1, 1.5, -0.2, 'half', null, NaN]) {
+        const board = requireOk(parseBoard(htmlNode({ startScroll: value })))
+        expect('startScroll' in board.nodes[0]).toBe(false)
+      }
+      const board = requireOk(
+        parseBoard(htmlNode({ storage: { a: '1', b: 2, c: null } })),
+      )
+      expect((board.nodes[0] as { storage?: object }).storage).toEqual({
+        a: '1',
+      })
+      for (const value of ['x', [], 3, { a: 1 }]) {
+        const dropped = requireOk(parseBoard(htmlNode({ storage: value })))
+        expect('storage' in dropped.nodes[0]).toBe(false)
+      }
+    })
+  })
+
   describe('unknown-field forward compatibility', () => {
     it('preserves and round-trips unknown fields at the file, node, and edge level', () => {
       const raw = JSON.stringify({

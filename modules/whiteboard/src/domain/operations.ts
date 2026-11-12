@@ -164,6 +164,64 @@ export function boardWithPageWindow(
 }
 
 /**
+ * What an HTML card's page has reported of itself (fileFormat.ts's
+ * `startScroll` and `storage`), written to its node — the same rules as
+ * `boardWithPageWindow`: the top of the page and an empty storage carry no
+ * field, and the scroll is kept to four decimals, a ten-thousandth of the
+ * page, which is a few pixels on any page a card shows.
+ */
+export function boardWithPageMemory(
+  board: Board,
+  id: NodeId,
+  memory: Readonly<{
+    scroll: number
+    storage: Readonly<Record<string, string>>
+  }>,
+): Board {
+  const index = board.nodes.findIndex((node) => node.id === id)
+  if (index === -1) return board
+  const current = board.nodes[index]
+  if (current.type !== 'file') return board
+  const rounded = Math.round(memory.scroll * 10000) / 10000
+  const startScroll =
+    Number.isFinite(rounded) && rounded > 0 && rounded < 1 ? rounded : undefined
+  const storage =
+    Object.keys(memory.storage).length > 0 ? memory.storage : undefined
+  if (
+    current.startScroll === startScroll &&
+    sameStorage(current.storage, storage)
+  ) {
+    return board
+  }
+
+  const next: {
+    startScroll?: number
+    storage?: Readonly<Record<string, string>>
+  } = { ...current }
+  if (startScroll === undefined) delete next.startScroll
+  else next.startScroll = startScroll
+  if (storage === undefined) delete next.storage
+  else next.storage = storage
+
+  const nodes = board.nodes.slice()
+  nodes[index] = next as BoardNode
+  return { ...board, nodes }
+}
+
+function sameStorage(
+  a: Readonly<Record<string, string>> | undefined,
+  b: Readonly<Record<string, string>> | undefined,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every(
+    (key) => Object.prototype.hasOwnProperty.call(b, key) && a[key] === b[key],
+  )
+}
+
+/**
  * Swaps one node for another that keeps its id — the "same node, different
  * identity" operation, used when a text node is converted into a file node.
  *

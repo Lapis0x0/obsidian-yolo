@@ -9,6 +9,7 @@ import {
   type NodePatch,
   addEdge,
   addNode,
+  boardWithPageMemory,
   boardWithPageWindow,
   boardWithReadingWindow,
   moveNodes,
@@ -413,6 +414,60 @@ describe('boardWithPageWindow', () => {
     const board = boardWith([textCard('a')])
     expect(boardWithPageWindow(board, 'a', 3)).toBe(board)
     expect(boardWithPageWindow(board, 'missing', 3)).toBe(board)
+  })
+})
+
+describe('boardWithPageMemory', () => {
+  const htmlCard = (extra: Record<string, unknown> = {}): BoardNode => ({
+    id: 'h',
+    type: 'file',
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    file: 'pages/demo.html',
+    ...extra,
+    extra: {},
+  })
+
+  it('records the scroll to four decimals and the storage as given', () => {
+    const next = boardWithPageMemory(boardWith([htmlCard()]), 'h', {
+      scroll: 0.123456,
+      storage: { count: '3' },
+    })
+    expect(next.nodes[0]).toMatchObject({
+      startScroll: 0.1235,
+      storage: { count: '3' },
+    })
+  })
+
+  it('drops both fields for a page at its top with nothing stored', () => {
+    const next = boardWithPageMemory(
+      boardWith([htmlCard({ startScroll: 0.5, storage: { a: '1' } })]),
+      'h',
+      { scroll: 0, storage: {} },
+    )
+    expect('startScroll' in next.nodes[0]).toBe(false)
+    expect('storage' in next.nodes[0]).toBe(false)
+  })
+
+  it('returns the same board when nothing changed', () => {
+    const board = boardWith([
+      htmlCard({ startScroll: 0.25, storage: { a: '1', b: '2' } }),
+    ])
+    expect(
+      boardWithPageMemory(board, 'h', {
+        scroll: 0.25001,
+        storage: { b: '2', a: '1' },
+      }),
+    ).toBe(board)
+  })
+
+  it('ignores a node that is not a file card, or one that is gone', () => {
+    const board = boardWith([textCard('a')])
+    const memory = { scroll: 0.5, storage: {} }
+    expect(boardWithPageMemory(board, 'a', memory)).toBe(board)
+    expect(boardWithPageMemory(board, 'missing', memory)).toBe(board)
   })
 })
 
