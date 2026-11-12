@@ -602,6 +602,12 @@ export const EDIT_PERSIST_THROTTLE_MS = 400
  * `getViewData`), so this only bounds what a crash costs. */
 export const PAGE_MEMORY_WRITE_MS = 1000
 
+/** How many HTML cards keep their pages up in the overview tier (canvas.ts's
+ * `keepPagesUp`): each is a live page, and the whole board is in view down
+ * there. The number the card pool keeps hidden, for the same reason
+ * (cardRenderer.ts's WEB_FRAME_POOL_CAPACITY). */
+export const OVERVIEW_PAGES_UP = 6
+
 /**
  * How long a card takes to travel to the place an align, distribute or tidy
  * put it, and on what curve.

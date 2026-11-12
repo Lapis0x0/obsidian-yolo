@@ -225,6 +225,7 @@ import {
   MIN_SCALE_FIT_MARGIN,
   MOUNT_QUOTA_PER_FRAME,
   NODE_ENTER_FROM_SCALE,
+  OVERVIEW_PAGES_UP,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
   PAGE_MEMORY_WRITE_MS,
@@ -273,6 +274,7 @@ import { PictureActivity } from './pictures/activity'
 import { cardSignature, isCardPictured } from './pictures/cardSignature'
 import { IdleSlices } from './pictures/idle'
 import { ImageFiles, imageRef } from './pictures/imageFiles'
+import { PagePictures, pageStamp } from './pictures/pagePictures'
 import { PdfPages, pageFrame, pdfPageRef } from './pictures/pdfPages'
 import {
   type PictureRef,
@@ -318,6 +320,11 @@ const UNREACHABLE_RECT: WorldRect = Object.freeze({
  * canvas from `liveNodeRects`, so keeping its element would only put a second
  * copy of it on screen. */
 const NO_PINS: ReadonlySet<NodeId> = new Set()
+
+/** A file card showing a vault HTML document: a page. */
+function isPageNode(node: BoardNode): boolean {
+  return node.type === 'file' && fileNodeKind(node.file) === 'html'
+}
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
 /** On every sheet of the spread whose title is under the pointer. */
@@ -427,6 +434,10 @@ export class WhiteboardCanvas {
    */
   private readonly unwrittenPages = new Map<NodeId, PageMemory>()
   private pageWriteTimer: number | null = null
+  /** The HTML cards on the board, and those of them whose pages are kept up
+   * in the overview tier (`keepPagesUp`). */
+  private pageNodes: readonly BoardNode[] = []
+  private overviewPages: ReadonlySet<NodeId> = NO_PINS
   /** The portals on the board, whether open or not. */
   private portalNodes: FileNode[] = []
   /** Every node a visibility pass may mount: a node behind a portal only
@@ -2128,6 +2139,7 @@ export class WhiteboardCanvas {
           mtime: (path) => this.imageVersion(path),
           ready: pictureReady,
         }),
+        new PagePictures(this.pictureStores.page),
         new TypesetCards({
           doc,
           typesetter: typesetClient,
@@ -2193,6 +2205,7 @@ export class WhiteboardCanvas {
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
       getRenamingEdgeId: () => this.editing.renamingEdgeId,
       isMounted: (id) => this.shownByDom(id),
+      isKeptUp: (id) => this.overviewPages.has(id) && this.shownByDom(id),
       getLiveRects: () => this.interaction.liveNodeRects,
       poseOf: (id) => this.motions.pose(id),
       departures: () => this.motions.departures(),
@@ -2540,6 +2553,7 @@ export class WhiteboardCanvas {
       seenScaleOf: (id) => this.seenScaleOf(id),
       pageMemoryOf: (id) => this.pageMemoryOf(id),
       onPageReport: (id, report) => this.rememberPage(id, report),
+      onPagePicture: (id, picture) => this.keepPagePicture(id, picture),
       getPdfStartPosition: (id) => {
         const node = this.core.getNode(id)
         return node?.type === 'file' ? node.startPage : undefined
@@ -3110,6 +3124,47 @@ export class WhiteboardCanvas {
       this.pageWriteTimer = null
       this.writePageMemories()
     }, PAGE_MEMORY_WRITE_MS)
+  }
+
+  /** The stamp of the picture of the page `node` shows now; null when its
+   * file is not there. */
+  private pageStampOf(node: FileNode): string | null {
+    const mtime = this.fileMtime(node.file)
+    if (mtime === null) return null
+    const dark = this.context
+      .getDocument()
+      .body.classList.contains('theme-dark')
+    return pageStamp(mtime, node, dark)
+  }
+
+  /** A page drew a picture of itself as it was put away (cardRenderer.ts's
+   * `parkCard`): held and kept as the picture of its card, for the overview
+   * to show until the page is up again. */
+  private keepPagePicture(id: NodeId, picture: ImageBitmap): void {
+    const doc = this.context.getDocument()
+    const canvas = doc.createElement('canvas')
+    canvas.width = picture.width
+    canvas.height = picture.height
+    canvas.getContext('2d')?.drawImage(picture, 0, 0)
+    picture.close()
+    const letGo = (): void => {
+      canvas.width = 0
+      canvas.height = 0
+    }
+    const node = this.nodesById.get(id)
+    const stamp =
+      node?.type === 'file' &&
+      isPageNode(node) &&
+      this.sourcePathForBoard() !== ''
+        ? this.pageStampOf(node)
+        : null
+    if (!this.pictures || !node || stamp === null) {
+      letGo()
+      return
+    }
+    void this.pictures
+      .put({ ...this.pictureKeyOf(id), source: 'page' }, stamp, node.w, canvas)
+      .finally(letGo)
   }
 
   private writePageMemories(): void {
@@ -5041,7 +5096,12 @@ export class WhiteboardCanvas {
     this.updateOverviewState()
     const moved = this.interaction.liveNodeRects
     this.updateDrawnPortals()
-    if (this.sources.composition.portals.size === 0 && !this.gpuBoard) {
+    this.keepPagesUp(rect)
+    if (
+      this.sources.composition.portals.size === 0 &&
+      !this.gpuBoard &&
+      this.overviewPages.size === 0
+    ) {
       if (this.overview) {
         // Two populations, one engine: groups keep their DOM at every tier
         // and are asked the ordinary question, cards are asked one they
@@ -5225,12 +5285,56 @@ export class WhiteboardCanvas {
 
   /** Whether a card is drawn by the canvas rather than built, at the size
    * it is seen at (`recomputeVisibility`). Groups keep their DOM at every
-   * tier. */
+   * tier, and so do the pages kept up (`keepPagesUp`). */
   private isDrawn(node: BoardNode): boolean {
     if (node.type === 'group') return false
     const tier = this.portalTierOf(node.id)
     if (tier !== null) return tier === 'drawn'
+    if (this.overviewPages.has(node.id)) return false
     return this.overview || this.gpuDraws(node.id)
+  }
+
+  /**
+   * Which HTML cards keep their pages in the overview tier: the ones in view
+   * nearest its middle, as many as may be up at once.
+   *
+   * A page is the one kind of card nothing but itself can show — the canvas
+   * has only a picture of how it last looked (pictures/pagePictures.ts) — and
+   * its frame scales with the board like any element, so zoomed out it is
+   * simply left up: a page that moves goes on moving. Not all of them, since
+   * a whole board is in view down here and each is a live page: as many as
+   * the pool keeps hidden (cardRenderer.ts's WEB_FRAME_POOL_CAPACITY), for
+   * the same reason. The rest are drawn, from their pictures.
+   */
+  private keepPagesUp(rect: WorldRect): void {
+    if (!this.overview || this.pageNodes.length === 0) {
+      this.overviewPages = NO_PINS
+      return
+    }
+    const cx = (rect.left + rect.right) / 2
+    const cy = (rect.top + rect.bottom) / 2
+    const inView: { id: NodeId; distance: number }[] = []
+    for (const node of this.pageNodes) {
+      if (
+        node.x >= rect.right ||
+        node.x + node.w <= rect.left ||
+        node.y >= rect.bottom ||
+        node.y + node.h <= rect.top
+      ) {
+        continue
+      }
+      inView.push({
+        id: node.id,
+        distance: Math.hypot(
+          node.x + node.w / 2 - cx,
+          node.y + node.h / 2 - cy,
+        ),
+      })
+    }
+    inView.sort((a, b) => a.distance - b.distance)
+    this.overviewPages = new Set(
+      inView.slice(0, OVERVIEW_PAGES_UP).map((page) => page.id),
+    )
   }
 
   /**
@@ -5293,6 +5397,18 @@ export class WhiteboardCanvas {
       }
       if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
         yield { ...imageRef(node.file), width: node.w, distance, stamp: '' }
+        continue
+      }
+      if (node.type === 'file' && isPageNode(node)) {
+        const stamp = boardPath === '' ? null : this.pageStampOf(node)
+        if (stamp === null) continue
+        yield {
+          ...this.pictureKeyOf(node.id),
+          source: 'page',
+          width: node.w,
+          distance,
+          stamp,
+        }
         continue
       }
       if (!isPdfNode(node) || isSpreadTitle(node)) continue
@@ -5480,6 +5596,9 @@ export class WhiteboardCanvas {
     if (node.type === 'pdf-page') return pdfPageRef(node.file, node.page)
     if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
       return imageRef(node.file)
+    }
+    if (isPageNode(node)) {
+      return { ...this.pictureKeyOf(node.id), source: 'page' }
     }
     if (page !== undefined && isPdfNode(node)) {
       return pdfPageRef(node.file, page)
@@ -6158,6 +6277,7 @@ export class WhiteboardCanvas {
             return !clip || overlaps(node, clip)
           })
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
+    this.pageNodes = this.cardNodes.filter(isPageNode)
     this.folded = this.foldedShown()
     this.gpuBoard?.setNodes(this.drawableNodes())
     this.find?.boardChanged()

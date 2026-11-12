@@ -1,5 +1,5 @@
 // The pictures a board makes of what it shows (ui/pictures/) — a PDF's pages,
-// an image file, a card — kept on this device, so that a board opened again —
+// an image file, a page — kept on this device, so that a board opened again —
 // on another board, after a restart — shows them at once instead of making
 // every one anew.
 //
@@ -411,6 +411,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export type PictureStores = Readonly<{
   pdf: PictureStore
   image: PictureStore
+  /** HTML cards' pages, a board's to a group (ui/pictures/pagePictures.ts). */
+  page: PictureStore
   /** Not pictures: typeset cards, a board's to a group
    * (ui/typesetting/typesetCache.ts). */
   typeset: PictureStore

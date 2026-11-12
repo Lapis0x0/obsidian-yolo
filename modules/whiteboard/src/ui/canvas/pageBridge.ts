@@ -54,6 +54,14 @@ export function storageSize(storage: Readonly<Record<string, string>>): number {
  *     once per frame, and put back when the page has loaded — only from
  *     then on, so a page still laying itself out at the top does not
  *     overwrite where it was left.
+ *   - Asked for a picture (`pagePictureRequest`), it draws what its window
+ *     shows and hands the bitmap back. Nothing outside the sandbox can see
+ *     the page's pixels, so the page draws them itself: its document, cloned
+ *     and serialized into an SVG `<foreignObject>`, loaded as an image from a
+ *     `data:` URL — which leaves the canvas readable — and drawn over the
+ *     page's background. What a canvas holds and what the controls are set
+ *     to are written into the clone first. What such an image cannot load is
+ *     left out: a stylesheet, font or image from another address.
  */
 const BRIDGE_SOURCE = `(function (init) {
   'use strict';
@@ -194,6 +202,113 @@ const BRIDGE_SOURCE = `(function (init) {
       });
     });
   }, { passive: true });
+
+  function transparent(color) {
+    return !color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)';
+  }
+  function backgroundColor() {
+    var root = document.documentElement;
+    var own = getComputedStyle(root).backgroundColor;
+    if (!transparent(own)) return own;
+    var body = document.body && getComputedStyle(document.body).backgroundColor;
+    if (!transparent(body)) return body;
+    var scheme = getComputedStyle(root).colorScheme || '';
+    var dark = scheme.indexOf('dark') >= 0 &&
+      (scheme.indexOf('light') < 0 ||
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return dark ? '#121212' : '#ffffff';
+  }
+  function copyOf(root) {
+    var copy = root.cloneNode(true);
+    var i;
+    var canvases = root.querySelectorAll('canvas');
+    var canvasCopies = copy.querySelectorAll('canvas');
+    for (i = 0; i < canvases.length; i++) {
+      try {
+        var box = canvases[i].getBoundingClientRect();
+        var image = document.createElement('img');
+        image.setAttribute('src', canvases[i].toDataURL());
+        image.setAttribute('class', canvases[i].getAttribute('class') || '');
+        image.setAttribute('style', (canvases[i].getAttribute('style') || '') +
+          ';width:' + box.width + 'px;height:' + box.height + 'px');
+        canvasCopies[i].parentNode.replaceChild(image, canvasCopies[i]);
+      } catch (error) {
+        // A canvas that cannot be read (drawn from another address): blank.
+      }
+    }
+    var fields = root.querySelectorAll('input, textarea, option');
+    var fieldCopies = copy.querySelectorAll('input, textarea, option');
+    for (i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      var fieldCopy = fieldCopies[i];
+      if (field.tagName === 'TEXTAREA') {
+        fieldCopy.textContent = field.value;
+      } else if (field.tagName === 'OPTION') {
+        if (field.selected) fieldCopy.setAttribute('selected', '');
+        else fieldCopy.removeAttribute('selected');
+      } else if (field.type === 'checkbox' || field.type === 'radio') {
+        if (field.checked) fieldCopy.setAttribute('checked', '');
+        else fieldCopy.removeAttribute('checked');
+      } else if (field.type !== 'file' && field.type !== 'password') {
+        fieldCopy.setAttribute('value', field.value);
+      }
+    }
+    var scripts = copy.querySelectorAll('script');
+    for (i = 0; i < scripts.length; i++) {
+      scripts[i].parentNode.removeChild(scripts[i]);
+    }
+    return copy;
+  }
+  function takePicture(limit, done) {
+    var width = window.innerWidth;
+    var height = window.innerHeight;
+    if (!(width > 0 && height > 0)) return done(null);
+    var root = document.documentElement;
+    var page = scroller();
+    var markup = new XMLSerializer().serializeToString(copyOf(root));
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width +
+      '" height="' + height + '"><foreignObject x="' + -page.scrollLeft +
+      '" y="' + -page.scrollTop + '" width="' +
+      Math.max(width, page.scrollWidth) + '" height="' +
+      Math.max(height, page.scrollHeight) + '">' + markup +
+      '</foreignObject></svg>';
+    var scale = Math.min(1, Math.sqrt(limit / (width * height)));
+    var image = new Image();
+    image.onerror = function () { done(null); };
+    image.onload = function () {
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        var context = canvas.getContext('2d');
+        context.fillStyle = backgroundColor();
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        createImageBitmap(canvas).then(done, function () { done(null); });
+      } catch (error) {
+        done(null);
+      }
+    };
+    image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  window.addEventListener('message', function (event) {
+    if (event.source !== parentWindow) return;
+    var data = event.data;
+    if (!data || data.${BRIDGE_MARK} !== 1) return;
+    if (typeof data.picture !== 'number') return;
+    var request = data.picture;
+    function done(bitmap) {
+      var message = { picture: request, ${BRIDGE_MARK}: 1 };
+      if (!bitmap) return parentWindow.postMessage(message, '*');
+      message.bitmap = bitmap;
+      parentWindow.postMessage(message, '*', [bitmap]);
+    }
+    try {
+      takePicture(data.limit > 0 ? data.limit : 1, done);
+    } catch (error) {
+      done(null);
+    }
+  });
 })`
 
 /**
@@ -259,4 +374,51 @@ export function readPageMessage(data: unknown): PageReport | null {
   if (entries.some(([, value]) => typeof value !== 'string')) return null
   const read = Object.fromEntries(entries) as Record<string, string>
   return storageSize(read) <= PAGE_STORAGE_LIMIT ? { storage: read } : null
+}
+
+/** The most pixels a page's picture has: as wide as the overview ever shows
+ * a card of the usual size at a display's density, like a card's own
+ * (../pictures/typesetCards.ts). */
+export const PAGE_PICTURE_PIXELS = 400_000
+
+/** What the board posts to a card's page to have a picture of it back:
+ * `request` is what the answer names. */
+export function pagePictureRequest(request: number): Record<string, number> {
+  return { [BRIDGE_MARK]: 1, picture: request, limit: PAGE_PICTURE_PIXELS }
+}
+
+/** A page's answer to `pagePictureRequest`: its picture, or none when it
+ * could not draw one. */
+export type PagePicture = Readonly<{
+  request: number
+  bitmap: ImageBitmap | null
+}>
+
+/**
+ * The picture a message from a card's frame answers a request with, or null
+ * when it is no such answer. The page is untrusted here as in
+ * `readPageMessage`: what it hands over is taken only if it is a bitmap no
+ * larger than was asked for, and closed otherwise.
+ */
+export function readPagePicture(data: unknown): PagePicture | null {
+  if (typeof data !== 'object' || data === null) return null
+  const message = data as Record<string, unknown>
+  if (message[BRIDGE_MARK] !== 1) return null
+  const { picture: request, bitmap } = message
+  if (typeof request !== 'number') return null
+  // By its tag rather than `instanceof`: the bitmap may be a popout's.
+  if (Object.prototype.toString.call(bitmap) !== '[object ImageBitmap]') {
+    return { request, bitmap: null }
+  }
+  const taken = bitmap as ImageBitmap
+  // Rounding each side can take it a little past the limit.
+  if (
+    taken.width < 1 ||
+    taken.height < 1 ||
+    taken.width * taken.height > PAGE_PICTURE_PIXELS * 1.1
+  ) {
+    taken.close()
+    return { request, bitmap: null }
+  }
+  return { request, bitmap: taken }
 }

@@ -65,7 +65,7 @@ const SCAN_INTERVAL_MAKING_MS = 50
 const ENCODING = 'image/webp'
 const ENCODING_QUALITY = 0.8
 
-export type PictureSourceId = 'pdf' | 'image' | 'card'
+export type PictureSourceId = 'pdf' | 'image' | 'card' | 'page'
 
 /** Which picture: of what source, in which of its groups (host/
  * pictureStore.ts), under which key there. */
@@ -554,6 +554,83 @@ export class Pictures {
 
   /** The state of a group whose pictures are wanted, asking its store what
    * it has of it on first sight. */
+  /**
+   * Takes a picture made elsewhere, for a source whose pictures cannot be
+   * made on request — a page's, which only the page can draw, and only while
+   * it is up (./pagePictures.ts). Held and kept as one made here is; `image`
+   * is the caller's to let go of afterwards. `width` is how wide what it
+   * stands for is on the board, in world units.
+   */
+  async put(
+    ref: PictureRef,
+    stamp: string,
+    width: number,
+    image: HTMLCanvasElement,
+  ): Promise<void> {
+    if (this.destroyed) return
+    const group = this.group(ref)
+    if (!group) return
+    const gk = groupKey(ref.source, ref.group)
+    const screen = width * this.deps.resolution()
+    try {
+      await this.keep(group, { ...ref, stamp, screen }, { image, meta: null })
+    } catch (error) {
+      if (this.groups.get(gk) !== group) return
+      this.deps.reportError(group.source.label, error)
+    }
+  }
+
+  /** Holds a picture and keeps it on the device, as much of each as there
+   * is room and a store for. */
+  private async keep(
+    group: GroupState,
+    want: PictureRef & Readonly<{ stamp: string; screen: number }>,
+    { image, meta }: DrawnPicture,
+  ): Promise<void> {
+    const gk = groupKey(want.source, want.group)
+    const k = refKey(want)
+    const win = this.deps.doc.defaultView
+    if (!win) return
+    const fullWidth = image.width
+    const level = levelFor(want.screen, fullWidth)
+    // Past the budget it is only kept, not held: the scan reads it back
+    // once it is nearer than the farthest held.
+    const held = this.bytes < this.budget
+    const store = group.source.store
+    // A picture made past the budget with nowhere to keep it is made
+    // again when it is wanted nearer.
+    if (!held && !store) return
+    const [bitmap, encoded] = await Promise.all([
+      held ? win.createImageBitmap(image, resizedTo(level, fullWidth)) : null,
+      store ? encode(image) : null,
+    ])
+    if (this.destroyed || this.groups.get(gk) !== group) {
+      bitmap?.close()
+      return
+    }
+    if (bitmap) this.hold(k, { bitmap, level, fullWidth, stamp: want.stamp })
+    if (meta !== null) group.metas.set(want.key, meta)
+    if (encoded && store) {
+      const picture: StoredPicture = {
+        width: fullWidth,
+        height: image.height,
+        stamp: want.stamp,
+        meta,
+      }
+      store.write(
+        group.group,
+        group.version,
+        want.key,
+        await encoded.arrayBuffer(),
+        picture,
+      )
+      group.stored?.set(want.key, picture)
+    }
+    this.failed.delete(k)
+    this.complete = false
+    if (bitmap) this.deps.onChange(want.source, want.group, want.key)
+  }
+
   private group(ref: PictureRef): GroupState | null {
     const k = groupKey(ref.source, ref.group)
     const known = this.groups.get(k)
@@ -657,47 +734,9 @@ export class Pictures {
         this.failed.set(k, want.stamp)
         return
       }
-      const { image, meta } = drawn
-      const win = this.deps.doc.defaultView
-      if (!win) return
       if (source.settle && !(await source.settle())) return
       if (this.destroyed || this.groups.get(gk) !== group) return
-      const fullWidth = image.width
-      const level = levelFor(want.screen, fullWidth)
-      // Past the budget it is only kept, not held: the scan reads it back
-      // once it is nearer than the farthest held.
-      const held = this.bytes < this.budget
-      const store = source.store
-      // A picture made past the budget with nowhere to keep it is made
-      // again when it is wanted nearer.
-      if (!held && !store) return
-      const [bitmap, encoded] = await Promise.all([
-        held ? win.createImageBitmap(image, resizedTo(level, fullWidth)) : null,
-        store ? encode(image) : null,
-      ])
-      if (this.destroyed || this.groups.get(gk) !== group) {
-        bitmap?.close()
-        return
-      }
-      if (bitmap) this.hold(k, { bitmap, level, fullWidth, stamp: want.stamp })
-      if (meta !== null) group.metas.set(want.key, meta)
-      if (encoded && store) {
-        const picture: StoredPicture = {
-          width: fullWidth,
-          height: image.height,
-          stamp: want.stamp,
-          meta,
-        }
-        store.write(
-          group.group,
-          group.version,
-          want.key,
-          await encoded.arrayBuffer(),
-          picture,
-        )
-        group.stored?.set(want.key, picture)
-      }
-      if (bitmap) this.deps.onChange(want.source, want.group, want.key)
+      await this.keep(group, want, drawn)
     } catch (error) {
       // A group dropped meanwhile was closed under the draw: not a failure.
       if (this.groups.get(gk) !== group) return

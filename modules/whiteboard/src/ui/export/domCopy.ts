@@ -42,6 +42,7 @@ const CHROME_SELECTORS = [
   '.yolo-whiteboard-card-stream-stop',
   '.yolo-whiteboard-card-parked',
   '.yolo-whiteboard-card-pooled',
+  '.yolo-whiteboard-card-pooling',
   '.yolo-whiteboard-card-exiting',
   '.yolo-whiteboard-pdf-text',
   '.yolo-whiteboard-pdf-text-probe',

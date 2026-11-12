@@ -25,6 +25,14 @@
   color-scheme: dark;
 }
 
+/* In the overview tier a page kept up (canvas.ts's `keepPagesUp`) is there
+ * to be seen, not used: at that size the pointer is moving the board, and a
+ * frame under it would take the wheel and the drag for its page. The press
+ * lands on the card instead, which selects and drags as any card does. */
+.yolo-whiteboard-world-overview .yolo-whiteboard-card-page-frame {
+  pointer-events: none;
+}
+
 /* Obsidian's windowed preview, mounted by the Host API's markdown content
  * view (ui.createMarkdownContentView) — the single content path both note and
  * text cards take. It arrives sized to fill and scrolling on its own; what is

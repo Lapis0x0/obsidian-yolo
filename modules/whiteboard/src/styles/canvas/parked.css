@@ -40,3 +40,14 @@
 .yolo-whiteboard-card.yolo-whiteboard-card-pooled {
   display: none;
 }
+
+/* An HTML card for the moment between being put away and being suspended
+ * (cardRenderer.ts's `parkPageWithPicture`): its page is drawing the picture
+ * it leaves behind, which it can do only while it has a window — so the card
+ * keeps its layout, and is only not shown and not in the way. `visibility`
+ * is fine here where it was not above: there is one frame under the card to
+ * restyle, not a note's worth of content. */
+.yolo-whiteboard-card.yolo-whiteboard-card-pooling {
+  visibility: hidden;
+  pointer-events: none;
+}

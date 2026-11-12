@@ -259,6 +259,11 @@ export type OverviewLayerCallbacks = Readonly<{
   /** Whether the card has its DOM in the world layer now — outside the tier,
    * the cards that do not are the ones this layer draws (`render`). */
   isMounted: (id: NodeId) => boolean
+  /** Whether the card is one the tier leaves to its own DOM — a page kept
+   * up, and showing (canvas.ts's `keepPagesUp`) — which this layer must not
+   * draw as well: its title has no surface, and would show over the one
+   * drawn here. */
+  isKeptUp: (id: NodeId) => boolean
   /**
    * Live rectangles for the nodes a drag or a resize is moving, or null when
    * nothing is. In the DOM tiers this feedback is a `transform` on the card's
@@ -471,9 +476,11 @@ export class OverviewLayer {
     surface: Surface,
     live: ReadonlyMap<NodeId, CardRect> | null,
     skipBehind?: (id: NodeId) => boolean,
+    /** The board's own cards its DOM shows in the tier (`isKeptUp`). */
+    keptUp?: (id: NodeId) => boolean,
   ): void {
     this.drawEdges(ctx, view, surface, live)
-    this.drawCards(ctx, view, surface, live)
+    this.drawCards(ctx, view, surface, live, keptUp)
     this.inPortals(ctx, view, (layer) => {
       this.drawEdges(ctx, view, surface, live, layer.edges, layer.scale)
       this.drawCards(
@@ -487,7 +494,7 @@ export class OverviewLayer {
       )
       return true
     })
-    this.drawFrames(ctx, view, surface, live)
+    this.drawFrames(ctx, view, surface, live, keptUp)
     this.inPortals(ctx, view, (layer) =>
       this.drawFrames(ctx, view, surface, live, skipBehind, layer.nodes),
     )
@@ -731,8 +738,13 @@ export class OverviewLayer {
     // portal's — so cleared once, before any.
     this.titleRects.clear()
     this.drawGroupWashes(ctx, view, surface, live)
-    this.drawBoard(ctx, view, surface, live, (id) =>
-      this.callbacks.isMounted(id),
+    this.drawBoard(
+      ctx,
+      view,
+      surface,
+      live,
+      (id) => this.callbacks.isMounted(id),
+      (id) => this.callbacks.isKeptUp(id),
     )
     ctx.globalAlpha = 1
   }

@@ -104,6 +104,12 @@ yolo.registerModule({
         'image thumbnail',
         reportError,
       ),
+      page: new PictureStore(
+        host.privateStorage.deviceLocal,
+        'page-thumbnails',
+        'page thumbnail',
+        reportError,
+      ),
       typeset: new PictureStore(
         host.privateStorage.deviceLocal,
         'card-typesets',

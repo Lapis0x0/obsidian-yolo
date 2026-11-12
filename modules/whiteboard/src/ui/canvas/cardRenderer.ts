@@ -79,7 +79,9 @@ import {
 import {
   type PageMemory,
   type PageReport,
+  pagePictureRequest,
   readPageMessage,
+  readPagePicture,
   withPageBridge,
 } from './pageBridge'
 
@@ -115,6 +117,10 @@ const CARD_PARKED_CLASS = 'yolo-whiteboard-card-parked'
 /** A parked *web* card: taken out of layout altogether, which suspends the
  * page inside it. See WEB_FRAME_POOL_CAPACITY. */
 const CARD_POOLED_CLASS = 'yolo-whiteboard-card-pooled'
+/** An HTML card on its way to being pooled: hidden, but still laid out,
+ * while its page draws the picture it leaves behind
+ * (`parkPageWithPicture`). */
+const CARD_POOLING_CLASS = 'yolo-whiteboard-card-pooling'
 const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 /** A deleted card playing its way out (`playExit`): pixels only, never a
  * pointer target. */
@@ -179,6 +185,12 @@ const HTML_FRAME_SANDBOX =
  * real. Every other parked card is inert DOM and answers to `parkedCapacity`.
  */
 const WEB_FRAME_POOL_CAPACITY = 6
+
+/** How long a page being put away is kept laid out for its picture
+ * (`parkCard`). A page that has not answered by then is taken to be unable
+ * to — one stuck in its own script, or one whose bridge the page's own code
+ * got in the way of — and is put away without one. */
+const PAGE_PICTURE_WAIT_MS = 1000
 
 /** How a card being torn down leaves: at once (`false`), the way a deleted
  * card does (`true`, `playExit`), fading where it stands (`'fade'`), or
@@ -350,6 +362,9 @@ export type CardRendererCallbacks = Readonly<{
   pageMemoryOf: (id: NodeId) => PageMemory
   /** An HTML card's page reported where it is scrolled, or what it stored. */
   onPageReport: (id: NodeId, report: PageReport) => void
+  /** An HTML card's page drew a picture of itself as it was put away
+   * (`parkCard`). The bitmap is the callee's to close. */
+  onPagePicture: (id: NodeId, picture: ImageBitmap) => void
   /** Where a PDF card's reader opens: the node's `startPage`. */
   getPdfStartPosition: (id: NodeId) => number | undefined
   /** The annotations of a PDF, for a reader to hold until it goes. */
@@ -402,6 +417,18 @@ export class CardRenderer {
   private readonly pageFrames = new Map<NodeId, HTMLIFrameElement>()
   /** The window `onPageMessage` listens on, from the first HTML card on. */
   private pageMessagesFrom: Window | null = null
+  /** The frames whose page has loaded. */
+  private readonly loadedPages = new WeakSet<HTMLIFrameElement>()
+  /** The pictures asked of pages and not yet answered (`takePagePicture`),
+   * by the number each was asked with. */
+  private readonly pagePictures = new Map<
+    number,
+    Readonly<{
+      frame: HTMLIFrameElement
+      answer: (bitmap: ImageBitmap | null) => void
+    }>
+  >()
+  private pagePictureRequests = 0
   /**
    * A message from some frame to this card's window. A sandboxed page's
    * origin is `"null"`, which says nothing about who sent it, so the sender
@@ -412,10 +439,65 @@ export class CardRenderer {
     if (event.source === null) return
     for (const [id, frame] of this.pageFrames) {
       if (frame.contentWindow !== event.source) continue
+      const picture = readPagePicture(event.data)
+      if (picture) {
+        const asked = this.pagePictures.get(picture.request)
+        // Not one this frame was asked for: nobody is waiting for it.
+        if (asked?.frame === frame) asked.answer(picture.bitmap)
+        else picture.bitmap?.close()
+        return
+      }
       const report = readPageMessage(event.data)
       if (report) this.callbacks.onPageReport(id, report)
       return
     }
+  }
+
+  /** Whether an HTML card's page can be asked for a picture now: loaded, and
+   * laid out — a parked page is `display: none` (parked.css) and has no
+   * window to draw. */
+  canPicturePage(id: NodeId): boolean {
+    const frame = this.pageFrames.get(id)
+    return (
+      frame !== undefined &&
+      this.loadedPages.has(frame) &&
+      frame.clientWidth > 0 &&
+      frame.clientHeight > 0
+    )
+  }
+
+  /**
+   * The picture an HTML card's page draws of itself (./pageBridge.ts):
+   * null when it answered that it could not, did not answer in
+   * PAGE_PICTURE_WAIT_MS, or is not there to ask.
+   */
+  private takePagePicture(id: NodeId): Promise<ImageBitmap | null> {
+    const frame = this.pageFrames.get(id)
+    const page = frame?.contentWindow
+    if (!frame || !page || !this.canPicturePage(id)) {
+      return Promise.resolve(null)
+    }
+    const win = this.context.getWindow()
+    const request = (this.pagePictureRequests += 1)
+    return new Promise((resolve) => {
+      const timer = win.setTimeout(() => answer(null), PAGE_PICTURE_WAIT_MS)
+      const answer = (bitmap: ImageBitmap | null): void => {
+        win.clearTimeout(timer)
+        if (!this.pagePictures.delete(request)) {
+          bitmap?.close()
+          return
+        }
+        // Gone while it was drawing: a picture of a page no longer shown.
+        if (this.pageFrames.get(id) !== frame) {
+          bitmap?.close()
+          resolve(null)
+          return
+        }
+        resolve(bitmap)
+      }
+      this.pagePictures.set(request, { frame, answer })
+      page.postMessage(pagePictureRequest(request), '*')
+    })
   }
   /** Watches every mounted bare text for its size; created with the first. */
   private textObserver: ResizeObserver | null = null
@@ -550,7 +632,8 @@ export class CardRenderer {
     if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
     if (
       el.classList.contains(CARD_PARKED_CLASS) ||
-      el.classList.contains(CARD_POOLED_CLASS)
+      el.classList.contains(CARD_POOLED_CLASS) ||
+      el.classList.contains(CARD_POOLING_CLASS)
     ) {
       return false
     }
@@ -949,9 +1032,13 @@ export class CardRenderer {
   private parkCard(id: NodeId, runtime: NodeRuntime): void {
     // A page has to leave layout to be suspended; a rendered note has to keep
     // its boxes so the measurements that make coming back free survive.
-    runtime.el?.classList.add(
-      runtime.livePage !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
-    )
+    if (runtime.livePage === null) {
+      runtime.el?.classList.add(CARD_PARKED_CLASS)
+    } else if (this.canPicturePage(id)) {
+      this.parkPageWithPicture(id, runtime)
+    } else {
+      runtime.el?.classList.add(CARD_POOLED_CLASS)
+    }
     // A parked card is skipped with its contents, which leaves a box sized by
     // its content with nothing to size it by: bare text is held at the size
     // it had, and let go again when it comes back.
@@ -965,12 +1052,44 @@ export class CardRenderer {
     this.evictExcessParkedCards()
   }
 
+  /**
+   * Puts an HTML card away with a picture of how its page looked — the one
+   * the overview shows for it until it is up again (pictures/
+   * pagePictures.ts). This is the one moment a page's picture is taken: it
+   * is the last anyone saw of it, whether it was still or moving.
+   *
+   * The page can draw itself only while it has a window, so the card is
+   * hidden but left in layout (`-pooling`) until the picture is back, and
+   * suspended (`-pooled`) then. A card revealed, re-parked or torn down
+   * meanwhile is no longer this one's to finish.
+   */
+  private parkPageWithPicture(id: NodeId, runtime: NodeRuntime): void {
+    const el = runtime.el
+    if (!el) return
+    el.classList.add(CARD_POOLING_CLASS)
+    void this.takePagePicture(id).then((picture) => {
+      if (runtime.el === el && el.classList.contains(CARD_POOLING_CLASS)) {
+        el.classList.replace(CARD_POOLING_CLASS, CARD_POOLED_CLASS)
+      }
+      if (!picture) return
+      if (this.runtimeByNodeId.get(id) === runtime) {
+        this.callbacks.onPagePicture(id, picture)
+      } else {
+        picture.close()
+      }
+    })
+  }
+
   private revealParkedCard(id: NodeId): void {
     const runtime = this.runtimeByNodeId.get(id)
     const node = this.callbacks.getNode(id)
     this.parkedCards.delete(id)
     if (!runtime?.el) return
-    runtime.el.classList.remove(CARD_POOLED_CLASS, CARD_PARKED_CLASS)
+    runtime.el.classList.remove(
+      CARD_POOLED_CLASS,
+      CARD_POOLING_CLASS,
+      CARD_PARKED_CLASS,
+    )
     // The card sat out however much moved while it was hidden: an undo, an
     // align, a colour change on a multi-selection. Its geometry and its
     // selection state are re-applied from the board rather than trusted.
@@ -2038,6 +2157,10 @@ export class CardRenderer {
     this.mountFrame(runtime, frame)
     this.listenToPages()
     this.pageFrames.set(id, frame)
+    frame.addEventListener('load', () => {
+      if (this.pageFrames.get(id) !== frame) return
+      this.loadedPages.add(frame)
+    })
     const release = runtime.releaseContent
     runtime.releaseContent = () => {
       if (this.pageFrames.get(id) === frame) this.pageFrames.delete(id)

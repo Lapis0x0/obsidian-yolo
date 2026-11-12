@@ -4,7 +4,9 @@ import * as vm from 'node:vm'
 import {
   PAGE_STORAGE_LIMIT,
   type PageMemory,
+  pagePictureRequest,
   readPageMessage,
+  readPagePicture,
   scriptJson,
   withPageBridge,
 } from './pageBridge'
@@ -221,5 +223,54 @@ describe('scriptJson', () => {
     const json = scriptJson({ a: '<\u2028\u2029>' })
     expect(json).not.toMatch(/[<\u2028\u2029]/)
     expect(JSON.parse(json)).toEqual({ a: '<\u2028\u2029>' })
+  })
+})
+
+describe('readPagePicture', () => {
+  const bitmap = (width: number, height: number) => {
+    const close = jest.fn()
+    const value = {
+      width,
+      height,
+      close,
+      [Symbol.toStringTag]: 'ImageBitmap',
+    }
+    return { value, close }
+  }
+  const answer = (extra: Record<string, unknown>) => ({
+    ...pagePictureRequest(7),
+    ...extra,
+  })
+
+  it('names the request it answers and hands the bitmap over', () => {
+    const { value, close } = bitmap(400, 300)
+    expect(readPagePicture(answer({ bitmap: value }))).toEqual({
+      request: 7,
+      bitmap: value,
+    })
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('reads an answer without a bitmap as a page that could not draw', () => {
+    expect(readPagePicture(answer({}))).toEqual({ request: 7, bitmap: null })
+    expect(readPagePicture(answer({ bitmap: 'x' }))).toEqual({
+      request: 7,
+      bitmap: null,
+    })
+  })
+
+  it('refuses and closes a bitmap larger than was asked for', () => {
+    const { value, close } = bitmap(4000, 3000)
+    expect(readPagePicture(answer({ bitmap: value }))).toEqual({
+      request: 7,
+      bitmap: null,
+    })
+    expect(close).toHaveBeenCalled()
+  })
+
+  it('takes nothing that is not the bridge’s, or names no request', () => {
+    expect(readPagePicture({ picture: 7 })).toBeNull()
+    expect(readPagePicture(answer({ picture: 'x' }))).toBeNull()
+    expect(readPagePicture(null)).toBeNull()
   })
 })
