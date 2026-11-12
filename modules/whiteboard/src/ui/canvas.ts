@@ -77,7 +77,7 @@ import {
   releaseBounds,
   withCarried,
 } from '../domain/groups'
-import { BoardHistory } from '../domain/history'
+import { BoardHistory, keepPageMemory } from '../domain/history'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
 import {
   fileNodeKind,
@@ -3097,9 +3097,10 @@ export class WhiteboardCanvas {
 
   /**
    * Takes what an HTML card's page reported, to be written to its node with
-   * the next batch. Not a step, for the reason a reading window is not
-   * (`commitReadingWindow`): where a page was scrolled, or what its controls
-   * were set to, is not an edit anyone undoes one notch at a time.
+   * the next batch. Outside the history altogether (`commitOutsideHistory`,
+   * and `keepPageMemory` on the way back): where a page was scrolled, or
+   * what its controls were set to, is where its reader left it, which no
+   * undo or redo takes back.
    */
   private rememberPage(id: NodeId, report: PageReport): void {
     if (this.parseFailed || this.nodesById.get(id)?.type !== 'file') return
@@ -3115,7 +3116,7 @@ export class WhiteboardCanvas {
     if (this.unwrittenPages.size === 0 || this.parseFailed) return
     const next = this.withUnwrittenPages(this.board)
     this.unwrittenPages.clear()
-    this.commitWithoutHistory(next)
+    this.commitOutsideHistory(next)
   }
 
   /** `board` with what HTML cards' pages reported and is not written yet. */
@@ -3203,6 +3204,20 @@ export class WhiteboardCanvas {
     }
     this.takeComposedBoard(next)
     this.refreshChangedGroups(before)
+  }
+
+  /**
+   * The write path for what no undo takes back: an HTML card's page memory
+   * (`rememberPage`). Unlike `commitWithoutHistory`, nothing is kept for the
+   * next step to take in or for an undo to take back first — and an undo or
+   * redo puts the card's current memory on whatever it brings back
+   * (`applyHistoryChanges`). Only ever a change to existing nodes' memory,
+   * so no frame can move and no node is made.
+   */
+  private commitOutsideHistory(next: Board): void {
+    if (next === this.board) return
+    this.sources.commit(next)
+    this.takeComposedBoard(next)
   }
 
   /** Puts every mounted group that changed since `previous` in step with its
@@ -3350,7 +3365,10 @@ export class WhiteboardCanvas {
       : changes
     this.unrecorded = null
     this.unrecordedCreations.clear()
-    this.sources.apply(all)
+    // A page's memory is not the step's to put back.
+    this.sources.apply(
+      keepPageMemory(all, (file, id) => this.sources.nodeIn(file, id)),
+    )
     this.refreshFromSources({ clearSelection: true })
   }
 

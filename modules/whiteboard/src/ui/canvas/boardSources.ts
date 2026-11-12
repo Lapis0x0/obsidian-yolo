@@ -9,7 +9,12 @@
 // again whenever one of them changes, and sends each edit back to the files
 // it touched.
 
-import type { Board, FileNode, NodeId } from '../../domain/fileFormat'
+import type {
+  Board,
+  BoardNode,
+  FileNode,
+  NodeId,
+} from '../../domain/fileFormat'
 import { fileShape } from '../../domain/groupFold'
 import {
   type BoardChanges,
@@ -83,6 +88,14 @@ export class BoardSources {
 
   get ownDocument(): BoardDocument | null {
     return this.own
+  }
+
+  /** A node as `file` — the own file or one behind a portal — has it now,
+   * in that file's own terms. */
+  nodeIn(file: string, id: NodeId): BoardNode | undefined {
+    const document =
+      file === this.deps.ownPath() ? this.own : this.documentBehind(file)
+    return document?.board?.nodes.find((node) => node.id === id)
   }
 
   /** Whether a portal on the board is waiting for its board to be read. */

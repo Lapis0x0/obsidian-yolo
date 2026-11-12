@@ -17,7 +17,14 @@
 // DOM-free like every other domain/ module, so the whole undo model is
 // testable without a canvas.
 
-import { type BoardChanges, invertChanges, mergeChanges } from './portals'
+import type { BoardNode, NodeId } from './fileFormat'
+import {
+  type BoardChanges,
+  type Change,
+  type FileChanges,
+  invertChanges,
+  mergeChanges,
+} from './portals'
 
 /**
  * How many steps back the board remembers. Steps are cheap (see above), so
@@ -106,4 +113,78 @@ export class BoardHistory {
     this.onChange()
     return this.steps[this.done - 1]
   }
+}
+
+/**
+ * `changes` — an undo's or a redo's — with every HTML card they put back
+ * keeping the page memory it has now (fileFormat.ts's `startScroll` and
+ * `storage`), rather than the memory it had when the step was taken.
+ *
+ * A page's scroll and its `localStorage` are where its reader left it, not
+ * an edit: no step records them changing (canvas.ts writes them outside the
+ * history), and no undo may take them back either — taking them back would
+ * also rebuild the card and reload its page, losing more than it restores.
+ * So the memory a step happens to carry, which is whatever the card had when
+ * the step was taken, is replaced by the card's current one wherever the
+ * card is still there. A card the step brings back from deletion has no
+ * current memory and comes back with what it had when it was deleted.
+ *
+ * Where the memory was the only difference, the card is given back as the
+ * very object the file has now, so the step does not change it at all.
+ * `current` is a node as its file has it now.
+ */
+export function keepPageMemory(
+  changes: BoardChanges,
+  current: (file: string, id: NodeId) => BoardNode | undefined,
+): BoardChanges {
+  let kept: Map<string, FileChanges> | null = null
+  for (const [file, fileChanges] of changes) {
+    let nodes: Map<NodeId, Change<BoardNode>> | null = null
+    for (const [id, change] of fileChanges.nodes) {
+      const target = change.after
+      const now = current(file, id)
+      if (target?.type !== 'file' || now?.type !== 'file') continue
+      const after = withMemoryOf(target, now)
+      if (after === target) continue
+      nodes ??= new Map(fileChanges.nodes)
+      nodes.set(id, { ...change, after })
+    }
+    if (!nodes) continue
+    kept ??= new Map(changes)
+    kept.set(file, { ...fileChanges, nodes })
+  }
+  return kept ?? changes
+}
+
+/** `target` with `now`'s page memory: `target` itself when they already
+ * agree, `now` itself when that memory was all they disagreed on. */
+function withMemoryOf(
+  target: BoardNode & { type: 'file' },
+  now: BoardNode & { type: 'file' },
+): BoardNode {
+  if (
+    target.startScroll === now.startScroll &&
+    target.storage === now.storage
+  ) {
+    return target
+  }
+  const next: { startScroll?: number; storage?: unknown } = { ...target }
+  delete next.startScroll
+  delete next.storage
+  if (now.startScroll !== undefined) next.startScroll = now.startScroll
+  if (now.storage !== undefined) next.storage = now.storage
+  return sameFields(next, now) ? now : (next as BoardNode)
+}
+
+function sameFields(a: object, b: object): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const key of keys) {
+    if (
+      (a as Record<string, unknown>)[key] !==
+      (b as Record<string, unknown>)[key]
+    ) {
+      return false
+    }
+  }
+  return true
 }
