@@ -124,9 +124,18 @@ export type LatestAssistantContextUsage = {
 export const getLatestAssistantContextUsage = ({
   messages,
   maxContextTokens,
+  compactionState,
 }: {
   messages: ChatMessage[]
   maxContextTokens: number | undefined
+  /**
+   * When the latest compaction is anchored at or after the usage-bearing
+   * message, that server usage describes the pre-compaction context. The ring
+   * then shows the compaction's post-compaction estimate instead, so the
+   * display drops after a compaction instead of staying pinned at the old
+   * value (#646).
+   */
+  compactionState?: ChatConversationCompactionState
 }): LatestAssistantContextUsage | null => {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -138,6 +147,25 @@ export const getLatestAssistantContextUsage = ({
     const promptTokens = usage?.prompt_tokens
     if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
       continue
+    }
+
+    let displayedPromptTokens = promptTokens
+    const latestCompaction = compactionState
+      ? getLatestChatConversationCompaction(compactionState)
+      : undefined
+    const estimate = latestCompaction?.estimatedNextContextTokens
+    if (
+      latestCompaction &&
+      typeof estimate === 'number' &&
+      Number.isFinite(estimate) &&
+      estimate >= 0
+    ) {
+      const anchorIndex = messages.findIndex(
+        (candidate) => candidate.id === latestCompaction.anchorMessageId,
+      )
+      if (anchorIndex >= index) {
+        displayedPromptTokens = estimate
+      }
     }
 
     const resolvedMaxContextTokens =
@@ -157,12 +185,12 @@ export const getLatestAssistantContextUsage = ({
 
     return {
       assistantMessage: message,
-      promptTokens,
+      promptTokens: displayedPromptTokens,
       maxContextTokens: resolvedMaxContextTokens,
       ratio:
         resolvedMaxContextTokens === null
           ? null
-          : promptTokens / resolvedMaxContextTokens,
+          : displayedPromptTokens / resolvedMaxContextTokens,
       ...(cacheHitRate !== null ? { cacheHitRate } : {}),
     }
   }
