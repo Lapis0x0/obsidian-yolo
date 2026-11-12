@@ -178,6 +178,11 @@ export const classifyProviderError = ({
     text.includes('econnrefused') ||
     text.includes('etimedout') ||
     text.includes('timeout') ||
+    // The OpenAI SDK reports its own timeout as "Request timed out." and YOLO's
+    // request policy as "Model request timed out after Nms." — neither contains
+    // the substring "timeout", so without this they classify as `unknown` and
+    // skip every timeout-aware path (#646).
+    text.includes('timed out') ||
     text.includes('network') ||
     text.includes('fetch failed') ||
     text.includes('enotfound')

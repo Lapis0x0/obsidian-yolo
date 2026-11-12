@@ -34,6 +34,20 @@ describe('classifyProviderError', () => {
     expect(classifyProviderError({ message: 'socket hang up' })).toBe('stream')
   })
 
+  it('classifies "timed out" phrasings as a network timeout (#646)', () => {
+    // The OpenAI SDK surfaces its client timeout as "Request timed out."; the
+    // request policy raises "Model request timed out after Nms.". Neither
+    // contains "timeout", so before #646 both fell through to `unknown`.
+    expect(classifyProviderError({ message: 'Request timed out.' })).toBe(
+      'network',
+    )
+    expect(
+      classifyProviderError({
+        message: 'Model request timed out after 60000ms.',
+      }),
+    ).toBe('network')
+  })
+
   it('does not read a deprecated parameter as a retired model', () => {
     expect(
       classifyProviderError({
