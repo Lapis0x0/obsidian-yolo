@@ -127,6 +127,29 @@ describe('createConversationCompactionSummary', () => {
     expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
   })
 
+  it('forwards the caller signal and skips the retry once the caller aborted (#646)', async () => {
+    const controller = new AbortController()
+    const abortError = new Error('Aborted')
+    mockedExecuteSingleTurn.mockImplementationOnce(async () => {
+      controller.abort()
+      throw abortError
+    })
+
+    await expect(
+      createConversationCompactionSummary({
+        providerClient: fakeProviderClient,
+        model: fakeModel,
+        requestMessages: prefix,
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortError)
+
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    expect(call.signal).toBe(controller.signal)
+    // The caller walked away; retrying would fire a second full-prefix request.
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
+  })
+
   it('parses a bare summary without tags as a fallback', async () => {
     mockedExecuteSingleTurn.mockResolvedValueOnce(
       stubSingleTurnResult('  plain summary text  '),

@@ -225,6 +225,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                       ...historyMessages,
                       ...this.messages,
                     ],
+                    abortSignal,
                     midRunRequest: midRun
                       ? {
                           requestMessages: currentTurnRequestMessages,
@@ -399,6 +400,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     input,
                     conversationMessages,
                     pendingAnchorMessageId: guardedToolMessage.id,
+                    abortSignal,
                     summaryRequest: {
                       requestMessages: currentTurnRequestMessages,
                       // This turn's new assistant + tool messages (incl. the
@@ -517,6 +519,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     input,
     conversationMessages,
     midRunRequest,
+    abortSignal,
   }: {
     input: AgentRuntimeRunInput
     conversationMessages: ChatMessage[]
@@ -532,6 +535,8 @@ export class NativeAgentRuntime implements AgentRuntime {
       reasoningLevel: ReasoningLevel | undefined
       debugTraceId: string | undefined
     }
+    /** The run's merged abort signal, forwarded to the summary request (#646). */
+    abortSignal: AbortSignal
   }): Promise<void> {
     if (!input.autoContextCompaction) {
       return
@@ -602,6 +607,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       conversationMessages,
       pendingAnchorMessageId: conversationMessages[anchorIndex].id,
       summaryRequest,
+      abortSignal,
       buildState: (summary) =>
         buildAnchoredCompactionState({
           messages: conversationMessages,
@@ -622,12 +628,14 @@ export class NativeAgentRuntime implements AgentRuntime {
     conversationMessages,
     pendingAnchorMessageId,
     summaryRequest,
+    abortSignal,
     buildState,
   }: {
     input: AgentRuntimeRunInput
     conversationMessages: ChatMessage[]
     pendingAnchorMessageId: string
     summaryRequest: CompactionSummaryRequest
+    abortSignal: AbortSignal
     buildState: (summary: string) => Promise<ChatConversationCompaction | null>
   }): Promise<void> {
     this.pendingCompactionAnchorMessageId = pendingAnchorMessageId
@@ -638,6 +646,7 @@ export class NativeAgentRuntime implements AgentRuntime {
         providerClient: input.providerClient,
         model: input.model,
         ...summaryRequest,
+        signal: abortSignal,
       })
       const nextCompaction = await buildState(summary)
       if (nextCompaction) {

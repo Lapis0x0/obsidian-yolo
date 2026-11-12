@@ -566,6 +566,7 @@ export const createConversationCompactionSummary = async ({
   tools,
   reasoningLevel,
   debugTraceId,
+  signal,
 }: {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
@@ -574,6 +575,13 @@ export const createConversationCompactionSummary = async ({
   tools?: RequestTool[]
   reasoningLevel?: ReasoningLevel
   debugTraceId?: string
+  /**
+   * Caller's cancellation signal. The summary request carries the full
+   * cache-warm prefix, so an abandoned compaction keeps occupying a provider
+   * slot (e.g. a llama.cpp queue slot) until it finishes on its own; forwarding
+   * the run's abort lets the fetch die with it (#646).
+   */
+  signal?: AbortSignal
 }): Promise<string> => {
   const messages: RequestMessage[] = [
     ...requestMessages,
@@ -603,6 +611,7 @@ export const createConversationCompactionSummary = async ({
       deliveryMode: 'buffered',
       purpose: 'standard',
       debugTraceId,
+      ...(signal ? { signal } : {}),
     })
 
     // Several providers (Gemini, OpenAI-compatible via extra_body, Bedrock) do
@@ -619,7 +628,9 @@ export const createConversationCompactionSummary = async ({
   try {
     summary = await runCompaction()
   } catch (firstError) {
-    if (isRequestErrorNonRetryable(firstError)) {
+    // A cancellation is the caller walking away, not a transient failure —
+    // retrying would fire a second full-prefix request nobody is waiting for.
+    if (isRequestErrorNonRetryable(firstError) || signal?.aborted) {
       throw firstError
     }
     console.warn(
