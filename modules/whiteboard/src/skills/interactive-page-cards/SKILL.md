@@ -1,51 +1,50 @@
 ---
 name: interactive-page-cards
-description: Build an interactive explanation, demo, simulation, visualization or small tool as a self-contained HTML page and put it on a whiteboard (.yoloboard) as a live card. Use when the user wants something they can play with — sliders, step-through animations, explorable diagrams, calculators — rather than text to read.
+description: Make an interactive page the user can click, drag and play with — what other products call an Artifact or a Canvas — and show it as a live card on a YOLO whiteboard (.yoloboard). Use when the user asks for an AI 卡片 / 互动卡片 / 交互式网页 / artifact / 小工具 / 可视化 / 演示 / 模拟 / 动画讲解, or wants a concept to "动起来", even if they never mention HTML. Also worth a thought when you are explaining something on a whiteboard that is easier to grasp by trying it than by reading about it. Not for Obsidian's own .canvas files.
 ---
 
 # Interactive page cards
 
-A whiteboard card can show an HTML file from the vault as a live page: its scripts run, the user scrolls and clicks inside it, and the board remembers where they left it. This skill is how to make one.
+A whiteboard card can show an HTML file from the vault as a live page. The file is an ordinary file that you write; the card is a window onto it. The user clicks, drags and scrolls inside the card, right there among their notes and PDFs.
 
-## When to use it
+The board does a few things for the page so you do not have to: it remembers how far the user scrolled, it keeps what the page saves in `localStorage`, it tells the page whether Obsidian is light or dark, and it reloads the card whenever the file changes. The rest of this skill follows from that picture.
 
-- Use a page when the content has something to *do*: change a parameter and watch the result, step through an algorithm, explore a chart, drag things around, try a formula.
-- Do not use a page for text the user will only read. Long prose, notes and summaries belong in a Markdown note (a note card), which the user can search, link and edit. A page that is mostly paragraphs is the wrong tool.
+## When a page is worth it
 
-## The page must be one self-contained file
+The question to ask is whether the user would understand faster by moving something than by reading a paragraph. Usually the answer is no, and a text card is the right thing: it is quick to write, and the user can search it, link it and edit it. A page costs far more time and tokens than a text card, so it is not the default way to explain things.
 
-- Write a single `.html` file. Put CSS in a `<style>` element and JavaScript in `<script>` elements, inline.
-- Libraries may come from a CDN with an absolute `https://` URL (for example `https://cdn.jsdelivr.net/npm/...`). `fetch` to `https://` works too.
-- Nothing relative loads: no `./style.css`, no `img/x.png`, no second HTML file. Inline images as `data:` URIs or SVG.
-- The page runs sandboxed. It cannot reach Obsidian, the vault or other files, and `window.parent` is off limits. Do not try.
-- Start with `<!DOCTYPE html>` and `<meta charset="utf-8">`.
+Sometimes the answer is clearly yes: how a parameter changes a curve, how an algorithm proceeds step by step, how a geometric relation holds as a point moves, what a formula gives for different inputs. When the user asks for one, make it. When they asked for an explanation and you can see that it is this kind of thing, you may make one on your own, or mention the option and let them choose — use your judgment about how much they seem to want it. A page next to a short text card often works better than either alone.
 
-## Keep the user's state in localStorage
+Long text with nothing to operate belongs in a Markdown note, not in a page.
 
-The board keeps each card's `localStorage` and gives it back every time the page loads: after the board is closed and reopened, after Obsidian restarts, and after you edit the file. Anything kept only in JavaScript variables is lost on the next load.
+## What a good one looks like
 
-- Every value the user can change (slider positions, selected tab, current step, inputs, toggles) must be written to `localStorage` when it changes and read back on load to restore the page.
-- `getItem`, `setItem`, `removeItem`, `clear`, `key`, `length`, `localStorage.name = value` and `Object.keys(localStorage)` all work. Values are strings; use `JSON.stringify` / `JSON.parse` for structures.
-- Each card has a 64K-character budget (keys plus values). Past it, `setItem` throws `QuotaExceededError`. Store settings and small state, not datasets or generated output.
-- Two cards showing the same file keep separate storage.
-- `sessionStorage` works but is not kept.
+Design for a card, not for a website. The card sits on a board among other cards, usually a few hundred pixels wide, so it has no room for a header, a navigation bar or an introduction. Something should be visibly happening, or ready to be touched, the moment it appears.
 
-## Long content: one continuous scroll
+One card carries one idea. If you find yourself adding tabs, split it into two cards and connect them with an arrow; the board is where the structure lives.
 
-If the page is long, make it a single page that scrolls vertically (the document itself scrolls, not an inner `overflow: auto` box). The board remembers how far down the user scrolled and restores it once the page has loaded. Do not build your own pagination or scroll-restoring code.
+Put each control next to the thing it changes, label it, and start it at a value that already shows something interesting. Write the interface in the language the user is writing in. Lay the page out with relative widths, because the user can resize the card at any time.
 
-## Follow light and dark mode
+For learning, a few shapes work well: let the user predict before revealing the answer, advance one step at a time with a button, or end with one or two questions they can check themselves against.
 
-The page sees Obsidian's light or dark theme through the standard media query, and it changes live without reloading.
+You cannot see the page you write, so keep the script simple and sturdy. In particular, saved state that no longer fits (after you changed the page) should fall back to the defaults rather than break the page.
 
-- Declare `<meta name="color-scheme" content="light dark">` so the browser's default colors (background, text, form controls) follow too.
-- Style with `@media (prefers-color-scheme: dark) { ... }`, or CSS variables switched by it.
-- For canvas or SVG drawn by script, read `matchMedia('(prefers-color-scheme: dark)').matches` and redraw on its `change` event.
+## How a page lives in a card
 
-## Workflow
+**One file.** The card loads that one HTML file and nothing next to it: a relative stylesheet, script or image will not load. Put CSS and JavaScript inline, and images as inline SVG or `data:` URIs. Libraries from a CDN over `https://` are fine, and so is `fetch` to `https://`.
 
-1. Write the HTML file into the vault with your file-writing tool.
-   - Location: if the user named a place, use it. Otherwise follow the user's attachment location setting, `attachmentFolderPath` in the vault config folder's `app.json` (usually `.obsidian/app.json`): `./` means the board's own folder, `./name` a subfolder next to the board, any other value a vault folder. If you cannot read it, put the page in the same folder as the board.
-   - Give it a descriptive file name, such as `Fourier series explorer.html`.
-2. Put it on the board with the whiteboard `edit_board` tool: a card in `create` with `file` set to the page's vault path, plus `x`/`y` and a `w`/`h` that suit the page. Read the board first to find free space. Typical sizes are about 480×360 for a small widget and 800×600 for a full demo. A card can be resized later, so lay the page out responsively (relative widths, no fixed large pixel widths).
-3. To change the page later, edit the same file. Every card showing it reloads by itself, with its scroll position and `localStorage` intact. Keep storage keys stable across edits so saved state still applies.
+**Sandboxed.** The page cannot reach Obsidian, the vault or the board, and there is no channel for it to send anything back. It is a self-contained thing to look at and play with.
+
+**State.** A reload empties every JavaScript variable, and reloads happen: the board is reopened, Obsidian restarts, you edit the file. What the page wrote to `localStorage` is saved with the card and handed back on the next load, on any device the vault syncs to. So whatever the user would be annoyed to lose — the step they reached, the values they set, the answers they gave — goes into `localStorage` as it changes and is read back on load. It is meant for small state, about 64K characters per card; past that `setItem` throws `QuotaExceededError`. Keep the keys stable when you edit the page so the saved state still applies. Two cards showing the same file keep separate state.
+
+**Scrolling.** If the page is long, let the document itself scroll as one continuous page. The board restores the position; pagination you build yourself is not remembered unless you save it as state.
+
+**Theme.** `prefers-color-scheme` inside the page follows Obsidian's theme and changes live. Add `<meta name="color-scheme" content="light dark">` so the default background, text and form controls follow too, and style the rest with the media query. A drawing made by script should redraw when the query changes.
+
+## Putting it on a board
+
+Write the file into the vault with your file tool. If the user named a place, use it; otherwise put it in the same folder as the board, under a name that says what it is, such as `Fourier series explorer.html`.
+
+Then add a card with the whiteboard `edit_board` tool: an item in `create` whose `file` is the page's vault path, with a `w` and `h` that suit it — roughly 480×360 for a small widget, 800×600 for a fuller demo. Read the board first so the card lands in free space, near the cards it relates to, and connect it to them if that helps. If it is not clear which board the user means, ask.
+
+To change the page, edit the same file. Every card showing it reloads on its own and the user keeps their place.
