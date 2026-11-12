@@ -1,3 +1,5 @@
+import { Notice } from 'obsidian'
+
 import type { ChatAssistantMessage, ChatMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { executeSingleTurn } from '../ai/single-turn'
@@ -240,5 +242,73 @@ describe('NativeAgentRuntime assistant continuation', () => {
         metadata: expect.objectContaining({ generationState: 'completed' }),
       }),
     ])
+  })
+})
+
+describe('NativeAgentRuntime forced-compaction failure fallback', () => {
+  beforeEach(() => {
+    mockedExecuteSingleTurn.mockReset()
+    ;(Notice as jest.Mock).mockClear()
+  })
+
+  // `applyCompaction` is private; production reaches it only through the
+  // compaction gate. Cast to exercise the failure contract in isolation,
+  // same approach as `seedMessages` above.
+  const applyCompaction = (
+    runtime: NativeAgentRuntime,
+    args: Record<string, unknown>,
+  ): Promise<void> =>
+    (
+      runtime as unknown as {
+        applyCompaction: (args: Record<string, unknown>) => Promise<void>
+      }
+    ).applyCompaction(args)
+
+  const baseArgs = () => ({
+    input: {
+      providerClient: {},
+      model: { id: 'model-1', model: 'model-1', providerId: 'provider-1' },
+    } as unknown as AgentRuntimeRunInput,
+    conversationMessages: [],
+    pendingAnchorMessageId: 'anchor-1',
+    summaryRequest: { requestMessages: [] },
+    abortSignal: new AbortController().signal,
+    buildState: async () => null,
+  })
+
+  it('continues on the pre-compaction context and stops retrying for the run (#646)', async () => {
+    const runtime = new NativeAgentRuntime({ maxAutoIterations: 10 })
+    // The summary helper retries once internally; both attempts fail.
+    mockedExecuteSingleTurn.mockRejectedValue(new Error('summary boom'))
+
+    await expect(
+      applyCompaction(runtime, {
+        ...baseArgs(),
+        onSummaryFailure: 'continue',
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(2)
+    expect(Notice).toHaveBeenCalledTimes(1)
+    expect(
+      (runtime as unknown as { autoCompactionFailedForRun: boolean })
+        .autoCompactionFailedForRun,
+    ).toBe(true)
+    // The pending compaction indicator is cleared even on failure.
+    expect(runtime.getSnapshot().pendingCompactionAnchorMessageId).toBeNull()
+  })
+
+  it('still propagates the failure for user-requested compaction', async () => {
+    const runtime = new NativeAgentRuntime({ maxAutoIterations: 10 })
+    mockedExecuteSingleTurn.mockRejectedValue(new Error('summary boom'))
+
+    await expect(applyCompaction(runtime, baseArgs())).rejects.toThrow(
+      /summary generation failed after retry/,
+    )
+    expect(Notice).not.toHaveBeenCalled()
+    expect(
+      (runtime as unknown as { autoCompactionFailedForRun: boolean })
+        .autoCompactionFailedForRun,
+    ).toBe(false)
   })
 })
