@@ -36,7 +36,7 @@ const NOTE_CLASS = 'yolo-whiteboard-title-note'
 /** A badge's tint: the theme's colour of that name — or, `neutral`, the
  * muted text's, which a coloured group's badge takes its colour in place of
  * (node-title.css). */
-export type TitleBadgeTone = 'red' | 'blue' | 'neutral'
+export type TitleBadgeTone = 'red' | 'blue' | 'green' | 'neutral'
 
 /** What kind of thing a title names, in a word, and its tint. */
 export type TitleBadge = Readonly<{ text: string; tone: TitleBadgeTone }>
@@ -77,11 +77,14 @@ export function titleOf(node: BoardNode, about: TitleContext): Title | null {
     }
   }
   if (node.type !== 'file') return null
+  const kind = fileNodeKind(node.file)
   return {
     badge:
-      fileNodeKind(node.file) === 'pdf'
+      kind === 'pdf'
         ? { text: 'PDF', tone: 'red' }
-        : { text: t('card.boardBadge'), tone: 'blue' },
+        : kind === 'html'
+          ? { text: t('card.pageBadge'), tone: 'green' }
+          : { text: t('card.boardBadge'), tone: 'blue' },
     label: basenameWithoutExtension(node.file),
     note: null,
     own,

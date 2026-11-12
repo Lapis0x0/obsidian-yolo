@@ -5,23 +5,28 @@
 // narrows this to what the title says).
 
 import type { BoardNode } from './fileFormat'
-import { fileNodeKind } from './naming'
+import { type FileNodeKind, fileNodeKind } from './naming'
 import { isSpreadTitle } from './spread'
 import { NODE_TITLE } from './title'
 
 type Rect = Readonly<{ x: number; y: number; w: number; h: number }>
 
+/** The file cards that are documents of their own, and so are named by a
+ * title: a PDF, a board behind a portal, a page. */
+const TITLED_FILE_KINDS: readonly FileNodeKind[] = ['pdf', 'board', 'html']
+
 /**
  * How `node` wears a title: `over` it — a group's over its frame, a PDF
- * card's or a portal's over the card — or as its `own` box, an open spread's
- * title node, which is its title. Null for a node that wears none.
+ * card's, a portal's or a page's over the card — or as its `own` box, an
+ * open spread's title node, which is its title. Null for a node that wears
+ * none.
  */
 export function titleStand(node: BoardNode): 'over' | 'own' | null {
   if (isSpreadTitle(node)) return 'own'
   if (node.type === 'group') return 'over'
   if (
     node.type === 'file' &&
-    ['pdf', 'board'].includes(fileNodeKind(node.file))
+    TITLED_FILE_KINDS.includes(fileNodeKind(node.file))
   )
     return 'over'
   return null

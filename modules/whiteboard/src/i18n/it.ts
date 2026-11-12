@@ -198,6 +198,7 @@ export const it = {
     unsupportedFile: 'Non ancora visualizzabile',
     unsupportedFileHint: '"{path}" non ha ancora una scheda dedicata.',
     boardBadge: 'Lavagna',
+    pageBadge: 'Pagina',
     portalLoading: 'Apertura…',
     portalMissing: 'Lavagna mancante',
     portalMissingHint: 'Questo portale guarda in "{path}", che non esiste più.',

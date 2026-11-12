@@ -105,6 +105,11 @@
   background-color: rgba(var(--color-blue-rgb), 0.12);
 }
 
+.yolo-whiteboard-title-badge-green {
+  color: var(--color-green);
+  background-color: rgba(var(--color-green-rgb), 0.12);
+}
+
 .yolo-whiteboard-title-badge-neutral {
   color: var(--text-muted);
   background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);

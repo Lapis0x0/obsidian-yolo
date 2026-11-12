@@ -965,6 +965,7 @@ export class OverviewLayer {
       badges: {
         red: read('--color-red', '#e93147'),
         blue: read('--color-blue', '#086ddd'),
+        green: read('--color-green', '#08b94e'),
         neutral: read('--text-muted', '#5c5c5c'),
       },
       dark: this.styleSourceEl.closest('.theme-dark') !== null,

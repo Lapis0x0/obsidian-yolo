@@ -193,6 +193,7 @@ export const zh = {
     unsupportedFile: '暂不支持预览',
     unsupportedFileHint: '「{path}」还没有对应的卡片形态。',
     boardBadge: '白板',
+    pageBadge: '网页',
     portalLoading: '正在打开…',
     portalMissing: '白板不存在',
     portalMissingHint: '这扇门通向「{path}」，但它已经不存在了。',

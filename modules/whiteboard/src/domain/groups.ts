@@ -24,11 +24,10 @@ import {
   NODE_PATH_SEPARATOR,
   type NodeId,
 } from './fileFormat'
-import { fileNodeKind } from './naming'
 import { isPortal } from './portals'
 import { isSpreadTitle, withTitleAbove } from './spread'
 import { NODE_TITLE } from './title'
-import { titleRoom } from './titlePlace'
+import { titleRoom, titleStand } from './titlePlace'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
@@ -451,8 +450,8 @@ export function groupOuterRect(frame: GroupRect, scale = 1): GroupRect {
 
 /**
  * What of the board a node takes up, as a frame around it must see it: its
- * rectangle, with what is drawn outside it — the title line over a PDF or a
- * portal card, an open spread's sheets, a nested group's title bar.
+ * rectangle, with what is drawn outside it — the title line over a PDF, a
+ * portal or a page card, an open spread's sheets, a nested group's title bar.
  */
 function nodeExtent(
   node: BoardNode,
@@ -472,7 +471,7 @@ function nodeExtent(
         groupRectForNodes([node.spread.title, ...node.spread.pages], 0) ?? node
       )
     }
-    if (['pdf', 'board'].includes(fileNodeKind(node.file))) {
+    if (titleStand(node) === 'over') {
       const lead = -withTitleAbove({ x: 0, y: 0, w: 0, h: 0 }).y * scale
       return { x: node.x, y: node.y - lead, w: node.w, h: node.h + lead }
     }
