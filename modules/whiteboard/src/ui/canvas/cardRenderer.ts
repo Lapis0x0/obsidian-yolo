@@ -92,6 +92,9 @@ const SPREAD_SHEET_CLASS = 'yolo-whiteboard-spread-sheet'
 const SPREAD_SHEET_NUMBER_CLASS = 'yolo-whiteboard-spread-sheet-number'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
+/** An HTML card's frame, besides the class above: what is told the theme
+ * (styles/cards/content.css). */
+const CARD_PAGE_FRAME_CLASS = 'yolo-whiteboard-card-page-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
 /** A portal's card (styles/cards/portal.css), its edges, the button that
  * opens its board, and what it says when it shows nothing. */
@@ -2027,6 +2030,7 @@ export class CardRenderer {
     if (this.runtimeByNodeId.get(id) !== runtime) return
     if (runtime.livePage !== key) return
     const frame = this.createFrame(HTML_FRAME_SANDBOX)
+    frame.classList.add(CARD_PAGE_FRAME_CLASS)
     // The frame's accessible name — and, having no address, what an export
     // writes in its place (../export/domCopy.ts).
     frame.title = path

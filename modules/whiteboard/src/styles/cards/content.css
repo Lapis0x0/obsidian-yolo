@@ -1,10 +1,28 @@
-/* A web card's frame. Sandbox flags and the http(s)-only rule live in
- * ui/canvas.ts (WEB_FRAME_SANDBOX) — this is only its geometry. */
+/* A web or HTML card's frame. Sandbox flags and the http(s)-only rule live
+ * in ui/canvas/cardRenderer.ts (WEB_FRAME_SANDBOX, HTML_FRAME_SANDBOX) — this
+ * is only its geometry. */
 .yolo-whiteboard-card-web-frame {
   width: 100%;
   height: 100%;
   border: none;
   background: var(--background-primary);
+}
+
+/* An HTML card's page is told Obsidian's theme the standard way: inside a
+ * frame, `prefers-color-scheme` answers with the frame element's own
+ * `color-scheme`, live — measured on 1.15, the media query's `change` event
+ * fires and nothing reloads. Left alone, an iframe's `color-scheme` is
+ * `normal` and the page sees the system's preference rather than Obsidian's.
+ * A page that declares `color-scheme: light dark` gets the matching canvas
+ * too; one that declares nothing keeps a light one, so its default black text
+ * stays readable on a dark board. Only HTML cards: a web card's site is
+ * shown as it is, as before. */
+.theme-light .yolo-whiteboard-card-page-frame {
+  color-scheme: light;
+}
+
+.theme-dark .yolo-whiteboard-card-page-frame {
+  color-scheme: dark;
 }
 
 /* Obsidian's windowed preview, mounted by the Host API's markdown content
