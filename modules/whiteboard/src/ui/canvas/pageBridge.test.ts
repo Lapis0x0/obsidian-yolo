@@ -46,7 +46,7 @@ describe('withPageBridge', () => {
   it('hands the memory over intact, whatever it contains', () => {
     const memory: PageMemory = {
       scroll: 0.5,
-      storage: { text: '</script><script>alert(1)</script><!--  ' },
+      storage: { text: '</script><script>alert(1)</script><!--\u2028\u2029' },
     }
     const out = withPageBridge('', memory)
     // Only the bridge's own closing tag ends a script.
