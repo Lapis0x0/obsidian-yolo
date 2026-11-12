@@ -59,6 +59,8 @@ export function registerWhiteboardAgentTools(
         handler: (input) => createBoard(host, input),
       },
     ],
+    // How to make the HTML pages these tools put on a board as live cards.
+    skills: ['skills/interactive-page-cards/SKILL.md'],
   })
 
   host.lifecycle.add(
