@@ -2012,6 +2012,8 @@ export type TranslationKeys = {
       allow?: string
       reject?: string
       abort?: string
+      awaitingReview?: string
+      goToReview?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
       outsideVaultNotice?: string

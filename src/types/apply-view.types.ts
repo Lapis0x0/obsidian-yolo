@@ -43,4 +43,7 @@ export type ApplyViewState = {
   selectionRange?: ApplyViewSelectionRange
   callbacks?: ApplyViewCallbacks
   abortSignal?: AbortSignal
+  /** The conversation whose tool call opened this review, so that call's
+   * card can show it is waiting on the user and lead back to it. */
+  conversationId?: string
 }

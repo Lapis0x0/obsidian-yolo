@@ -2189,7 +2189,7 @@ export default class YoloPlugin extends Plugin {
     return this.inlineSuggestionController
   }
 
-  private getDiffReviewController(): DiffReviewController {
+  getDiffReviewController(): DiffReviewController {
     if (!this.diffReviewController) {
       this.diffReviewController = new DiffReviewController({
         plugin: this,

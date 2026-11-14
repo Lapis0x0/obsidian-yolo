@@ -60,6 +60,10 @@ import { isReasoningActivityActive } from './reasoningActivity'
 import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
 import { buildHostedWebSearchToolMessage } from './tool-cards/hostedWebSearchAdapter'
 import ToolMessage from './ToolMessage'
+import {
+  isFsEditAwaitingReview,
+  useActiveDiffReview,
+} from './useActiveDiffReview'
 
 // user message 之后的首条 thinking 用多行预览面板；工具轮之间的保持单行。
 const LEAD_REASONING_PREVIEW_LINES = 5
@@ -978,7 +982,8 @@ function AssistantToolMessageGroupItem({
   // turn opens with) — gets a stable summary as soon as it is observed.
   // Details stay collapsed by default; only a run requiring user action
   // expands automatically so approval and answer controls remain immediately
-  // available.
+  // available — an `fs_edit` waiting on its editor review included.
+  const { activeReview } = useActiveDiffReview()
   const toolRunSegments = useMemo(() => {
     const segments: ToolRunSegment[] = []
     let firstMemberIndex = -1
@@ -1042,7 +1047,13 @@ function AssistantToolMessageGroupItem({
                 call.response.status ===
                   ToolCallResponseStatus.PendingApproval ||
                 call.response.status ===
-                  ToolCallResponseStatus.AwaitingUserInput,
+                  ToolCallResponseStatus.AwaitingUserInput ||
+                isFsEditAwaitingReview({
+                  request: call.request,
+                  response: call.response,
+                  conversationId: effectiveConversationId,
+                  activeReview,
+                }),
             ),
             isActive:
               pendingRequestCount > 0 ||
@@ -1092,7 +1103,13 @@ function AssistantToolMessageGroupItem({
     close(null)
 
     return segments
-  }, [displayedMessages, messageRenderPlans, discoveredCatalogs])
+  }, [
+    displayedMessages,
+    messageRenderPlans,
+    discoveredCatalogs,
+    effectiveConversationId,
+    activeReview,
+  ])
 
   const toolRunSegmentByIndex = useMemo(() => {
     const byIndex = new Map<number, ToolRunSegment>()

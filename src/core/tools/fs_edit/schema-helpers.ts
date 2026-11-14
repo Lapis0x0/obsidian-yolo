@@ -192,6 +192,7 @@ export const waitForFsEditReview = async ({
   reviewEdits,
   selectionRange,
   signal,
+  conversationId,
 }: {
   openApplyReview: (state: ApplyViewState) => Promise<boolean>
   file: TFile
@@ -200,6 +201,7 @@ export const waitForFsEditReview = async ({
   reviewEdits: ApplyViewState['reviewEdits']
   selectionRange: ApplyViewState['selectionRange']
   signal?: AbortSignal
+  conversationId?: string
 }): Promise<FsEditReviewResult> => {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
@@ -222,6 +224,7 @@ export const waitForFsEditReview = async ({
       reviewMode: selectionRange ? 'selection-focus' : 'full',
       selectionRange,
       abortSignal: signal,
+      conversationId,
       callbacks: {
         onComplete: ({ finalContent, review }) => {
           const resolvedReview = review ?? {

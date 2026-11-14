@@ -2367,6 +2367,8 @@ export const en: TranslationKeys = {
       allow: 'Allow',
       reject: 'Reject',
       abort: 'Abort',
+      awaitingReview: 'Waiting for you to review these changes in the editor',
+      goToReview: 'Go to review',
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
       outsideVaultNotice: 'This path is outside the vault: {path}',

@@ -2234,6 +2234,9 @@ export const it: DeepPartial<TranslationKeys> = {
       allow: 'Consenti',
       reject: 'Rifiuta',
       abort: 'Interrompi',
+      awaitingReview:
+        "In attesa della tua revisione delle modifiche nell'editor",
+      goToReview: 'Vai alla revisione',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
       outsideVaultNotice: 'Questo percorso è fuori dal vault: {path}',

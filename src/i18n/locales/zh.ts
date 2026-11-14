@@ -2225,6 +2225,8 @@ export const zh: TranslationKeys = {
       allow: '允许',
       reject: '拒绝',
       abort: '停止执行',
+      awaitingReview: '等待你在编辑器中审阅这些改动',
+      goToReview: '前往审阅',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '本对话内允许',
       outsideVaultNotice: '该路径在仓库之外：{path}',

@@ -362,6 +362,10 @@ export class InlineDiffReviewOverlay {
       acceptIncomingActive: () => this.acceptDisplayedActive(),
       acceptCurrentActive: () => this.rejectDisplayedActive(),
       close: () => void this.completeAndClose(),
+      revealActive: () => {
+        this.renderSuggestions({ ensureVisible: true })
+        this.options.view.focus()
+      },
     })
   }
 

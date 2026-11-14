@@ -10,6 +10,13 @@ import type {
   ApplyViewState,
 } from '../../../types/apply-view.types'
 
+/** The review in progress, as far as anything outside the editor needs to
+ * know: which file, and which conversation's tool call is waiting on it. */
+export type ActiveDiffReview = {
+  filePath: string
+  conversationId?: string
+}
+
 type DiffReviewControllerDeps = {
   plugin: YoloPlugin
   getActiveMarkdownView: () => MarkdownView | null
@@ -42,6 +49,9 @@ export class DiffReviewController {
   ]
 
   private activeView: EditorView | null = null
+  private activeMarkdownView: MarkdownView | null = null
+  private activeReview: ActiveDiffReview | null = null
+  private readonly activeReviewListeners = new Set<() => void>()
   private activeOverlay: { mount: () => void; destroy: () => void } | null =
     null
   private activeActions: ApplyViewActions | null = null
@@ -68,6 +78,30 @@ export class DiffReviewController {
     return true
   }
 
+  getActiveReview = (): ActiveDiffReview | null => this.activeReview
+
+  subscribeActiveReview = (listener: () => void): (() => void) => {
+    this.activeReviewListeners.add(listener)
+    return () => {
+      this.activeReviewListeners.delete(listener)
+    }
+  }
+
+  /** Bring the review's editor to the front, on its current change. */
+  async revealActiveReview(): Promise<void> {
+    const markdownView = this.activeMarkdownView
+    if (!markdownView) return
+    const { workspace } = this.deps.plugin.app
+    await workspace.revealLeaf(markdownView.leaf)
+    workspace.setActiveLeaf(markdownView.leaf, { focus: true })
+    this.activeActions?.revealActive()
+  }
+
+  private setActiveReview(review: ActiveDiffReview | null): void {
+    this.activeReview = review
+    for (const listener of this.activeReviewListeners) listener()
+  }
+
   closeReview(): void {
     if (!this.activeView) return
 
@@ -87,6 +121,8 @@ export class DiffReviewController {
       })
     }
     this.activeView = null
+    this.activeMarkdownView = null
+    this.setActiveReview(null)
   }
 
   destroy(): void {
@@ -114,6 +150,11 @@ export class DiffReviewController {
     })
 
     this.activeView = view
+    this.activeMarkdownView = markdownView
+    this.setActiveReview({
+      filePath: state.file.path,
+      conversationId: state.conversationId,
+    })
 
     const reviewState =
       state.reviewMode === 'selection-focus' &&

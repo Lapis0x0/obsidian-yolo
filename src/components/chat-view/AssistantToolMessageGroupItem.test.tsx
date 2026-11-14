@@ -1,3 +1,11 @@
+jest.mock('./useActiveDiffReview', () => ({
+  useActiveDiffReview: () => ({
+    activeReview: null,
+    revealActiveReview: () => undefined,
+  }),
+  isFsEditAwaitingReview: () => false,
+}))
+
 jest.mock('react', () => {
   const actual = jest.requireActual('react')
 

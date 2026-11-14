@@ -84,6 +84,10 @@ import {
   getToolHeadlineParts,
   getToolHeadlineText,
 } from './toolHeadline'
+import {
+  isFsEditAwaitingReview,
+  useActiveDiffReview,
+} from './useActiveDiffReview'
 
 export type TranslateFn = (keyPath: string, fallback?: string) => string
 
@@ -1082,6 +1086,13 @@ function ToolCallItem({
   onResponseUpdate,
 }: ToolCallItemProps) {
   const cliSubagent = useCliSubagent(request.id)
+  const { activeReview, revealActiveReview } = useActiveDiffReview()
+  const isAwaitingReview = isFsEditAwaitingReview({
+    request,
+    response,
+    conversationId,
+    activeReview,
+  })
   const isNestedCliToolCall = Boolean(
     request.metadata?.cliToolCall?.parentCallId,
   )
@@ -1229,11 +1240,19 @@ function ToolCallItem({
   const shouldShowDangerousApprovalFooter =
     effectiveStatus === ToolCallResponseStatus.Running &&
     dangerousBashApproval !== null
-  const footerMode: 'pending' | 'running' | 'dangerous-approval' | null =
-    shouldShowDangerousApprovalFooter
-      ? 'dangerous-approval'
-      : shouldShowPendingFooter
-        ? 'pending'
+  // An `fs_edit` under review looks `running` but is waiting on the user in
+  // the editor; say so and lead there, without the abort-only delay.
+  const footerMode:
+    | 'pending'
+    | 'running'
+    | 'dangerous-approval'
+    | 'awaiting-review'
+    | null = shouldShowDangerousApprovalFooter
+    ? 'dangerous-approval'
+    : shouldShowPendingFooter
+      ? 'pending'
+      : isAwaitingReview
+        ? 'awaiting-review'
         : shouldShowRunningFooter
           ? 'running'
           : null
@@ -1515,6 +1534,29 @@ function ToolCallItem({
                 {pendingRejectLabel}
               </button>
             </div>
+          )}
+          {footerMode === 'awaiting-review' && (
+            <>
+              <div className="yolo-toolcall-footer-notice">
+                {t(
+                  'chat.toolCall.awaitingReview',
+                  'Waiting for you to review these changes in the editor',
+                )}
+              </div>
+              <div className="yolo-toolcall-footer-actions">
+                <button type="button" onClick={revealActiveReview}>
+                  {t('chat.toolCall.goToReview', 'Go to review')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleAbort()
+                  }}
+                >
+                  {toolLabels.abort}
+                </button>
+              </div>
+            </>
           )}
           {footerMode === 'running' && (
             <div className="yolo-toolcall-footer-actions">

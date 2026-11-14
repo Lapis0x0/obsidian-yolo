@@ -4,6 +4,14 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
+jest.mock('./useActiveDiffReview', () => ({
+  useActiveDiffReview: () => ({
+    activeReview: null,
+    revealActiveReview: () => undefined,
+  }),
+  isFsEditAwaitingReview: () => false,
+}))
+
 jest.mock('clsx', () => ({
   __esModule: true,
   default: (...args: unknown[]) => args.filter(Boolean).join(' '),

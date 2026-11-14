@@ -4,4 +4,6 @@ export type ApplyViewActions = {
   acceptIncomingActive: () => void
   acceptCurrentActive: () => void
   close: () => void
+  /** Scroll the current change into view and focus the editor. */
+  revealActive: () => void
 }

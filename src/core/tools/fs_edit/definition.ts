@@ -168,6 +168,7 @@ export const fsEditDefinition = defineTool({
           materialized.operationResults,
         ),
         signal,
+        conversationId,
       })
 
       if (reviewResult.status === ToolCallResponseStatus.Aborted) {
