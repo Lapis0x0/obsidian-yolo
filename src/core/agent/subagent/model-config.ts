@@ -22,11 +22,19 @@ export function resolveSubagentModelConfig(
   const options =
     settings.mcp.builtinCapabilityOptions[SUBAGENT_DELEGATION_CAPABILITY_ID]
   const savedAllowedIds = options?.allowedModelIds
-  const allowedModelIds = Array.isArray(savedAllowedIds)
+  const filteredAllowedIds = Array.isArray(savedAllowedIds)
     ? savedAllowedIds.filter((modelId, index, list) => {
         return registeredIds.has(modelId) && list.indexOf(modelId) === index
       })
-    : getDefaultAllowedModelIds(settings, registeredModels)
+    : []
+  // An empty list — the field absent, or every saved id filtered out because
+  // its model left the pool — means "nothing pinned", the same state the
+  // settings UI shows as "no model selected". Fall back to the default model
+  // instead of persisting a permanently broken empty allow-list (#643).
+  const allowedModelIds =
+    filteredAllowedIds.length > 0
+      ? filteredAllowedIds
+      : getDefaultAllowedModelIds(settings, registeredModels)
 
   const fallbackPreferred =
     allowedModelIds.find((modelId) => modelId === settings.chatModelId) ??
