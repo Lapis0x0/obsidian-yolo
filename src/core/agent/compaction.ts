@@ -566,6 +566,7 @@ export const createConversationCompactionSummary = async ({
   tools,
   reasoningLevel,
   debugTraceId,
+  signal,
 }: {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
@@ -574,6 +575,8 @@ export const createConversationCompactionSummary = async ({
   tools?: RequestTool[]
   reasoningLevel?: ReasoningLevel
   debugTraceId?: string
+  /** The run's abort signal: Stop must end an in-flight summary request too. */
+  signal?: AbortSignal
 }): Promise<string> => {
   const messages: RequestMessage[] = [
     ...requestMessages,
@@ -603,6 +606,7 @@ export const createConversationCompactionSummary = async ({
       deliveryMode: 'buffered',
       purpose: 'standard',
       debugTraceId,
+      signal,
     })
 
     // Several providers (Gemini, OpenAI-compatible via extra_body, Bedrock) do
@@ -619,7 +623,7 @@ export const createConversationCompactionSummary = async ({
   try {
     summary = await runCompaction()
   } catch (firstError) {
-    if (isRequestErrorNonRetryable(firstError)) {
+    if (signal?.aborted || isRequestErrorNonRetryable(firstError)) {
       throw firstError
     }
     console.warn(

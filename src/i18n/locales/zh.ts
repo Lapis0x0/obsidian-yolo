@@ -2035,7 +2035,6 @@ export const zh: TranslationKeys = {
       empty: '当前还没有可压缩的对话内容。',
       runActive: '请等待当前回复完成后再压缩上下文。',
       waitingApproval: '请先处理当前待确认的工具调用，再压缩上下文。',
-      autoFailed: '自动压缩上下文失败，将使用压缩前的上下文继续发送。',
     },
     todoPanel: {
       summaryPlanning: '{count} 个任务待开始',

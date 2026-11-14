@@ -221,6 +221,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   const midRun = currentTurnRequestMessages.length > 0
                   await this.compactIfOverThreshold({
                     input,
+                    signal: abortSignal,
                     conversationMessages: [
                       ...historyMessages,
                       ...this.messages,
@@ -397,6 +398,7 @@ export class NativeAgentRuntime implements AgentRuntime {
 
                   await this.applyCompaction({
                     input,
+                    signal: abortSignal,
                     conversationMessages,
                     pendingAnchorMessageId: guardedToolMessage.id,
                     summaryRequest: {
@@ -515,10 +517,12 @@ export class NativeAgentRuntime implements AgentRuntime {
    */
   private async compactIfOverThreshold({
     input,
+    signal,
     conversationMessages,
     midRunRequest,
   }: {
     input: AgentRuntimeRunInput
+    signal: AbortSignal
     conversationMessages: ChatMessage[]
     /**
      * This run's previous turn: the request it actually sent and the messages
@@ -599,6 +603,7 @@ export class NativeAgentRuntime implements AgentRuntime {
 
     await this.applyCompaction({
       input,
+      signal,
       conversationMessages,
       pendingAnchorMessageId: conversationMessages[anchorIndex].id,
       summaryRequest,
@@ -619,12 +624,14 @@ export class NativeAgentRuntime implements AgentRuntime {
    */
   private async applyCompaction({
     input,
+    signal,
     conversationMessages,
     pendingAnchorMessageId,
     summaryRequest,
     buildState,
   }: {
     input: AgentRuntimeRunInput
+    signal: AbortSignal
     conversationMessages: ChatMessage[]
     pendingAnchorMessageId: string
     summaryRequest: CompactionSummaryRequest
@@ -638,6 +645,7 @@ export class NativeAgentRuntime implements AgentRuntime {
         providerClient: input.providerClient,
         model: input.model,
         ...summaryRequest,
+        signal,
       })
       const nextCompaction = await buildState(summary)
       if (nextCompaction) {

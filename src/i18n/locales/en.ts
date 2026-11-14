@@ -2153,8 +2153,6 @@ export const en: TranslationKeys = {
         'Wait for the current reply to finish before compacting context.',
       waitingApproval:
         'Resolve the current pending tool approval before compacting context.',
-      autoFailed:
-        'Automatic context compaction failed. Sending with the previous context.',
     },
     todoPanel: {
       summaryPlanning: '{count} tasks pending',

@@ -2015,8 +2015,6 @@ export const it: DeepPartial<TranslationKeys> = {
         'Attendi che la risposta corrente finisca prima di compattare il contesto.',
       waitingApproval:
         "Gestisci prima l'approvazione dello strumento in sospeso, poi compatta il contesto.",
-      autoFailed:
-        'Compattazione automatica non riuscita. Invio con il contesto precedente.',
     },
     todoPanel: {
       summaryPlanning: '{count} attivita da iniziare',

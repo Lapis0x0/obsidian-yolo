@@ -1853,7 +1853,6 @@ export type TranslationKeys = {
       empty?: string
       runActive?: string
       waitingApproval?: string
-      autoFailed?: string
     }
     todoPanel?: {
       summaryPlanning?: string
