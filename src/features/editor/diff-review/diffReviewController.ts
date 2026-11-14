@@ -184,7 +184,14 @@ export class DiffReviewController {
   }
 
   private ensureExtension(view: EditorView): void {
-    if (this.extensionViews.has(view)) return
+    // Loading another note into the editor replaces its whole state, which
+    // drops this compartment, so membership alone does not mean it is there.
+    if (
+      this.extensionViews.has(view) &&
+      this.diffReviewCompartment.get(view.state) !== undefined
+    ) {
+      return
+    }
     view.dispatch({
       effects: StateEffect.appendConfig.of([this.diffReviewCompartment.of([])]),
     })

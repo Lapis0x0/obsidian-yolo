@@ -9,6 +9,7 @@ import {
   Decoration,
   DecorationSet,
   EditorView,
+  ViewPlugin,
   ViewUpdate,
   WidgetType,
 } from '@codemirror/view'
@@ -342,6 +343,12 @@ export class InlineDiffReviewOverlay {
           EditorView.updateListener.of((update) =>
             this.handleViewUpdate(update),
           ),
+          // Destroyed when the editor goes away or its state is replaced —
+          // the pane closing, or another note loading into it. Our own close
+          // settles first, so only a lost host gets past the guard.
+          ViewPlugin.define(() => ({
+            destroy: () => this.handleHostLost(),
+          })),
         ]),
       ]),
     })
@@ -874,6 +881,55 @@ export class InlineDiffReviewOverlay {
       ],
     })
     this.options.view.focus()
+  }
+
+  /**
+   * The editor holding this review went away with suggestions still pending.
+   * Nobody decided on them, so they count as rejected. The buffer — already
+   * autosaved by Obsidian with the proposed text — is about to be lost, so
+   * the file is computed from it now and written back; otherwise the
+   * unaccepted edit would stay on disk with no review left to undo it.
+   */
+  private handleHostLost(): void {
+    if (this.closed || this.settled) return
+    this.settled = true
+    const { state } = this.options.view
+    const content = state.doc.toString()
+    const changes = this.suggestions
+      .map((suggestion) => {
+        const captured = this.captureActiveDraft(suggestion)
+        this.recordRejectedChange(captured)
+        return resolveSuggestionChange(content, captured, 'original')
+      })
+      .filter(
+        (change) => content.slice(change.from, change.to) !== change.insert,
+      )
+      .sort((left, right) => left.from - right.from)
+    this.suggestions = []
+    const restoredContent = state.changes(changes).apply(state.doc).toString()
+    void this.settleAfterHostLost(restoredContent)
+  }
+
+  private async settleAfterHostLost(restoredContent: string): Promise<void> {
+    const { file, callbacks, abortSignal } = this.options.state
+    try {
+      await this.options.plugin.app.vault.modify(file, restoredContent)
+    } catch (error) {
+      console.error('[YOLO] Failed to restore file after losing review', error)
+    }
+    if (this.closed) return
+    if (!abortSignal?.aborted) {
+      callbacks?.onComplete?.({
+        finalContent: restoredContent,
+        review: {
+          totalChanges: this.totalReviewChanges,
+          rejectedChanges: [...this.rejectedChanges.values()].sort(
+            (left, right) => left.index - right.index,
+          ),
+        },
+      })
+    }
+    this.options.onClose()
   }
 
   private async completeAndClose(): Promise<void> {
