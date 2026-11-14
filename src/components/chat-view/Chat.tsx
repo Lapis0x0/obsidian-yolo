@@ -839,10 +839,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationModel],
   )
 
+  const effectiveCompactionState = useMemo(
+    () =>
+      compactionState.filter((entry) =>
+        chatMessages.some((message) => message.id === entry.anchorMessageId),
+      ),
+    [chatMessages, compactionState],
+  )
+
   const headerContextUsage = useMemo(() => {
     const contextUsage = getLatestAssistantContextUsage({
       messages: chatMessages,
       maxContextTokens: effectiveMaxContextTokens,
+      compactionState: effectiveCompactionState,
     })
     if (!contextUsage) {
       return null
@@ -855,7 +864,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ? { cacheHitRate: contextUsage.cacheHitRate }
         : {}),
     }
-  }, [chatMessages, effectiveMaxContextTokens])
+  }, [chatMessages, effectiveMaxContextTokens, effectiveCompactionState])
 
   const chatTimelineReadModel = useChatTimelineReadModel({
     messages: chatMessages,
@@ -877,14 +886,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )
     })
   }, [activeBranchByUserMessageId, groupedChatMessages])
-
-  const effectiveCompactionState = useMemo(
-    () =>
-      compactionState.filter((entry) =>
-        chatMessages.some((message) => message.id === entry.anchorMessageId),
-      ),
-    [chatMessages, compactionState],
-  )
 
   useEffect(() => {
     setQueuedMessageEditState(null)

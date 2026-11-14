@@ -1,6 +1,8 @@
 export const App = jest.fn()
 export const apiVersion = '1.8.0'
 export const Editor = jest.fn()
+export const Notice = jest.fn()
+export const getLanguage = jest.fn(() => 'en')
 export const MarkdownView = jest.fn()
 export class Modal {
   app: unknown

@@ -440,65 +440,91 @@ export function useChatStreamManager({
           systemPromptSnapshotMode: 'reuse',
         })
 
-      const summary = await createConversationCompactionSummary({
-        providerClient: resolvedClient.providerClient,
-        model: effectiveModel,
-        requestMessages: compactionPrefix,
-        tools: requestTools,
-        reasoningLevel: manualReasoning,
-      })
-
-      const nextCompaction = await buildAnchoredCompactionState({
-        messages,
-        anchorIndex: messages.length - 1,
-        summary,
-        summaryModelId: effectiveModel.id,
-      })
-
-      if (!nextCompaction) {
-        return null
-      }
-
-      try {
-        nextCompaction.estimatedNextContextTokens =
-          await estimateContinuationRequestContextTokens({
-            requestContextBuilder,
-            mcpManager,
-            model: effectiveModel,
-            messages,
-            conversationId: currentConversationId,
-            compaction: nextCompaction,
-            apiType: manualApiType,
-            allowedToolNames: effectiveAllowedToolNames,
-            toolPreferences: chatModeRuntime.toolPreferences,
-            toolServerPreferences: chatModeRuntime.toolServerPreferences,
-            runtimeMode: chatModeRuntime.runtimeMode,
-            modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
-            modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
-            modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
-            moduleChatModeId: chatModeRuntime.moduleChatModeId,
-            contextPolicy: chatModeRuntime.contextPolicy,
-          })
-      } catch (error) {
-        console.warn(
-          '[YOLO][Compact] failed to estimate continuation context tokens',
-          error,
+      // Manual compaction runs with no active run, so the stop path has no
+      // controller to abort yet. Register one for this conversation (only if
+      // none exists — never clobber a real run's controller) so cancelling can
+      // propagate to the summary fetch instead of leaving it holding a
+      // provider slot (#646).
+      const compactionAbortController = new AbortController()
+      const ownsAbortSlot = !activeStreamAbortControllersRef.current.has(
+        currentConversationId,
+      )
+      if (ownsAbortSlot) {
+        activeStreamAbortControllersRef.current.set(
+          currentConversationId,
+          compactionAbortController,
         )
       }
+      try {
+        const summary = await createConversationCompactionSummary({
+          providerClient: resolvedClient.providerClient,
+          model: effectiveModel,
+          requestMessages: compactionPrefix,
+          tools: requestTools,
+          reasoningLevel: manualReasoning,
+          signal: compactionAbortController.signal,
+        })
 
-      const preCompactionTokens = getLastAssistantPromptTokens(messages)
-      if (
-        typeof preCompactionTokens === 'number' &&
-        typeof nextCompaction.estimatedNextContextTokens === 'number'
-      ) {
-        const saved =
-          preCompactionTokens - nextCompaction.estimatedNextContextTokens
-        if (saved > 0) {
-          nextCompaction.estimatedTokensSaved = saved
+        const nextCompaction = await buildAnchoredCompactionState({
+          messages,
+          anchorIndex: messages.length - 1,
+          summary,
+          summaryModelId: effectiveModel.id,
+        })
+
+        if (!nextCompaction) {
+          return null
+        }
+
+        try {
+          nextCompaction.estimatedNextContextTokens =
+            await estimateContinuationRequestContextTokens({
+              requestContextBuilder,
+              mcpManager,
+              model: effectiveModel,
+              messages,
+              conversationId: currentConversationId,
+              compaction: nextCompaction,
+              apiType: manualApiType,
+              allowedToolNames: effectiveAllowedToolNames,
+              toolPreferences: chatModeRuntime.toolPreferences,
+              toolServerPreferences: chatModeRuntime.toolServerPreferences,
+              runtimeMode: chatModeRuntime.runtimeMode,
+              modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
+              modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+              modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+              moduleChatModeId: chatModeRuntime.moduleChatModeId,
+              contextPolicy: chatModeRuntime.contextPolicy,
+            })
+        } catch (error) {
+          console.warn(
+            '[YOLO][Compact] failed to estimate continuation context tokens',
+            error,
+          )
+        }
+
+        const preCompactionTokens = getLastAssistantPromptTokens(messages)
+        if (
+          typeof preCompactionTokens === 'number' &&
+          typeof nextCompaction.estimatedNextContextTokens === 'number'
+        ) {
+          const saved =
+            preCompactionTokens - nextCompaction.estimatedNextContextTokens
+          if (saved > 0) {
+            nextCompaction.estimatedTokensSaved = saved
+          }
+        }
+
+        return nextCompaction
+      } finally {
+        if (
+          ownsAbortSlot &&
+          activeStreamAbortControllersRef.current.get(currentConversationId) ===
+            compactionAbortController
+        ) {
+          activeStreamAbortControllersRef.current.delete(currentConversationId)
         }
       }
-
-      return nextCompaction
     },
     [
       app,

@@ -1,5 +1,10 @@
+import { Notice, getLanguage } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
+import {
+  createTranslationFunction,
+  resolveLanguageFromLocale,
+} from '../../i18n'
 import {
   ChatAssistantMessage,
   ChatConversationCompaction,
@@ -70,6 +75,10 @@ export class NativeAgentRuntime implements AgentRuntime {
   private compactionState: ChatConversationCompactionState = []
   private pendingCompactionAnchorMessageId: string | null = null
   private runAbortController: AbortController | null = null
+  // Set when an automatic (forced) compaction fails after its own retry: the
+  // gate stops attempting compaction for the rest of the run instead of
+  // re-summarizing a doomed prefix on every turn (#646).
+  private autoCompactionFailedForRun = false
 
   constructor(private readonly loopConfig: AgentRuntimeLoopConfig) {}
 
@@ -128,6 +137,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       input.compaction,
     )
     this.pendingCompactionAnchorMessageId = null
+    this.autoCompactionFailedForRun = false
     const localAbortController = new AbortController()
     this.runAbortController = localAbortController
 
@@ -225,6 +235,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                       ...historyMessages,
                       ...this.messages,
                     ],
+                    abortSignal,
                     midRunRequest: midRun
                       ? {
                           requestMessages: currentTurnRequestMessages,
@@ -399,6 +410,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     input,
                     conversationMessages,
                     pendingAnchorMessageId: guardedToolMessage.id,
+                    abortSignal,
                     summaryRequest: {
                       requestMessages: currentTurnRequestMessages,
                       // This turn's new assistant + tool messages (incl. the
@@ -517,6 +529,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     input,
     conversationMessages,
     midRunRequest,
+    abortSignal,
   }: {
     input: AgentRuntimeRunInput
     conversationMessages: ChatMessage[]
@@ -532,8 +545,13 @@ export class NativeAgentRuntime implements AgentRuntime {
       reasoningLevel: ReasoningLevel | undefined
       debugTraceId: string | undefined
     }
+    /** The run's merged abort signal, forwarded to the summary request (#646). */
+    abortSignal: AbortSignal
   }): Promise<void> {
     if (!input.autoContextCompaction) {
+      return
+    }
+    if (this.autoCompactionFailedForRun) {
       return
     }
     const estimatedTokens = estimateNextRequestContextTokens({
@@ -602,6 +620,8 @@ export class NativeAgentRuntime implements AgentRuntime {
       conversationMessages,
       pendingAnchorMessageId: conversationMessages[anchorIndex].id,
       summaryRequest,
+      abortSignal,
+      onSummaryFailure: 'continue',
       buildState: (summary) =>
         buildAnchoredCompactionState({
           messages: conversationMessages,
@@ -622,23 +642,51 @@ export class NativeAgentRuntime implements AgentRuntime {
     conversationMessages,
     pendingAnchorMessageId,
     summaryRequest,
+    abortSignal,
+    onSummaryFailure = 'throw',
     buildState,
   }: {
     input: AgentRuntimeRunInput
     conversationMessages: ChatMessage[]
     pendingAnchorMessageId: string
     summaryRequest: CompactionSummaryRequest
+    abortSignal: AbortSignal
+    /**
+     * 'throw' (default): a failed summary aborts the run, as before.
+     * 'continue': forced compaction is a safety valve, not a user request —
+     * when it fails after the summary's own retry, tell the user and let the
+     * run continue on the pre-compaction context instead of dying (#646).
+     */
+    onSummaryFailure?: 'throw' | 'continue'
     buildState: (summary: string) => Promise<ChatConversationCompaction | null>
   }): Promise<void> {
     this.pendingCompactionAnchorMessageId = pendingAnchorMessageId
     this.notifySubscribers()
 
     try {
-      const summary = await createConversationCompactionSummary({
-        providerClient: input.providerClient,
-        model: input.model,
-        ...summaryRequest,
-      })
+      let summary: string
+      try {
+        summary = await createConversationCompactionSummary({
+          providerClient: input.providerClient,
+          model: input.model,
+          ...summaryRequest,
+          signal: abortSignal,
+        })
+      } catch (error) {
+        if (onSummaryFailure === 'throw') {
+          throw error
+        }
+        this.autoCompactionFailedForRun = true
+        console.warn(
+          '[YOLO][Compact] automatic compaction failed; continuing with the uncompacted context',
+          error,
+        )
+        const t = createTranslationFunction(
+          resolveLanguageFromLocale(getLanguage()),
+        )
+        new Notice(t('chat.compaction.autoFailed'), 6000)
+        return
+      }
       const nextCompaction = await buildState(summary)
       if (nextCompaction) {
         const preCompactionTokens =

@@ -124,9 +124,18 @@ export type LatestAssistantContextUsage = {
 export const getLatestAssistantContextUsage = ({
   messages,
   maxContextTokens,
+  compactionState,
 }: {
   messages: ChatMessage[]
   maxContextTokens: number | undefined
+  /**
+   * When the latest compaction is anchored at or after the usage-bearing
+   * message, that server usage describes the pre-compaction context. The ring
+   * then shows the compaction's post-compaction estimate instead, so the
+   * display drops after a compaction instead of staying pinned at the old
+   * value (#646).
+   */
+  compactionState?: ChatConversationCompactionState
 }): LatestAssistantContextUsage | null => {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -138,6 +147,25 @@ export const getLatestAssistantContextUsage = ({
     const promptTokens = usage?.prompt_tokens
     if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
       continue
+    }
+
+    let displayedPromptTokens = promptTokens
+    const latestCompaction = compactionState
+      ? getLatestChatConversationCompaction(compactionState)
+      : undefined
+    const estimate = latestCompaction?.estimatedNextContextTokens
+    if (
+      latestCompaction &&
+      typeof estimate === 'number' &&
+      Number.isFinite(estimate) &&
+      estimate >= 0
+    ) {
+      const anchorIndex = messages.findIndex(
+        (candidate) => candidate.id === latestCompaction.anchorMessageId,
+      )
+      if (anchorIndex >= index) {
+        displayedPromptTokens = estimate
+      }
     }
 
     const resolvedMaxContextTokens =
@@ -157,12 +185,12 @@ export const getLatestAssistantContextUsage = ({
 
     return {
       assistantMessage: message,
-      promptTokens,
+      promptTokens: displayedPromptTokens,
       maxContextTokens: resolvedMaxContextTokens,
       ratio:
         resolvedMaxContextTokens === null
           ? null
-          : promptTokens / resolvedMaxContextTokens,
+          : displayedPromptTokens / resolvedMaxContextTokens,
       ...(cacheHitRate !== null ? { cacheHitRate } : {}),
     }
   }
@@ -566,6 +594,7 @@ export const createConversationCompactionSummary = async ({
   tools,
   reasoningLevel,
   debugTraceId,
+  signal,
 }: {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
@@ -574,6 +603,13 @@ export const createConversationCompactionSummary = async ({
   tools?: RequestTool[]
   reasoningLevel?: ReasoningLevel
   debugTraceId?: string
+  /**
+   * Caller's cancellation signal. The summary request carries the full
+   * cache-warm prefix, so an abandoned compaction keeps occupying a provider
+   * slot (e.g. a llama.cpp queue slot) until it finishes on its own; forwarding
+   * the run's abort lets the fetch die with it (#646).
+   */
+  signal?: AbortSignal
 }): Promise<string> => {
   const messages: RequestMessage[] = [
     ...requestMessages,
@@ -603,6 +639,7 @@ export const createConversationCompactionSummary = async ({
       deliveryMode: 'buffered',
       purpose: 'standard',
       debugTraceId,
+      ...(signal ? { signal } : {}),
     })
 
     // Several providers (Gemini, OpenAI-compatible via extra_body, Bedrock) do
@@ -619,7 +656,9 @@ export const createConversationCompactionSummary = async ({
   try {
     summary = await runCompaction()
   } catch (firstError) {
-    if (isRequestErrorNonRetryable(firstError)) {
+    // A cancellation is the caller walking away, not a transient failure —
+    // retrying would fire a second full-prefix request nobody is waiting for.
+    if (isRequestErrorNonRetryable(firstError) || signal?.aborted) {
       throw firstError
     }
     console.warn(

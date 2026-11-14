@@ -127,6 +127,29 @@ describe('createConversationCompactionSummary', () => {
     expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
   })
 
+  it('forwards the caller signal and skips the retry once the caller aborted (#646)', async () => {
+    const controller = new AbortController()
+    const abortError = new Error('Aborted')
+    mockedExecuteSingleTurn.mockImplementationOnce(async () => {
+      controller.abort()
+      throw abortError
+    })
+
+    await expect(
+      createConversationCompactionSummary({
+        providerClient: fakeProviderClient,
+        model: fakeModel,
+        requestMessages: prefix,
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortError)
+
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    expect(call.signal).toBe(controller.signal)
+    // The caller walked away; retrying would fire a second full-prefix request.
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
+  })
+
   it('parses a bare summary without tags as a fallback', async () => {
     mockedExecuteSingleTurn.mockResolvedValueOnce(
       stubSingleTurnResult('  plain summary text  '),
@@ -629,5 +652,55 @@ describe('getLatestAssistantContextUsage', () => {
         ratio: null,
       }),
     )
+  })
+
+  it('shows the post-compaction estimate when the compaction is anchored after the usage message (#646)', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [
+        userMsg('u1'),
+        assistantMsg('a1', {
+          prompt_tokens: 900,
+          cache_read_input_tokens: 800,
+        }),
+        userMsg('u2'),
+      ],
+      maxContextTokens: 1000,
+      compactionState: [
+        {
+          anchorMessageId: 'u2',
+          summary: 's',
+          compactedAt: 1,
+          compactedMessageCount: 2,
+          estimatedNextContextTokens: 200,
+        },
+      ],
+    })
+
+    expect(contextUsage).toEqual(
+      expect.objectContaining({
+        promptTokens: 200,
+        ratio: 0.2,
+        // The cache hit still describes the last real request.
+        cacheHitRate: 800 / 900,
+      }),
+    )
+  })
+
+  it('keeps the server usage when the compaction anchor predates it', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 300 })],
+      maxContextTokens: 1000,
+      compactionState: [
+        {
+          anchorMessageId: 'u1',
+          summary: 's',
+          compactedAt: 1,
+          compactedMessageCount: 1,
+          estimatedNextContextTokens: 100,
+        },
+      ],
+    })
+
+    expect(contextUsage?.promptTokens).toBe(300)
   })
 })
