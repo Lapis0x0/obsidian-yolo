@@ -46,6 +46,7 @@ import {
   collectGroupEditSummary,
   countFileChangeStats,
 } from '../../utils/chat/editSummary'
+import DotLoader from '../common/DotLoader'
 
 import AssistantEditSummary, { renderDeltaPair } from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'
@@ -496,9 +497,11 @@ type ToolRunSegment = {
   editSummary: GroupEditSummary | null
   requiresUserAction: boolean
   /**
-   * 本段此刻还有事情没做完：有请求还没建出工具消息、有调用还没落定，或者成员
-   * 助手消息仍在流式生成。折叠行不会因此多出或少掉任何一个字——它只用来给整
-   * 行文字挂上光流动画，所以这个状态的开关是零布局代价的。
+   * 本段此刻还有事情没做完：有请求还没建出工具消息、有调用还没落定、成员
+   * 助手消息仍在流式生成，或者运行还没结束而本段是这组里的最后一样东西——
+   * 后一条覆盖工具刚落定、下一条消息还没出现的空档，此时成员全已落定，只看
+   * 成员会把仍在工作的段误判成已结束。为真时摘要文字后面挂一组跳动点，与
+   * 「思考中」同一个加载器。
    */
   isActive: boolean
 }
@@ -1060,7 +1063,8 @@ function AssistantToolMessageGroupItem({
               hasStreamingMember ||
               toolCalls.some(
                 (call) => !isSettledToolCallStatus(call.response.status),
-              ),
+              ) ||
+              (boundaryIndex === null && groupRunState === 'streaming'),
           })
         }
       }
@@ -1109,6 +1113,7 @@ function AssistantToolMessageGroupItem({
     discoveredCatalogs,
     effectiveConversationId,
     activeReview,
+    groupRunState,
   ])
 
   const toolRunSegmentByIndex = useMemo(() => {
@@ -1609,6 +1614,12 @@ function AssistantToolMessageGroupItem({
                       </Fragment>
                     ))}
                   </span>
+                  {toolRunSegment.isActive && (
+                    <DotLoader
+                      variant="dots"
+                      className="yolo-assistant-message-metadata-loader"
+                    />
+                  )}
                   {summaryDisplay.stats && (
                     <span className="yolo-tool-run-summary__stats">
                       {renderDeltaPair(...summaryDisplay.stats)}

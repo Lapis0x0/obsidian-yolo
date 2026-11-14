@@ -642,7 +642,7 @@ describe('AssistantToolMessageGroupItem', () => {
       expect(summaryText(html)).toContain('Read 2 file(s)')
       expect(summaryText(html)).toContain('Virtual terminal 1 time(s)')
       expect(html).toContain('aria-expanded="false"')
-      // 段已落定，不该还挂着光流。
+      // 段已落定，不该还挂着跳动点。
       expect(html).not.toContain('is-active')
     })
 
@@ -794,7 +794,7 @@ describe('AssistantToolMessageGroupItem', () => {
       )
 
       // 仍然只有一个段，且它知道自己还在跑。若请求消息切断了段，这一段会被
-      // 当成已落定，光流就不会挂上。
+      // 当成已落定，跳动点就不会挂上。
       expect(summaryText(html)).toContain('Read 2 file(s)')
       expect(html).toContain('is-active')
     })
@@ -874,9 +874,41 @@ describe('AssistantToolMessageGroupItem', () => {
       )
 
       // 新一轮刚开、还没吐出任何请求：折叠行的文字与落定时逐字相同，只是挂上
-      // 光流——而不是在它下面长出一个思考占位行再收回去。
+      // 跳动点——而不是在它下面长出一个思考占位行再收回去。
       expect(summaryText(html)).toContain('Read 2 file(s)')
       expect(html).toContain('is-active')
+    })
+
+    it('stays active between a settled call and the next message while the run goes on', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          conversationRunSummary={{
+            conversationId: 'conversation-1',
+            anchorMessageId: 'user-1',
+            status: 'running',
+            isRunning: true,
+            isActive: true,
+            isAbortable: true,
+            isQueueable: true,
+            isWaitingApproval: false,
+            isWaitingUserInput: false,
+          }}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__fs_read' },
+            ]),
+          ]}
+        />,
+      )
+
+      // Every call has settled and no next message exists yet, yet the run is
+      // still going: the model is preparing its next step. Judging by members
+      // alone would read this as done and stop the dots.
+      expect(html).toContain('is-active')
+      expect(html).toContain('yolo-dot-loader-minimal')
     })
 
     it('gives each count its own node so a change can replay its animation', () => {
