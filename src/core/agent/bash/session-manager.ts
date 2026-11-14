@@ -22,9 +22,14 @@ import type { ShellProvider } from './shell-provider'
 import { resolveShellProvider } from './shell-provider'
 import type { BashTaskRecord } from './types'
 
-const MAX_OUTPUT_BYTES = 1 * 1024 * 1024
-const TRUNCATE_HEAD_BYTES = 256 * 1024
-const TRUNCATE_TAIL_BYTES = 256 * 1024
+// What a command returns is what enters the model's context and the persisted
+// conversation, so each stream is held to a context budget, not a memory one:
+// a single unbounded listing could otherwise fill the window on its own and
+// leave nothing for compaction to work with (#652). The tail gets the larger
+// share because that is where build and test failures land.
+const MAX_OUTPUT_BYTES = 32 * 1024
+const TRUNCATE_HEAD_BYTES = 8 * 1024
+const TRUNCATE_TAIL_BYTES = 24 * 1024
 const SIGKILL_DELAY_MS = 3000
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 10 * 60_000
@@ -190,7 +195,7 @@ class CappedOutputCollector {
       0,
       this.totalBytes - headBuf.length - tailBuf.length,
     )
-    const marker = `\n\n... [输出过长，中间 ${omittedBytes} 字节已省略] ...\n\n`
+    const marker = `\n\n... [output truncated: ${omittedBytes} bytes omitted from the middle. To see more, redirect the output to a file and inspect it with grep, head, or tail.] ...\n\n`
     return {
       text:
         headBuf.toString('utf8') +

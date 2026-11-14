@@ -56,6 +56,24 @@ describe('terminal command session-manager', () => {
     expect(result.stderr.trim()).toBe('err')
   })
 
+  it('keeps only the head and tail of output past the context budget', async () => {
+    const result = await runBash({
+      command: `printf 'HEAD'; head -c 200000 /dev/zero | tr '\\0' 'a'; printf 'TAIL'`,
+      cwd: '/tmp',
+      timeoutSeconds: 5,
+    })
+
+    expect(result.state).toBe('completed')
+    expect(result.stdout.startsWith('HEAD')).toBe(true)
+    expect(result.stdout.endsWith('TAIL')).toBe(true)
+    expect(result.stdout).toContain('output truncated')
+    expect(result.stdout.length).toBeLessThan(40 * 1024)
+    expect(result.truncated).toEqual({
+      totalBytes: 200008,
+      omittedBytes: 200008 - 32 * 1024,
+    })
+  })
+
   it('returns only tail lines when requested', async () => {
     const result = await runBash({
       command: `printf 'one\\ntwo\\nthree\\n'; printf 'warn-1\\nwarn-2\\n' >&2`,
