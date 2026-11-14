@@ -31,6 +31,7 @@ import {
   isModuleChatMode,
 } from '../../core/agent/chat-mode'
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
+import { subagentTaskRegistry } from '../../core/agent/subagent/task-registry'
 import {
   type ChatRuntimeId,
   type CliRuntimeScope,
@@ -594,6 +595,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       getSessionRunLateDeps().submitChatMutation.mutate(params, options),
     abortConversationRun: (conversationId) =>
       getSessionRunLateDeps().abortConversationRun(conversationId),
+    abortConversationSubagents: (conversationId) =>
+      subagentTaskRegistry.abortAllForConversation(conversationId),
     compactConversation: (messages) =>
       getSessionRunLateDeps().compactConversation(messages),
     generateConversationTitle: (...args) =>

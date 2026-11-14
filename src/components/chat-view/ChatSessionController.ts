@@ -275,6 +275,9 @@ export type ChatSessionControllerDeps = {
     options?: { onSettled?: () => void },
   ) => void
   abortConversationRun: (conversationId: string) => void
+  /** Stop — unlike the defensive run reset a new submission does — also
+   * ends the background subagents this conversation delegated (#647). */
+  abortConversationSubagents: (conversationId: string) => void
   compactConversation: (
     messages: ChatMessage[],
   ) => Promise<ChatConversationCompaction | null>
@@ -1560,7 +1563,9 @@ export class ChatSessionController {
         )
       return { kind: 'cli_cancelling', settled }
     }
-    this.deps.abortConversationRun(this.snapshot.currentConversationId)
+    const conversationId = this.snapshot.currentConversationId
+    this.deps.abortConversationRun(conversationId)
+    this.deps.abortConversationSubagents(conversationId)
     return { kind: 'yolo_aborted' }
   }
 

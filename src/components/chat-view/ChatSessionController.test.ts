@@ -226,6 +226,7 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
   const getRequestContextBuilder = jest.fn(() => ({ compileUserMessagePrompt }))
   const runConversation = jest.fn()
   const abortConversationRun = jest.fn()
+  const abortConversationSubagents = jest.fn()
   const compactConversation = jest.fn(
     async (
       _messages: ChatMessage[],
@@ -249,6 +250,7 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     getRequestContextBuilder,
     runConversation,
     abortConversationRun,
+    abortConversationSubagents,
     compactConversation,
     generateConversationTitle,
     forceScrollToBottom,
@@ -264,6 +266,7 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     compileUserMessagePrompt,
     runConversation,
     abortConversationRun,
+    abortConversationSubagents,
     compactConversation,
     generateConversationTitle,
     forceScrollToBottom,
@@ -694,10 +697,12 @@ describe('ChatSessionController — submit/abortRun/compactContext/retry', () =>
     })
 
     it('falls through to a normal submit when the queue is idle', async () => {
-      const { controller, agentService, runConversation } = createController(
-        'c1',
-        [],
-      )
+      const {
+        controller,
+        agentService,
+        runConversation,
+        abortConversationSubagents,
+      } = createController('c1', [])
       agentService.enqueueUserMessage.mockReturnValueOnce('idle')
       const result = controller.submit({
         runtimeId: 'yolo',
@@ -708,6 +713,8 @@ describe('ChatSessionController — submit/abortRun/compactContext/retry', () =>
       expect(result.kind).toBe('submitted')
       await flushMicrotasks()
       expect(runConversation).toHaveBeenCalled()
+      // A new turn resets the run but leaves delegated subagents alone.
+      expect(abortConversationSubagents).not.toHaveBeenCalled()
       expect(controller.getSnapshot().chatMessages.map((m) => m.id)).toEqual([
         'draft-1',
       ])
@@ -814,11 +821,13 @@ describe('ChatSessionController — submit/abortRun/compactContext/retry', () =>
   })
 
   describe('abortRun', () => {
-    it('aborts the yolo run through the injected dep', () => {
-      const { controller, abortConversationRun } = createController('c1', [])
+    it('aborts the yolo run and its delegated subagents', () => {
+      const { controller, abortConversationRun, abortConversationSubagents } =
+        createController('c1', [])
       const result = controller.abortRun({ runtimeId: 'yolo' })
       expect(result).toEqual({ kind: 'yolo_aborted' })
       expect(abortConversationRun).toHaveBeenCalledWith('c1')
+      expect(abortConversationSubagents).toHaveBeenCalledWith('c1')
     })
 
     it('reports cli_unavailable with no ready CLI context', () => {
