@@ -1719,6 +1719,8 @@ export const it: DeepPartial<TranslationKeys> = {
       tokensSuffix: 'token',
       localEstimateCaption:
         'Stima locale — può differire dal conteggio del server.',
+      serverTotalCaption:
+        'Totale dal server; la ripartizione tra le voci è una stima locale.',
       unknownMaxHint:
         'Imposta i token della finestra di contesto nelle impostazioni del modello per vedere la percentuale di utilizzo.',
       error: 'Stima fallita',

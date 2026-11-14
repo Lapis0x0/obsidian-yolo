@@ -10,6 +10,7 @@ import { YoloPopoverContent } from '../common/popover'
 import ContextUsageRing from './ContextUsageRing'
 import {
   type ContextBreakdownInputs,
+  type ContextBreakdownState,
   useContextBreakdown,
 } from './useContextBreakdown'
 
@@ -38,6 +39,39 @@ const BUCKET_CLASS: Record<BucketKey, string> = {
 // Minimum visual width (as percent of bar) for any non-zero segment, so tiny
 // buckets stay visible. Affects bar visuals only — list numbers stay truthful.
 const MIN_BAR_PERCENT = 0.6
+
+/**
+ * Express the local per-bucket estimate in the server's total (#646). The
+ * local tokenizer cannot match every model's vocabulary — a CJK-heavy chat can
+ * read far above what the provider counts — so its absolute total must not
+ * stand next to the window size. Once the server has reported `prompt_tokens`,
+ * the estimate only decides how that total splits across buckets; before then
+ * (a chat's first turn) the estimate is all there is.
+ */
+export function anchorBreakdownToServerTotal(
+  breakdown: ContextBreakdownState,
+  promptTokens: number,
+): ContextBreakdownState {
+  if (
+    breakdown.status !== 'ready' ||
+    promptTokens <= 0 ||
+    breakdown.data.total <= 0
+  ) {
+    return breakdown
+  }
+  const scale = promptTokens / breakdown.data.total
+  return {
+    status: 'ready',
+    data: {
+      ...breakdown.data,
+      buckets: breakdown.data.buckets.map((bucket) => ({
+        ...bucket,
+        tokens: Math.round(bucket.tokens * scale),
+      })),
+      total: promptTokens,
+    },
+  }
+}
 
 export type ContextUsagePopoverProps = {
   promptTokens: number
@@ -72,10 +106,15 @@ export default function ContextUsagePopover({
   const remoteCategories = !showLocalBreakdown ? (categories ?? []) : []
   const showRemoteBreakdown = remoteCategories.length > 0
 
-  const breakdown = useContextBreakdown(
+  const localBreakdown = useContextBreakdown(
     open && showLocalBreakdown,
     buildInputs ?? (() => null),
   )
+  const breakdown = useMemo(
+    () => anchorBreakdownToServerTotal(localBreakdown, promptTokens),
+    [localBreakdown, promptTokens],
+  )
+  const isAnchoredToServer = promptTokens > 0
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next)
@@ -158,10 +197,15 @@ export default function ContextUsagePopover({
               </div>
               {showLocalBreakdown ? (
                 <div className="yolo-context-breakdown__caption">
-                  {t(
-                    'chat.contextBreakdown.localEstimateCaption',
-                    '本地估算，可能与服务端计费存在偏差',
-                  )}
+                  {isAnchoredToServer
+                    ? t(
+                        'chat.contextBreakdown.serverTotalCaption',
+                        '总量取自服务端，各项占比为本地估算',
+                      )
+                    : t(
+                        'chat.contextBreakdown.localEstimateCaption',
+                        '本地估算，可能与服务端计费存在偏差',
+                      )}
                 </div>
               ) : null}
             </div>

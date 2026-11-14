@@ -1768,6 +1768,7 @@ export const zh: TranslationKeys = {
       usageBarAriaLabel: '上下文占用',
       tokensSuffix: 'Tokens',
       localEstimateCaption: '本地估算，可能与服务端计费存在偏差',
+      serverTotalCaption: '总量取自服务端，各项占比为本地估算',
       unknownMaxHint: '可在模型设置中配置上下文窗口 token，以显示占用比例',
       error: '估算失败',
       bucket: {

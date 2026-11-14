@@ -1864,6 +1864,8 @@ export const en: TranslationKeys = {
       tokensSuffix: 'Tokens',
       localEstimateCaption:
         'Local estimate — may differ from server-side billing.',
+      serverTotalCaption:
+        'Total from the server; the split across items is a local estimate.',
       unknownMaxHint:
         'Set context window tokens in model settings to show usage percentage.',
       error: 'Estimation failed',

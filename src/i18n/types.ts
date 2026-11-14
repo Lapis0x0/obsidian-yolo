@@ -1594,6 +1594,7 @@ export type TranslationKeys = {
       usageBarAriaLabel?: string
       tokensSuffix?: string
       localEstimateCaption?: string
+      serverTotalCaption?: string
       unknownMaxHint?: string
       error?: string
       bucket?: {
