@@ -25,6 +25,7 @@ import type { CliRuntimeScope } from './core/cli-runtime/coordinator'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
 import type YoloPlugin from './main'
+import type { TaskSource } from './types/chat'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import {
   MentionableBlockData,
@@ -436,6 +437,13 @@ export class ChatView extends ItemView {
   exportCurrentConversation(): void {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.exportCurrentConversation()
+  }
+
+  /** Open a delegated subagent's detail view; waits for a just-opened chat
+   * to mount, and Chat holds the request until the conversation shows. */
+  async openSubagentDetail(conversationId: string, source: TaskSource) {
+    const chatRef = await this.waitForChatRef()
+    chatRef?.openSubagentDetail(conversationId, source)
   }
 
   async loadConversation(conversationId: string) {

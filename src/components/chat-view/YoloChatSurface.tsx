@@ -83,6 +83,10 @@ import {
 } from './messageNavigatorUtils'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import {
+  type SubagentDetailRequest,
+  useSubagentDetailRequest,
+} from './tool-cards/subagentDetailRequest'
 import { useAutoScroll } from './useAutoScroll'
 import type { useChatDomainActions } from './useChatDomainActions'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
@@ -666,6 +670,33 @@ export function YoloChatSurface({
     },
     [jumpToUserMessage, stopAutoFollow],
   )
+
+  // A detail request from the activity panel (#645): bring the turn holding
+  // the subagent's card into the history window, where the card mounts and
+  // opens its own detail.
+  const subagentDetailRequest = useSubagentDetailRequest()?.request ?? null
+  const navigatedSubagentDetailRequestRef =
+    useRef<SubagentDetailRequest | null>(null)
+  useEffect(() => {
+    if (
+      !subagentDetailRequest ||
+      navigatedSubagentDetailRequestRef.current === subagentDetailRequest
+    ) {
+      return
+    }
+    const assistantIndex = chatMessages.findIndex(
+      (message) =>
+        message.id === subagentDetailRequest.source.assistantMessageId,
+    )
+    for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+      const message = chatMessages[index]
+      if (message.role === 'user') {
+        navigatedSubagentDetailRequestRef.current = subagentDetailRequest
+        handleNavigateToUserMessage(message.id)
+        return
+      }
+    }
+  }, [chatMessages, handleNavigateToUserMessage, subagentDetailRequest])
 
   const {
     onControlPopoverOpenChange: onHistoricalUserMessageControlPopoverOpenChange,

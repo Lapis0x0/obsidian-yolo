@@ -26,6 +26,7 @@ import {
   SubagentCardView,
   type SubagentDisplayStatus,
 } from './SubagentCardView'
+import { useSubagentDetailRequest } from './subagentDetailRequest'
 
 type SubagentCardProps = {
   toolCallId: string
@@ -66,6 +67,7 @@ export function SubagentCard({
   onAbort,
 }: SubagentCardProps) {
   const { t } = useLanguage()
+  const detailRequest = useSubagentDetailRequest()
   const stream = useLiveTaskStream(toolCallId)
   const accepted = useMemo(
     () => parseAcceptedSubagentResponse(response),
@@ -181,6 +183,8 @@ export function SubagentCard({
           : undefined
       }
       onAbort={isRunning ? onAbort : undefined}
+      detailRequested={detailRequest?.request.source.toolCallId === toolCallId}
+      onDetailRequestHandled={detailRequest?.handled}
       footer={
         isAwaitingApproval ? (
           <SubagentApprovalBlock

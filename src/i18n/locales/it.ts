@@ -2388,6 +2388,8 @@ export const it: DeepPartial<TranslationKeys> = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
+    subagentStatusRunning: 'Subagente · {count} chiamate di strumenti',
+    subagentStatusWaitingApproval: 'Subagente · In attesa di approvazione',
     cliStatusRunning: 'In esecuzione',
     cliStatusWaitingApproval: 'In attesa di approvazione',
     cliStatusWaitingUser: 'In attesa di input',

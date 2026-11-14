@@ -51,7 +51,7 @@ import {
 } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
 import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
-import type { ChatMessage, ChatUserMessage } from '../../types/chat'
+import type { ChatMessage, ChatUserMessage, TaskSource } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   Mentionable,
@@ -117,6 +117,11 @@ import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import type { QueryProgressState } from './QueryProgress'
 import SparklePanel, { type SparkleView } from './sparkle/SparklePanel'
 import { TodoListPanel } from './TodoListPanel'
+import {
+  type SubagentDetailRequest,
+  SubagentDetailRequestContext,
+  type SubagentDetailRequestContextValue,
+} from './tool-cards/subagentDetailRequest'
 import { useChatDomainActions } from './useChatDomainActions'
 import { useChatInputController } from './useChatInputController'
 import { useChatRuntimePreferences } from './useChatRuntimePreferences'
@@ -208,6 +213,8 @@ export type ChatRef = {
    * depth rather than the primary gate.
    */
   renameCurrentConversation: (title: string) => Promise<void>
+  /** Open a delegated subagent's detail view in this chat (#645). */
+  openSubagentDetail: (conversationId: string, source: TaskSource) => void
   /**
    * issue #567. Exports the currently active conversation to the
    * vault, mirroring the in-content export button's behavior — gated on the
@@ -736,6 +743,29 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     Boolean(props.initialConversationId),
   )
   const untitledFallback = t('chat.untitledConversation', 'New chat')
+  const [subagentDetailRequest, setSubagentDetailRequest] =
+    useState<SubagentDetailRequest | null>(null)
+  const handleSubagentDetailRequestHandled = useCallback(() => {
+    setSubagentDetailRequest(null)
+  }, [])
+  // Exposed only while this chat shows the request's conversation: a request
+  // made before the conversation finished loading waits here until it has.
+  const subagentDetailRequestContextValue =
+    useMemo<SubagentDetailRequestContextValue | null>(
+      () =>
+        subagentDetailRequest &&
+        subagentDetailRequest.conversationId === currentConversationId
+          ? {
+              request: subagentDetailRequest,
+              handled: handleSubagentDetailRequestHandled,
+            }
+          : null,
+      [
+        currentConversationId,
+        handleSubagentDetailRequestHandled,
+        subagentDetailRequest,
+      ],
+    )
   const [editingAssistantMessageId, setEditingAssistantMessageId] = useState<
     string | null
   >(null)
@@ -1601,6 +1631,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return conversationModelIdRef.current.get(currentConversationId)
     },
     getRuntimeSnapshot: () => buildRuntimeSnapshot(),
+    openSubagentDetail: (conversationId: string, source: TaskSource) => {
+      setSubagentDetailRequest({ conversationId, source })
+    },
     renameCurrentConversation: async (title: string) => {
       const trimmedTitle = title.trim()
       if (
@@ -2103,92 +2136,102 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             onDeleteAssistantQuote={handleDeleteAssistantQuote}
           />
         ) : (
-          <YoloChatSurface
-            chatMode={chatMode}
-            yoloEnabled={yoloEnabled}
-            showEmptyState={showEmptyState}
-            currentConversationId={currentConversationId}
-            editingAssistantMessageId={editingAssistantMessageId}
-            setEditingAssistantMessageId={setEditingAssistantMessageId}
-            emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
-            emptyStateModuleContent={emptyStateModuleContent}
-            bottomSpacerHeight={inputOverlayHeight}
-            footerContent={mainInputFooter}
-            runtimeActions={runtimeActions}
-            autoScrollToBottomRef={autoScrollToBottomRef}
-            forceScrollToBottomRef={forceScrollToBottomRef}
-            chatMessages={chatMessages}
-            chatMessagesStateRef={chatMessagesStateRef}
-            chatTimelineReadModel={chatTimelineReadModel}
-            activeBranchByUserMessageId={activeBranchByUserMessageId}
-            activeBranchByUserMessageIdRef={activeBranchByUserMessageIdRef}
-            setActiveBranchByUserMessageId={setActiveBranchByUserMessageId}
-            effectiveCompactionState={effectiveCompactionState}
-            pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
-            queryProgress={queryProgress}
-            currentConversationRunSummary={currentConversationRunSummary}
-            isCurrentConversationRunActive={isCurrentConversationRunActive}
-            isApplying={applyMutation.isPending}
-            activeApplyRequestKey={activeApplyRequestKey}
-            undoingEditSummaryTarget={undoingEditSummaryTarget}
-            messageModelMap={messageModelMap}
-            setMessageModelMap={setMessageModelMap}
-            messageReasoningMap={messageReasoningMap}
-            setMessageReasoningMap={setMessageReasoningMap}
-            setChatMessages={setChatMessages}
-            conversationModelId={conversationModelId}
-            setConversationModelId={setConversationModelId}
-            conversationModelIdRef={conversationModelIdRef}
-            conversationAssistantId={conversationAssistantId}
-            reasoningLevel={reasoningLevel}
-            setReasoningLevel={setReasoningLevel}
-            conversationReasoningLevelRef={conversationReasoningLevelRef}
-            selectedAssistantTimeContextEnabled={
-              selectedAssistantTimeContextEnabled
-            }
-            getReasoningLevelForModelId={getReasoningLevelForModelId}
-            persistReasoningLevelForModel={persistReasoningLevelForModel}
-            normalizeReasoningLevel={normalizeReasoningLevel}
-            setInputMessage={setInputMessage}
-            focusedMessageId={focusedMessageId}
-            setFocusedMessageId={setFocusedMessageId}
-            inputMessageId={inputMessage.id}
-            activeAssistantQuotes={activeAssistantQuotes}
-            chatUserInputRefs={chatUserInputRefs}
-            registerChatUserInputRef={registerChatUserInputRef}
-            handleQuoteAssistantSelection={handleQuoteAssistantSelection}
-            handleDeleteAssistantQuote={handleDeleteAssistantQuote}
-            releaseHighlightIds={releaseHighlightIds}
-            persistActiveBranchSelection={persistActiveBranchSelection}
-            updateHistoricalUserMessage={updateHistoricalUserMessage}
-            finalizeHistoricalUserMessageEdit={
-              finalizeHistoricalUserMessageEdit
-            }
-            dismissHistoricalUserMessage={dismissHistoricalUserMessage}
-            handleAssistantMessageEditSave={handleAssistantMessageEditSave}
-            handleAssistantMessageEditCancel={handleAssistantMessageEditCancel}
-            handleAssistantMessageGroupDelete={
-              handleAssistantMessageGroupDelete
-            }
-            handleHistoricalUserMessageDelete={
-              handleHistoricalUserMessageDelete
-            }
-            handleAssistantMessageGroupBranch={
-              handleAssistantMessageGroupBranch
-            }
-            handleChatModeChange={handleChatModeChange}
-            handleUserMessageSubmit={handleUserMessageSubmit}
-            handleRecoverPendingToolCall={handleRecoverPendingToolCall}
-            handleRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
-            handleAssistantMessageGroupRetry={handleAssistantMessageGroupRetry}
-            handleAssistantErrorContinue={handleAssistantErrorContinue}
-            handleApply={handleApply}
-            handleUndoEditSummary={handleUndoEditSummary}
-            handleOpenEditSummaryFile={handleOpenEditSummaryFile}
-            handleToolMessageUpdate={handleToolMessageUpdate}
-            handleToolCallResponseUpdate={handleToolCallResponseUpdate}
-            handleContinueResponse={handleContinueResponse}
-          />
+          <SubagentDetailRequestContext.Provider
+            value={subagentDetailRequestContextValue}
+          >
+            <YoloChatSurface
+              chatMode={chatMode}
+              yoloEnabled={yoloEnabled}
+              showEmptyState={showEmptyState}
+              currentConversationId={currentConversationId}
+              editingAssistantMessageId={editingAssistantMessageId}
+              setEditingAssistantMessageId={setEditingAssistantMessageId}
+              emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+              emptyStateModuleContent={emptyStateModuleContent}
+              bottomSpacerHeight={inputOverlayHeight}
+              footerContent={mainInputFooter}
+              runtimeActions={runtimeActions}
+              autoScrollToBottomRef={autoScrollToBottomRef}
+              forceScrollToBottomRef={forceScrollToBottomRef}
+              chatMessages={chatMessages}
+              chatMessagesStateRef={chatMessagesStateRef}
+              chatTimelineReadModel={chatTimelineReadModel}
+              activeBranchByUserMessageId={activeBranchByUserMessageId}
+              activeBranchByUserMessageIdRef={activeBranchByUserMessageIdRef}
+              setActiveBranchByUserMessageId={setActiveBranchByUserMessageId}
+              effectiveCompactionState={effectiveCompactionState}
+              pendingCompactionAnchorMessageId={
+                pendingCompactionAnchorMessageId
+              }
+              queryProgress={queryProgress}
+              currentConversationRunSummary={currentConversationRunSummary}
+              isCurrentConversationRunActive={isCurrentConversationRunActive}
+              isApplying={applyMutation.isPending}
+              activeApplyRequestKey={activeApplyRequestKey}
+              undoingEditSummaryTarget={undoingEditSummaryTarget}
+              messageModelMap={messageModelMap}
+              setMessageModelMap={setMessageModelMap}
+              messageReasoningMap={messageReasoningMap}
+              setMessageReasoningMap={setMessageReasoningMap}
+              setChatMessages={setChatMessages}
+              conversationModelId={conversationModelId}
+              setConversationModelId={setConversationModelId}
+              conversationModelIdRef={conversationModelIdRef}
+              conversationAssistantId={conversationAssistantId}
+              reasoningLevel={reasoningLevel}
+              setReasoningLevel={setReasoningLevel}
+              conversationReasoningLevelRef={conversationReasoningLevelRef}
+              selectedAssistantTimeContextEnabled={
+                selectedAssistantTimeContextEnabled
+              }
+              getReasoningLevelForModelId={getReasoningLevelForModelId}
+              persistReasoningLevelForModel={persistReasoningLevelForModel}
+              normalizeReasoningLevel={normalizeReasoningLevel}
+              setInputMessage={setInputMessage}
+              focusedMessageId={focusedMessageId}
+              setFocusedMessageId={setFocusedMessageId}
+              inputMessageId={inputMessage.id}
+              activeAssistantQuotes={activeAssistantQuotes}
+              chatUserInputRefs={chatUserInputRefs}
+              registerChatUserInputRef={registerChatUserInputRef}
+              handleQuoteAssistantSelection={handleQuoteAssistantSelection}
+              handleDeleteAssistantQuote={handleDeleteAssistantQuote}
+              releaseHighlightIds={releaseHighlightIds}
+              persistActiveBranchSelection={persistActiveBranchSelection}
+              updateHistoricalUserMessage={updateHistoricalUserMessage}
+              finalizeHistoricalUserMessageEdit={
+                finalizeHistoricalUserMessageEdit
+              }
+              dismissHistoricalUserMessage={dismissHistoricalUserMessage}
+              handleAssistantMessageEditSave={handleAssistantMessageEditSave}
+              handleAssistantMessageEditCancel={
+                handleAssistantMessageEditCancel
+              }
+              handleAssistantMessageGroupDelete={
+                handleAssistantMessageGroupDelete
+              }
+              handleHistoricalUserMessageDelete={
+                handleHistoricalUserMessageDelete
+              }
+              handleAssistantMessageGroupBranch={
+                handleAssistantMessageGroupBranch
+              }
+              handleChatModeChange={handleChatModeChange}
+              handleUserMessageSubmit={handleUserMessageSubmit}
+              handleRecoverPendingToolCall={handleRecoverPendingToolCall}
+              handleRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
+              handleAssistantMessageGroupRetry={
+                handleAssistantMessageGroupRetry
+              }
+              handleAssistantErrorContinue={handleAssistantErrorContinue}
+              handleApply={handleApply}
+              handleUndoEditSummary={handleUndoEditSummary}
+              handleOpenEditSummaryFile={handleOpenEditSummaryFile}
+              handleToolMessageUpdate={handleToolMessageUpdate}
+              handleToolCallResponseUpdate={handleToolCallResponseUpdate}
+              handleContinueResponse={handleContinueResponse}
+            />
+          </SubagentDetailRequestContext.Provider>
         )}
       </div>
     </AssistantRenderStreamProvider>

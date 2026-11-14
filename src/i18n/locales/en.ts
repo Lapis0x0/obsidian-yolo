@@ -2520,6 +2520,8 @@ export const en: TranslationKeys = {
     agentStatusRunning: 'Running',
     agentStatusWaitingApproval: 'Awaiting approval',
     agentStatusFallbackConversationTitle: 'Running conversation',
+    subagentStatusRunning: 'Subagent · {count} tool calls',
+    subagentStatusWaitingApproval: 'Subagent · Awaiting approval',
     cliStatusRunning: 'Running',
     cliStatusWaitingApproval: 'Awaiting approval',
     cliStatusWaitingUser: 'Awaiting input',

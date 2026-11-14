@@ -31,6 +31,12 @@ import type {
   AgentConversationRunSummary,
   AgentSessionService,
 } from './core/agent/service'
+import { subagentTaskRegistry } from './core/agent/subagent/task-registry'
+import {
+  countToolUses,
+  hasUnresolvedApproval,
+} from './core/agent/subagent/transcript-summary'
+import type { SubagentTaskRecord } from './core/agent/subagent/types'
 import {
   clearAllChatGPTOAuthServices,
   clearChatGPTOAuthService,
@@ -1467,6 +1473,11 @@ export default class YoloPlugin extends Plugin {
         this.latestBackgroundActivities = new Map(activities)
         this.updateBackgroundStatusBar()
       })
+    const unsubscribeSubagentTasks = subagentTaskRegistry.subscribe(
+      (records) => {
+        this.syncSubagentBackgroundActivities(records)
+      },
+    )
     let isActive = true
     let unsubscribeAgentSummaries: (() => void) | null = null
     void this.warmupAgentService()
@@ -1486,6 +1497,7 @@ export default class YoloPlugin extends Plugin {
     this.register(() => {
       isActive = false
       unsubscribeActivities()
+      unsubscribeSubagentTasks()
       unsubscribeAgentSummaries?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
@@ -1548,6 +1560,64 @@ export default class YoloPlugin extends Plugin {
       }
       registry.remove(activityId)
     }
+  }
+
+  /** Running subagents run outside any conversation's run summary, so they
+   * get rows of their own; a row opens that subagent's detail (#645). */
+  private syncSubagentBackgroundActivities(
+    records: SubagentTaskRecord[],
+  ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const record of records) {
+      if (record.status !== 'running') {
+        continue
+      }
+      const id = `subagent:${record.taskId}`
+      nextActivityIds.add(id)
+      const transcript = record.liveTranscript ?? []
+      const isWaitingApproval = hasUnresolvedApproval(transcript)
+      registry.upsert({
+        id,
+        kind: 'subagent',
+        title: record.title,
+        detail: isWaitingApproval
+          ? this.t(
+              'statusBar.subagentStatusWaitingApproval',
+              '子 Agent · 待审批',
+            )
+          : this.t(
+              'statusBar.subagentStatusRunning',
+              '子 Agent · 已调用 {count} 次工具',
+            ).replace('{count}', String(countToolUses(transcript))),
+        status: isWaitingApproval ? 'waiting' : 'running',
+        updatedAt: Date.now(),
+        action: {
+          type: 'callback',
+          run: () => {
+            void this.openSubagentDetail(record)
+          },
+        },
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('subagent:')) {
+        continue
+      }
+      if (nextActivityIds.has(activityId)) {
+        continue
+      }
+      registry.remove(activityId)
+    }
+  }
+
+  private async openSubagentDetail(record: SubagentTaskRecord): Promise<void> {
+    const chatView = await this.getChatViewNavigator().revealConversation(
+      record.conversationId,
+    )
+    await chatView?.openSubagentDetail(record.conversationId, record.source)
   }
 
   private syncCliBackgroundActivities(
@@ -1928,11 +1998,9 @@ export default class YoloPlugin extends Plugin {
         return
       }
       if (currentAction.type === 'open-conversation') {
-        void this.openChatView({
-          placement: 'split',
-          initialConversationId: currentAction.conversationId,
-          forceNewLeaf: true,
-        })
+        void this.getChatViewNavigator().revealConversation(
+          currentAction.conversationId,
+        )
         return
       }
       if (currentAction.type === 'open-knowledge-settings') {

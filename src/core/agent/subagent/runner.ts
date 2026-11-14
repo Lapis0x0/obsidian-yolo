@@ -28,6 +28,7 @@ import type { SubagentParentContext } from './parent-context'
 import { subagentRuntimeRegistry } from './runtime-registry'
 import { subagentTaskRegistry } from './task-registry'
 import { filterAllowedToolsForSubagent } from './tool-filter'
+import { countToolUses, hasUnresolvedApproval } from './transcript-summary'
 import type {
   SubagentAcceptedResult,
   SubagentResult,
@@ -46,39 +47,6 @@ export type RunSubagentParams = {
     apiType?: LLMProviderApiType | null
   }
   signal?: AbortSignal
-}
-
-function countToolUses(messages: ChatMessage[]): number {
-  return messages.reduce((count, message) => {
-    if (message.role !== 'tool') {
-      return count
-    }
-    return (
-      count +
-      message.toolCalls.filter(
-        (toolCall) =>
-          toolCall.response.status === ToolCallResponseStatus.Success,
-      ).length
-    )
-  }, 0)
-}
-
-/**
- * True when the subagent's last `tool` message still has a tool call awaiting
- * user approval (or the equivalent `ask_user_question` paused state). The
- * runtime returns from `run()` in this case (loop-worker emits `done` when
- * `hasPendingTools=true`), but the work is NOT actually complete — we should
- * wait for `approveToolCall` / `rejectToolCall` to resolve it and then
- * continue, instead of pushing a (false) completion to the parent.
- */
-function hasUnresolvedApproval(messages: ChatMessage[]): boolean {
-  const last = messages.at(-1)
-  if (!last || last.role !== 'tool') return false
-  return last.toolCalls.some(
-    (toolCall) =>
-      toolCall.response.status === ToolCallResponseStatus.PendingApproval ||
-      toolCall.response.status === ToolCallResponseStatus.AwaitingUserInput,
-  )
 }
 
 /**

@@ -2372,6 +2372,8 @@ export const zh: TranslationKeys = {
     agentStatusRunning: '运行中',
     agentStatusWaitingApproval: '待审批',
     agentStatusFallbackConversationTitle: '运行中的对话',
+    subagentStatusRunning: '子 Agent · 已调用 {count} 次工具',
+    subagentStatusWaitingApproval: '子 Agent · 待审批',
     cliStatusRunning: '运行中',
     cliStatusWaitingApproval: '待审批',
     cliStatusWaitingUser: '等待输入',

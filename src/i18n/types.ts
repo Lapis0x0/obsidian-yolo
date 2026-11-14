@@ -2159,6 +2159,8 @@ export type TranslationKeys = {
     agentStatusRunning?: string
     agentStatusWaitingApproval?: string
     agentStatusFallbackConversationTitle?: string
+    subagentStatusRunning?: string
+    subagentStatusWaitingApproval?: string
     cliStatusRunning?: string
     cliStatusWaitingApproval?: string
     cliStatusWaitingUser?: string

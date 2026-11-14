@@ -393,6 +393,32 @@ export class ChatViewNavigator {
     targetLeaf.view.focusMessage()
   }
 
+  /**
+   * Bring a conversation to the front: focus the leaf already showing it, or
+   * open it in a new split when none does. Unlike `openChatView`, never leaves
+   * the same conversation open twice (#645).
+   */
+  async revealConversation(conversationId: string): Promise<ChatView | null> {
+    const shownLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .getAllLeafRecords()
+      .find(
+        (record) =>
+          record.currentConversationId === conversationId &&
+          record.leaf.view instanceof ChatView,
+      )?.leaf
+    const leaf =
+      shownLeaf ??
+      (await this.createChatLeaf('split', {
+        initialConversationId: conversationId,
+      }))
+    if (!leaf || !(leaf.view instanceof ChatView)) {
+      return null
+    }
+    await this.activateChatLeaf(leaf)
+    return leaf.view
+  }
+
   resolveTargetChatLeaf(
     options: ResolveTargetChatLeafOptions = {},
   ): WorkspaceLeaf | null {

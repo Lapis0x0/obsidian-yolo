@@ -1,7 +1,7 @@
 import cx from 'clsx'
 import { Bot, Check, Square, X } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { ChatMessage } from '../../../types/chat'
@@ -35,6 +35,10 @@ type SubagentCardViewProps = {
   footer?: ReactNode
   onAbort?: () => void
   onDetailOpenChange?: (isOpen: boolean) => void
+  /** Open the detail on mount/update — a request from outside the message
+   * flow (#645); `onDetailRequestHandled` fires once it is taken. */
+  detailRequested?: boolean
+  onDetailRequestHandled?: () => void
 }
 
 const DOTM_SQUARE_4_OUTER_ORDER = [
@@ -99,6 +103,8 @@ export function SubagentCardView({
   footer,
   onAbort,
   onDetailOpenChange,
+  detailRequested = false,
+  onDetailRequestHandled,
 }: SubagentCardViewProps) {
   const { t } = useLanguage()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -111,6 +117,22 @@ export function SubagentCardView({
     setIsModalOpen(isOpen)
     onDetailOpenChange?.(isOpen)
   }
+
+  const openDetail = () => {
+    const chatContainer =
+      cardRef.current?.closest<HTMLElement>('.yolo-chat-container') ?? null
+    if (!chatContainer) return
+    setDetailContainer(chatContainer)
+    setModalOpen(true)
+  }
+
+  const openDetailRef = useRef(openDetail)
+  openDetailRef.current = openDetail
+  useEffect(() => {
+    if (!detailRequested) return
+    onDetailRequestHandled?.()
+    openDetailRef.current()
+  }, [detailRequested, onDetailRequestHandled])
 
   return (
     <>
@@ -128,14 +150,7 @@ export function SubagentCardView({
           <button
             type="button"
             className="yolo-subagent-card__main"
-            onClick={() => {
-              const chatContainer =
-                cardRef.current?.closest<HTMLElement>('.yolo-chat-container') ??
-                null
-              if (!chatContainer) return
-              setDetailContainer(chatContainer)
-              setModalOpen(true)
-            }}
+            onClick={openDetail}
             aria-label={t('chat.subagent.openDetails', 'View subagent details')}
           >
             <span className="yolo-subagent-card__icon">
