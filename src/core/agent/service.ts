@@ -2495,6 +2495,13 @@ export class AgentSessionService {
       }
     }
 
+    // Subagent tasks dispatched from this conversation are not owned by any
+    // run entry, so the loop above never reaches them. Without this cascade
+    // they keep consuming inference slots after the user stops the main
+    // conversation (#647). Aborted children publish an `aborted`
+    // subagent_result, so the conversation still gets an explicit record.
+    subagentTaskRegistry.abortAllForConversation(conversationId)
+
     this.notifyDroppedQueuedMessages(
       conversationId,
       droppedQueuedByConversation,
