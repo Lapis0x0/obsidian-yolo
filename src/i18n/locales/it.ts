@@ -2153,6 +2153,8 @@ export const it: DeepPartial<TranslationKeys> = {
         mcp: 'Impossibile raggiungere il server MCP. Verifica che sia in esecuzione.',
         stream:
           'La trasmissione della risposta si e interrotta. Controlla la stabilita della rete o riprova.',
+        timeout:
+          'Il modello non ha risposto entro il timeout della richiesta. Con un contesto lungo o un modello locale lento, aumenta il timeout della richiesta primaria nelle impostazioni.',
         network:
           'Impossibile raggiungere il server. Controlla la rete o le impostazioni del proxy.',
         proxy:

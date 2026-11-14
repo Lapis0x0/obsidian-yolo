@@ -2286,6 +2286,8 @@ export const en: TranslationKeys = {
         mcp: 'The MCP server could not be reached. Check whether it is running.',
         stream:
           'The response stream was interrupted. Check your network stability or retry.',
+        timeout:
+          'The model did not respond within the request timeout. For a long context or a slow local model, raise the primary request timeout in settings.',
         network:
           'Could not reach the server. Check your network or proxy settings.',
         proxy:

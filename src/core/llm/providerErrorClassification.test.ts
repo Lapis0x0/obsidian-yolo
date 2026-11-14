@@ -29,6 +29,20 @@ describe('classifyProviderError', () => {
     expect(classifyProviderError({ status: 403 })).toBe('auth')
   })
 
+  it('reads a client-side request timeout as a timeout, not a network failure', () => {
+    expect(classifyProviderError({ message: 'Request timed out.' })).toBe(
+      'timeout',
+    )
+    expect(
+      classifyProviderError({
+        message: 'Model request timed out after 60000ms.',
+      }),
+    ).toBe('timeout')
+    expect(classifyProviderError({ message: 'connect ETIMEDOUT' })).toBe(
+      'network',
+    )
+  })
+
   it('recognizes an interrupted stream as a transport failure', () => {
     expect(classifyProviderError({ message: 'Premature close' })).toBe('stream')
     expect(classifyProviderError({ message: 'socket hang up' })).toBe('stream')

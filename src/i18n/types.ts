@@ -1939,6 +1939,7 @@ export type TranslationKeys = {
         content?: string
         mcp?: string
         stream?: string
+        timeout?: string
         network?: string
         proxy?: string
         server?: string

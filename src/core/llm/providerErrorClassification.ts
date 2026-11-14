@@ -16,6 +16,7 @@ export type ProviderErrorCategory =
   | 'content'
   | 'mcp'
   | 'stream'
+  | 'timeout'
   | 'network'
   | 'proxy'
   | 'server'
@@ -172,6 +173,17 @@ export const classifyProviderError = ({
     text.includes('socket hang up')
   ) {
     return 'stream'
+  }
+
+  // A client-side request timeout carries no HTTP status (the SDK's "Request
+  // timed out.", our own ModelRequestTimeoutError). It usually means the model
+  // did not answer in time — a long context or a slow local model — not that
+  // the server was unreachable, so it must not read as a network failure.
+  if (
+    status === undefined &&
+    (text.includes('timed out') || text.includes('timeout'))
+  ) {
+    return 'timeout'
   }
 
   if (
