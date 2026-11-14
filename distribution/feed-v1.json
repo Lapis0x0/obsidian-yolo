@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 53,
+  "revision": 54,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.16",
+    "version": "1.6.17",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.16",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.17",
     "releaseNotes": {
-      "en": "## 1.6.16 Auto Retry & Fixes 🔁\n\n- Added the mathjax-engine component, powering high-performance rendering in YOLO Whiteboard.\n- Model requests now retry automatically, up to 3 times, when rate-limited or the service is overloaded. (#642)\n- The annotation editor is now multi-line, so long annotations can be read in full while editing; fixed it being covered by the scrollbar near the right edge. (#639)\n- Fixed the context-usage ring and send button rendering as squares under third-party themes such as Primary. (#641)",
-      "zh": "## 1.6.16 自动重试与问题修复 🔁\n\n- 新增 mathjax-engine 组件，服务 YOLO 白板的高性能渲染。\n- 模型请求被限流或服务过载时自动重试，最多重试 3 次。（#642）\n- 批注编辑框改为多行，长批注编辑时能完整看到；修复贴右时被滚动条遮挡的问题。（#639）\n- 修复上下文圆环和发送按钮在 Primary 等第三方主题下显示成方块的问题。（#641）"
+      "en": "## 1.6.17 Subagent Control & Long-Session Stability 🛡️\n\n### Subagents\n\n- Fixed subagent delegation failing permanently after its allowed models were cleared. (#643)\n- Stopping a conversation now also cancels the subagents it dispatched. (#647)\n- The Activity & Reminders panel now lists running subagents, and clicking one opens its details; clicking a conversation entry no longer opens a duplicate window. (#645)\n\n### Context and requests\n\n- Fixed a single oversized terminal output filling up the context and leaving the conversation unable to continue; stopping now also aborts an in-progress context compaction. (#652)\n- Request timeouts now get their own message suggesting a longer timeout; the context-usage popover now follows the server-reported total, removing the mismatch between the usage percentage and the breakdown total. (#646)\n\n### Review and progress feedback\n\n- Improved the review view experience. (#622)\n- Improved how collapsed multi-tool calls look.",
+      "zh": "## 1.6.17 子 Agent 管控与长会话稳定性 🛡️\n\n### 子 Agent\n\n- 修复子 Agent 可用模型被清空后委派永久失败的问题。（#643）\n- 停止会话时一并取消它派出的子 Agent。（#647）\n- 活动与提醒面板列出运行中的子 Agent，点击直达详情；点击会话条目不再重复打开窗口。（#645）\n\n### 上下文与请求\n\n- 修复单条超长终端输出撑爆上下文导致会话无法继续的问题；停止时同时中止进行中的上下文压缩。（#652）\n- 请求超时单独提示并引导调大超时；上下文用量弹层以服务端总量为准，消除占用百分比与明细总数的矛盾。（#646）\n\n### 审阅与进度反馈\n\n- 优化审阅视图的体验。（#622）\n- 优化多工具调用折叠的样式表现。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.16/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/main.js",
-        "byteSize": 5826023,
-        "sha256": "cd790285a350daf6a3e7a0e1bd7855dbf144e3741e975078f767760a19f2c8e4"
+        "mirrorPath": "core/1.6.17/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.17/main.js",
+        "byteSize": 5834233,
+        "sha256": "5542accc81f6476c6f63940da81d4afad8570f85ff6c6284fc6e279ab8904175"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.16/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/manifest.json",
+        "mirrorPath": "core/1.6.17/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.17/manifest.json",
         "byteSize": 412,
-        "sha256": "8b4ddec9944fc82671730e0c544bb0d95c7da44eba9803a8928e6ed757980215"
+        "sha256": "ab34ed5db7f1cafe99f90eb3b6f7c2317b95251f20f189821f0e76508e90f7e8"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.16/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.16/styles.css",
-        "byteSize": 499416,
-        "sha256": "0ea4b5613b574cbc353aca71b24385694d103102e13d0aa2e2298054c5304085"
+        "mirrorPath": "core/1.6.17/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.17/styles.css",
+        "byteSize": 498656,
+        "sha256": "51c2622577b38707226d92c4e1ede2201c6dbeedde1f78002791bb9467504ca7"
       }
     }
   },
