@@ -128,8 +128,16 @@ export class Motions {
 
   constructor(private readonly deps: MotionsDeps) {}
 
+  /** The board's clock: its window's document timeline, the one its
+   * elements' Web Animations play on (`play`), standing at the frame's
+   * start throughout a frame. On `performance.now()`, a canvas drawing at
+   * the moment its frame callback ran was ahead of an element shown at the
+   * frame's start — a frame and more, early in a fold's curve: 100px and
+   * more of a group's wash out past its border (measured 2026-11-15). */
   private now(): number {
-    return this.deps.window().performance.now()
+    const win = this.deps.window()
+    const time = win.document.timeline.currentTime
+    return typeof time === 'number' ? time : win.performance.now()
   }
 
   private reducedMotion(): boolean {
@@ -467,7 +475,7 @@ export class Motions {
       [at(poseOf(home)), at(liftedPose(home, home, lifted.lift, 1))],
       { duration: LIFT_MS, easing: ARRANGE_EASE.css, fill: 'forwards' },
     )
-    animation.currentTime = Math.max(0, this.now() - lifted.start)
+    animation.startTime = lifted.start
     lifted.animations.set(id, animation)
   }
 
@@ -517,7 +525,10 @@ export class Motions {
       easing: tween.ease.css,
       fill: 'both',
     })
-    animation.currentTime = Math.max(0, this.now() - tween.start)
+    // Started when the tween did, on the clock the canvas reads it by — not
+    // set to where it has got to, which a new animation only starts from at
+    // the next frame, a frame behind.
+    animation.startTime = tween.start
     entry.animation = animation
   }
 }
