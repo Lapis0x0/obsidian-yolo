@@ -48,6 +48,32 @@ export type FoldMotion = Readonly<{
   onTop: boolean
 }>
 
+/** The scales of its own size a node in motion is shown at between which its
+ * title goes (`titleShown`). A group's cells hold a card at about a third of
+ * its size, a PDF card a sheet at less: a title is gone well before. */
+const TITLE_GONE_SCALE = 0.55
+const TITLE_WHOLE_SCALE = 0.95
+
+/**
+ * How much of its title a node in motion shows, shown at `scale` of its own
+ * size: all of it near its size, none of it small. What it is folded into
+ * shows no titles — a group's box, a PDF's card — so a title goes as its
+ * node shrinks into one, travelling with it the while, and comes as it
+ * grows back out: early on the way in, late on the way out, whichever way
+ * the motion eases. Rather than going at once as the node sets off and
+ * being there at once as it lands.
+ */
+export function titleShown(scale: number): number {
+  const t = Math.min(
+    1,
+    Math.max(
+      0,
+      (scale - TITLE_GONE_SCALE) / (TITLE_WHOLE_SCALE - TITLE_GONE_SCALE),
+    ),
+  )
+  return t * t * (3 - 2 * t)
+}
+
 /** A point `p` of the board, folded, is at `to + (p - from) * scale`. */
 export type FoldMap = Readonly<{
   from: Readonly<{ x: number; y: number }>

@@ -1,5 +1,10 @@
 import { SPREAD_DEAL_MAX_DELAY_MS, SPREAD_DEAL_STAGGER_MS } from './constants'
-import { groupFoldMotions, sheetMotion, spreadMotions } from './foldMotion'
+import {
+  groupFoldMotions,
+  sheetMotion,
+  spreadMotions,
+  titleShown,
+} from './foldMotion'
 
 const card = { x: 100, y: 200, w: 390 }
 const sheet = (page: number, x: number, y: number, w = 390) => ({
@@ -103,5 +108,21 @@ describe('groupFoldMotions', () => {
       { id: 'a', x: 100, y: 100 },
     ])
     expect(moves[0]?.motion.fade).toBe(true)
+  })
+})
+
+describe('titleShown', () => {
+  it('shows a title whole at its node’s own size and none in a fold’s cell', () => {
+    expect(titleShown(1)).toBe(1)
+    expect(titleShown(0.3)).toBe(0)
+  })
+
+  it('fades it in step with the node’s size', () => {
+    const steps = [0.5, 0.6, 0.7, 0.8, 0.9, 1].map(titleShown)
+    for (let i = 1; i < steps.length; i += 1) {
+      expect(steps[i]).toBeGreaterThanOrEqual(steps[i - 1] ?? 0)
+    }
+    expect(titleShown(0.75)).toBeGreaterThan(0)
+    expect(titleShown(0.75)).toBeLessThan(1)
   })
 })

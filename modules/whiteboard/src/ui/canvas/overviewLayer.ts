@@ -72,6 +72,7 @@ import {
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
 } from '../constants'
+import { titleShown } from '../foldMotion'
 import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
 import type { PageFrame } from '../pdf/annotationGeometry'
 import { pageMarks, paintPageMarks } from '../pdf/pageMarks'
@@ -1192,11 +1193,14 @@ export class OverviewLayer {
       // PDF's stays drawn here while the card fades in under it: a spread
       // folding keeps its title in place throughout.
       const title = this.callbacks.titleOf(node)
-      // One in motion carries its title along while it keeps its size (an
-      // arrangement, a card arriving) or is picked up, and turns it as it
-      // turns; shrinking into a fold, it goes.
-      const scale = pose ? pose.w / node.w : 1
-      if (title && scale > 0.99) {
+      // One in motion carries its title along, as small as it is shown, and
+      // turns it as it turns; shrinking into a fold, the title goes on the
+      // way, and growing out of one, comes (../foldMotion.ts's
+      // `titleShown`). Not by the card's own fading: a PDF card fading in
+      // where its spread folded keeps the title that stayed there.
+      const scale = pose ? Math.min(1, pose.w / node.w) : 1
+      const shown = titleShown(scale)
+      if (title && shown > 0) {
         titles.push({
           node,
           title,
@@ -1204,6 +1208,8 @@ export class OverviewLayer {
           y,
           w,
           h,
+          shrink: scale,
+          alpha: shown,
           turn: pose?.rotate
             ? { x: x + w / 2, y: y + h / 2, angle: pose.rotate }
             : undefined,
@@ -1434,9 +1440,10 @@ export class OverviewLayer {
     ctx.textAlign = 'left'
     for (const line of titles) {
       const { title, turn } = line
+      const alpha = line.alpha ?? 1
       // Held at a size on screen where it is a landmark (canvas.ts's
-      // `titleScaleOf`).
-      const scale = this.callbacks.titleScale(line.node.id)
+      // `titleScaleOf`) — as much smaller as its node is shown, in motion.
+      const scale = this.callbacks.titleScale(line.node.id) * (line.shrink ?? 1)
       const u = typeScale * scale
       const font = (size: number, weight: number) =>
         `${weight} ${size * u}px ${measure.family}`
@@ -1456,8 +1463,9 @@ export class OverviewLayer {
         h: rect.h / view.scale,
       })
       // Where it was drawn is where it is pointed at: a press on any of it is
-      // a press on its node (`titleLineAt`).
-      this.titleRects.set(line.node.id, toWorld(box))
+      // a press on its node (`titleLineAt`) — not on one coming or going.
+      if (alpha === 1) this.titleRects.set(line.node.id, toWorld(box))
+      ctx.globalAlpha = alpha
       // No surface of its own; the selection's ring when it is selected.
       if (this.callbacks.isSelected(line.node.id)) {
         ctx.beginPath()
@@ -1478,11 +1486,11 @@ export class OverviewLayer {
         u
       const badgeH = badge.height * u
       ctx.fillStyle = palette.badges[title.badge.tone]
-      ctx.globalAlpha = 0.12
+      ctx.globalAlpha = 0.12 * alpha
       ctx.beginPath()
       ctx.roundRect(x, mid - badgeH / 2, badgeW, badgeH, 4 * u)
       ctx.fill()
-      ctx.globalAlpha = 1
+      ctx.globalAlpha = alpha
       ctx.font = font(badge.size, badge.weight)
       ctx.fillText(text, x + badge.padding * u, mid)
       x += badgeW
@@ -1509,6 +1517,7 @@ export class OverviewLayer {
       }
       if (turn) ctx.restore()
     }
+    ctx.globalAlpha = 1
     ctx.lineWidth = 1
   }
 
@@ -2029,6 +2038,11 @@ type TitleLine = Readonly<{
   y: number
   w: number
   h: number
+  /** Its node shown at this much of its own size, in motion: the title is
+   * as much smaller. */
+  shrink?: number
+  /** How much of it shows, in motion. */
+  alpha?: number
   /** Turned with its card, picked up: by `angle` radians about the card's
    * centre, screen pixels. */
   turn?: Readonly<{ x: number; y: number; angle: number }>
