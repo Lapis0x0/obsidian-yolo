@@ -30,6 +30,9 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  /* Padding, size and line height are TITLE_BLOCK_* (ui/constants.ts): the
+   * canvas draws the same title at a distance, and ui/crossLayer.test.ts
+   * holds the two together. */
   padding: 8px 12px;
   overflow: hidden;
   font-size: 32px;

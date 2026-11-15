@@ -307,6 +307,11 @@ export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
  * the GPU scene and the overview canvas draw a card with too. */
 export const CARD_RADIUS = 10
 
+/** A group's frame's corners, in its element's units: an open frame's and a
+ * collapsed box's, styles/cards/group.css's — what the overview canvas draws
+ * its wash with, under the element's border. */
+export const GROUP_RADIUS = { open: 16, folded: 12 } as const
+
 /** Alpha of the colour wash over an overview card with no picture yet —
  * style.css's `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
@@ -619,8 +624,8 @@ export const OVERVIEW_PAGES_UP = 6
  * The host's `--yolo-anim-duration-enter` and `--yolo-anim-ease-out`, in
  * numbers, because a Web Animation cannot read a CSS custom property. The
  * host pairs `tokens/motion.css` with `tokens/motion.ts` for the same reason;
- * a module cannot import the host's, so this is the mirror — if those move,
- * move these.
+ * a module cannot import the host's, so this is the mirror, held to them by
+ * ui/crossLayer.test.ts.
  */
 export const ARRANGE_ANIMATION_MS = 220
 export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'

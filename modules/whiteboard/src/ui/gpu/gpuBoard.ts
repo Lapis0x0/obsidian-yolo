@@ -17,6 +17,12 @@
 // Where WebGL2 is not there, its context is lost, or the typesetting worker
 // cannot start, it draws nothing and claims nothing: every card shows as it
 // does without it — its DOM near to, its picture far away.
+//
+// A card it draws is drawn by the overview canvas or the DOM too, before or
+// after it, or around it: how one looks and where one is in motion are
+// therefore never decided here — corners and titles come from
+// ../constants.ts, poses from ../canvas/motions.ts — see
+// modules/whiteboard/AGENTS.md.
 
 import { resolveColor } from '../../domain/color'
 import { type BoardNode, isPlainText } from '../../domain/fileFormat'

@@ -25,7 +25,9 @@
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--text-normal) 8%, transparent);
   /* Rounder than the cards it holds (10), so a region reads as a region
-   * rather than as one more card. */
+   * rather than as one more card. GROUP_RADIUS (ui/constants.ts), which the
+   * canvas draws the wash under it with; ui/crossLayer.test.ts holds the two
+   * together. */
   border-radius: 16px;
   /* No fill of its own: the frame's wash is drawn on the board's canvas,
    * under every card (ui/canvas/overviewLayer.ts's `drawGroupWashes`). This
@@ -182,6 +184,7 @@
  * open frame the box is a thing, not a region: a click on it opens the
  * group, so it takes the pointer whether or not the group is selected. */
 .yolo-whiteboard-group.yolo-whiteboard-group-collapsed {
+  /* GROUP_RADIUS.folded, as the open frame's above. */
   border-radius: 12px;
   /* Its wash is the canvas's too, under what the box shows. */
 }

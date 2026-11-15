@@ -18,6 +18,8 @@
    * repainted, every frame, for a lift the hairline already gives. Only a
    * card being dragged casts one (drag.css). */
   border: 1px solid var(--yolo-whiteboard-card-border);
+  /* CARD_RADIUS (ui/constants.ts), which the canvas and the GPU scene draw
+   * the same card with; ui/crossLayer.test.ts holds the two together. */
   border-radius: 10px;
   /* background-color rather than the shorthand: a coloured card adds a wash
    * as a background-image layer on top of it (see .yolo-whiteboard-themed

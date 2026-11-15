@@ -24,6 +24,15 @@
 // do the cards in every other tier, and so do the snap guides, the resize
 // handles and an in-flight connection's curve.
 //
+// One of three hands that draw the board — this canvas, the GPU scene
+// (../gpu/) and the DOM — and a card, a frame or a title is often drawn by
+// two of them at once, or by one and then another. So nothing about how one
+// looks or moves is decided here: sizes, corners and titles come from
+// ../constants.ts, where a thing in motion is from ./motions.ts (one clock for
+// all three), and how a fold carries it from ../foldMotion.ts. What one hand
+// says on its own, the others will not say the same — see
+// modules/whiteboard/AGENTS.md.
+//
 // `WhiteboardCanvas` is the only importer; this module must never import it
 // back (single-direction dependency between the canvas and its collaborators).
 
@@ -61,6 +70,7 @@ import {
   EDGE_LABEL_PADDING_PX,
   EDGE_PASSAGE_MARK_WORLD_PX,
   EDGE_STROKE_WORLD_PX,
+  GROUP_RADIUS,
   LIFT_SHADOW,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
@@ -94,15 +104,13 @@ const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
 const OVERVIEW_TEXT_ALPHA = 0.18
 /** A group's wash (`drawGroupWashes`): how much of its colour an open
  * frame, a collapsed box and a lit one are filled with — the accent's being
- * lighter, as a full colour against a preset — and the corners of each, in
- * the element's units (styles/cards/group.css). */
+ * lighter, as a full colour against a preset. Its corners are the element's
+ * (GROUP_RADIUS). */
 const GROUP_WASH = {
   open: 0.08,
   folded: 0.12,
   lit: 0.16,
   litAccent: 0.07,
-  radius: 16,
-  foldedRadius: 12,
 } as const
 /** Below this many CSS pixels wide a page is drawn as its card alone, not
  * its picture: there is nothing of the page left to see, and a minimap holds
@@ -656,7 +664,7 @@ export class OverviewLayer {
         y,
         w,
         h,
-        (folded ? GROUP_WASH.foldedRadius : GROUP_WASH.radius) *
+        (folded ? GROUP_RADIUS.folded : GROUP_RADIUS.open) *
           view.scale *
           (rect.w / node.w),
       )
