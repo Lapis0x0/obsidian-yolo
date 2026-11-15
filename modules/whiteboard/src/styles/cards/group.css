@@ -198,7 +198,8 @@
   box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus);
 }
 
-/* The last cell when there are more things than cells: how many more. */
+/* The last cell when there are more things than cells: how many more. Under
+ * the box, which takes the click on it (groupThumbs.ts's `showGroupMore`). */
 .yolo-whiteboard-group-more {
   position: absolute;
   display: flex;
@@ -211,4 +212,33 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Fading in as what it counts goes into its cell, over the fold's motion
+ * (ARRANGE_ANIMATION_MS, the enter duration's mirror); fading out as it
+ * comes back out. */
+.yolo-whiteboard-group-more.yolo-whiteboard-group-more-entering {
+  animation: yolo-whiteboard-group-more-in
+    var(--yolo-anim-duration-enter, 220ms) var(--yolo-anim-ease-out) both;
+}
+
+/* Its own keyframes, not the entrance played back: an animation keeps its
+ * start when only its direction changes, and one that came in long ago
+ * would be gone at once. */
+.yolo-whiteboard-group-more.yolo-whiteboard-group-more-leaving {
+  animation: yolo-whiteboard-group-more-out
+    var(--yolo-anim-duration-exit, 160ms) var(--yolo-anim-ease-out) both;
+}
+
+@keyframes yolo-whiteboard-group-more-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes yolo-whiteboard-group-more-out {
+  to {
+    opacity: 0;
+  }
 }

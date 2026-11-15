@@ -4623,10 +4623,13 @@ export class WhiteboardCanvas {
     if (!box) return
     const moves = this.groupFoldMoves(group, box, this.board.nodes)
     const frames = this.frameMoves(this.board, settled)
+    // The count over the last cell comes in as what it counts goes there.
+    this.cardRenderer.foreshowGroupMore(id)
     if (!(await this.gather(id, moves, frames))) return
     const now = this.nodesById.get(id)
     if (now?.type !== 'group' || isFolded(now)) {
       this.ungather(moves, frames)
+      this.cardRenderer.unforeshowGroupMore(id)
       return
     }
     // What went into the last cell faded on the way and is not there to see:

@@ -17,7 +17,6 @@ import {
   type NodeId,
   isPlainText,
 } from '../../domain/fileFormat'
-import { collapsedGroupCells, collapsedGroupSize } from '../../domain/groups'
 import {
   type FileNodeKind,
   basenameWithoutExtension,
@@ -69,6 +68,9 @@ import {
   GROUP_COLLAPSED_CLASS,
   GROUP_THUMBS_CLASS,
   createGroupThumbs,
+  groupMore,
+  hideGroupMore,
+  showGroupMore,
 } from './groupThumbs'
 import {
   type Title,
@@ -1253,22 +1255,35 @@ export class CardRenderer {
     if (node.stash) this.thumbsDrawnFrom.set(el, node.stash)
     const folded = node.stash !== undefined
     el.classList.toggle(GROUP_COLLAPSED_CLASS, folded)
-    if (!folded) return
-    const count = this.callbacks.groupMemberCount(id)
-    const size = collapsedGroupSize(count)
-    const cells = collapsedGroupCells({ x: 0, y: 0, ...size }, count)
-    const more =
-      count > cells.length
-        ? {
-            text: `+${count - (cells.length - 1)}`,
-            cell: cells[cells.length - 1],
-          }
-        : null
-    el.appendChild(
-      createGroupThumbs(this.context.getDocument(), more, () =>
-        this.callbacks.expandGroup(id),
-      ),
+    if (!folded) {
+      hideGroupMore(el)
+      return
+    }
+    const doc = this.context.getDocument()
+    showGroupMore(doc, el, groupMore(this.callbacks.groupMemberCount(id)))
+    el.appendChild(createGroupThumbs(doc, () => this.callbacks.expandGroup(id)))
+  }
+
+  /** Brings in the count over the last cell of open group `id`'s box ahead
+   * of the box, as its things start folding into it (canvas.ts's
+   * `foldGroupAway`): it fades in as they go into its cell. */
+  foreshowGroupMore(id: NodeId): void {
+    const el = this.runtimeByNodeId.get(id)?.el
+    if (!el) return
+    showGroupMore(
+      this.context.getDocument(),
+      el,
+      groupMore(this.callbacks.groupMemberCount(id)),
+      true,
     )
+  }
+
+  /** The count brought in for a fold called off (`foreshowGroupMore`),
+   * faded out again. */
+  unforeshowGroupMore(id: NodeId): void {
+    const el = this.runtimeByNodeId.get(id)?.el
+    const node = this.callbacks.getNode(id)
+    if (el && node?.type === 'group' && !node.stash) hideGroupMore(el)
   }
 
   /**
