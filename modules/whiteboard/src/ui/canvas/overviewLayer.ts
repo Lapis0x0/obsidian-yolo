@@ -63,7 +63,6 @@ import {
   computeWorldViewportRect,
 } from '../../domain/virtualization'
 import {
-  CARD_RADIUS,
   EDGE_ARROW_WORLD_PX,
   EDGE_LABEL_FONT_PX,
   EDGE_LABEL_MAX_WIDTH_EM,
@@ -82,6 +81,7 @@ import {
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
+  cardRadius,
 } from '../constants'
 import { titleShown } from '../foldMotion'
 import { type PdfPageLabels, nodeTitleText, wrapTitleLines } from '../lod'
@@ -869,14 +869,14 @@ export class OverviewLayer {
         ctx.shadowBlur = LIFT_SHADOW.blur * unit
         ctx.shadowOffsetY = LIFT_SHADOW.offsetY * unit
       }
-      // Its corners as rounded as they are where it comes to rest — the
-      // DOM's card and the GPU scene's (cards/card.css) — but a sheet's,
-      // which are square (cards/spread.css): drawn square, a card set off
-      // from or arriving at its place showed a square frame round it.
-      const radius =
-        node.type === 'pdf-page'
-          ? 0
-          : Math.min(CARD_RADIUS * view.scale * (pose.w / node.w), w / 2, h / 2)
+      // Its corners as they are where it comes to rest (`cardRadius`): drawn
+      // square, a card set off from or arriving at its place showed a square
+      // frame round it.
+      const radius = Math.min(
+        cardRadius(node) * view.scale * (pose.w / node.w),
+        w / 2,
+        h / 2,
+      )
       ctx.beginPath()
       ctx.roundRect(x, y, w, h, radius)
       ctx.fill()

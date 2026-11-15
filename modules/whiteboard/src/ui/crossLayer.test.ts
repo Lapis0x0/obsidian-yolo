@@ -17,6 +17,7 @@ import {
   CARD_RADIUS,
   GROUP_RADIUS,
   NODE_EXIT_MS,
+  SHEET_RADIUS,
   TITLE_BLOCK_LINE_HEIGHT,
   TITLE_BLOCK_WORLD_FONT_PX,
   TITLE_BLOCK_WORLD_PADDING,
@@ -47,6 +48,7 @@ function declared(file: string, selector: string, property: string): string {
 }
 
 const px = (value: string): number => {
+  if (value === '0') return 0
   const match = /^(\d+(?:\.\d+)?)px$/.exec(value)
   if (!match) throw new Error(`${value} is not in px`)
   return Number(match[1])
@@ -58,6 +60,19 @@ describe('values written in both a stylesheet and TypeScript', () => {
     expect(px(declared(css, '.yolo-whiteboard-card', 'border-radius'))).toBe(
       CARD_RADIUS,
     )
+  })
+
+  it("a spread's sheet's corners", () => {
+    const css = join(STYLES, 'cards', 'spread.css')
+    expect(
+      px(
+        declared(
+          css,
+          '.yolo-whiteboard-card.yolo-whiteboard-spread-sheet',
+          'border-radius',
+        ),
+      ),
+    ).toBe(SHEET_RADIUS)
   })
 
   it("a group's corners, open and collapsed", () => {

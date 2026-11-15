@@ -36,10 +36,10 @@ import { type TypesetTokens, contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown, readingOffset } from '../canvas/cardContent'
 import type { CardLook, ContentLayer } from '../canvas/overviewLayer'
 import {
-  CARD_RADIUS,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
   WHEEL_PAN_GLIDE_TAU_MS,
+  cardRadius,
 } from '../constants'
 import type { TypesetStyle } from '../pictures/typesetStyle'
 import {
@@ -1318,7 +1318,7 @@ export class GpuBoard implements ContentLayer {
           ? palette.border
           : withAlpha(tintWord, OVERVIEW_THEMED_BORDER_ALPHA),
       borderWidth: selected ? SELECTED_BORDER : CARD_BORDER,
-      radius: CARD_RADIUS,
+      radius: cardRadius(node),
     }
   }
 

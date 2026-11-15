@@ -5,7 +5,7 @@
 // zero-dependency contract (it doesn't need these; only src/ui/canvas.ts's
 // rAF loop does).
 
-import { parseBoard } from '../domain/fileFormat'
+import { type BoardNode, parseBoard } from '../domain/fileFormat'
 import { fileNodeKind } from '../domain/naming'
 import { portalSizeFor } from '../domain/portals'
 
@@ -306,6 +306,15 @@ export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
 /** A card's corners, world units: styles/cards/card.css's radius — what
  * the GPU scene and the overview canvas draw a card with too. */
 export const CARD_RADIUS = 10
+
+/** A spread's sheet's: square, a page of paper (styles/cards/spread.css). */
+export const SHEET_RADIUS = 0
+
+/** The corners `node` is drawn with, world units — by whichever hand draws
+ * it: its element, the overview canvas, the GPU scene. */
+export function cardRadius(node: Pick<BoardNode, 'type'>): number {
+  return node.type === 'pdf-page' ? SHEET_RADIUS : CARD_RADIUS
+}
 
 /** A group's frame's corners, in its element's units: an open frame's and a
  * collapsed box's, styles/cards/group.css's — what the overview canvas draws
