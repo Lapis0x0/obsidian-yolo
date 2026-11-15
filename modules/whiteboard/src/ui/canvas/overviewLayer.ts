@@ -1462,20 +1462,36 @@ export class OverviewLayer {
     for (const line of titles) {
       const { title, turn } = line
       const alpha = line.alpha ?? 1
+      const shrink = line.shrink ?? 1
       // Held at a size on screen where it is a landmark (canvas.ts's
-      // `titleScaleOf`) — as much smaller as its node is shown, in motion.
-      const scale = this.callbacks.titleScale(line.node.id) * (line.shrink ?? 1)
+      // `titleScaleOf`).
+      const scale = this.callbacks.titleScale(line.node.id)
       const u = typeScale * scale
       const font = (size: number, weight: number) =>
         `${weight} ${size * u}px ${measure.family}`
       const content = measure.width(title)
-      const box = titleBox(line.node, line, content, scale, typeScale)
+      // In motion, as much smaller as its node is shown: laid out over the
+      // node at its own size and shrunk with it about its corner, rather
+      // than set in type of another size each frame — a size the text has
+      // not been drawn at is the costliest thing a canvas draws, and a fold
+      // drew every title at a new one on every frame of it.
+      const own =
+        shrink === 1
+          ? line
+          : { x: line.x, y: line.y, w: line.w / shrink, h: line.h / shrink }
+      const box = titleBox(line.node, own, content, scale, typeScale)
       if (!box) continue
+      const transformed = turn !== undefined || shrink !== 1
+      if (transformed) ctx.save()
       if (turn) {
-        ctx.save()
         ctx.translate(turn.x, turn.y)
         ctx.rotate(turn.angle)
         ctx.translate(-turn.x, -turn.y)
+      }
+      if (shrink !== 1) {
+        ctx.translate(line.x, line.y)
+        ctx.scale(shrink, shrink)
+        ctx.translate(-line.x, -line.y)
       }
       const toWorld = (rect: CardRect): CardRect => ({
         x: (rect.x - view.tx) / view.scale,
@@ -1485,7 +1501,9 @@ export class OverviewLayer {
       })
       // Where it was drawn is where it is pointed at: a press on any of it is
       // a press on its node (`titleLineAt`) — not on one coming or going.
-      if (alpha === 1) this.titleRects.set(line.node.id, toWorld(box))
+      if (alpha === 1 && shrink === 1) {
+        this.titleRects.set(line.node.id, toWorld(box))
+      }
       ctx.globalAlpha = alpha
       // No surface of its own; the selection's ring when it is selected.
       if (this.callbacks.isSelected(line.node.id)) {
@@ -1536,7 +1554,7 @@ export class OverviewLayer {
         x +=
           (width(title.note, look.note.size, look.note.weight) + look.gap) * u
       }
-      if (turn) ctx.restore()
+      if (transformed) ctx.restore()
     }
     ctx.globalAlpha = 1
     ctx.lineWidth = 1
