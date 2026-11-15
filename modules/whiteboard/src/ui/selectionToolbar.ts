@@ -539,22 +539,38 @@ export class SelectionToolbar {
     return this.overlayEl.contains(node)
   }
 
-  /** Rebuilds the toolbar's contents. `null` empties and hides it. Closes any
-   * popover: what it acts on is exactly what just changed. */
+  /** Shows `model`. `null` empties and hides it. Closes any popover: what it
+   * acts on is exactly what just changed.
+   *
+   * A model drawn the same as the one shown — the toolbar refreshed after
+   * every change to the board, about the same selection — keeps the buttons
+   * it has: each finds what it does in the model shown when it is clicked
+   * (`itemAt`). Built again, a button pressed as the toolbar refreshed was
+   * gone by the time it was let go of, and the press was not a click: a
+   * group's "expand", pressed as the group landed collapsed, did nothing
+   * (measured 2026-11-15). */
   setModel(model: ToolbarModel | null): void {
     this.closePopover()
+    const same =
+      model !== null && this.model !== null && sameLook(this.model, model)
     this.model = model
+    this.color = null
+    for (const item of model?.items ?? []) {
+      if (item.kind === 'color') this.color = item
+    }
+    if (same) {
+      if (model.items.length > 0) this.show()
+      return
+    }
     this.measured = null
     this.el.replaceChildren()
-    this.color = null
     if (!model || model.items.length === 0) {
       this.hide()
       return
     }
-    for (const item of model.items) {
+    model.items.forEach((item, index) => {
       switch (item.kind) {
         case 'color': {
-          this.color = item
           const button = this.appendButton({
             label: item.label,
             icon: 'palette',
@@ -566,18 +582,34 @@ export class SelectionToolbar {
           const button = this.appendButton({
             label: item.label,
             icon: item.icon,
-            onSelect: () => this.togglePopover(button, item),
+            onSelect: () => {
+              const menu = this.itemAt(index, 'menu')
+              if (menu) this.togglePopover(button, menu)
+            },
           })
           break
         }
         case 'swatches':
-          this.appendSwatchControl(item)
+          this.appendSwatchControl(item, index)
           break
         default:
-          this.appendButton(item)
+          this.appendButton({
+            ...item,
+            onSelect: (event) => this.itemAt(index, 'action')?.onSelect(event),
+          })
       }
-    }
+    })
     this.show()
+  }
+
+  /** The item at `index` of the model shown, if it is of `kind`. */
+  private itemAt<K extends NonNullable<ToolbarItem['kind']>>(
+    index: number,
+    kind: K,
+  ): Extract<ToolbarItem, { kind?: K }> | null {
+    const item = this.model?.items[index]
+    if (!item || (item.kind ?? 'action') !== kind) return null
+    return item as Extract<ToolbarItem, { kind?: K }>
   }
 
   /**
@@ -693,7 +725,11 @@ export class SelectionToolbar {
     return button
   }
 
-  private appendSwatchControl(control: ToolbarSwatchControl): void {
+  private appendSwatchControl(
+    control: ToolbarSwatchControl,
+    index: number,
+  ): void {
+    const shownControl = () => this.itemAt(index, 'swatches')
     const primary = control.primary
     if (!primary) {
       const button = this.doc.createElement('button')
@@ -708,7 +744,8 @@ export class SelectionToolbar {
       button.appendChild(dot)
       button.addEventListener('click', (event) => {
         event.preventDefault()
-        this.togglePopover(button, control)
+        const shown = shownControl()
+        if (shown) this.togglePopover(button, shown)
       })
       this.el.appendChild(button)
       return
@@ -719,13 +756,17 @@ export class SelectionToolbar {
       this.createButton({
         ...primary,
         className: `${SPLIT_BODY_CLASS}${primary.className ? ` ${primary.className}` : ''}`,
+        onSelect: () => shownControl()?.primary?.onSelect(),
       }),
     )
     const arrow = this.createButton({
       label: control.label,
       icon: 'chevron-down',
       className: SPLIT_ARROW_CLASS,
-      onSelect: () => this.togglePopover(arrow, control, group),
+      onSelect: () => {
+        const shown = shownControl()
+        if (shown) this.togglePopover(arrow, shown, group)
+      },
     })
     group.appendChild(arrow)
     this.el.appendChild(group)
@@ -1003,5 +1044,38 @@ export class SelectionToolbar {
         ;(swatch as HTMLElement).style.removeProperty(COLOR_CUSTOM_PROPERTY)
       }
     }
+  }
+}
+
+/** Whether two models draw the same buttons, in the same order: what each
+ * shows — its kind, label, icon and classes, and the swatch a swatch button
+ * shows — leaving out what they do. */
+function sameLook(a: ToolbarModel, b: ToolbarModel): boolean {
+  return (
+    a.items.length === b.items.length &&
+    a.items.every((item, index) => {
+      const other = b.items[index]
+      return other !== undefined && lookOf(item) === lookOf(other)
+    })
+  )
+}
+
+function lookOf(item: ToolbarItem): string {
+  switch (item.kind) {
+    case 'color':
+      return JSON.stringify(['color', item.label])
+    case 'menu':
+      return JSON.stringify(['menu', item.label, item.icon])
+    case 'swatches':
+      return JSON.stringify([
+        'swatches',
+        item.label,
+        item.primary
+          ? [item.primary.label, item.primary.icon, item.primary.className]
+          : item.swatches.find((swatch) => swatch.value === item.current)
+              ?.className,
+      ])
+    default:
+      return JSON.stringify(['action', item.label, item.icon, item.className])
   }
 }
