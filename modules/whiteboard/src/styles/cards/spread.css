@@ -140,10 +140,25 @@
   /* With the handle layer, over a dragged card. */
   z-index: 3;
   pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-enter, 220ms)
+    var(--yolo-anim-ease-out, ease-out);
 }
 
 .yolo-whiteboard-spread-frame.yolo-whiteboard-spread-frame-hidden {
   display: none;
+}
+
+/* While the spread folds into its card or is dealt out of it, the frame is
+ * not of anything at rest: it fades away as the sheets leave and back once
+ * they have all landed, and cannot be taken hold of in between. */
+.yolo-whiteboard-spread-frame.yolo-whiteboard-spread-frame-folding {
+  opacity: 0;
+  transition-duration: var(--yolo-anim-duration-exit, 160ms);
+}
+
+.yolo-whiteboard-spread-frame-folding .yolo-whiteboard-spread-frame-edge,
+.yolo-whiteboard-spread-frame-folding .yolo-whiteboard-spread-frame-corner {
+  pointer-events: none;
 }
 
 /* A strip centred on the right side, wider than the line so it can be

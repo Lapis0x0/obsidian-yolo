@@ -535,6 +535,11 @@ export class WhiteboardCanvas {
   /** Spreads and groups whose things are being gathered into their fold
    * before it closes (`gather`). */
   private readonly folding = new Set<NodeId>()
+  /** Spreads folding into their card or being dealt out of it, from when
+   * the sheets set off to when they have all landed — the spread's frame
+   * fades away meanwhile (./canvas/spreadFrame.ts). By the fold that set it
+   * (`beginSpreadFold`). */
+  private readonly spreadsInFold = new Map<NodeId, object>()
   /** A sheet's sharp picture of its page, copied from the card it is being
    * dealt out of, for its reader to show until it has drawn its own — so the
    * page the card was showing does not go soft as it becomes a sheet. */
@@ -1900,6 +1905,7 @@ export class WhiteboardCanvas {
     this.spreadFrame?.destroy()
     this.spreadFrame = null
     this.spreadHandoffPictures.clear()
+    this.spreadsInFold.clear()
     for (const id of [...this.foldCovers.keys()])
       this.releaseFoldedCard(id, true)
     this.passagePoints?.destroy()
@@ -2067,6 +2073,7 @@ export class WhiteboardCanvas {
       getSelectedIds: () => this.selectedIds,
       getLiveRects: () => this.interaction.liveNodeRects,
       canEdit: () => this.canEdit,
+      isFolding: (id) => this.spreadsInFold.has(id),
       worldPointFromEvent: (e) => this.worldPointFromEvent(e),
       reflow: (id, columns, key) => this.reflowSpreadTo(id, columns, key),
       resize: (id, pageWidth, key) => this.resizeSpreadTo(id, pageWidth, key),
@@ -4352,9 +4359,7 @@ export class WhiteboardCanvas {
     // anything there any more.
     this.releaseFoldedCard(id, true)
     if (node.spread) {
-      const lead = this.handOffLeadPage(id, node)
-      this.commitSpreadToggle(id, openSpread(this.board, id))
-      this.dealOut(spreadMotions(spreadPages(this.board, id), node, lead, 'in'))
+      this.dealSpreadOut(id, node, openSpread(this.board, id))
       return
     }
     let sizes: readonly Readonly<{ width: number; height: number }>[]
@@ -4377,9 +4382,34 @@ export class WhiteboardCanvas {
       defaultSpreadColumns(sizes, metrics),
       metrics,
     )
-    const lead = this.handOffLeadPage(id, now)
-    this.commitSpreadToggle(id, openSpread(this.board, id, layout))
-    this.dealOut(spreadMotions(spreadPages(this.board, id), now, lead, 'in'))
+    this.dealSpreadOut(id, now, openSpread(this.board, id, layout))
+  }
+
+  /** Opens the spread of `card` onto `next`, its sheets dealt out of the
+   * card. */
+  private dealSpreadOut(id: NodeId, card: BoardNode, next: Board): void {
+    const lead = this.handOffLeadPage(id, card)
+    const settled = this.beginSpreadFold(id)
+    this.commitSpreadToggle(id, next)
+    const sheets = spreadPages(this.board, id)
+    this.dealOut(spreadMotions(sheets, card, lead, 'in'))
+    void this.motions.arrived(sheets.map((sheet) => sheet.id)).then(settled)
+  }
+
+  /**
+   * Marks spread `id` as folding into its card or being dealt out of it,
+   * until the function returned is called. A later fold of the same spread
+   * takes over: ending this one then leaves it be.
+   */
+  private beginSpreadFold(id: NodeId): () => void {
+    const fold = {}
+    this.spreadsInFold.set(id, fold)
+    this.spreadFrame?.sync()
+    return () => {
+      if (this.spreadsInFold.get(id) !== fold) return
+      this.spreadsInFold.delete(id)
+      this.spreadFrame?.sync()
+    }
   }
 
   private prefersReducedMotion(): boolean {
@@ -4541,9 +4571,16 @@ export class WhiteboardCanvas {
     const lead = firstPage(title)?.page ?? 1
     const moves = spreadMotions(spreadPages(this.board, id), card, lead, 'out')
     const top = moves.find((move) => move.motion.onTop)?.node.id
-    if (!(await this.gather(id, moves))) return
+    // Asked again while its sheets travel: the same ask, let go (`gather`).
+    if (this.folding.has(id)) return
+    const settled = this.beginSpreadFold(id)
+    if (!(await this.gather(id, moves))) {
+      settled()
+      return
+    }
     if (!isSpreadTitle(this.nodesById.get(id))) {
       this.ungather(moves)
+      settled()
       return
     }
     // Copied, and put beside it in the world, while the sheet is still there:
@@ -4557,6 +4594,7 @@ export class WhiteboardCanvas {
       leadEl?.isConnected && transform ? foldCoverOf(leadEl, transform) : null
     if (cover) leadEl?.after(cover)
     this.commitSpreadToggle(id, closeSpread(this.board, id))
+    settled()
     if (cover) {
       this.holdFoldedCard(id, cover)
       return

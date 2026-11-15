@@ -40,6 +40,9 @@ import { GRID_WORLD_STEP_PX } from '../constants'
 
 const FRAME_CLASS = 'yolo-whiteboard-spread-frame'
 const FRAME_HIDDEN_CLASS = 'yolo-whiteboard-spread-frame-hidden'
+/** On the frame while its spread folds into its card or is dealt out of
+ * it: faded away, and not to be taken hold of. */
+const FRAME_FOLDING_CLASS = 'yolo-whiteboard-spread-frame-folding'
 /** The frame's right edge: what is dragged to lay the spread out again. */
 const EDGE_CLASS = 'yolo-whiteboard-spread-frame-edge'
 /** The frame's bottom-right corner: what is dragged to size the pages. */
@@ -63,6 +66,10 @@ export type SpreadFrameDeps = Readonly<{
    * is told — the frame goes with them. */
   getLiveRects: () => ReadonlyMap<NodeId, CardRect> | null
   canEdit: () => boolean
+  /** Whether the spread is folding into its card or being dealt out of it:
+   * its sheets are on their way, and what the frame would go round is not
+   * where anything rests. */
+  isFolding: (id: NodeId) => boolean
   worldPointFromEvent: (e: MouseEvent) => Readonly<{ x: number; y: number }>
   /** Lays the spread out again at `columns` across, as part of the step
    * `historyKey` names. */
@@ -162,6 +169,10 @@ export class SpreadFrame {
         : null
     this.frameEl.classList.toggle(FRAME_HIDDEN_CLASS, bounds === null)
     if (!bounds) return
+    this.frameEl.classList.toggle(
+      FRAME_FOLDING_CLASS,
+      id !== null && this.deps.isFolding(id),
+    )
     this.frameEl.style.left = `${bounds.x - FRAME_PADDING}px`
     this.frameEl.style.top = `${bounds.y - FRAME_PADDING}px`
     this.frameEl.style.width = `${bounds.w + FRAME_PADDING * 2}px`
