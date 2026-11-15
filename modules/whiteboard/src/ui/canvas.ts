@@ -218,9 +218,9 @@ import {
   CONTENT_BUILD_START_CAP_PER_FRAME,
   EDGE_HIDDEN_CLASS,
   FIT_CAMERA_PADDING_PX,
+  FOLD_COVER_MAX_MS,
   FOLD_FRAME_MS,
   FOLD_TRAVEL_MS,
-  FOLD_COVER_MAX_MS,
   FRAME_ON_TIME_PERIODS,
   GRID_WORLD_STEP_PX,
   INTERACTING_TIMEOUT_MS,
@@ -535,8 +535,9 @@ export class WhiteboardCanvas {
   /** The spread whose title the pointer is on (`syncSpreadHover`). */
   private hoveredSpreadId: NodeId | null = null
   /** Spreads and groups whose things are being gathered into their fold
-   * before it closes (`gather`). */
-  private readonly folding = new Set<NodeId>()
+   * before it closes (`gather`), each with what calling it off does
+   * (`callOffFold`). */
+  private readonly folding = new Map<NodeId, () => void>()
   /** Spreads folding into their card or being dealt out of it, from when
    * the sheets set off to when they have all landed — the spread's frame
    * fades away meanwhile (./canvas/spreadFrame.ts). By the fold that set it
@@ -2687,6 +2688,7 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.interaction.liveNodeRects,
       titleRectOf: (id, rect) => this.titleRectOf(id, rect),
       groupAction: (id, action) => this.runGroupAction(id, action),
+      isFolding: (id) => this.isFolding(id),
       getSelectedIds: this.core.getSelectedIds,
       getSelectedEdgeIds: this.core.getSelectedEdgeIds,
       getEdge: this.core.getEdge,
@@ -4156,7 +4158,8 @@ export class WhiteboardCanvas {
         void this.foldGroupAway(id)
         return
       case 'expand':
-        this.openGroup(id)
+        // Still on its way into its box: turned back.
+        if (!this.callOffFold(id)) this.openGroup(id)
         return
     }
     this.recomputeVisibility()
@@ -4367,6 +4370,8 @@ export class WhiteboardCanvas {
     if (!this.canEdit) return
     const target = this.nodesById.get(asked)
     const id = target?.type === 'pdf-page' ? target.parent : asked
+    // Still on its way into its card: turned back.
+    if (this.callOffFold(id)) return
     const node = this.nodesById.get(id)
     if (isSpreadTitle(node)) {
       await this.foldSpreadAway(id)
@@ -4523,14 +4528,25 @@ export class WhiteboardCanvas {
    * Gathers `moves` into their fold, and `frames` to their new rectangles
    * alongside, each held where it arrives. True once everything has arrived;
    * false, at once, for a fold of `key` already being gathered — a second
-   * ask while they travel is the same ask, and is let go.
+   * ask while they travel is the same ask, and is let go — and false once
+   * they would have arrived, for one called off on the way (`callOffFold`),
+   * which also does `onCallOff`.
+   *
+   * Until it has closed, the fold is still open on the board, and the
+   * toolbar offers to open it — what calls it off (`isFolding`): a fold
+   * turns back wherever it has got to, as it does opening.
    */
   private async gather(
     key: NodeId,
     moves: readonly FoldMove[],
     frames: readonly FrameMove[] = [],
+    onCallOff?: () => void,
   ): Promise<boolean> {
     if (this.folding.has(key)) return false
+    const callOff = () => {
+      this.ungather(moves, frames)
+      onCallOff?.()
+    }
     for (const { node, motion } of moves) {
       this.motions.move(node.id, foldedPose(node, motion), {
         hold: true,
@@ -4547,12 +4563,31 @@ export class WhiteboardCanvas {
       })
     }
     this.overviewLayer?.markDirty()
-    this.folding.add(key)
+    this.folding.set(key, callOff)
+    this.toolbarController.refreshToolbar()
     await this.motions.arrived([
       ...moves.map((move) => move.node.id),
       ...frames.map((frame) => frame.id),
     ])
+    if (this.folding.get(key) !== callOff) return false
     this.folding.delete(key)
+    return true
+  }
+
+  /** Whether `key`'s things are on their way into its fold (`gather`). */
+  private isFolding(key: NodeId): boolean {
+    return this.folding.has(key)
+  }
+
+  /** Calls off the fold of `key` being gathered, if one is: everything goes
+   * back from where it is shown now. Whether one was. */
+  private callOffFold(key: NodeId): boolean {
+    const callOff = this.folding.get(key)
+    if (!callOff) return false
+    this.folding.delete(key)
+    callOff()
+    this.overviewLayer?.markDirty()
+    this.toolbarController.refreshToolbar()
     return true
   }
 
@@ -4607,7 +4642,13 @@ export class WhiteboardCanvas {
     // Asked again while its sheets travel: the same ask, let go (`gather`).
     if (this.folding.has(id)) return
     const settled = this.beginSpreadFold(id)
-    if (!(await this.gather(id, moves))) {
+    // Called off, the sheets are dealt back out from where they are: a fold
+    // of their own, which this one's end leaves be.
+    const dealtBack = () => {
+      const back = this.beginSpreadFold(id)
+      void this.motions.arrived(moves.map((move) => move.node.id)).then(back)
+    }
+    if (!(await this.gather(id, moves, [], dealtBack))) {
       settled()
       return
     }
@@ -4658,11 +4699,12 @@ export class WhiteboardCanvas {
     const frames = this.frameMoves(this.board, settled)
     // The count over the last cell comes in as what it counts goes there.
     this.cardRenderer.foreshowGroupMore(id)
-    if (!(await this.gather(id, moves, frames))) return
+    const unforeshow = () => this.cardRenderer.unforeshowGroupMore(id)
+    if (!(await this.gather(id, moves, frames, unforeshow))) return
     const now = this.nodesById.get(id)
     if (now?.type !== 'group' || isFolded(now)) {
       this.ungather(moves, frames)
-      this.cardRenderer.unforeshowGroupMore(id)
+      unforeshow()
       return
     }
     // What went into the last cell faded on the way and is not there to see:

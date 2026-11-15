@@ -136,6 +136,10 @@ export type ToolbarControllerCallbacks = Readonly<{
   toggleSpread: (id: NodeId) => void
   /** Collapses, expands or fits a group (the canvas's `runGroupAction`). */
   groupAction: (id: NodeId, action: GroupAction) => void
+  /** Whether a group's or a spread's things are on their way into its fold
+   * (the canvas's `isFolding`): still open on the board, but shown closing —
+   * so offered opening, which turns it back. */
+  isFolding: (id: NodeId) => boolean
   /** World point an edge's toolbar anchors to — canvas.ts's own
    * `edgeAnchorPoint`, which needs the edge layer's live geometry this class
    * does not own. */
@@ -445,7 +449,7 @@ export class ToolbarController {
     // too: the board changes and the canvas draws it, and the cards are
     // built when the zoom comes back.
     if (canEdit && single && this.callbacks.isPdfNode(single)) {
-      const open = isSpreadTitle(single)
+      const open = isSpreadTitle(single) && !this.callbacks.isFolding(single.id)
       items.push({
         label: this.callbacks.t(
           open ? 'toolbar.closeSpread' : 'toolbar.openSpread',
@@ -459,7 +463,8 @@ export class ToolbarController {
     // go of a size its frame was given by hand.
     if (single?.type === 'group' && canEdit) {
       const group = single
-      const folded = group.stash !== undefined
+      const folded =
+        group.stash !== undefined || this.callbacks.isFolding(group.id)
       if (group.bounds !== undefined && !folded) {
         items.push({
           label: this.callbacks.t('toolbar.fitGroup'),
