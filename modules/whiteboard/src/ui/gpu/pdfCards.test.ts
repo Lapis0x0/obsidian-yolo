@@ -33,12 +33,12 @@ describe('pdfCardImages', () => {
 
   test('a folded card runs from where it was left, a seam between pages', () => {
     const images = pdfCardImages(folded(2.5), 200, 300, pages(5))
-    expect(images.map((image) => [pageOfKey(image.path)?.page, image.y])).toEqual(
-      [
-        [2, -150],
-        [3, 150 + READER_METRICS.gap],
-      ],
-    )
+    expect(
+      images.map((image) => [pageOfKey(image.path)?.page, image.y]),
+    ).toEqual([
+      [2, -150],
+      [3, 150 + READER_METRICS.gap],
+    ])
     expect(images.every((image) => image.w === 200 && image.h === 300)).toBe(
       true,
     )
