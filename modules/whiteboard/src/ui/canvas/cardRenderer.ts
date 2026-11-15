@@ -134,7 +134,7 @@ const CARD_PICTURE_CLASS = 'yolo-whiteboard-card-picture'
  * card's or a note's (`showCardPicture`). */
 const CARD_PICTURE_WHOLE_CLASS = 'yolo-whiteboard-card-picture-whole'
 /** A card the board's own drawing stands in for until its content has
- * rendered (`showCardPicture`): there, but not shown. */
+ * rendered (`drawUnder`): there, but not shown. */
 const CARD_DRAWN_UNDER_CLASS = 'yolo-whiteboard-card-drawn-under'
 
 /**
@@ -257,7 +257,7 @@ export type NodeRuntime = {
    * (`showCardPicture`); null the rest of the time. */
   picture: HTMLCanvasElement | null
   /** In place of a picture, the board's own drawing of it stands in for it
-   * (`showCardPicture`): it is not shown until its content has rendered. */
+   * (`drawUnder`): it is not shown until its content has rendered. */
   drawnUnder: boolean
 }
 
@@ -315,8 +315,9 @@ export type CardRendererCallbacks = Readonly<{
    * picture now (PdfReader's `onDrawn`). */
   onPdfDrawn: (id: NodeId) => void
   /** Whether the board draws the card's content itself, under the world —
-   * the GPU scene (../gpu/gpuBoard.ts) — and can go on doing so until its
-   * DOM has its content. */
+   * the GPU scene (../gpu/gpuBoard.ts), or the overview canvas while it is
+   * still drawing the board — and can go on doing so until its DOM has its
+   * content. */
   drawnUnder: (id: NodeId) => boolean
   /** A card's DOM has started showing it (`showsItself`). */
   onShown: () => void
@@ -1841,6 +1842,8 @@ export class CardRenderer {
     // way — the reader asks `canStartWork` before each draw.
     if (sheet === undefined && !this.callbacks.takeContentBuild()) {
       this.callbacks.queueContentSync(id)
+      // An empty body, until then: the board's drawing stands in for it.
+      if (!existing) this.drawUnder(id, runtime)
       return
     }
     this.destroyCardContent(runtime)
@@ -1859,6 +1862,7 @@ export class CardRenderer {
       drawQueue: this.callbacks.pdfDraws,
       drawPriority: () => this.callbacks.drawPriority(id),
       placeholder: (page) => this.callbacks.picture(id, page),
+      onShown: () => this.dropCardPicture(runtime),
       onDrawn: () => this.callbacks.onPdfDrawn(id),
       annotations: this.callbacks.openAnnotations(path),
       annotationEvents: this.callbacks.getAnnotationEvents(),
@@ -1867,6 +1871,9 @@ export class CardRenderer {
       reportError: (stage, error) => this.callbacks.reportError(stage, error),
     })
     runtime.pdfReader = reader
+    // A sheet shows its thumbnail at once; a whole reader is blank paper
+    // until its file has opened, which the board's drawing stands in for.
+    if (!reader.shown) this.drawUnder(id, runtime)
     bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
     this.pdfCards.add(id)
   }
@@ -2281,11 +2288,7 @@ export class CardRenderer {
       ? null
       : this.callbacks.picture(id)
     if (!picture) {
-      // The board's drawing of it stands in instead: the card is not shown
-      // until it can show its content, and the drawing goes on until then.
-      if (!this.callbacks.drawnUnder(id)) return
-      runtime.drawnUnder = true
-      runtime.el?.classList.add(CARD_DRAWN_UNDER_CLASS)
+      this.drawUnder(id, runtime)
       return
     }
     const canvas = runtime.bodyEl.ownerDocument.createElement('canvas')
@@ -2297,8 +2300,26 @@ export class CardRenderer {
     runtime.picture = canvas
   }
 
+  /** Lets the board's drawing of the card stand in for it, where the board
+   * draws it: the card is not shown until it can show its content
+   * (`dropCardPicture`), and the drawing goes on until then. */
+  private drawUnder(id: NodeId, runtime: NodeRuntime): void {
+    if (!this.callbacks.drawnUnder(id)) return
+    runtime.drawnUnder = true
+    runtime.el?.classList.add(CARD_DRAWN_UNDER_CLASS)
+  }
+
+  /** Whether any mounted card is still waiting for its content with the
+   * board's drawing standing in for it (`drawUnder`). */
+  anyDrawnUnder(): boolean {
+    for (const runtime of this.runtimeByNodeId.values()) {
+      if (runtime.drawnUnder) return true
+    }
+    return false
+  }
+
   /** Whether a mounted card's DOM shows it, rather than the board's drawing
-   * of it still standing in for it (`showCardPicture`). */
+   * of it still standing in for it (`drawUnder`). */
   showsItself(id: NodeId): boolean {
     return this.runtimeByNodeId.get(id)?.drawnUnder !== true
   }

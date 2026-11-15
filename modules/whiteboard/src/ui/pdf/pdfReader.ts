@@ -126,6 +126,12 @@ export type PdfReaderOptions = Readonly<{
    * one (../pictures/pdfPages.ts), or a sharp one another reader of the same
    * page handed over (`copyPicture`); null when there is none yet. */
   placeholder?: (page: number) => PagePicture | null
+  /** Called once, the first time the reader shows something in place of
+   * the file: every page in view a picture, its own or a stand-in — or why
+   * it has none, when the file would not open. Until then it is blank paper
+   * or a loading line, which whatever was drawn where it is may stand in
+   * for (`shown`). */
+  onShown?: () => void
   /** Called once, the first time every page in view shows its own picture
    * in full — no stand-in, no fade still running: whatever was laid over
    * the reader until it could show itself may go. */
@@ -427,6 +433,8 @@ export class PdfReader {
   private drawsInFlight = 0
   private failed = false
   private destroyed = false
+  /** `onShown` has been called. */
+  private shownReported = false
   /** `onDrawn` has been called. */
   private drawnReported = false
 
@@ -560,7 +568,7 @@ export class PdfReader {
     // paper, or a loading line, until it did.
     if (this.sheet !== null) {
       this.rebuildSlots(1)
-      this.paintSheetPlaceholder()
+      this.paintPlaceholdersInView()
     } else {
       this.showStatus(options.t('pdf.loading'))
     }
@@ -718,7 +726,7 @@ export class PdfReader {
     if (visible) {
       // Now, not on the pass scheduled below: that runs a frame after the
       // one the card comes back in.
-      this.paintSheetPlaceholder()
+      this.paintPlaceholdersInView()
       this.schedule()
       return
     }
@@ -813,6 +821,12 @@ export class PdfReader {
     return marks
       ? Array.from(marks.querySelectorAll<HTMLElement>(`.${NOTE_CLASS}`))
       : []
+  }
+
+  /** Whether the reader has shown something in place of the file
+   * (`onShown`). */
+  get shown(): boolean {
+    return this.shownReported
   }
 
   /** Whether every page in view has shown its own picture (`onDrawn`). */
@@ -1406,6 +1420,7 @@ export class PdfReader {
       this.options.t('pdf.openFailed'),
       error instanceof Error ? error.message : String(error),
     )
+    this.reportShown()
   }
 
   /**
@@ -1656,26 +1671,62 @@ export class PdfReader {
     // that is pending (a page loading, a draw running) schedules the next pass
     // itself when it lands.
     if (deferred) this.schedule()
-    this.reportIfDrawn()
+    this.reportProgress()
   }
 
-  /** Calls `onDrawn` once every page in view shows its own picture, its
-   * fade over what stood in for it over. Asked after every pass and when a
-   * fade ends — the two moments it can become true. */
-  private reportIfDrawn(): void {
-    if (this.drawnReported || !this.options.onDrawn) return
+  /**
+   * Calls `onShown` once every page in view shows a picture, and `onDrawn`
+   * once each shows its own, its fade over what stood in for it over. Asked
+   * after every pass, when a sheet's thumbnail is painted and when a fade
+   * ends — the moments either can become true.
+   */
+  private reportProgress(): void {
+    if (
+      !this.shownReported &&
+      this.everyPageInView((slot) => slot.placeholder || slot.drawnRatio !== 0)
+    ) {
+      this.reportShown()
+    }
+    if (
+      !this.drawnReported &&
+      this.options.onDrawn &&
+      this.everyPageInView((slot) => slot.drawnRatio !== 0 && !slot.fadingOut)
+    ) {
+      this.drawnReported = true
+      this.options.onDrawn()
+    }
+  }
+
+  private reportShown(): void {
+    if (this.shownReported) return
+    this.shownReported = true
+    this.options.onShown?.()
+  }
+
+  /** Whether `test` holds for every page in view. A sheet's one page is the
+   * whole of it, laid out or not; a column's are known once it is laid out
+   * and has a size. */
+  private everyPageInView(test: (slot: Slot) => boolean): boolean {
+    const inView = this.pagesInView()
+    if (!inView) return false
+    for (let index = inView.first; index <= inView.last; index += 1) {
+      const slot = this.slots[index]
+      if (!slot || !test(slot)) return false
+    }
+    return true
+  }
+
+  /** The slots in view, where the reader knows them: a sheet's one page
+   * always, laid out or not; a column's once it is laid out, has a size and
+   * is scrolled where it is meant to be. */
+  private pagesInView(): Readonly<{ first: number; last: number }> | null {
+    if (this.sheet !== null) {
+      return this.slots.length > 0 ? { first: 0, last: 0 } : null
+    }
     const layout = this.layout
     const height = this.scrollerSize?.height ?? 0
-    if (!layout || !(height > 0)) return
-    const scrollTop = this.sheet !== null ? 0 : this.scrollerEl.scrollTop
-    const shown = pagesInBand(layout, scrollTop, height, 0)
-    if (!shown) return
-    for (let index = shown.first; index <= shown.last; index += 1) {
-      const slot = this.slots[index]
-      if (!slot || slot.drawnRatio === 0 || slot.fadingOut) return
-    }
-    this.drawnReported = true
-    this.options.onDrawn()
+    if (!layout || !(height > 0) || this.pendingPosition !== null) return null
+    return pagesInBand(layout, this.scrollerEl.scrollTop, height, 0)
   }
 
   private mayStartWork(): boolean {
@@ -1787,17 +1838,23 @@ export class PdfReader {
 
   /** A thumbnail this reader may be waiting for has been made. */
   placeholderReady(): void {
-    this.paintSheetPlaceholder()
+    this.paintPlaceholdersInView()
     this.schedule()
   }
 
-  /** A sheet's thumbnail, painted at once: its page is laid out by the
-   * card alone (see the constructor), so it need not wait for a pass —
-   * which does nothing before the file is open. */
-  private paintSheetPlaceholder(): void {
-    if (this.sheet === null || !this.visible) return
-    const slot = this.slots[0]
-    if (slot) this.paintPlaceholder(slot)
+  /** The thumbnails of the pages in view, painted at once rather than on
+   * the next pass, which runs a frame after the one the reader is shown in —
+   * and, for a sheet, whose page is laid out by the card alone (see the
+   * constructor), does nothing before the file is open. */
+  private paintPlaceholdersInView(): void {
+    if (!this.visible) return
+    const inView = this.pagesInView()
+    if (!inView) return
+    for (let index = inView.first; index <= inView.last; index += 1) {
+      const slot = this.slots[index]
+      if (slot) this.paintPlaceholder(slot)
+    }
+    this.reportProgress()
   }
 
   /**
@@ -1877,7 +1934,7 @@ export class PdfReader {
     const end = () => {
       if (slot.canvas !== canvas) return
       this.endFade(slot)
-      this.reportIfDrawn()
+      this.reportProgress()
     }
     canvas.addEventListener('animationend', end, { once: true })
     canvas.addEventListener('animationcancel', end, { once: true })

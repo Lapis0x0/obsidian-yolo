@@ -2514,8 +2514,11 @@ export class WhiteboardCanvas {
       // A card showing its content is one a picture can be taken of.
       onContentRendered: () => this.pictures?.invalidate(),
       // The GPU scene goes on drawing a card it draws until its DOM shows
-      // it, so that one built to be edited never shows its body empty.
-      drawnUnder: (id) => this.gpuBoard?.drawable(id) ?? false,
+      // it, so that one built to be edited never shows its body empty; so
+      // does the overview canvas while it is still drawing the board, which
+      // it goes on doing until every card is shown (`settleOverviewLinger`).
+      drawnUnder: (id) =>
+        this.overviewChromeHidden || (this.gpuBoard?.drawable(id) ?? false),
       onShown: () => this.overviewLayer?.markDirty(),
       // An image on the web a card shows: remembered once the browser has
       // shown it, and its bytes fetched (../host/remoteImages.ts).
@@ -5719,8 +5722,11 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Ends the tier once the mount queue its exit filled has drained: the canvas
-   * stops drawing and the edge DOM comes back, in that one frame.
+   * Ends the tier once the mount queue its exit filled has drained and every
+   * card it mounted shows itself (a PDF card's reader, built only once the
+   * zoom stops, and showing its pages only once its file is open, is drawn
+   * here until then): the canvas stops drawing and the edge DOM comes back,
+   * in that one frame.
    *
    * Both, together, or neither. The canvas sits *behind* the world layer, so
    * while it is drawing the board, anything the world holds paints over its
@@ -5739,6 +5745,7 @@ export class WhiteboardCanvas {
   private settleOverviewLinger(): void {
     if (!this.overviewLingering) return
     if (this.engine.pendingMountCount > 0) return
+    if (this.cardRenderer.anyDrawnUnder()) return
     this.overviewLingering = false
     // Before the class comes off: the edges are counter-scaled by a variable
     // the camera stops writing to them while they are out of the drawing (see
