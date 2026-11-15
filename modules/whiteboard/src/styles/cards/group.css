@@ -215,9 +215,9 @@
   pointer-events: none;
 }
 
-/* Fading in as what it counts goes into its cell, over the fold's motion
- * (ARRANGE_ANIMATION_MS, the enter duration's mirror); fading out as it
- * comes back out. */
+/* Fading in as what it counts goes into its cell — at the enter duration,
+ * there before they land (FOLD_TRAVEL_MS); fading out as they come back
+ * out. */
 .yolo-whiteboard-group-more.yolo-whiteboard-group-more-entering {
   animation: yolo-whiteboard-group-more-in
     var(--yolo-anim-duration-enter, 220ms) var(--yolo-anim-ease-out) both;

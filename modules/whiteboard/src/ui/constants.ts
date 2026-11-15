@@ -626,6 +626,21 @@ export const ARRANGE_ANIMATION_MS = 220
 export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 /**
+ * How long a fold takes (canvas.ts's `gather`, `dealOut`) — a group
+ * collapsing into its box or opening out of it, a PDF spread into its card —
+ * on the arrangement's curve.
+ *
+ * Longer than an arrangement, and in two tempos: the frames close onto the
+ * box, or open out of it, quickly (`FOLD_FRAME_MS`), and the things they
+ * hold travel the longer way to their cells behind or ahead of them
+ * (`FOLD_TRAVEL_MS`). A fold carries many things a long way at once, and
+ * the curve settling each over a longer tail is what reads as a soft
+ * landing; the frame getting there first tells where they are going.
+ */
+export const FOLD_TRAVEL_MS = 360
+export const FOLD_FRAME_MS = 150
+
+/**
  * A PDF spread being opened deals its sheets out of the card's corner, one
  * after another in page order: each leaves this long after the one before,
  * and none later than the cap, so a long document is dealt in the same

@@ -218,6 +218,8 @@ import {
   CONTENT_BUILD_START_CAP_PER_FRAME,
   EDGE_HIDDEN_CLASS,
   FIT_CAMERA_PADDING_PX,
+  FOLD_FRAME_MS,
+  FOLD_TRAVEL_MS,
   FOLD_COVER_MAX_MS,
   FRAME_ON_TIME_PERIODS,
   GRID_WORLD_STEP_PX,
@@ -4510,6 +4512,7 @@ export class WhiteboardCanvas {
       this.motions.settle(node.id, {
         from: foldedPose(node, motion),
         delay: motion.delay,
+        duration: FOLD_TRAVEL_MS,
         onTop: motion.onTop,
       })
     }
@@ -4532,12 +4535,14 @@ export class WhiteboardCanvas {
       this.motions.move(node.id, foldedPose(node, motion), {
         hold: true,
         delay: motion.delay,
+        duration: FOLD_TRAVEL_MS,
         onTop: motion.onTop,
       })
     }
     for (const frame of frames) {
       this.motions.move(frame.id, poseOf(frame.to), {
         hold: true,
+        duration: FOLD_FRAME_MS,
         reshape: true,
       })
     }
@@ -4558,8 +4563,12 @@ export class WhiteboardCanvas {
     moves: readonly FoldMove[],
     frames: readonly FrameMove[] = [],
   ): void {
-    for (const { node } of moves) this.motions.settle(node.id)
-    for (const frame of frames) this.motions.settle(frame.id, { reshape: true })
+    for (const { node } of moves) {
+      this.motions.settle(node.id, { duration: FOLD_TRAVEL_MS })
+    }
+    for (const frame of frames) {
+      this.motions.settle(frame.id, { duration: FOLD_FRAME_MS, reshape: true })
+    }
   }
 
   /** The page a spread about to open from `card` comes out of it on — its
@@ -4687,6 +4696,7 @@ export class WhiteboardCanvas {
     for (const frame of frames) {
       this.motions.settle(frame.id, {
         from: poseOf(frame.from),
+        duration: FOLD_FRAME_MS,
         reshape: true,
       })
     }

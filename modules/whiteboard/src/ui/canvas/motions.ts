@@ -91,6 +91,9 @@ export type MoveOptions = Readonly<{
   /** Where it starts from; where it is shown now by default. */
   from?: Pose
   delay?: number
+  /** How long it takes; an arrangement's (`ARRANGE_ANIMATION_MS`) by
+   * default. */
+  duration?: number
   /** Stays at `to` until moved again — let go of only if that is where the
    * board comes to have it. Otherwise `to` is where the board has it, and
    * the motion follows the board there (`tick`). */
@@ -168,7 +171,7 @@ export class Motions {
         to,
         start: now,
         delay: instant ? 0 : (options.delay ?? 0),
-        duration: instant ? 0 : ARRANGE_ANIMATION_MS,
+        duration: instant ? 0 : (options.duration ?? ARRANGE_ANIMATION_MS),
         ease: ARRANGE_EASE,
       },
       hold: options.hold ?? false,
