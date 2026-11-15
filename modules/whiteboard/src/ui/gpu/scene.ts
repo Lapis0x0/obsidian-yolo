@@ -33,6 +33,7 @@ import { type CardInstances, GLYPH_WORDS, RECT_WORDS } from './instances'
 import {
   CARD_TEXELS,
   FRAME_FS,
+  FRAME_PASS,
   FRAME_VS,
   GLYPH_FS,
   GLYPH_VS,
@@ -346,14 +347,17 @@ export class GpuScene {
     // Opaque frames first, writing the depth that hides what is under them.
     common(g.frame)
     gl.uniform1i(g.frame.uniforms.colors, 1)
-    gl.uniform1f(g.frame.uniforms.edgePass, 0)
+    gl.uniform1f(g.frame.uniforms.framePass, FRAME_PASS.interior)
     gl.depthFunc(gl.LESS)
     gl.depthMask(true)
     gl.bindVertexArray(g.frameVao)
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.slotCount)
 
-    // Content, behind every card above its own.
+    // Content, behind every card above its own — and under it, a fading
+    // card's fill, which hides nothing and so writes no depth.
     gl.depthMask(false)
+    gl.uniform1f(g.frame.uniforms.framePass, FRAME_PASS.under)
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.slotCount)
     common(g.rect)
     for (const chunk of visible) {
       if (chunk.rectCount === 0) continue
@@ -384,7 +388,7 @@ export class GpuScene {
     // Then the frames' edges and borders, over whatever they lie on.
     common(g.frame)
     gl.uniform1i(g.frame.uniforms.colors, 1)
-    gl.uniform1f(g.frame.uniforms.edgePass, 1)
+    gl.uniform1f(g.frame.uniforms.framePass, FRAME_PASS.edge)
     gl.depthFunc(gl.LEQUAL)
     gl.bindVertexArray(g.frameVao)
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.slotCount)

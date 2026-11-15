@@ -13,11 +13,16 @@
 // Depth is what keeps cards in their order whatever order they are drawn
 // in: a card's frame and its content each have their own depth, the content
 // just in front of its own frame and behind every card above it. A frame
-// whose fill is opaque writes depth where it covers whole pixels (`INTERIOR`
-// pass); its edges and border are drawn after the content (`EDGE` pass), as
-// anything translucent has to be.
+// whose fill is opaque writes depth where it covers whole pixels (`interior`
+// pass); a fading card's fill, which hides nothing, is drawn before the
+// content without writing any (`under`), so it is under its own content as
+// an opaque fill is; and every frame's edges and border are drawn after the
+// content (`edge`), as anything translucent over it has to be.
 
 import { LIFT_SHADOW } from '../constants'
+
+/** The frame program's passes (`framePass`), in the order they are drawn. */
+export const FRAME_PASS = { interior: 0, under: 1, edge: 2 } as const
 
 /** Texels of the card table a slot takes, and slots a row of it holds. */
 export const CARD_TEXELS = 5
@@ -106,7 +111,7 @@ void main() {
 export const FRAME_FS = `#version 300 es
 precision highp float;
 uniform vec4 cam;
-uniform float edgePass;
+uniform float framePass;
 in vec2 vLocal;
 flat in vec4 vBox;
 flat in vec4 vFill;
@@ -137,16 +142,26 @@ void main() {
   vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a) * vLook.y;
   // Fading, it hides nothing under it.
   bool opaque = vFill.a >= 1.0 && vLook.y >= 1.0;
-  if (edgePass < 0.5) {
+  if (framePass < ${FRAME_PASS.under - 0.5}) {
     // Whole pixels of an opaque fill: the depth that hides what is under.
     if (!opaque || outer < 1.0) discard;
     o = fill;
     return;
   }
+  if (framePass < ${FRAME_PASS.edge - 0.5}) {
+    // A fading card's fill, under its content as an opaque one's is.
+    // Drawn with its edges, after the content, it covered the card's own
+    // text more the nearer the card came to whole: a card fading in was
+    // blank until the frame it arrived.
+    if (opaque || inner <= 0.0) discard;
+    o = fill * inner;
+    return;
+  }
   if (opaque && outer >= 1.0 && inner >= 1.0) discard;
   vec4 band = border + fill * (1.0 - border.a);
-  vec4 res = opaque && outer >= 1.0 ? band * (1.0 - inner) + fill * inner
-                                    : band * (outer - inner) + fill * inner;
+  vec4 res = !opaque ? band * (outer - inner)
+           : outer >= 1.0 ? band * (1.0 - inner) + fill * inner
+                          : band * (outer - inner) + fill * inner;
   res += vec4(0.0, 0.0, 0.0, shadow(vLocal, half_, vBox.z, outer)) * (1.0 - res.a);
   if (res.a <= 0.0) discard;
   o = res;
