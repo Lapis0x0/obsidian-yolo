@@ -809,6 +809,22 @@ export class WhiteboardCanvas {
    * While it is, building is paced by whether frames are keeping up; at rest
    * it runs at full rate. */
   private interacting = false
+
+  /**
+   * Whether the board is moving: the camera or a gesture (`interacting`),
+   * or things on it on their way somewhere (./canvas/motions.ts's
+   * `playing`) — a group folding or opening, a PDF dealt out, an
+   * arrangement. What waits for a still board
+   * (PDF pages drawn, pictures made, card content built) is main-thread
+   * work in slices of up to 15ms, and landing in the frames a motion is
+   * shown in, it stuttered the slow end of every fold: measured 2026-11-15,
+   * a group opening ran into frames of 33–75ms just as its cards settled,
+   * the PDF it held opening and drawing its pages. A motion lasts a few
+   * hundred milliseconds; the work waits that long.
+   */
+  private get moving(): boolean {
+    return this.interacting || this.motions.playing
+  }
   /**
    * Every PDF page this board draws waits its turn here (./pdf/drawQueue.ts):
    * two at a time at rest. While the camera moves, each draw puts a slice of
@@ -819,7 +835,7 @@ export class WhiteboardCanvas {
    * let go.
    */
   private readonly pdfDraws = new PdfDrawQueue((urgent) =>
-    this.spreadFrame?.dragging ? 0 : !this.interacting ? 2 : urgent ? 1 : 0,
+    this.spreadFrame?.dragging ? 0 : !this.moving ? 2 : urgent ? 1 : 0,
   )
   /** Small pictures of what the board shows — every open spread's pages —
    * made while the board is still (./pictures/pictures.ts). */
@@ -2086,7 +2102,7 @@ export class WhiteboardCanvas {
      * the camera, a spread's frame or a card — and shown, in a window that
      * is — a window in the background makes one many times slower. */
     const pictureReady = () =>
-      !this.interacting &&
+      !this.moving &&
       !spreadFrame.dragging &&
       this.interaction.liveNodeRects === null &&
       doc.visibilityState === 'visible' &&
@@ -2179,7 +2195,7 @@ export class WhiteboardCanvas {
       resolution: () =>
         this.cameraController.view.scale *
         (this.context.getWindow().devicePixelRatio || 1),
-      idle: () => !this.interacting && !spreadFrame.dragging,
+      idle: () => !this.moving && !spreadFrame.dragging,
       onChange: (source, group, key) =>
         this.onPictureChange(source, group, key),
       onBusy: (busy) => pictureActivity.setBusy(busy),
@@ -5070,7 +5086,8 @@ export class WhiteboardCanvas {
     // until it does — what it brings on screen on the way it mostly takes
     // off again (measured 2026-11-08: four of seven cards shown again during
     // a zoom were parked again within 100ms) — and the cards built here
-    // cost a frame each (CONTENT_BUILDS_PER_MOVING_FRAME). The board's
+    // cost a frame each (CONTENT_BUILDS_PER_MOVING_FRAME). While things on
+    // the board are in motion, none do either (`moving`). The board's
     // drawing stands in for them until it stops.
     const sinceLastFrame =
       this.lastFrameAt === null ? 0 : now - this.lastFrameAt
@@ -5082,9 +5099,9 @@ export class WhiteboardCanvas {
       this.zoomChangedAt = now
     }
     const zooming = now - this.zoomChangedAt < INTERACTING_TIMEOUT_MS
-    this.contentBuildsLeft = !this.interacting
+    this.contentBuildsLeft = !this.moving
       ? Infinity
-      : onTime && !zooming
+      : !this.motions.playing && onTime && !zooming
         ? CONTENT_BUILDS_PER_MOVING_FRAME
         : 0
     this.drainQueues()

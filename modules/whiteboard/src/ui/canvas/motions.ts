@@ -301,6 +301,19 @@ export class Motions {
     return this.entries.size + this.departing.size
   }
 
+  /** Whether anything is on its way somewhere right now — not a node
+   * holding where its tween ended (`hold`), which is standing still. */
+  get playing(): boolean {
+    const now = this.now()
+    for (const { tween } of this.departing.values()) {
+      if (!arrived(tween, now)) return true
+    }
+    for (const { tween } of this.entries.values()) {
+      if (!arrived(tween, now)) return true
+    }
+    return false
+  }
+
   /** Shows `node`, which has just left the board, going from `from` to `to`
    * — and then gone. Not at all under reduced motion. */
   depart(node: BoardNode, from: Pose, to: Pose): void {
