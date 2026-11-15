@@ -4421,19 +4421,27 @@ export class WhiteboardCanvas {
   }
 
   /** The cards the GPU scene may be asked to draw: the board's own, and
-   * everything the collapsed groups hold — not only what their boxes show
-   * (`folded`): what a group put away keeps its typesetting, so it comes
-   * back out drawn, not set again card by card while it moves. */
+   * everything the collapsed groups hold (`heldCards`). */
   private drawableNodes(): readonly BoardNode[] {
-    const portals = this.sources.composition.portals
-    const held = this.board.nodes.flatMap((box) =>
-      isFolded(box) && !portalOf(box.id, portals)
-        ? box.stash.nodes.filter((node) => node.type !== 'group')
-        : [],
-    )
+    const held = this.board.nodes.flatMap((box) => this.heldCards(box))
     return held.length === 0
       ? this.ownCardNodes
       : [...this.ownCardNodes, ...held]
+  }
+
+  /**
+   * The cards collapsed group `box` holds, ready to be drawn as they are —
+   * not only what its box shows (`folded`): one click from being shown,
+   * they come out of the box drawn from the frame it opens on, rather than
+   * as stand-ins until what they show has been made again. So the GPU scene
+   * keeps their typesetting (`drawableNodes`) and the board their pictures
+   * (`wantedPictures`). None for anything else, or for a box behind a
+   * portal.
+   */
+  private heldCards(box: BoardNode): readonly BoardNode[] {
+    if (!isFolded(box)) return []
+    if (portalOf(box.id, this.sources.composition.portals)) return []
+    return box.stash.nodes.filter((node) => node.type !== 'group')
   }
 
   /** Whether `id` is on screen as an element of its own, rather than drawn
@@ -5398,8 +5406,9 @@ export class WhiteboardCanvas {
 
   /** Every page of every open spread, the pages a folded PDF card shows
    * from where it was left, every image card's file, and every text and
-   * note card, with how far each is from the middle of the viewport — what
-   * pictures are made for, nearest first. */
+   * note card — on the board, or held by a collapsed group on it
+   * (`heldCards`) — with how far each is from the middle of the viewport:
+   * what pictures are made for, nearest first. */
   private *wantedPictures(): Iterable<WantedPicture> {
     const view = this.worldViewportRect(0)
     const cx = (view.left + view.right) / 2
@@ -5413,56 +5422,10 @@ export class WhiteboardCanvas {
         node.x + node.w / 2 - cx,
         node.y + node.h / 2 - cy,
       )
-      if (isCardPictured(node)) {
-        // Not before the look it would be of is known, and never a card
-        // being written in: what it shows is not on the board yet.
-        if (look === null || boardPath === '') continue
-        if (this.editing.isEditing(node.id)) continue
-        if (this.cardGeneration.isGenerating(node.id)) continue
-        // One the GPU scene draws itself, at every zoom, needs none.
-        if (this.gpuBoard?.drawsItself(node.id)) continue
-        const signature = cardSignature(
-          fileNodeOf(node),
-          node.type === 'file' ? this.fileMtime(node.file) : null,
-        )
-        if (signature === null) continue
-        yield {
-          ...this.pictureKeyOf(node.id),
-          width: node.w,
-          distance,
-          stamp: cardStamp(signature, look, this.remoteImages.revision),
-        }
-        continue
-      }
-      if (node.type === 'pdf-page') {
-        const ref = pdfPageRef(node.file, node.page)
-        yield { ...ref, width: node.w, distance, stamp: '' }
-        continue
-      }
-      if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
-        yield { ...imageRef(node.file), width: node.w, distance, stamp: '' }
-        continue
-      }
-      if (node.type === 'file' && isPageNode(node)) {
-        const stamp = boardPath === '' ? null : this.pageStampOf(node)
-        if (stamp === null) continue
-        yield {
-          ...this.pictureKeyOf(node.id),
-          source: 'page',
-          width: node.w,
-          distance,
-          stamp,
-        }
-        continue
-      }
-      if (!isPdfNode(node) || isSpreadTitle(node)) continue
-      // As many as the card holds at the widest page shape a document is
-      // likely to have, and the one cut off at the bottom.
-      const first = Math.floor(node.startPage ?? 1)
-      const shown = Math.ceil(node.h / (node.w * FOLDED_PAGE_MIN_ASPECT)) + 1
-      for (let page = first; page < first + shown; page += 1) {
-        const ref = pdfPageRef(node.file, page)
-        yield { ...ref, width: node.w, distance, stamp: '' }
+      yield* this.wantedPicturesOf(node, distance, boardPath, look)
+      // What a box holds is as far away as the box.
+      for (const held of this.heldCards(node)) {
+        yield* this.wantedPicturesOf(held, distance, boardPath, look)
       }
     }
     // The images in the cards the GPU scene draws: textures there, made
@@ -5481,6 +5444,67 @@ export class WhiteboardCanvas {
           stamp: '',
         }
       }
+    }
+  }
+
+  /** The pictures card `node` is shown with, `distance` from the middle of
+   * the viewport (`wantedPictures`). */
+  private *wantedPicturesOf(
+    node: BoardNode,
+    distance: number,
+    boardPath: string,
+    look: string | null,
+  ): Iterable<WantedPicture> {
+    if (isCardPictured(node)) {
+      // Not before the look it would be of is known, and never a card
+      // being written in: what it shows is not on the board yet.
+      if (look === null || boardPath === '') return
+      if (this.editing.isEditing(node.id)) return
+      if (this.cardGeneration.isGenerating(node.id)) return
+      // One the GPU scene draws itself, at every zoom, needs none.
+      if (this.gpuBoard?.drawsItself(node.id)) return
+      const signature = cardSignature(
+        fileNodeOf(node),
+        node.type === 'file' ? this.fileMtime(node.file) : null,
+      )
+      if (signature === null) return
+      yield {
+        ...this.pictureKeyOf(node.id),
+        width: node.w,
+        distance,
+        stamp: cardStamp(signature, look, this.remoteImages.revision),
+      }
+      return
+    }
+    if (node.type === 'pdf-page') {
+      const ref = pdfPageRef(node.file, node.page)
+      yield { ...ref, width: node.w, distance, stamp: '' }
+      return
+    }
+    if (node.type === 'file' && fileNodeKind(node.file) === 'image') {
+      yield { ...imageRef(node.file), width: node.w, distance, stamp: '' }
+      return
+    }
+    if (node.type === 'file' && isPageNode(node)) {
+      const stamp = boardPath === '' ? null : this.pageStampOf(node)
+      if (stamp === null) return
+      yield {
+        ...this.pictureKeyOf(node.id),
+        source: 'page',
+        width: node.w,
+        distance,
+        stamp,
+      }
+      return
+    }
+    if (!isPdfNode(node) || isSpreadTitle(node)) return
+    // As many as the card holds at the widest page shape a document is
+    // likely to have, and the one cut off at the bottom.
+    const first = Math.floor(node.startPage ?? 1)
+    const shown = Math.ceil(node.h / (node.w * FOLDED_PAGE_MIN_ASPECT)) + 1
+    for (let page = first; page < first + shown; page += 1) {
+      const ref = pdfPageRef(node.file, page)
+      yield { ...ref, width: node.w, distance, stamp: '' }
     }
   }
 
