@@ -317,6 +317,7 @@ out vec2 vShown;
 flat out vec4 vClip;
 flat out float vTop;
 flat out float vAlpha;
+flat out vec3 vFrame;
 void main() {
   vec4 box = cardTexel(slot, 0);
   vec4 depth = cardTexel(slot, 1);
@@ -325,6 +326,7 @@ void main() {
   vec4 turn = cardTexel(slot, 4);
   vec2 local = rect.xy + corner * rect.zw;
   vUV = corner;
+  vFrame = vec3(box.zw, depth.w);
   vCard = local;
   // Where it shows in the card: moved up by the card's scroll.
   vShown = local - vec2(0.0, view.x);
@@ -345,14 +347,24 @@ in vec2 vShown;
 flat in vec4 vClip;
 flat in float vTop;
 flat in float vAlpha;
+flat in vec3 vFrame;
 out vec4 o;
 ${CLIP}
-void main() {
-  // Its rounded corners, antialiased over a device pixel.
-  vec2 half_ = rect.zw * 0.5;
-  vec2 q = abs(vCard - rect.xy - half_) - half_ + radius;
+// Inside a rounded box of \`size\` from the origin, antialiased over a
+// device pixel.
+float inRounded(vec2 p, vec2 size, float radius) {
+  if (radius <= 0.0) return 1.0;
+  vec2 half_ = size * 0.5;
+  vec2 q = abs(p - half_) - half_ + radius;
   float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
-  float corner = radius > 0.0 ? clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0) : 1.0;
+  return clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0);
+}
+void main() {
+  // Its own rounded corners — and its card's, which cut it as the DOM's
+  // card cuts what it holds (cards/card.css): a PDF card's page, edge to
+  // edge, showed its square corners past the card's round ones.
+  float corner = inRounded(vCard - rect.xy, rect.zw, radius)
+    * inRounded(vShown, vFrame.xy, vFrame.z);
   o = texture(picture, vUV) * clipped(vShown, vClip, vTop) * corner * vAlpha;
   if (o.a <= 0.0) discard;
 }`

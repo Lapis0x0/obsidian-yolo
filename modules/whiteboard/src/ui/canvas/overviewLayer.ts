@@ -54,6 +54,7 @@ import {
   computeWorldViewportRect,
 } from '../../domain/virtualization'
 import {
+  CARD_RADIUS,
   EDGE_ARROW_WORLD_PX,
   EDGE_LABEL_FONT_PX,
   EDGE_LABEL_MAX_WIDTH_EM,
@@ -860,10 +861,22 @@ export class OverviewLayer {
         ctx.shadowBlur = LIFT_SHADOW.blur * unit
         ctx.shadowOffsetY = LIFT_SHADOW.offsetY * unit
       }
-      ctx.fillRect(x, y, w, h)
+      // Its corners as rounded as they are where it comes to rest — the
+      // DOM's card and the GPU scene's (cards/card.css) — but a sheet's,
+      // which are square (cards/spread.css): drawn square, a card set off
+      // from or arriving at its place showed a square frame round it.
+      const radius =
+        node.type === 'pdf-page'
+          ? 0
+          : Math.min(CARD_RADIUS * view.scale * (pose.w / node.w), w / 2, h / 2)
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, h, radius)
+      ctx.fill()
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
       ctx.shadowOffsetY = 0
+      ctx.save()
+      ctx.clip()
       const picture = this.pictureOf(node, { w }, palette.dark)
       const own = this.colorOf(node, palette)
       if (!picture || own !== null) {
@@ -884,6 +897,7 @@ export class OverviewLayer {
         view.scale,
         picture,
       )
+      ctx.restore()
       const selected = this.callbacks.isSelected(node.id)
       const ofSelected =
         !selected &&
@@ -892,8 +906,15 @@ export class OverviewLayer {
       ctx.globalAlpha = ofSelected ? alpha * 0.45 : alpha
       ctx.lineWidth = selected ? 2 : 1
       ctx.strokeStyle = selected || ofSelected ? palette.accent : palette.border
+      const inset = ctx.lineWidth / 2
       ctx.beginPath()
-      this.strokeRectPath(ctx, { x, y, w, h })
+      ctx.roundRect(
+        x + inset,
+        y + inset,
+        Math.max(0, w - ctx.lineWidth),
+        Math.max(0, h - ctx.lineWidth),
+        Math.max(0, radius - inset),
+      )
       ctx.stroke()
       ctx.globalAlpha = alpha
       ctx.lineWidth = 1

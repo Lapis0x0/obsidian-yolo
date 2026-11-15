@@ -30,6 +30,7 @@ import { type TypesetTokens, contentClip } from '../../typeset/tokens'
 import { clippedCardMarkdown, readingOffset } from '../canvas/cardContent'
 import type { CardLook, ContentLayer } from '../canvas/overviewLayer'
 import {
+  CARD_RADIUS,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_THEMED_CARD_WASH_ALPHA,
   WHEEL_PAN_GLIDE_TAU_MS,
@@ -75,9 +76,8 @@ const SETTLE_MS = 120
 /** The smallest a card's body type is drawn, in device pixels: below it
  * each run is drawn as a bar (./instances.ts's `greekBar`), for far less. */
 const MIN_BODY_DEVICE_PX = 5
-/** A card's corners (styles/cards/card.css), and its border and a
- * selected one's, at least that many CSS pixels wide however far away. */
-const CARD_RADIUS = 10
+/** A card's border and a selected one's (styles/cards/card.css), at least
+ * that many CSS pixels wide however far away. */
 const CARD_BORDER = 1
 const SELECTED_BORDER = 2
 

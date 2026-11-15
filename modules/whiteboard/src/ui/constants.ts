@@ -303,6 +303,10 @@ export const TITLE_BLOCK_WORLD_FONT_PX = 32
 export const TITLE_BLOCK_LINE_HEIGHT = 1.25
 export const TITLE_BLOCK_WORLD_PADDING = { x: 12, y: 8 } as const
 
+/** A card's corners, world units: styles/cards/card.css's radius — what
+ * the GPU scene and the overview canvas draw a card with too. */
+export const CARD_RADIUS = 10
+
 /** Alpha of the colour wash over an overview card with no picture yet —
  * style.css's `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
