@@ -37,8 +37,40 @@ const TEXT_LAYER_END_CLASS = 'yolo-pdf-text-layer__end'
  * lets one cached document serve readers in any window — a popout's canvas
  * drawn into directly would find none of the fonts and show blank glyphs — and
  * lets a reader whose view moves to another window keep drawing correctly.
+ *
+ * A hidden frame's own document, not the app's. pdf.js adds a PDF's fonts as
+ * it first draws it and takes them away when the PDF is closed, and a
+ * document whose set of fonts changes lays out everything in it again: in
+ * the app's, that was the whole window, sidebars and all, every time a PDF
+ * was opened or closed (measured 2026-11-15: 9–16ms, on the frame a
+ * whiteboard group holding PDFs landed collapsed). The frame lays out
+ * nothing, and a canvas in it draws with its fonts though it is not shown.
+ * Made on first use and kept, in the main window, which outlives every
+ * other.
  */
-export const RENDER_DOCUMENT: Document = globalThis.document
+let renderFrame: HTMLIFrameElement | null = null
+
+export function renderDocument(): Document {
+  const current = renderFrame?.isConnected ? renderFrame.contentDocument : null
+  if (current) return current
+  const host = globalThis.document
+  renderFrame = host.createElement('iframe')
+  renderFrame.hidden = true
+  renderFrame.setAttribute('aria-hidden', 'true')
+  renderFrame.tabIndex = -1
+  host.body.append(renderFrame)
+  // An iframe with no source keeps the empty document it is made with: no
+  // navigation comes along later to replace it, and the fonts with it.
+  const doc = renderFrame.contentDocument
+  if (!doc) throw new Error('PDF engine has no document to draw in')
+  return doc
+}
+
+/** Takes the frame away, once nothing will draw in it again. */
+export function releaseRenderDocument(): void {
+  renderFrame?.remove()
+  renderFrame = null
+}
 
 /** The task currently drawing into a canvas / building into a container. */
 const activeRenders = new WeakMap<HTMLCanvasElement, { cancel(): void }>()
@@ -115,9 +147,9 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
       )
       // Drawn off to the side so the caller's canvas keeps its old picture
       // until the new one is complete (and forever, if this is cancelled), and
-      // in the document the fonts live in (RENDER_DOCUMENT), whichever window
+      // in the document the fonts live in (`renderDocument`), whichever window
       // the caller's canvas is in.
-      const scratch = RENDER_DOCUMENT.createElement('canvas')
+      const scratch = renderDocument().createElement('canvas')
       scratch.width = Math.max(1, Math.floor(viewport.width * ratio))
       scratch.height = Math.max(1, Math.floor(viewport.height * ratio))
       const renderTask = proxy.render({
@@ -165,7 +197,7 @@ function createPage(proxy: PDFPageProxy): PdfEnginePage {
         throw new RangeError('PDF region is empty at this scale')
       }
       const ratio = capPixelRatio(width, height, 1, MAX_CANVAS_PIXELS)
-      const canvas = RENDER_DOCUMENT.createElement('canvas')
+      const canvas = renderDocument().createElement('canvas')
       try {
         canvas.width = Math.max(1, Math.round(width * ratio))
         canvas.height = Math.max(1, Math.round(height * ratio))

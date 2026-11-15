@@ -14,7 +14,11 @@ import type {
 } from '../../../src/core/runtime-components/contracts'
 
 import { addAnnotationsToPdf } from './annotations'
-import { RENDER_DOCUMENT, createPdfDocument } from './document'
+import {
+  createPdfDocument,
+  releaseRenderDocument,
+  renderDocument,
+} from './document'
 
 type PdfTextItem = {
   str: string
@@ -124,7 +128,7 @@ function openDocument(bytes: Uint8Array) {
     data: bytes.slice(),
     // Said explicitly because drawing depends on it: fonts are registered
     // here, and pages are drawn on canvases of this document.
-    ownerDocument: RENDER_DOCUMENT,
+    ownerDocument: renderDocument(),
     useWorkerFetch: false,
     StandardFontDataFactory: InlineStandardFontDataFactory,
     WasmFactory: InlineWasmFactory,
@@ -267,7 +271,7 @@ globalThis.__yolo_register_runtime_component__({
             const page = await document.getPage(pageNumber)
             try {
               const viewport = page.getViewport({ scale: RENDER_SCALE })
-              const canvas = RENDER_DOCUMENT.createElement('canvas')
+              const canvas = renderDocument().createElement('canvas')
               try {
                 canvas.width = viewport.width
                 canvas.height = viewport.height
@@ -362,7 +366,10 @@ globalThis.__yolo_register_runtime_component__({
       dispose(): void {
         if (disposed) return
         disposed = true
-        for (const document of openDocuments) void document.destroy()
+        // Destroyed first: closing them takes their fonts out of the frame.
+        void Promise.allSettled(
+          [...openDocuments].map((document) => document.destroy()),
+        ).then(releaseRenderDocument)
         URL.revokeObjectURL(workerUrl)
       },
     })
