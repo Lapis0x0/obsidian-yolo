@@ -1,3 +1,4 @@
+import type { SubagentTaskStatus } from '../../../core/agent/subagent/types'
 import type { LiveTaskViewSnapshot } from '../../../hooks/useLiveTaskStream'
 import type {
   ChatSubagentResultMessage,
@@ -54,13 +55,22 @@ export function resolveSubagentEffectiveStatus({
   subagentResult,
   stream,
   response,
+  taskStatus,
 }: {
   subagentResult?: ChatSubagentResultMessage
   stream: LiveTaskViewSnapshot | null
   response: ToolCallResponse
+  taskStatus?: SubagentTaskStatus
 }): ToolCallResponseStatus {
   if (subagentResult) {
     return mapSubagentResultStatus(subagentResult.status)
+  }
+  // The task registry is the source of truth for whether the child is still
+  // running. The live stream snapshot can be missing (card remounted before
+  // the first status push, or snapshot recycled), and the cancel entry must
+  // not disappear for a still-running task (#647).
+  if (taskStatus === 'running') {
+    return ToolCallResponseStatus.Running
   }
   if (stream?.source === 'live') {
     if (stream.status === 'starting' || stream.status === 'running') {

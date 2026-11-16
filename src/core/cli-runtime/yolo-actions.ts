@@ -90,12 +90,16 @@ export const createYoloChatRuntimeActions = (
         subagentTaskRegistry.abort(taskId)
       }
     }
-    return toActionResult(
-      agentService.abortToolCall({
-        conversationId,
-        toolCallId: action.toolCallId,
-      }),
-    )
+    const handledByService = agentService.abortToolCall({
+      conversationId,
+      toolCallId: action.toolCallId,
+    })
+    // A resolved subagent task means the cancel reached the child even when
+    // the parent run is already gone (error/aborted conversation has no
+    // active run to abort the tool call against). Reporting `stale` there
+    // would make the card rewrite the accepted dispatch locally while the
+    // child is still winding down (#647).
+    return toActionResult(handledByService || Boolean(taskId))
   },
 
   async answerQuestion(action): Promise<ChatRuntimeQuestionActionResult> {

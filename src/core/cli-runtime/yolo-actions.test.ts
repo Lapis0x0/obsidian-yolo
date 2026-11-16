@@ -116,6 +116,31 @@ describe('createYoloChatRuntimeActions', () => {
     })
   })
 
+  it('reports handled when the subagent was cancelled but no active run owns the tool call', async () => {
+    const service = createService()
+    const abortSubagentTask = jest.fn()
+    const listSubagentTasks = jest.fn(() => [
+      {
+        taskId: 'task-1',
+        source: {
+          type: 'llm_tool_call' as const,
+          assistantMessageId: 'assistant-1',
+          toolCallId: 'delegate-1',
+        },
+      },
+    ])
+    const actions = createYoloChatRuntimeActions(service, {
+      abortSubagentTask,
+      listSubagentTasks,
+    })
+    service.abortToolCall.mockReturnValue(false)
+
+    await expect(
+      actions.abortTool({ conversation, toolCallId: 'delegate-1' }),
+    ).resolves.toEqual({ kind: 'handled' })
+    expect(abortSubagentTask).toHaveBeenCalledWith('task-1')
+  })
+
   it('preserves answer recovery messages and maps terminal answer outcomes', async () => {
     const service = createService()
     const actions = createYoloChatRuntimeActions(service)

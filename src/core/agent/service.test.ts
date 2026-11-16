@@ -1580,6 +1580,44 @@ describe('AgentSessionService main activity summary', () => {
     expect(abort).toHaveBeenCalledTimes(1)
     unregister()
   })
+
+  it('cascades abort to running subagent tasks of the same conversation only', () => {
+    const service = new AgentSessionService()
+    const makeRunningRecord = (
+      taskId: string,
+      conversationId: string,
+    ): SubagentTaskRecord => ({
+      taskId,
+      conversationId,
+      source: {
+        type: 'llm_tool_call',
+        toolCallId: `${taskId}-call`,
+        assistantMessageId: 'assistant-1',
+      },
+      title: `task ${taskId}`,
+      status: 'running',
+      createdAt: 1,
+      prompt: 'do work',
+      abortController: new AbortController(),
+    })
+    const ownTask = makeRunningRecord('sub_cascade_own', 'conv-cascade')
+    const otherTask = makeRunningRecord(
+      'sub_cascade_other',
+      'conv-cascade-other',
+    )
+    subagentTaskRegistry.register(ownTask)
+    subagentTaskRegistry.register(otherTask)
+
+    try {
+      service.abortConversation('conv-cascade')
+
+      expect(ownTask.abortController.signal.aborted).toBe(true)
+      expect(otherTask.abortController.signal.aborted).toBe(false)
+    } finally {
+      subagentTaskRegistry.update('sub_cascade_own', { status: 'aborted' })
+      subagentTaskRegistry.update('sub_cascade_other', { status: 'aborted' })
+    }
+  })
 })
 
 describe('AgentSessionService background subagent results', () => {
