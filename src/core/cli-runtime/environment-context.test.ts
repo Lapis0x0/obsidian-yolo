@@ -6,7 +6,10 @@ import {
   renderInjectedContext,
 } from '../../utils/chat/contextual-injections'
 
-import { buildCliEnvironmentContext } from './environment-context'
+import {
+  buildCliEnvironmentContext,
+  renderCliProjectContext,
+} from './environment-context'
 
 jest.mock('../../utils/chat/contextual-injections', () => ({
   renderBrowserContextInjection: jest.fn(),
@@ -112,5 +115,52 @@ describe('buildCliEnvironmentContext', () => {
     ).resolves.toEqual([
       { type: 'text', text: '# Current Context\nFile: Notes/diagram.png' },
     ])
+  })
+})
+
+describe('renderCliProjectContext', () => {
+  const project = {
+    id: 'p1',
+    name: 'Thesis',
+    workspaceScope: {
+      enabled: true,
+      include: ['School'],
+      exclude: ['School/old'],
+    },
+    createdAt: 0,
+    updatedAt: 0,
+  }
+  const appWithFiles = (paths: string[]) =>
+    ({
+      vault: {
+        getFileByPath: (path: string) => (paths.includes(path) ? {} : null),
+        getFolderByPath: (path: string) =>
+          path === 'School' || path === '' ? { path, children: [] } : null,
+        getRoot: () => ({ path: '/', children: [] }),
+        getAbstractFileByPath: () => null,
+      },
+    }) as unknown as App
+
+  it('names the project and its focus folders as guidance', () => {
+    const text = renderCliProjectContext({
+      app: appWithFiles([]),
+      project,
+      settings: { projects: [project] },
+    })
+    expect(text).toContain('YOLO project "Thesis"')
+    expect(text).toContain('- Focus folders: School.')
+    expect(text).toContain('- Leave alone: School/old.')
+    expect(text).not.toContain('Project memory')
+  })
+
+  it('points at the project memory index once it exists', () => {
+    const text = renderCliProjectContext({
+      app: appWithFiles(['YOLO/memory/projects/Thesis/MEMORY.md']),
+      project,
+      settings: { projects: [project] },
+    })
+    expect(text).toContain(
+      '- Project memory index: YOLO/memory/projects/Thesis/MEMORY.md.',
+    )
   })
 })

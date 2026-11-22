@@ -37,6 +37,7 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type { CurrentFileViewState, Mentionable } from '../../types/mentionable'
+import type { ChatProject } from '../../types/project.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
@@ -121,6 +122,8 @@ export type UseCliRuntimeOrchestrationParams = {
   // 当前文件上下文：CLI 消息改写时构建环境上下文使用
   activeFile: TFile | null
   activeViewState: CurrentFileViewState | undefined
+  /** 当前对话所属的项目，告知 CLI；由项目 hook 在之后求出，故经 getter 读 */
+  getConversationProject: () => ChatProject | null
 }
 
 /**
@@ -159,6 +162,7 @@ export function useCliRuntimeOrchestration({
   inputDraftRevisionRef,
   activeFile,
   activeViewState,
+  getConversationProject,
 }: UseCliRuntimeOrchestrationParams) {
   const cliPreferenceSettingsRef = useRef(settings)
   useEffect(() => {
@@ -1196,6 +1200,8 @@ export function useCliRuntimeOrchestration({
               runtimeId: activeRuntimeId,
               currentFile: activeFile,
               currentFileViewState: activeViewState,
+              project: getConversationProject(),
+              settings,
             })
             rewriteResult = await rewriteCliConversationTurn({
               settings,
@@ -1255,6 +1261,7 @@ export function useCliRuntimeOrchestration({
       activeRuntimeId,
       activeFile,
       activeViewState,
+      getConversationProject,
       app,
       cliConversationController,
       cliConversationId,

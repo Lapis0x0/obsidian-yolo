@@ -516,6 +516,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 当前对话所属的项目。由 useConversationProject 在下方求出后写入；请求上下文
   // 在发请求时经 getter 读取，对话进出项目不必重建 builder。
   const conversationProjectRef = useRef<ChatProject | null>(null)
+  const getConversationProject = useCallback(
+    () => conversationProjectRef.current,
+    [],
+  )
   const requestContextBuilder = useMemo(() => {
     return new RequestContextBuilder(app, effectiveSettings, {
       getProject: () => conversationProjectRef.current,
@@ -1026,6 +1030,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     inputDraftRevisionRef,
     activeFile,
     activeViewState,
+    getConversationProject,
   })
 
   // handleRuntimeChange（useChatRuntimePreferences）依赖 CLI 编排 hook 就绪
@@ -1071,6 +1076,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               runtimeId: activeRuntimeId,
               currentFile: activeFile,
               currentFileViewState: activeViewState,
+              project: conversationProjectRef.current,
+              settings,
             }),
           createOrTouchCliConversation,
           generateConversationTitle,
