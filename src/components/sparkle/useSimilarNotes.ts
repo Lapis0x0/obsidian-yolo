@@ -1,14 +1,14 @@
 import { TFile } from 'obsidian'
 import { type RefObject, useEffect, useRef, useState } from 'react'
 
-import { usePlugin } from '../../../contexts/plugin-context'
-import { useSettings } from '../../../contexts/settings-context'
+import { usePlugin } from '../../contexts/plugin-context'
+import { useSettings } from '../../contexts/settings-context'
 import {
   type SimilarNote,
   findSimilarNotes,
   isEmbeddingModelConfigured,
-} from '../../../core/rag/similarNotes'
-import { getNodeWindow } from '../../../utils/dom/window-context'
+} from '../../core/rag/similarNotes'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 export type SimilarNotesState =
   | { status: 'no-file' }

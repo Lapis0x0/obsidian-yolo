@@ -252,13 +252,7 @@ type GroupedActions = {
   actions: QuickAction[]
 }
 
-type ContinuationQuickActionsSettingsProps = {
-  variant?: 'settings' | 'composer'
-}
-
-export function ContinuationQuickActionsSettings({
-  variant = 'settings',
-}: ContinuationQuickActionsSettingsProps) {
+export function ContinuationQuickActionsSettings() {
   const plugin = usePlugin()
   const { settings } = useSettings()
   const { t } = useLanguage()
@@ -277,23 +271,6 @@ export function ContinuationQuickActionsSettings({
       ContinuationQuickActionsSettingsContent,
     )
     modal.open()
-  }
-
-  if (variant === 'composer') {
-    return (
-      <div className="yolo-continuation-settings">
-        <div className="yolo-continuation-settings-row">
-          <div className="yolo-settings-desc">{actionsCountLabel}</div>
-          <ObsidianButton
-            text={t(
-              'settings.continuationQuickActions.configureActions',
-              '配置快捷选项',
-            )}
-            onClick={handleOpenModal}
-          />
-        </div>
-      </div>
-    )
   }
 
   return (

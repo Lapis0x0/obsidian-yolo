@@ -123,13 +123,7 @@ const withFixedActionsBackfilled = (
   return { list: [...missing, ...deduped], backfilled: true }
 }
 
-type SelectionChatActionsSettingsProps = {
-  variant?: 'settings' | 'composer'
-}
-
-export function SelectionChatActionsSettings({
-  variant = 'settings',
-}: SelectionChatActionsSettingsProps) {
+export function SelectionChatActionsSettings() {
   const plugin = usePlugin()
   const { settings } = useSettings()
   const { t } = useLanguage()
@@ -155,20 +149,6 @@ export function SelectionChatActionsSettings({
       SelectionChatActionsSettingsContent,
     )
     modal.open()
-  }
-
-  if (variant === 'composer') {
-    return (
-      <div className="yolo-continuation-settings">
-        <div className="yolo-continuation-settings-row">
-          <div className="yolo-settings-desc">{actionsCountLabel}</div>
-          <ObsidianButton
-            text={t('settings.selectionChat.configureActions', '配置快捷指令')}
-            onClick={handleOpenModal}
-          />
-        </div>
-      </div>
-    )
   }
 
   return (

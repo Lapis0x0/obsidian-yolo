@@ -16,6 +16,7 @@ export type TranslationKeys = {
     openNewChatTab: string
     openNewChatSplit: string
     openNewChatWindow: string
+    openSparkle: string
     openChatHistory?: string
     exportCurrentConversationToVault?: string
     addSelectionToChat: string

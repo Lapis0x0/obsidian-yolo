@@ -9,6 +9,7 @@ export const en: TranslationKeys = {
     openNewChatTab: 'Open new chat (new tab)',
     openNewChatSplit: 'Open new chat (right split)',
     openNewChatWindow: 'Open new chat (new window)',
+    openSparkle: 'Open Sparkle',
     openChatHistory: 'Open chat history',
     exportCurrentConversationToVault: 'Export current conversation to vault',
     addSelectionToChat: 'Add selection to chat',

@@ -9,6 +9,7 @@ export const it: DeepPartial<TranslationKeys> = {
     openNewChatTab: 'Apri nuova chat (nuova scheda)',
     openNewChatSplit: 'Apri nuova chat (divisione destra)',
     openNewChatWindow: 'Apri nuova chat (nuova finestra)',
+    openSparkle: 'Apri Sparkle',
     openChatHistory: 'Apri cronologia chat',
     exportCurrentConversationToVault:
       'Esporta la conversazione attuale nel vault',

@@ -24,7 +24,7 @@ import {
 import { MarkdownInsertionTargetTracker } from './components/chat-view/markdownInsertionTarget'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
-import { CHAT_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE, SPARKLE_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { AgentRunApi, YoloAgentApi } from './core/agent/agent-api'
 import type {
@@ -286,6 +286,7 @@ import {
   parseYoloSettings,
 } from './settings/schema/settings'
 import { YoloSettingTab } from './settings/SettingTab'
+import { SparkleView } from './SparkleView'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type {
@@ -2431,6 +2432,7 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
+    this.registerView(SPARKLE_VIEW_TYPE, (leaf) => new SparkleView(leaf, this))
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -2463,6 +2465,10 @@ export default class YoloPlugin extends Plugin {
       this.showRibbonPlacementMenu(event)
     })
 
+    this.addRibbonIcon('sparkles', this.t('commands.openSparkle'), () => {
+      void this.openSparkleView()
+    })
+
     this.setupBackgroundActivityStatusBar()
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
@@ -2489,6 +2495,14 @@ export default class YoloPlugin extends Plugin {
       name: this.t('commands.openChatSidebar'),
       callback: () => {
         void this.openChatView({ placement: 'sidebar' })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-sparkle',
+      name: this.t('commands.openSparkle'),
+      callback: () => {
+        void this.openSparkleView()
       },
     })
 
@@ -4459,6 +4473,23 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
    */
   async addImageToActiveChat(image: MentionableImage): Promise<void> {
     await this.getChatViewNavigator().addImageToChat(image)
+  }
+
+  /**
+   * Reveals the Sparkle pane, creating it in the right sidebar the first time.
+   * One instance is enough: it always follows the active note.
+   */
+  async openSparkleView(): Promise<void> {
+    const { workspace } = this.app
+    const existing = workspace.getLeavesOfType(SPARKLE_VIEW_TYPE)[0]
+    if (existing) {
+      await workspace.revealLeaf(existing)
+      return
+    }
+    const leaf = workspace.getRightLeaf(false)
+    if (!leaf) return
+    await leaf.setViewState({ type: SPARKLE_VIEW_TYPE, active: true })
+    await workspace.revealLeaf(leaf)
   }
 
   async getDbManager(): Promise<DatabaseManager> {

@@ -4,16 +4,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
 } from '../../../settings/schema/setting.types'
+import { modelSupportsReasoning } from '../../../types/reasoning'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { REASONING_OPTIONS } from '../../common/ReasoningSegmented'
 import { ContinuationQuickActionsSettings } from '../ContinuationQuickActionsSettings'
 import { SelectionChatActionsSettings } from '../SelectionChatActionsSettings'
 
@@ -72,6 +75,14 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
         ...DEFAULT_TAB_COMPLETION_OPTIONS,
         ...(settings.continuationOptions.tabCompletionOptions ?? {}),
       }
+  const tabCompletionModelId =
+    settings.continuationOptions.tabCompletionModelId ??
+    settings.continuationOptions.continuationModelId ??
+    enabledChatModels[0]?.id ??
+    ''
+  const tabCompletionChatModel =
+    enabledChatModels.find((model) => model.id === tabCompletionModelId) ??
+    null
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
   const [tabNumberInputs, setTabNumberInputs] = useState({
@@ -431,12 +442,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                   className="yolo-settings-card"
                 >
                   <ObsidianDropdown
-                    value={
-                      settings.continuationOptions.tabCompletionModelId ??
-                      settings.continuationOptions.continuationModelId ??
-                      enabledChatModels[0]?.id ??
-                      ''
-                    }
+                    value={tabCompletionModelId}
                     options={Object.fromEntries(
                       enabledChatModels.map((chatModel) => {
                         const label = chatModel.name?.trim()
@@ -451,6 +457,68 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                           tabCompletionModelId: value,
                         },
                         'tabCompletionModelId',
+                      )
+                    }}
+                  />
+                </ObsidianSetting>
+
+                {tabCompletionChatModel &&
+                modelSupportsReasoning(tabCompletionChatModel) ? (
+                  <ObsidianSetting
+                    name={t('reasoning.effort')}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianDropdown
+                      value={tabCompletionOptions.reasoningLevel}
+                      options={Object.fromEntries(
+                        REASONING_OPTIONS.map((option) => [
+                          option.value,
+                          t(option.labelKey, option.labelFallback),
+                        ]),
+                      )}
+                      onChange={(value) => {
+                        const level = REASONING_OPTIONS.find(
+                          (option) => option.value === value,
+                        )?.value
+                        if (!level) return
+                        updateTabCompletionOptions({ reasoningLevel: level })
+                      }}
+                    />
+                  </ObsidianSetting>
+                ) : null}
+
+                <ObsidianSetting
+                  name={t('settings.continuation.tabCompletionLengthPreset')}
+                  desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
+                  className="yolo-settings-card"
+                >
+                  <ObsidianDropdown
+                    value={
+                      settings.continuationOptions.tabCompletionLengthPreset ??
+                      DEFAULT_TAB_COMPLETION_LENGTH_PRESET
+                    }
+                    options={{
+                      short: t(
+                        'settings.continuation.tabCompletionLengthPresetShort',
+                      ),
+                      medium: t(
+                        'settings.continuation.tabCompletionLengthPresetMedium',
+                      ),
+                      long: t(
+                        'settings.continuation.tabCompletionLengthPresetLong',
+                      ),
+                    }}
+                    onChange={(value) => {
+                      if (
+                        value !== 'short' &&
+                        value !== 'medium' &&
+                        value !== 'long'
+                      ) {
+                        return
+                      }
+                      updateContinuationOptions(
+                        { tabCompletionLengthPreset: value },
+                        'tabCompletionLengthPreset',
                       )
                     }}
                   />

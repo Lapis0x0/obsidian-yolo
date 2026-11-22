@@ -1917,20 +1917,6 @@ body.is-tablet button.yolo-view-toggle-button {
   gap: 0;
 }
 
-/* The expanded slot. Basis derives from `--yolo-live-expanded-width`,
-   which is the SAME expression the indicator uses for its width — so
-   button and indicator always agree on what "expanded slot width" means.
-   `flex: 0 1 X` means: no grow (basis already encodes the full slot),
-   shrink: 1 (safety against any rounding overflow), basis: X. Scoped to
-   the dual-button form; the `--single` roller is sized below. */
-.yolo-view-toggle:not(.yolo-view-toggle--single)
-  .yolo-view-toggle-button--expanded {
-  flex: 0 1 var(--yolo-live-expanded-width);
-  min-width: var(--yolo-collapsed-width);
-  justify-content: center;
-  gap: 6px;
-}
-
 /* Unblock flex-shrink along the nested-flex chain inside the chat
    RollerSelect. Without this, each nested flex container defaults to
    `min-width: auto` (= its content's min-content), which means the
@@ -2021,46 +2007,6 @@ body.is-tablet button.yolo-view-toggle-button {
     left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1;
-}
-
-/* a-v=chat (default — covers a-exp=false / hovering composer):
-   sit on the chat slot at the left, collapsed width. */
-.yolo-view-toggle-indicator[data-active-view='chat'] {
-  left: var(--yolo-padding);
-  width: var(--yolo-collapsed-width);
-}
-
-/* a-v=composer (default — covers a-exp=true with no chat-hover):
-   sit on the composer slot, offset by one collapsed slot, collapsed width.
-   The "active + expanded" override below grows the width. */
-.yolo-view-toggle-indicator[data-active-view='composer'] {
-  left: calc(var(--yolo-padding) + var(--yolo-collapsed-width));
-  width: var(--yolo-collapsed-width);
-}
-
-/* a-v=chat, e-v=chat, a-exp=true: chat is active and expanded — indicator
-   takes the full expanded slot at the left. */
-.yolo-view-toggle[data-expanded-view='chat'][data-active-expanded='true']
-  .yolo-view-toggle-indicator[data-active-view='chat'] {
-  left: var(--yolo-padding);
-  width: var(--yolo-live-expanded-width);
-}
-
-/* a-v=composer, e-v=composer, a-exp=true: composer is active and expanded
-   — indicator sits at offset = chat-collapsed-slot, spans expanded width. */
-.yolo-view-toggle[data-expanded-view='composer'][data-active-expanded='true']
-  .yolo-view-toggle-indicator[data-active-view='composer'] {
-  left: calc(var(--yolo-padding) + var(--yolo-collapsed-width));
-  width: var(--yolo-live-expanded-width);
-}
-
-/* a-v=composer, e-v=chat, a-exp=false: active is composer but chat is
-   hovered → chat occupies the expanded slot, composer is pushed to the
-   right edge. */
-.yolo-view-toggle[data-expanded-view='chat'][data-active-expanded='false']
-  .yolo-view-toggle-indicator[data-active-view='composer'] {
-  left: calc(var(--yolo-padding) + var(--yolo-live-expanded-width));
-  width: var(--yolo-collapsed-width);
 }
 
 .yolo-chat-header .yolo-view-toggle {

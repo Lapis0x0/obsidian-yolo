@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { useDatabase } from '../../../contexts/database-context'
-import { useSettings } from '../../../contexts/settings-context'
+import { useDatabase } from '../../contexts/database-context'
+import { useSettings } from '../../contexts/settings-context'
 
 /**
  * How many distinct notes the searched scope actually holds — the number the

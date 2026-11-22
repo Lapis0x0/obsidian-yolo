@@ -9,6 +9,7 @@ export const zh: TranslationKeys = {
     openNewChatTab: '在新标签页打开新对话',
     openNewChatSplit: '在右侧分屏打开新对话',
     openNewChatWindow: '在新窗口打开新对话',
+    openSparkle: '打开灵光写作',
     openChatHistory: '打开聊天历史',
     exportCurrentConversationToVault: '导出当前对话到库',
     addSelectionToChat: '添加选中内容到聊天',

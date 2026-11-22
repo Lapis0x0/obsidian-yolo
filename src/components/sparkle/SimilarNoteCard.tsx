@@ -2,11 +2,11 @@ import { ChevronDown, Link2 } from 'lucide-react'
 import { Keymap, MarkdownView, Notice } from 'obsidian'
 import React, { useState } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
-import { useLanguage } from '../../../contexts/language-context'
-import { usePlugin } from '../../../contexts/plugin-context'
-import type { SimilarNote } from '../../../core/rag/similarNotes'
-import { getNodeWindow } from '../../../utils/dom/window-context'
+import { useApp } from '../../contexts/app-context'
+import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
+import type { SimilarNote } from '../../core/rag/similarNotes'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 /** How many strength ticks a snippet shows, matching the design's three-tick scale. */
 const SNIPPET_TICKS = 3

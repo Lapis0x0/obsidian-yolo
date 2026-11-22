@@ -2,8 +2,8 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import React, { useRef, useState } from 'react'
 
-import { useLanguage } from '../../../contexts/language-context'
-import { YoloDropdownContent } from '../../common/popover'
+import { useLanguage } from '../../contexts/language-context'
+import { YoloDropdownContent } from '../common/popover'
 
 export type ScopeSelectKnowledgeBase = { id: string; name: string }
 

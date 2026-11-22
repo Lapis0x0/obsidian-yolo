@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 
@@ -19,8 +19,6 @@ const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
   onConversationContextChange,
   onRuntimeSnapshotChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'composer'>('chat')
-
   // Keep the initial props stable even if parent clears them after render
   const chatProps = useMemo(() => initialChatProps, [initialChatProps])
 
@@ -34,8 +32,6 @@ const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
             placement={placement}
             onConversationContextChange={onConversationContextChange}
             onRuntimeSnapshotChange={onRuntimeSnapshotChange}
-            activeView={activeTab}
-            onChangeView={(view) => setActiveTab(view)}
           />
         </div>
       </div>
