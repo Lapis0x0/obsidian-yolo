@@ -1,6 +1,6 @@
 import { ChevronDown, PanelLeft, Search, SquarePen } from 'lucide-react'
 import { Scope } from 'obsidian'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
@@ -88,6 +88,8 @@ export function ChatSidebar({
   const app = useApp()
   const asideRef = useRef<HTMLElement | null>(null)
   const historyHandleRef = useRef<ChatHistoryListHandle | null>(null)
+  // 历史列表在显示搜索结果或任务对话时占满滚动区，项目区让开
+  const [historyExclusive, setHistoryExclusive] = useState(false)
   // 窄轨上点搜索要先展开、等历史列表挂载后再唤出搜索
   const pendingSearchRef = useRef(false)
 
@@ -259,42 +261,48 @@ export function ChatSidebar({
             }}
           />
         </div>
-        <SidebarProjects
-          projects={projects ?? []}
-          chatList={chatList}
-          currentConversationId={currentConversationId}
-          currentProjectId={currentProjectId}
-          onOpenProject={(project) => {
-            onOpenProject(project)
-            closeIfDrawer()
-          }}
-          onOpenProjectSettings={onOpenProjectSettings}
-          onMoveToProject={onMoveToProject}
-          onSelectConversation={(conversationId) => {
-            closeIfDrawer()
-            if (conversationId === currentConversationId) return
-            void onSelectConversation(conversationId)
-          }}
-        />
-        <ChatHistoryList
-          chatList={chatList}
-          projects={projects}
-          onMoveToProject={onMoveToProject}
-          currentConversationId={currentConversationId}
-          runSummariesByConversationId={runSummariesByConversationId}
-          onSelect={(conversationId) => {
-            closeIfDrawer()
-            if (conversationId === currentConversationId) return
-            return onSelectConversation(conversationId)
-          }}
-          onDelete={onDeleteConversation}
-          onUpdateTitle={onUpdateTitle}
-          onTogglePinned={onTogglePinned}
-          onRetryTitle={onRetryTitle}
-          onExportConversation={onExportConversation}
-          onIdleEscape={isDrawer ? onCloseDrawer : undefined}
-          handleRef={historyHandleRef}
-        />
+        <div className="yolo-chat-sidebar-scroll">
+          {historyExclusive ? null : (
+            <SidebarProjects
+              projects={projects ?? []}
+              chatList={chatList}
+              currentConversationId={currentConversationId}
+              currentProjectId={currentProjectId}
+              runSummariesByConversationId={runSummariesByConversationId}
+              onOpenProject={(project) => {
+                onOpenProject(project)
+                closeIfDrawer()
+              }}
+              onCreateProject={() => onOpenProjectSettings()}
+              onMoveToProject={onMoveToProject}
+              onSelectConversation={(conversationId) => {
+                closeIfDrawer()
+                if (conversationId === currentConversationId) return
+                void onSelectConversation(conversationId)
+              }}
+            />
+          )}
+          <ChatHistoryList
+            chatList={chatList}
+            projects={projects}
+            onMoveToProject={onMoveToProject}
+            onExclusiveViewChange={setHistoryExclusive}
+            currentConversationId={currentConversationId}
+            runSummariesByConversationId={runSummariesByConversationId}
+            onSelect={(conversationId) => {
+              closeIfDrawer()
+              if (conversationId === currentConversationId) return
+              return onSelectConversation(conversationId)
+            }}
+            onDelete={onDeleteConversation}
+            onUpdateTitle={onUpdateTitle}
+            onTogglePinned={onTogglePinned}
+            onRetryTitle={onRetryTitle}
+            onExportConversation={onExportConversation}
+            onIdleEscape={isDrawer ? onCloseDrawer : undefined}
+            handleRef={historyHandleRef}
+          />
+        </div>
       </aside>
     </>
   )

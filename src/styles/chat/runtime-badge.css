@@ -1,5 +1,5 @@
 /*
- * Short CLI runtime marker (CC / Codex / Hermes / Pi / omp / Grok).
+ * Two-letter CLI runtime mark (CC / Cx / He / Pi / Om / Gk / CB).
  *
  * Shared by every surface that attributes a conversation or a live run to its
  * runtime — the chat list popover and the background activity status panel.
@@ -8,11 +8,12 @@
 
 .yolo-runtime-badge {
   flex-shrink: 0;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-monospace);
+  font-size: 9.5px;
   font-weight: var(--font-semibold);
-  line-height: 1.25;
+  line-height: 1.4;
   white-space: nowrap;
 }
 

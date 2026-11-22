@@ -58,10 +58,10 @@
   --yolo-chat-list-reorder-duration: 260ms;
   --yolo-chat-history-surface: var(--yolo-chat-sidebar-background);
 
+  /* 不自己滚动：和项目区同在侧边栏的一个滚动区里（.yolo-chat-sidebar-scroll） */
   display: flex;
-  flex: 1 1 auto;
+  flex: none;
   flex-direction: column;
-  min-height: 0;
   outline: none;
 }
 
@@ -180,12 +180,9 @@ button.yolo-chat-list-origin-filter:focus-visible {
 }
 
 .yolo-chat-history-list {
-  flex: 1 1 auto;
-  min-height: 0;
   margin: 0;
   padding: 0 0 var(--size-4-2);
   list-style: none;
-  overflow-y: auto;
   /* 退场条目会切到 absolute 当帧让出空间，需要这里做定位参照 */
   position: relative;
 }
@@ -197,6 +194,9 @@ button.yolo-chat-list-origin-filter:focus-visible {
  * .yolo-chat-history-list 内部。
  */
 .yolo-chat-list-legend {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -324,9 +324,12 @@ button.yolo-chat-list-origin-filter:focus-visible {
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 6px 10px;
+  min-height: 30px;
+  padding: 0 10px;
   border-radius: var(--radius-m) !important;
-  margin: 0 var(--size-4-2);
+  margin: 0 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
   width: auto;
   box-sizing: border-box;
   background: transparent !important;
@@ -407,26 +410,34 @@ button.yolo-chat-list-origin-filter:focus-visible {
   transition: opacity var(--yolo-anim-duration-exit) ease;
 }
 
-.yolo-chat-list-dropdown-item-status {
+/* 运行状态点：运行中绿色呼吸，等待确认琥珀色常亮。项目行也用同一套 */
+.yolo-chat-list-dropdown-item-status,
+.yolo-chat-run-dot {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  box-sizing: border-box;
-  opacity: 0.92;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
-.yolo-chat-list-dropdown-item-status.is-running {
-  border: 2px solid
-    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  border-top-color: color-mix(in srgb, var(--interactive-accent) 82%, white 8%);
-  animation: yolo-chat-list-run-spin 0.9s linear infinite;
+.yolo-chat-list-dropdown-item-status.is-running,
+.yolo-chat-run-dot.is-running {
+  background: var(--color-green);
+  animation: yolo-chat-run-pulse 1.6s ease-in-out infinite;
 }
 
-.yolo-chat-list-dropdown-item-status.is-waiting {
-  border: 2px solid color-mix(in srgb, var(--color-orange) 20%, transparent);
-  border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
-  animation: yolo-chat-list-run-spin 0.9s linear infinite;
+.yolo-chat-list-dropdown-item-status.is-waiting,
+.yolo-chat-run-dot.is-waiting {
+  background: var(--color-yellow);
+}
+
+@keyframes yolo-chat-run-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .yolo-chat-list-dropdown-item-title.is-retrying
@@ -739,7 +750,7 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   z-index: 0;
   display: flex;
   align-items: center;
-  color: var(--interactive-accent);
+  color: var(--text-faint);
   pointer-events: none;
   opacity: 1;
   transition: opacity var(--yolo-chat-list-presence-duration)
@@ -747,10 +758,9 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .yolo-chat-list-pin-marker svg {
-  width: var(--icon-xs);
-  height: var(--icon-xs);
+  width: 13px;
+  height: 13px;
   stroke-width: var(--icon-stroke);
-  fill: currentColor;
 }
 
 /* 遮罩：与操作区同一条 28px 渐变、同样的两层叠法（理由见
@@ -891,12 +901,13 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 
   background: var(--yolo-chat-list-row-tint) !important;
   color: var(--text-normal);
-  font-weight: var(--font-medium);
 }
 
 /* 时间分组标题：不可交互，只是列表里的一行小字 */
 .yolo-chat-history li.yolo-chat-history-group {
-  padding: var(--size-4-3) var(--size-4-3) var(--size-2-2);
+  /* 左缘与行内文字、「项目」标题对齐：外边距 10 + 内边距 10 */
+  min-height: 0;
+  padding: 14px 10px 4px;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
@@ -906,7 +917,7 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .yolo-chat-history li.yolo-chat-history-group:first-child {
-  padding-top: var(--size-2-2);
+  padding-top: 16px;
 }
 
 .yolo-chat-history-list.is-collapsing .yolo-chat-history-group,

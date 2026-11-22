@@ -37,12 +37,12 @@ describe('CLI runtime registry', () => {
     }
   })
 
-  it('only gives Claude Code a short label — other runtimes use their full labels', () => {
-    expect(getCliRuntimeDescriptor('claude-code').shortLabelKey).toBe(
-      'sidebar.runtimeSelector.claudeCodeShortLabel',
-    )
-    expect(getCliRuntimeDescriptor('codex').shortLabelKey).toBeUndefined()
-    expect(getCliRuntimeDescriptor('grok').shortLabelKey).toBeUndefined()
+  it('gives every runtime a two-letter badge mark', () => {
+    expect(getCliRuntimeDescriptor('claude-code').defaultShortLabel).toBe('CC')
+    expect(getCliRuntimeDescriptor('codex').defaultShortLabel).toBe('Cx')
+    for (const descriptor of CLI_RUNTIME_DESCRIPTORS) {
+      expect(descriptor.defaultShortLabel).toHaveLength(2)
+    }
   })
 
   it('lets omp declare that it collapses into pi’s selector row', () => {

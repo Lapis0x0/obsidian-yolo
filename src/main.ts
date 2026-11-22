@@ -2081,9 +2081,7 @@ export default class YoloPlugin extends Plugin {
     const fullLabel = this.t(descriptor.labelKey, descriptor.defaultLabel)
     badge.classList.add(`yolo-runtime-badge--${runtimeId}`)
     badge.setText(
-      descriptor.shortLabelKey
-        ? this.t(descriptor.shortLabelKey, 'CC')
-        : fullLabel,
+      this.t(descriptor.shortLabelKey, descriptor.defaultShortLabel),
     )
     badge.setAttribute('data-runtime-id', runtimeId)
     badge.setAttribute('aria-label', fullLabel)

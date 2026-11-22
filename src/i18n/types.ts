@@ -73,10 +73,15 @@ export type TranslationKeys = {
       claudeCodeLabel: string
       claudeCodeShortLabel: string
       codexLabel: string
+      codexShortLabel: string
       hermesLabel: string
+      hermesShortLabel: string
       piLabel: string
+      piShortLabel: string
       ompLabel: string
+      ompShortLabel: string
       grokLabel: string
+      grokShortLabel: string
       codebuddyLabel: string
       codebuddyShortLabel: string
     }
@@ -1577,6 +1582,9 @@ export type TranslationKeys = {
       excludedCount?: string
       listSeparator?: string
       memory?: string
+      running?: string
+      waiting?: string
+      viewAll?: string
     }
     ribbonMenu: {
       openInSidebar: string

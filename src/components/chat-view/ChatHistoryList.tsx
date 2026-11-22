@@ -12,9 +12,9 @@ import {
   Ellipsis,
   FolderInput,
   Pencil,
+  Pin,
   RotateCcw,
   Search,
-  Star,
   Trash2,
 } from 'lucide-react'
 import { Platform, Scope } from 'obsidian'
@@ -523,7 +523,8 @@ function TitleInput({
   )
 }
 
-function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
+/** 两字母的运行时标记，侧边栏项目下的对话行也用它 */
+export function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
   const { t } = useLanguage()
   const descriptor = getCliRuntimeDescriptor(runtimeId)
   const fullLabel = t(descriptor.labelKey, descriptor.defaultLabel)
@@ -535,7 +536,7 @@ function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
       aria-label={fullLabel}
       title={fullLabel}
     >
-      {descriptor.shortLabelKey ? t(descriptor.shortLabelKey, 'CC') : fullLabel}
+      {t(descriptor.shortLabelKey, descriptor.defaultShortLabel)}
     </span>
   )
 }
@@ -900,7 +901,7 @@ const ChatListItem = memo(function ChatListItem({
        */}
       {isPinned && canPin && !isEditing && !runSummary?.isActive ? (
         <span className="yolo-chat-list-pin-marker" aria-hidden="true">
-          <Star />
+          <Pin />
         </span>
       ) : null}
       <div
@@ -1031,6 +1032,7 @@ export function ChatHistoryList({
   onIdleEscape,
   projects,
   onMoveToProject,
+  onExclusiveViewChange,
   handleRef,
 }: {
   chatList: ChatConversationMetadata[]
@@ -1059,6 +1061,8 @@ export function ChatHistoryList({
     conversationId: string,
     projectId: string | null,
   ) => unknown
+  /** 列表进入 / 离开搜索结果或任务对话视图 */
+  onExclusiveViewChange?: (exclusive: boolean) => void
   /**
    * 命令式入口：侧边栏和 `ChatRef.openChatHistory` 需要唤出搜索。用一次性
    * 回调 ref 而不是 `forwardRef`，因为测试把本组件当普通函数调用。
@@ -1205,6 +1209,11 @@ export function ChatHistoryList({
 
   // 有搜索词时搜索框必然在，收起搜索框总是连同清空搜索词一起做
   const isSearchVisible = isSearchOpen || searchQuery !== ''
+
+  // 搜索结果和任务对话列表要占满侧边栏，侧边栏据此让出项目区
+  useEffect(() => {
+    onExclusiveViewChange?.(isSearchVisible || activeSection === 'task')
+  }, [activeSection, isSearchVisible, onExclusiveViewChange])
 
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -1687,9 +1696,24 @@ export function ChatHistoryList({
       setActiveMenuId(null)
       setMenuPosition(null)
     }
+    // 列表自己不滚动，滚动发生在侧边栏的外层容器上；scroll 不冒泡，
+    // 在文档上用捕获阶段监听，任何滚动都关菜单（菜单按视口坐标定位）。
+    const handleScroll = (event: Event) => {
+      if (
+        event.target instanceof Node &&
+        contextMenuRef.current?.contains(event.target)
+      ) {
+        return
+      }
+      setActiveMenuId(null)
+      setMenuPosition(null)
+    }
     ownerDocument.addEventListener('pointerdown', handlePointerDown, true)
-    return () =>
+    ownerDocument.addEventListener('scroll', handleScroll, true)
+    return () => {
       ownerDocument.removeEventListener('pointerdown', handlePointerDown, true)
+      ownerDocument.removeEventListener('scroll', handleScroll, true)
+    }
   }, [activeMenuId])
 
   // 交互期间冻结排序：开始时给每个会话记下排序时间，期间新出现的会话补录一次，
@@ -2159,10 +2183,6 @@ export function ChatHistoryList({
           setActiveMenuId(null)
           setMenuPosition(null)
         }}
-        onScroll={() => {
-          setActiveMenuId(null)
-          setMenuPosition(null)
-        }}
       >
         {scopedChatList.length === 0 ? (
           <li className="yolo-chat-list-dropdown-empty">
@@ -2317,7 +2337,7 @@ export function ChatHistoryList({
                     itemHandlers.onTogglePinned(activeMenuChat.id)
                   }}
                 >
-                  <Star size={16} />
+                  <Pin size={16} />
                   <span>
                     {activeMenuChat.isPinned
                       ? t('sidebar.chatList.unpinConversation', 'Unpin')

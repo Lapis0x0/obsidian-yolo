@@ -96,12 +96,20 @@ function PinnedAgentButton({
         menu.showAtMouseEvent(event.nativeEvent)
       }}
     >
-      <span className="yolo-chat-sidebar-pinned-agent-icon">
+      <span
+        className={`yolo-chat-sidebar-pinned-agent-icon is-${
+          agent.kind === 'assistant' ? 'yolo' : 'cli'
+        }`}
+      >
         {display.icon}
       </span>
       {compact ? null : (
         <span className="yolo-chat-sidebar-pinned-agent-name">
-          {display.name}
+          {/* 一行只有 48px：CLI 的名字取第一个词（Claude Code → Claude），
+              完整名字在 aria-label 里 */}
+          {agent.kind === 'assistant'
+            ? display.name
+            : display.name.split(' ')[0]}
         </span>
       )}
     </button>

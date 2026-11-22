@@ -128,8 +128,8 @@ button.yolo-chat-sidebar-rail-button--primary {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: var(--size-2-1);
-  padding: var(--size-4-3) var(--size-4-2) var(--size-2-3) var(--size-4-4);
+  gap: 2px;
+  padding: 14px 8px 6px 20px;
 }
 
 .yolo-chat-sidebar-title {
@@ -142,15 +142,24 @@ button.yolo-chat-sidebar-rail-button--primary {
 
 .yolo-chat-sidebar-actions {
   flex-shrink: 0;
-  padding: var(--size-2-1) var(--size-4-2) var(--size-4-2);
+  padding: 2px 10px 4px;
+}
+
+/* 项目区与历史同在一个滚动区里 */
+.yolo-chat-sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* 置顶重排的 FLIP 自己负责几何，不要浏览器的滚动锚定（见 history.css） */
+  overflow-anchor: none;
 }
 
 /* 新对话：左边开默认对话，右边 ▾ 选一个 Agent 再开 */
 .yolo-chat-sidebar-new-chat {
   display: flex;
-  height: 36px;
+  height: 38px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
+  border-radius: var(--radius-l);
   background: var(--background-primary);
   overflow: hidden;
 }
@@ -177,8 +186,8 @@ button.yolo-chat-sidebar-new-chat-main {
   flex: 1;
   justify-content: flex-start;
   min-width: 0;
-  gap: var(--size-2-3);
-  padding: 0 var(--size-4-3);
+  gap: 9px;
+  padding: 0 12px;
   font-size: var(--font-ui-small);
   font-weight: var(--font-medium);
 }
@@ -210,8 +219,8 @@ button.yolo-chat-sidebar-new-chat-menu[data-state='open'] svg {
 
 .yolo-chat-sidebar-pinned {
   display: flex;
-  gap: var(--size-2-1);
-  padding-top: var(--size-2-3);
+  gap: 2px;
+  padding-top: 6px;
 }
 
 .yolo-chat-sidebar-pinned.is-compact {
@@ -227,11 +236,11 @@ button.yolo-chat-sidebar-pinned-agent {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--size-2-2);
+  gap: 5px;
   width: 48px;
   height: auto;
   margin: 0;
-  padding: var(--size-2-3) 0;
+  padding: 7px 0 6px;
   border: 0;
   border-radius: var(--radius-m);
   background: transparent;
@@ -257,15 +266,23 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-m);
   background: var(--background-primary);
   box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+
+/* YOLO 自己的 Agent 用圆形，CLI Agent 用圆角方块，一眼区分来源 */
+.yolo-chat-sidebar-pinned-agent-icon.is-yolo {
+  border-radius: 50%;
+}
+
+.yolo-chat-sidebar-pinned-agent-icon.is-cli {
+  border-radius: 8px;
 }
 
 .yolo-chat-sidebar-pinned-agent-name {
   max-width: 46px;
   overflow: hidden;
-  font-size: var(--font-ui-smaller);
+  font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
