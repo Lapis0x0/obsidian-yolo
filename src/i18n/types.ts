@@ -2215,6 +2215,7 @@ export type TranslationKeys = {
     revertedChange?: string
     mergedBoth?: string
     undo?: string
+    openReviewFailed?: string
   }
 
   // Quick Ask

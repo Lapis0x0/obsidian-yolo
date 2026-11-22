@@ -2228,31 +2228,16 @@ export default class YoloPlugin extends Plugin {
       return true
     }
 
-    const opened = this.getDiffReviewController().openReview(state)
-    if (opened) return true
-
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
-    const targetLeaf = markdownLeaves.find((leaf) => {
-      const view = leaf.view
-      if (!(view instanceof MarkdownView)) return false
-      return view.file?.path === state.file.path
-    })
-
-    if (targetLeaf?.view instanceof MarkdownView) {
-      this.app.workspace.setActiveLeaf(targetLeaf, { focus: true })
-      const openedInTarget = this.getDiffReviewController().openReviewInView(
-        targetLeaf.view,
-        state,
-      )
-      if (openedInTarget) return true
+    if (await this.getDiffReviewController().openReviewForFile(state)) {
+      return true
     }
 
-    const leaf = this.app.workspace.getLeaf(false)
-    await leaf?.openFile(state.file, { active: true })
-    const openedAfterFocus = this.getDiffReviewController().openReview(state)
-    if (openedAfterFocus) return true
-
-    new Notice('请先打开目标文件后再应用修改。')
+    new Notice(
+      this.t(
+        'applyView.openReviewFailed',
+        'Could not open the target file to review the changes.',
+      ),
+    )
     return false
   }
 

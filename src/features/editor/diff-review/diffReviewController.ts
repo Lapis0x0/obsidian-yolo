@@ -1,6 +1,6 @@
 import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import type { Editor, MarkdownView } from 'obsidian'
+import { type Editor, MarkdownView, type WorkspaceLeaf } from 'obsidian'
 
 import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
 import type { ApplyViewActions } from '../../../components/apply-view/types'
@@ -62,10 +62,41 @@ export class DiffReviewController {
     this.deps = deps
   }
 
-  openReview(state: ApplyViewState): boolean {
-    const markdownView = this.deps.getActiveMarkdownView()
-    if (!markdownView?.file) return false
-    return this.openReviewInView(markdownView, state)
+  /**
+   * Open the review in an editor showing `state.file`: the active tab if it
+   * shows the file, else any tab that does, else the file opened in the
+   * current tab. The review lives in CodeMirror, which a tab in reading view
+   * does not have, so that tab is switched to editing first — asking to apply
+   * an edit is asking to edit.
+   */
+  async openReviewForFile(state: ApplyViewState): Promise<boolean> {
+    const { workspace } = this.deps.plugin.app
+    const showsFile = (leaf: WorkspaceLeaf | null | undefined) =>
+      leaf?.view instanceof MarkdownView &&
+      leaf.view.file?.path === state.file.path
+
+    let leaf = this.deps.getActiveMarkdownView()?.leaf
+    if (!showsFile(leaf)) {
+      leaf = workspace.getLeavesOfType('markdown').find(showsFile)
+    }
+    if (!leaf) {
+      leaf = workspace.getLeaf(false)
+      await leaf.openFile(state.file, { active: true })
+    }
+
+    const viewState = leaf.getViewState()
+    if (viewState.state?.mode !== 'source') {
+      await leaf.setViewState({
+        ...viewState,
+        state: { ...viewState.state, mode: 'source' },
+      })
+    }
+    workspace.setActiveLeaf(leaf, { focus: true })
+
+    return (
+      leaf.view instanceof MarkdownView &&
+      this.openReviewInView(leaf.view, state)
+    )
   }
 
   openReviewInView(markdownView: MarkdownView, state: ApplyViewState): boolean {

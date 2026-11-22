@@ -2449,6 +2449,8 @@ export const it: DeepPartial<TranslationKeys> = {
     revertedChange: 'Modifica ripristinata',
     mergedBoth: 'Entrambe unite',
     undo: 'Annulla',
+    openReviewFailed:
+      'Impossibile aprire il file di destinazione per rivedere le modifiche.',
   },
 
   quickAsk: {

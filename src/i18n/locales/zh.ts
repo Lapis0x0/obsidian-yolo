@@ -2426,6 +2426,7 @@ export const zh: TranslationKeys = {
     revertedChange: '已回退这处修改',
     mergedBoth: '已合并两者',
     undo: '撤销',
+    openReviewFailed: '无法打开目标文件来审阅修改。',
   },
 
   quickAsk: {

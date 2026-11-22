@@ -2577,6 +2577,7 @@ export const en: TranslationKeys = {
     revertedChange: 'Reverted this change',
     mergedBoth: 'Merged both',
     undo: 'Undo',
+    openReviewFailed: 'Could not open the target file to review the changes.',
   },
 
   quickAsk: {
