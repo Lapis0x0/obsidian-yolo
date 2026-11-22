@@ -8,6 +8,7 @@ import {
 
 import {
   buildCliEnvironmentContext,
+  isFirstCliTurn,
   renderCliProjectContext,
 } from './environment-context'
 
@@ -162,5 +163,23 @@ describe('renderCliProjectContext', () => {
     expect(text).toContain(
       '- Project memory index: YOLO/memory/projects/Thesis/MEMORY.md.',
     )
+  })
+})
+
+describe('isFirstCliTurn', () => {
+  const messages = [
+    { role: 'user', id: 'u1' },
+    { role: 'assistant', id: 'a1' },
+    { role: 'user', id: 'u2' },
+  ]
+
+  it('is the first turn only before any user message exists', () => {
+    expect(isFirstCliTurn([])).toBe(true)
+    expect(isFirstCliTurn(messages)).toBe(false)
+  })
+
+  it('treats rewriting the first user message as the first turn again', () => {
+    expect(isFirstCliTurn(messages, 'u1')).toBe(true)
+    expect(isFirstCliTurn(messages, 'u2')).toBe(false)
   })
 })

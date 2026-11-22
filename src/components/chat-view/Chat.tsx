@@ -41,6 +41,7 @@ import {
   createYoloChatRuntimeActions,
   isCliRuntime,
   isCliRuntimeAvailable,
+  isFirstCliTurn,
 } from '../../core/cli-runtime'
 import { resolveLocalizedText } from '../../core/modules/moduleI18n'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
@@ -1076,7 +1077,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               runtimeId: activeRuntimeId,
               currentFile: activeFile,
               currentFileViewState: activeViewState,
-              project: conversationProjectRef.current,
+              project: isFirstCliTurn(
+                cliConversationController.getSnapshot().messages,
+              )
+                ? conversationProjectRef.current
+                : null,
               settings,
             }),
           createOrTouchCliConversation,

@@ -22,7 +22,10 @@ export type BuildCliEnvironmentContextInput = {
   runtimeId: CliRuntimeId
   currentFile: TFile | null
   currentFileViewState?: CurrentFileViewState
-  /** The conversation's project, if any, and the settings to resolve it */
+  /**
+   * The conversation's project, passed only on the first turn
+   * ({@link isFirstCliTurn}); the settings resolve its memory path.
+   */
   project?: ChatProject | null
   settings?: MemorySettingsLike
 }
@@ -33,7 +36,22 @@ export type BuildCliEnvironmentContextInput = {
  * this is guidance only: the folders to focus on, the project instruction
  * files below the root (the root ones the CLI already discovers itself), and
  * the project memory index when one exists.
+ *
+ * Sent once, on the conversation's first turn (see {@link isFirstCliTurn}).
+ * It is conversation-level context, unlike the per-turn environment snapshot
+ * it rides along with: the CLI keeps every turn in its own session history,
+ * so repeating it would pile up identical copies. ACP runtimes have no system
+ * prompt to put it in, so the first turn is the one place every runtime
+ * shares. A conversation moved into a project later is not told.
  */
+export const isFirstCliTurn = (
+  messages: readonly { role: string; id: string }[],
+  rewrittenMessageId?: string,
+): boolean => {
+  const firstUserMessage = messages.find((message) => message.role === 'user')
+  return !firstUserMessage || firstUserMessage.id === rewrittenMessageId
+}
+
 export const renderCliProjectContext = ({
   app,
   project,

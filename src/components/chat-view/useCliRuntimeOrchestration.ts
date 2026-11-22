@@ -28,6 +28,7 @@ import {
   RUNTIME_CAPABILITIES,
   buildCliEnvironmentContext,
   isCliRuntime,
+  isFirstCliTurn,
   syncNativeConversationTitle,
 } from '../../core/cli-runtime'
 import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
@@ -1200,7 +1201,12 @@ export function useCliRuntimeOrchestration({
               runtimeId: activeRuntimeId,
               currentFile: activeFile,
               currentFileViewState: activeViewState,
-              project: getConversationProject(),
+              project: isFirstCliTurn(
+                cliConversationController.getSnapshot().messages,
+                sourceMessage.id,
+              )
+                ? getConversationProject()
+                : null,
               settings,
             })
             rewriteResult = await rewriteCliConversationTurn({
