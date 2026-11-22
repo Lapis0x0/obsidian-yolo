@@ -517,11 +517,17 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   // edge stays visible and the reader never moves; the anchor snapshot keeps
   // the viewport steady once the added turns finally make the content
   // overflow.
+  //
+  // A viewport with no height is hidden (its tab is in the background), not
+  // unfilled: there is nothing to fill, and the anchor snapshot reads all-zero
+  // rects there, so growing would push older turns above an unchanged
+  // scrollTop. Showing it again resizes the scroller, which re-runs this check.
   const growWindowIfViewportNotFilled = useCallback(() => {
     if (
       !scrollerElement ||
       !hasEarlierMessages ||
       !onGrowWindowToFillViewport ||
+      scrollerElement.clientHeight === 0 ||
       scrollerElement.scrollHeight > scrollerElement.clientHeight
     ) {
       return
