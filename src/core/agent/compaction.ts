@@ -121,12 +121,22 @@ export type LatestAssistantContextUsage = {
   cacheHitRate?: number
 }
 
+/**
+ * How full the context is: what the latest request actually sent, as the
+ * provider reported it. A compaction made after that request has replaced
+ * most of what it sent, so until the next request reports real usage, the
+ * compaction's own estimate of the next request is the answer instead —
+ * otherwise the context reads as full right after it was compacted. The
+ * estimate describes no request, so it carries no cache hit rate.
+ */
 export const getLatestAssistantContextUsage = ({
   messages,
   maxContextTokens,
+  compactionState = [],
 }: {
   messages: ChatMessage[]
   maxContextTokens: number | undefined
+  compactionState?: ChatConversationCompactionState
 }): LatestAssistantContextUsage | null => {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -135,10 +145,22 @@ export const getLatestAssistantContextUsage = ({
     }
 
     const usage = message.metadata?.usage
-    const promptTokens = usage?.prompt_tokens
-    if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
+    const reportedPromptTokens = usage?.prompt_tokens
+    if (
+      typeof reportedPromptTokens !== 'number' ||
+      !Number.isFinite(reportedPromptTokens)
+    ) {
       continue
     }
+
+    const latestCompaction = compactionState.at(-1)
+    const estimatedTokens = latestCompaction?.estimatedNextContextTokens
+    const useEstimate =
+      typeof estimatedTokens === 'number' &&
+      messages.findIndex(
+        (candidate) => candidate.id === latestCompaction?.anchorMessageId,
+      ) >= index
+    const promptTokens = useEstimate ? estimatedTokens : reportedPromptTokens
 
     const resolvedMaxContextTokens =
       typeof maxContextTokens === 'number' &&
@@ -148,6 +170,7 @@ export const getLatestAssistantContextUsage = ({
         : null
     const cacheReadTokens = usage?.cache_read_input_tokens
     const cacheHitRate =
+      !useEstimate &&
       typeof cacheReadTokens === 'number' &&
       Number.isFinite(cacheReadTokens) &&
       cacheReadTokens >= 0 &&

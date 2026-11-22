@@ -616,6 +616,56 @@ describe('getLatestAssistantContextUsage', () => {
     )
   })
 
+  it('uses the estimate of a compaction made after the latest request', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [
+        userMsg('u1'),
+        assistantMsg('a1', {
+          prompt_tokens: 900,
+          cache_read_input_tokens: 800,
+        }),
+      ],
+      maxContextTokens: 1000,
+      compactionState: [
+        {
+          anchorMessageId: 'a1',
+          summary: 's',
+          compactedAt: 1,
+          estimatedNextContextTokens: 200,
+        },
+      ],
+    })
+
+    expect(contextUsage).toEqual(
+      expect.objectContaining({ promptTokens: 200, ratio: 0.2 }),
+    )
+    expect(contextUsage).not.toHaveProperty('cacheHitRate')
+  })
+
+  it('goes back to reported usage once a request follows the compaction', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [
+        userMsg('u1'),
+        assistantMsg('a1', { prompt_tokens: 900 }),
+        userMsg('u2'),
+        assistantMsg('a2', { prompt_tokens: 300 }),
+      ],
+      maxContextTokens: 1000,
+      compactionState: [
+        {
+          anchorMessageId: 'a1',
+          summary: 's',
+          compactedAt: 1,
+          estimatedNextContextTokens: 200,
+        },
+      ],
+    })
+
+    expect(contextUsage).toEqual(
+      expect.objectContaining({ promptTokens: 300, ratio: 0.3 }),
+    )
+  })
+
   it('returns usage with null max when the context window is unknown', () => {
     const contextUsage = getLatestAssistantContextUsage({
       messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 100 })],
