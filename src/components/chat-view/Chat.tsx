@@ -60,6 +60,7 @@ import type {
   MentionableImage,
   MentionableWebSelection,
 } from '../../types/mentionable'
+import { findChatProject } from '../../types/project.types'
 import {
   REASONING_LEVELS,
   ReasoningLevel,
@@ -506,15 +507,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }),
     [conversationAssistantId, settings],
   )
+  // 当前 YOLO 对话所属的项目。归属只记在对话上，这里从已加载的元数据读；
+  // 项目被删后 id 悬空，读出来就是「不在项目里」。
+  const conversationProjectId = useMemo(
+    () => chatList.find((chat) => chat.id === currentConversationId)?.projectId,
+    [chatList, currentConversationId],
+  )
+  const conversationProject = useMemo(
+    () => findChatProject(settings.projects, conversationProjectId),
+    [conversationProjectId, settings.projects],
+  )
   const requestContextBuilder = useMemo(() => {
     return new RequestContextBuilder(app, effectiveSettings, {
+      project: conversationProject,
       systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
       getPromptSourceRevision: () =>
         agentService.getPromptSourceWatcher().getRevision(),
       promptSourcePathsCallback: (paths) =>
         agentService.getPromptSourceWatcher().setWatchedPaths(paths),
     })
-  }, [app, effectiveSettings, agentService])
+  }, [app, effectiveSettings, agentService, conversationProject])
   // Recreated whenever `effectiveSettings` changes — ChatSessionController
   // reads it through this ref (never a captured reference) so a settings
   // change doesn't leave the controller calling a stale instance.
@@ -1243,6 +1255,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentFileOverride,
     currentFileViewState: activeViewState,
     assistantIdOverride: conversationAssistantId,
+    conversationProject,
     compaction: effectiveCompactionState,
   })
   const isCurrentConversationRunActive = currentConversationRunSummary.isActive
@@ -1375,6 +1388,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     reasoningLevel,
     conversationReasoningLevelRef,
     selectedAssistant,
+    conversationProject,
     setQueryProgress,
     setUndoingEditSummaryTarget,
     activeApplyRequestKey,

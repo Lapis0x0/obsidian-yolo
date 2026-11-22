@@ -123,6 +123,7 @@ export const HOST_SETTINGS_CLASSIFICATIONS = [
   hostSetting('continuationOptions', '续写与补全'),
   hostSetting('assistants', 'Agent 配置'),
   hostSetting('currentAssistantId', '当前 Agent'),
+  hostSetting('projects', '项目'),
   hostSetting('quickAskAssistantId', 'Quick Ask Agent'),
 ] as const satisfies readonly HostSettingsClassification[]
 

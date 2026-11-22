@@ -57,6 +57,7 @@ import {
   ChatMessage,
 } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
+import type { ChatProject } from '../../types/project.types'
 import {
   ReasoningLevel,
   normalizeStoredReasoningLevel,
@@ -88,6 +89,8 @@ type UseChatStreamManagerParams = {
   currentFileOverride?: TFile | null
   currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
+  /** 对话所属项目：项目工作区替换 Agent 工作区 */
+  conversationProject?: ChatProject | null
   compaction?: ChatConversationCompactionState
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
 }
@@ -182,6 +185,7 @@ export function useChatStreamManager({
   currentFileOverride,
   currentFileViewState,
   assistantIdOverride,
+  conversationProject,
   compaction,
   onRunSettled,
 }: UseChatStreamManagerParams): UseChatStreamManager {
@@ -721,7 +725,10 @@ export function useChatStreamManager({
           // otherwise takes no part at all.
           workspaceScope: isModuleMode
             ? undefined
-            : resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
+            : resolveWorkspaceScopeForRuntimeInput(
+                selectedAssistant,
+                conversationProject,
+              ),
           allowedSkillPaths,
           bashReadOnly: chatModeRuntime.bashReadOnly,
           moduleToolApprovalPolicies:

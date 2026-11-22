@@ -16,6 +16,22 @@ describe('chat-runtime-inputs', () => {
     expect(resolveWorkspaceScopeForRuntimeInput(assistant)).toEqual(scope)
   })
 
+  it("lets a project's scope replace the assistant's, with no intersection", () => {
+    const assistant = {
+      workspaceScope: { enabled: true, include: ['notes/'], exclude: [] },
+    } as unknown as Assistant
+    const projectScope = { enabled: true, include: ['thesis/'], exclude: [] }
+    expect(
+      resolveWorkspaceScopeForRuntimeInput(assistant, {
+        id: 'p',
+        name: 'P',
+        workspaceScope: projectScope,
+        createdAt: 0,
+        updatedAt: 0,
+      }),
+    ).toBe(projectScope)
+  })
+
   it('returns undefined workspace scope when assistant is missing or has none', () => {
     expect(resolveWorkspaceScopeForRuntimeInput(null)).toBeUndefined()
     expect(

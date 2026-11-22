@@ -99,9 +99,20 @@ type UseChatHistory = {
     reasoningLevel?: string
     compaction?: ChatConversationCompactionState
     cliSession?: ChatConversationCliSession
+    projectId?: string
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   toggleConversationPinned: (id: string) => Promise<void>
+  /**
+   * 把对话放进项目（或用 null 移出）。只写这一个字段，不动 updatedAt——
+   * 归属变化不是对话内容的变化。对话行还不存在时返回 false，由调用方稍后重试。
+   */
+  setConversationProject: (
+    id: string,
+    projectId: string | null,
+  ) => Promise<boolean>
+  /** 删除项目时调用：清掉所有属于它的对话的 projectId，对话回到「最近」。 */
+  clearConversationsProject: (projectId: string) => Promise<void>
   generateConversationTitle: (
     id: string,
     messages: ChatMessage[],
@@ -466,6 +477,7 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string
       compaction?: ChatConversationCompactionState
       cliSession?: ChatConversationCliSession
+      projectId?: string
     } | null> => {
       const conversation = await chatManager.findById(id)
       if (!conversation) return null
@@ -487,6 +499,7 @@ export function useChatHistory(): UseChatHistory {
           conversation.compaction,
         ),
         cliSession: conversation.cliSession,
+        projectId: conversation.projectId,
       }
     },
     [chatManager, app],
@@ -536,6 +549,43 @@ export function useChatHistory(): UseChatHistory {
           pinnedAt,
         })
       } finally {
+        emitChatHistoryUpdated()
+        await fetchChatList()
+      }
+    },
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
+  )
+
+  const setConversationProject = useCallback(
+    async (id: string, projectId: string | null): Promise<boolean> => {
+      const conversation = await chatManager.findById(id)
+      if (!conversation) return false
+      if ((conversation.projectId ?? null) === projectId) return true
+      await chatManager.updateChat(
+        id,
+        { projectId: projectId ?? undefined },
+        { touchUpdatedAt: false },
+      )
+      emitChatHistoryUpdated()
+      await fetchChatList()
+      return true
+    },
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
+  )
+
+  const clearConversationsProject = useCallback(
+    async (projectId: string): Promise<void> => {
+      const members = (await chatManager.listChats()).filter(
+        (chat) => chat.projectId === projectId,
+      )
+      for (const member of members) {
+        await chatManager.updateChat(
+          member.id,
+          { projectId: undefined },
+          { touchUpdatedAt: false },
+        )
+      }
+      if (members.length > 0) {
         emitChatHistoryUpdated()
         await fetchChatList()
       }
@@ -689,6 +739,8 @@ export function useChatHistory(): UseChatHistory {
     getConversationById,
     updateConversationTitle,
     toggleConversationPinned,
+    setConversationProject,
+    clearConversationsProject,
     generateConversationTitle,
     chatList,
   }

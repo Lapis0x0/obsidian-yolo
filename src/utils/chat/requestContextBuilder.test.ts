@@ -42,6 +42,7 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
+import type { ChatProject } from '../../types/project.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
@@ -1798,8 +1799,11 @@ describe('RequestContextBuilder project instructions injection', () => {
   async function buildSystemContent(
     app: ReturnType<typeof makeApp>,
     settings: YoloSettings,
+    project?: ChatProject,
   ): Promise<string> {
-    const builder = new RequestContextBuilder(app as never, settings)
+    const builder = new RequestContextBuilder(app as never, settings, {
+      project,
+    })
     const requestMessages = await builder.generateRequestMessages({
       systemPromptSnapshotMode: 'create',
       messages: [
@@ -1863,6 +1867,60 @@ describe('RequestContextBuilder project instructions injection', () => {
     // not as the first thing in the system message.
     const projectIdx = content.indexOf('project instructions in the vault')
     expect(projectIdx).toBeGreaterThan(0)
+  })
+
+  it('inside a project, always reads project instructions even when the assistant disables them', async () => {
+    const app = makeApp(new Map([['AGENTS.md', 'rule from agents']]))
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'a-1',
+      assistants: [
+        {
+          id: 'a-1',
+          name: 'Disabled',
+          systemPrompt: '',
+          enableProjectInstructions: false,
+        },
+      ],
+    } as unknown as YoloSettings
+    const content = await buildSystemContent(app, settings, {
+      id: 'p-1',
+      name: 'Thesis',
+      workspaceScope: { enabled: false, include: [], exclude: [] },
+      createdAt: 0,
+      updatedAt: 0,
+    })
+    expect(content).toContain('## Project instructions: AGENTS.md')
+    expect(content).toContain('rule from agents')
+  })
+
+  it("inside a project, the project's workspace scope replaces the assistant's", async () => {
+    const app = makeApp(new Map())
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'a-1',
+      assistants: [
+        {
+          id: 'a-1',
+          name: 'Scoped',
+          systemPrompt: '',
+          workspaceScope: {
+            enabled: true,
+            include: ['assistant-only/'],
+            exclude: [],
+          },
+        },
+      ],
+    } as unknown as YoloSettings
+    const content = await buildSystemContent(app, settings, {
+      id: 'p-1',
+      name: 'Thesis',
+      workspaceScope: { enabled: true, include: ['thesis/'], exclude: [] },
+      createdAt: 0,
+      updatedAt: 0,
+    })
+    expect(content).toContain('thesis/')
+    expect(content).not.toContain('assistant-only/')
   })
 
   it('omits project instructions when current assistant disables it explicitly', async () => {

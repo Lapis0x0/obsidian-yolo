@@ -66,6 +66,7 @@ import type {
   MentionableTextAttachment,
   MentionableWebSelection,
 } from '../../types/mentionable'
+import type { ChatProject } from '../../types/project.types'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import {
   createCompleteToolCallArguments,
@@ -225,6 +226,13 @@ type RequestContextBuilderOptions = {
   resolveModuleFileTextRenderer?: (
     extension: string,
   ) => YoloModuleFileTextRendererV1 | null
+  /**
+   * The project the conversation belongs to. Inside a project the project's
+   * workspace scope replaces the assistant's (no intersection), and the
+   * scope's `AGENTS.md` / `CLAUDE.md` are always loaded. Null/omitted means
+   * "not in a project": everything follows the assistant as before.
+   */
+  project?: ChatProject | null
 }
 
 /**
@@ -553,6 +561,7 @@ export class RequestContextBuilder {
   private app: App
   private settings: YoloSettings
   private includeSkills: boolean
+  private project: ChatProject | null
   private systemPromptSnapshotStore?: SystemPromptSnapshotStore
   private getPromptSourceRevision?: () => number
   private promptSourcePathsCallback?: (paths: Set<string>) => void
@@ -572,6 +581,33 @@ export class RequestContextBuilder {
     this.getPromptSourceRevision = options?.getPromptSourceRevision
     this.promptSourcePathsCallback = options?.promptSourcePathsCallback
     this.resolveModuleFileTextRenderer = options?.resolveModuleFileTextRenderer
+    this.project = options?.project ?? null
+  }
+
+  /**
+   * Workspace scope and project-instruction switch for this request. Both
+   * read the same answer so the scope rule, the instruction files and the
+   * watched paths can never disagree. A project applies only where the
+   * assistant does (`useAssistant`): module chat modes bring their own
+   * context and take neither.
+   */
+  private resolveScopeContext(
+    assistant: ReturnType<RequestContextBuilder['getCurrentAssistant']>,
+    useAssistant: boolean,
+  ): {
+    workspaceScope: AssistantWorkspaceScope | undefined
+    projectInstructionsEnabled: boolean
+  } {
+    if (useAssistant && this.project) {
+      return {
+        workspaceScope: this.project.workspaceScope,
+        projectInstructionsEnabled: true,
+      }
+    }
+    return {
+      workspaceScope: assistant?.workspaceScope,
+      projectInstructionsEnabled: assistant?.enableProjectInstructions === true,
+    }
   }
 
   private getMentionContextMode(): MentionContextMode {
@@ -2013,10 +2049,11 @@ ${entries}
       const watchedPaths = new Set<string>()
       if (memoryPaths.global) watchedPaths.add(memoryPaths.global)
       if (memoryPaths.assistant) watchedPaths.add(memoryPaths.assistant)
+      const scopeContext = this.resolveScopeContext(assistant, useAssistant)
       resolveProjectInstructionFilePaths(
         this.app,
-        assistant?.enableProjectInstructions === true,
-        assistant?.workspaceScope,
+        scopeContext.projectInstructionsEnabled,
+        scopeContext.workspaceScope,
       ).forEach((p) => watchedPaths.add(p))
       this.promptSourcePathsCallback(watchedPaths)
     }
@@ -2071,6 +2108,15 @@ ${entries}
             workspaceScope: assistant.workspaceScope ?? null,
           }
         : null,
+      // Moving a conversation into / out of a project, or editing the
+      // project's scope, changes the scope rule and instruction files.
+      project:
+        useAssistant && this.project
+          ? {
+              id: this.project.id,
+              workspaceScope: this.project.workspaceScope,
+            }
+          : null,
     })
   }
 
@@ -2157,8 +2203,12 @@ ${entries}
       })
     }
 
+    const scopeContext = this.resolveScopeContext(
+      currentAssistant,
+      useAssistant,
+    )
     const workspaceScopeContent = this.buildWorkspaceScopeSection(
-      currentAssistant?.workspaceScope,
+      scopeContext.workspaceScope,
     )
     if (workspaceScopeContent) {
       sections.push({
@@ -2170,8 +2220,8 @@ ${entries}
 
     const projectInstructionsContent = await getProjectInstructionsSection(
       this.app,
-      currentAssistant?.enableProjectInstructions === true,
-      currentAssistant?.workspaceScope,
+      scopeContext.projectInstructionsEnabled,
+      scopeContext.workspaceScope,
     )
     if (projectInstructionsContent) {
       sections.push({

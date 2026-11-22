@@ -15,6 +15,7 @@ import {
   mcpServerConfigSchema,
   mcpServerToolOptionsSchema,
 } from '../../types/mcp.types'
+import { chatProjectSchema } from '../../types/project.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
 import { DEFAULT_CHAT_QUICK_ACCESS_ENTRIES } from '../chatQuickAccess'
@@ -847,6 +848,10 @@ export const yoloSettingsSchema = z.object({
 
   // Currently selected assistant ID
   currentAssistantId: z.string().optional(),
+
+  // Chat projects (see `ChatProject`). Conversations point at a project via
+  // `ChatConversation.projectId`; the project itself holds no conversation list.
+  projects: resilientArraySchema(chatProjectSchema),
 
   // Quick Ask selected assistant ID
   quickAskAssistantId: z.string().optional(),

@@ -294,7 +294,7 @@ export class ChatManager extends AbstractJsonRepository<
     source: Pick<
       ChatConversation,
       'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin' | 'cliSession'
-    > & { isPinned?: boolean; pinnedAt?: number },
+    > & { isPinned?: boolean; pinnedAt?: number; projectId?: string },
   ): ChatConversationMetadata {
     return {
       id: source.id,
@@ -303,6 +303,7 @@ export class ChatManager extends AbstractJsonRepository<
       schemaVersion: source.schemaVersion,
       isPinned: source.isPinned ?? false,
       pinnedAt: source.pinnedAt,
+      projectId: source.projectId,
       origin: getChatConversationOrigin(source),
       cliSession: source.cliSession,
     }
@@ -366,6 +367,7 @@ export class ChatManager extends AbstractJsonRepository<
       schemaVersion: chat.schemaVersion,
       isPinned: chat.isPinned ?? false,
       pinnedAt: chat.pinnedAt,
+      projectId: chat.projectId,
       origin: getChatConversationOrigin(chat),
       cliSession: chat.cliSession,
     }

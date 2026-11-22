@@ -37,6 +37,12 @@ export type ChatConversation = {
   schemaVersion: number
   isPinned?: boolean
   pinnedAt?: number
+  /**
+   * The project this conversation belongs to (`YoloSettings.projects`). The
+   * only record of membership — projects keep no conversation list. Absent
+   * means "not in a project"; a dangling id (project deleted) reads the same.
+   */
+  projectId?: string
   // Optional per-conversation overrides (temperature, top_p, stream)
   overrides?: ConversationOverrideSettings | null
   conversationModelId?: string
@@ -71,6 +77,7 @@ export type ChatConversationMetadata = {
   schemaVersion: number
   isPinned?: boolean
   pinnedAt?: number
+  projectId?: string
   origin?: ChatConversationOrigin
   cliSession?: ChatConversationCliSession
 }

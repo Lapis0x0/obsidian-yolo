@@ -10,6 +10,7 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import type { ChatMode } from '../../core/agent/chat-mode'
 import { isModuleChatMode, isToolChatMode } from '../../core/agent/chat-mode'
+import { resolveWorkspaceScopeForRuntimeInput } from '../../core/agent/chat-runtime-inputs'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
@@ -27,6 +28,7 @@ import type {
   ChatUserMessage,
 } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
+import type { ChatProject } from '../../types/project.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 import {
   type ToolCallRequest,
@@ -160,6 +162,8 @@ export type UseChatDomainActionsParams = {
   reasoningLevel: ReasoningLevel
   conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
   selectedAssistant: Assistant | null
+  /** 对话所属项目：批准后恢复的工具调用同样用项目工作区 */
+  conversationProject: ChatProject | null
   setQueryProgress: Dispatch<SetStateAction<QueryProgressState>>
   setUndoingEditSummaryTarget: Dispatch<SetStateAction<string | null>>
   activeApplyRequestKey: string | null
@@ -234,6 +238,7 @@ export function useChatDomainActions({
   reasoningLevel,
   conversationReasoningLevelRef,
   selectedAssistant,
+  conversationProject,
   setQueryProgress,
   setUndoingEditSummaryTarget,
   activeApplyRequestKey,
@@ -414,7 +419,10 @@ export function useChatDomainActions({
               // reason Agent does — the live path
               // (`useChatStreamManager`) passes it for every built-in mode.
               workspaceScope: isToolChatMode(chatMode)
-                ? selectedAssistant?.workspaceScope
+                ? resolveWorkspaceScopeForRuntimeInput(
+                    selectedAssistant,
+                    conversationProject,
+                  )
                 : undefined,
               subagentParentContext: isDelegateSubagentToolName(request.name)
                 ? plugin
@@ -509,6 +517,7 @@ export function useChatDomainActions({
       conversationModelId,
       chatMode,
       selectedAssistant,
+      conversationProject,
     ],
   )
 

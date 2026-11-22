@@ -467,6 +467,14 @@ export default class YoloPlugin extends Plugin {
           workspaceScope: assistant.workspaceScope ?? null,
         }))
         .sort((left, right) => left.id.localeCompare(right.id)),
+      // A project's scope replaces the assistant's and decides which
+      // AGENTS.md / CLAUDE.md files are read.
+      projects: (settings.projects ?? [])
+        .map((project) => ({
+          id: project.id,
+          workspaceScope: project.workspaceScope,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
     })
   }
 
