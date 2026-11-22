@@ -1,0 +1,979 @@
+/* 对话历史列表（YOLO Chat 侧边栏）。 */
+
+.yolo-chat-history li .yolo-chat-list-dropdown-item-icon {
+  visibility: visible;
+  opacity: 0;
+  transform: translateX(5px) scale(0.96);
+  pointer-events: none;
+  /* L2 显隐（opacity/transform）＋ 常规状态色；顺序被下面的错峰延迟按位引用 */
+  transition:
+    opacity var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    transform var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    color var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
+}
+
+/* issue #567 Step 5：键盘高亮行（data-highlighted）与鼠标悬停同权显形操作
+   图标——纯键盘操作（Mod+Shift+P 置顶、Mod+Backspace 删除）的状态反馈不能
+   依赖鼠标恰好悬停在该行上，否则星标点亮/删除变红发生在不可见的图标上，
+   操作看起来像没生效。 */
+.yolo-chat-history
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-icon {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.yolo-chat-history li .yolo-chat-list-dropdown-item-icon:hover {
+  background-color: var(--background-modifier-hover);
+  border-radius: var(--radius-s);
+}
+
+.yolo-chat-list-dropdown-item-icon:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.yolo-chat-list-dropdown-empty {
+  background: transparent;
+  cursor: default;
+  color: var(--text-faint);
+}
+
+/*
+ * 侧边栏里的对话历史列表。动效三层语汇见 tokens/motion.css 头注释；JS 侧的
+ * 对应常量在 ChatHistoryList.tsx 的 CHAT_LIST_MOTION，两处需保持一致。
+ *
+ * --yolo-chat-history-surface 是列表所在面的底色：操作区遮罩、飞行中的行都要
+ * 「状态色图层 + 底色打底」叠成不透明，底色必须和侧边栏一致。
+ */
+.yolo-chat-history {
+  --yolo-chat-list-response-duration: var(--yolo-anim-duration-response);
+  --yolo-chat-list-presence-duration: var(--yolo-anim-duration-exit);
+  --yolo-chat-list-presence-ease: var(--yolo-anim-ease-out);
+  /* L3 补位 / 重排滑行，JS 侧同源常量见 CHAT_LIST_REORDER_DURATION_MS */
+  --yolo-chat-list-reorder-duration: 260ms;
+  --yolo-chat-history-surface: var(--yolo-chat-sidebar-background);
+
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+
+.yolo-chat-list-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 10px;
+  background: var(--yolo-chat-history-surface);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+}
+
+.yolo-chat-list-search-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+}
+
+.yolo-chat-list-search-icon {
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.yolo-chat-list-search-input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0;
+  border: 0;
+  box-shadow: none;
+  outline: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-chat-list-search input.yolo-chat-list-search-input {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  outline: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+.yolo-chat-list-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.yolo-chat-list-section-count {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-normal);
+}
+
+.yolo-chat-list-origin-filters {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 52%, transparent);
+  padding: 7px 10px;
+  background: var(--yolo-chat-history-surface);
+  scrollbar-width: none;
+}
+
+.yolo-chat-list-origin-filters::-webkit-scrollbar {
+  display: none;
+}
+
+button.yolo-chat-list-origin-filter {
+  flex-shrink: 0;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  padding: 0 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.yolo-chat-list-origin-filter:hover {
+  border-color: transparent;
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.yolo-chat-list-origin-filter.is-active {
+  border-color: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+button.yolo-chat-list-origin-filter:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.yolo-chat-history-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 var(--size-4-2);
+  list-style: none;
+  overflow-y: auto;
+  /* 退场条目会切到 absolute 当帧让出空间，需要这里做定位参照 */
+  position: relative;
+}
+
+/*
+ * issue #567 Step 5：键位图例，仿 Obsidian 快速切换器的 prompt-instructions。
+ * 是 .yolo-chat-history（flex column）里 <ul> 的下一个兄弟节点，
+ * flex-shrink: 0 保证它不参与滚动区、不被压缩——列表滚动只发生在上面的
+ * .yolo-chat-history-list 内部。
+ */
+.yolo-chat-list-legend {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 52%, transparent);
+  padding: 6px 10px;
+  background: var(--yolo-chat-history-surface);
+}
+
+.yolo-chat-list-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.yolo-chat-list-legend-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  border-radius: var(--radius-s);
+  padding: 0 3px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.yolo-chat-list-legend-label {
+  color: var(--text-faint);
+}
+
+/*
+ * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
+ * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
+ * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing
+ * / .is-reordering 关掉。
+ * --yolo-chat-list-reorder-duration（260ms）故意不复用
+ * --yolo-chat-list-presence-duration（用于 opacity/transform 的显隐）：L3 补位
+ * 没有全局 CSS token（token 头注释：L3 用 spring，只在 JS 侧
+ * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
+ * 置顶重排的滑行走同一条过渡，所以两者共用这一个时长。
+ */
+.yolo-chat-list-dropdown-item {
+  transition: transform var(--yolo-chat-list-reorder-duration)
+    var(--yolo-chat-list-presence-ease);
+  /*
+   * 打开性能：弹层子树 ~1700 个 DOM 节点（每行 ~35 个，操作按钮的 SVG 图标
+   * 是大头），但滚动区一屏只露出十来行。挂载后 Radix Presence 的
+   * getComputedStyle 强制整文档样式重算（实测 ~100ms，占「点击→呈现」
+   * ~260ms 的最大单项），成本 ∝ 新节点数 × 全文档规则数。
+   * content-visibility: auto 让视口外的行跳过 style/layout/paint，滚到
+   * 才渲染——浏览器原生的按需渲染。intrinsic-size 用实测行高 34px 占位，
+   * 保证滚动条与 popper 测量稳定；auto 关键字让渲染过的行记住真实尺寸。
+   * 不支持的引擎（老 iOS WebKit）忽略该属性，退回全量渲染，无行为差异。
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
+
+/*
+ * 飞行中的行：压在其余行之上，并且必须不透明——FLIP 重排里被移动的行一定会
+ * 在中途与被它越过的行完全重合（两边都在线性插值到对方的位置），透明就是
+ * 文字叠文字。底色用与悬停同样的色，但以弹层底色而不是 transparent 调和：
+ * 视觉上仍是「这一行被拿起来了」，只是不透。
+ */
+.yolo-chat-list-dropdown-item.is-pin-moving {
+  --yolo-chat-list-row-tint: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 92%,
+    transparent
+  );
+
+  z-index: 1;
+  /* 状态色图层 + 底色打底，两层才不透明（见 --yolo-chat-list-row-tint 注释）。
+     !important 用于对抗行基础规则里的 background: transparent !important —— 那条
+     是为压住宿主 li 样式而存在的，不加就写不进来。 */
+  background: linear-gradient(
+      var(--yolo-chat-list-row-tint),
+      var(--yolo-chat-list-row-tint)
+    ),
+    var(--yolo-chat-history-surface) !important;
+}
+
+/* Invert 帧（无论来自删除补位还是置顶重排）必须无过渡，见上一条注释 */
+.yolo-chat-history-list.is-collapsing .yolo-chat-list-dropdown-item,
+.yolo-chat-history-list.is-reordering .yolo-chat-list-dropdown-item {
+  transition: none;
+}
+
+/*
+ * 置顶重排会在视口上方插入一行（置顶区在列表顶端），内容高度的变化落在滚动
+ * 视口之外——浏览器的滚动锚定会自作主张地补偿 scrollTop 来「稳住」画面，而
+ * FLIP 的 Invert 量是按行索引算出来的，一旦被补偿，摁回去的位置就和真实旧位
+ * 对不上，重排会在落位时抖一下。关掉锚定，这段几何由我们自己负责。
+ */
+.yolo-chat-history-list {
+  overflow-anchor: none;
+}
+
+.yolo-chat-history li,
+.yolo-chat-list-dropdown-item {
+  /*
+   * 行的状态色（hover / 高亮 / 飞行中），半透明，叠在侧边栏底色之上。
+   *
+   * 需要不透明版本的地方（操作区浮层的遮罩、置顶飞行中的行）一律用
+   * 「状态色图层 + --yolo-chat-history-surface 打底」两层叠出来，不要写
+   * color-mix(状态色 92%, 底色)：--background-modifier-hover 自身就是半透明的
+   * （默认主题 rgba(0,0,0,0.075)），与不透明色 92:8 混合后 alpha 只剩 ~0.13，
+   * 看着像没生效。混色改不了 alpha 不足的事实，叠层才能。
+   */
+  --yolo-chat-list-row-tint: transparent;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-m) !important;
+  margin: 0 var(--size-4-2);
+  width: auto;
+  box-sizing: border-box;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+.yolo-chat-list-dropdown-item-title {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-chat-list-dropdown-item-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/*
+ * issue #567 Step 4：中间截断。ghost/overlay 结构（原理与测量逻辑见
+ * ChatHistoryList.tsx 的 useMiddleTruncatedTitle）：.title-ghost 承载完整
+ * 标题、visibility 隐藏，负责撑出容器的理想宽度——flex 收缩后容器的实际
+ * 宽度就是截断计算的可用宽度；.title-display 绝对定位铺满同一盒子，放
+ * JS 测量拼好的「头…尾」单段文本，内容变化不影响布局，无测量反馈环。
+ * 单段文本排版让整字截断的余数落在标题末尾（不可见），省略号两侧
+ * 像素级贴合，没有 text-overflow: ellipsis 的整字形残留缝隙。
+ * opacity/transform 过渡（为 is-retrying 骨架屏服务）留在外层容器上不变。
+ */
+.yolo-chat-list-dropdown-item-title-text {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-list-dropdown-item-title-ghost {
+  visibility: hidden;
+}
+
+.yolo-chat-list-dropdown-item-title-display {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.yolo-chat-list-dropdown-item-title-skeleton {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: min(72%, 220px);
+  height: calc(var(--font-ui-small) * 0.82);
+  border-radius: var(--radius-s);
+  transform: translateY(-50%);
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--background-modifier-hover) 70%, transparent) 0%,
+    color-mix(in srgb, var(--text-muted) 26%, transparent) 48%,
+    color-mix(in srgb, var(--background-modifier-hover) 70%, transparent) 100%
+  );
+  background-size: 220% 100%;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-exit) ease;
+}
+
+.yolo-chat-list-dropdown-item-status {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  opacity: 0.92;
+}
+
+.yolo-chat-list-dropdown-item-status.is-running {
+  border: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  border-top-color: color-mix(in srgb, var(--interactive-accent) 82%, white 8%);
+  animation: yolo-chat-list-run-spin 0.9s linear infinite;
+}
+
+.yolo-chat-list-dropdown-item-status.is-waiting {
+  border: 2px solid color-mix(in srgb, var(--color-orange) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
+  animation: yolo-chat-list-run-spin 0.9s linear infinite;
+}
+
+.yolo-chat-list-dropdown-item-title.is-retrying
+  .yolo-chat-list-dropdown-item-title-text {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+.yolo-chat-list-dropdown-item-title.is-retrying
+  .yolo-chat-list-dropdown-item-title-skeleton {
+  opacity: 1;
+  animation: yolo-chat-list-title-shimmer 1.1s linear infinite;
+}
+
+@keyframes yolo-chat-list-title-shimmer {
+  from {
+    background-position: 220% 50%;
+  }
+  to {
+    background-position: -20% 50%;
+  }
+}
+
+@keyframes yolo-chat-list-run-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+input[type='text'].yolo-chat-list-dropdown-item-title-input {
+  width: 100%;
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-chat-history li.yolo-chat-list-dropdown-item:hover {
+  color: var(--text-normal) !important;
+}
+
+/* :not(.is-pin-moving)：飞行中的行有自己的一套底色（见下方 .is-pin-moving），
+   悬停/高亮那套底色是半透明的，会让它在与被越过的行交错时透出重影。 */
+.yolo-chat-list-dropdown-item:hover:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item:focus-within:not(.is-pin-moving),
+.yolo-chat-history
+  li.yolo-chat-list-dropdown-item:is(:hover, :focus-within, :has(:hover)):not(
+    .is-pin-moving
+  ) {
+  --yolo-chat-list-row-tint: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 92%,
+    transparent
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
+  outline: none;
+  color: var(--text-normal) !important;
+}
+
+.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item[data-highlighted='true']:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item.is-ctx-open:not(.is-pin-moving),
+.yolo-chat-history
+  li.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving) {
+  --yolo-chat-list-row-tint: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 96%,
+    transparent
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
+  box-shadow: none;
+  border: 0 !important;
+  color: var(--text-normal) !important;
+}
+
+.yolo-chat-list-dropdown-archive-row {
+  padding: 0 !important;
+  margin-top: 2px;
+  background: transparent !important;
+  cursor: default !important;
+}
+
+.yolo-chat-list-dropdown-archive-row:hover {
+  background: transparent !important;
+}
+
+button.yolo-chat-list-dropdown-archive-toggle {
+  width: 100%;
+  height: 28px;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+button.yolo-chat-list-dropdown-archive-toggle:hover {
+  background: transparent;
+}
+
+.yolo-chat-list-dropdown-archive-toggle-label {
+  display: inline-block;
+  border-radius: var(--radius-s);
+  padding: 2px 6px;
+  transition:
+    color var(--yolo-anim-duration-feedback) ease,
+    text-decoration-color var(--yolo-anim-duration-feedback) ease;
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+
+button.yolo-chat-list-dropdown-archive-toggle:hover
+  .yolo-chat-list-dropdown-archive-toggle-label,
+button.yolo-chat-list-dropdown-archive-toggle:focus-visible
+  .yolo-chat-list-dropdown-archive-toggle-label {
+  color: var(--text-normal);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--text-normal) 60%,
+    transparent
+  );
+}
+
+/*
+ * 操作区脱离文档流，浮在行的右端。
+ *
+ * 它原本是普通 flex 成员，四个常驻图标（改名/置顶/删除/⋯）即使 opacity: 0
+ * 也一直占着约 100px 宽度——静息态整条右侧是空的，标题却按被削掉 100px 的
+ * 宽度去算中间截断。那段空白是为「hover 不抖」付的租金：图标若按需占位，
+ * 标题盒子会随 hover 变宽变窄，useMiddleTruncatedTitle 的 ResizeObserver
+ * 每次都要重算截断，文字当场重排。
+ *
+ * 改成浮层之后租金不必再付，而且比原方案更稳：标题盒子恒为整行宽，hover
+ * 前后都不变，重排从根上不存在。代价是 hover 那一行时标题尾部（以及靠右的
+ * 徽标、运行指示点）被盖住约 100px——这段空间今天标题本来就吃不到，所以是
+ * 净赚；完整标题另有 tooltip 兜底。
+ *
+ * pointer-events: none 是必需的：浮层横跨标题尾部，若它自己参与命中测试，
+ * 这段区域会对「点击行 = 打开会话」失灵。按钮各自在显形时把命中恢复成 auto。
+ */
+.yolo-chat-list-dropdown-item-actions {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  /* z-index 而非 auto：形成层叠上下文，让底下的遮罩 ::before 只垫在按钮
+     之下，而不是掉到行背景之后（无上下文时 z-index: -1 会穿到行背景后面） */
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  pointer-events: none;
+
+  svg {
+    height: var(--icon-xs);
+    width: var(--icon-xs);
+    stroke-width: var(--icon-stroke);
+  }
+}
+
+/* 遮罩：向左延伸一段渐变，让被盖住的标题淡出而不是被硬切一刀。
+   :not(:empty) —— 移动端不渲染任何操作按钮，空浮层不该凭空亮出一块底色。 */
+.yolo-chat-list-dropdown-item-actions:not(:empty)::before {
+  content: '';
+  position: absolute;
+  /* 右侧多盖出行的 10px 内边距，左侧多出 28px 作渐变段 */
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  /* 两层：上层是行的状态色，下层是弹层底色。合起来才不透明，理由见
+     --yolo-chat-list-row-tint 的注释。两层同一条 28px 渐变，一起淡出。 */
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-history-surface) 28px
+    );
+  opacity: 0;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+/* 遮罩跟着图标一起显形，选择器与下面那条「同权显形」保持一一对应 */
+.yolo-chat-history
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions::before,
+.yolo-chat-list-dropdown-item-actions.is-more-open::before {
+  opacity: 1;
+}
+
+/*
+ * 显形时整个浮层恢复命中：issue #567 Step 4 修过一次「点到按钮之间的缝隙
+ * 被当成点击行」，靠的就是在这个容器上统一拦一次 mousedown——容器若始终
+ * pointer-events: none，缝隙会重新漏到行上去。静息态仍然让位（此时图标不
+ * 可见，那段区域属于标题）。
+ */
+.yolo-chat-history
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions,
+.yolo-chat-list-dropdown-item-actions.is-more-open {
+  pointer-events: auto;
+}
+
+/*
+ * 改名态例外：输入框要占满整行，保存按钮必须留在流内把它顶窄，不能浮在
+ * 输入框上面。
+ */
+.yolo-chat-list-dropdown-item.is-editing .yolo-chat-list-dropdown-item-actions {
+  position: static;
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.yolo-chat-list-dropdown-item.is-editing
+  .yolo-chat-list-dropdown-item-actions::before {
+  content: none;
+}
+
+.yolo-chat-list-dropdown-item-actions.is-more-open
+  .yolo-chat-list-dropdown-item-icon {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.yolo-chat-list-more-button.is-open {
+  visibility: visible;
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-s);
+}
+
+.yolo-chat-list-more-button svg {
+  transition:
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
+    opacity var(--yolo-anim-duration-feedback) ease;
+  transform-origin: center;
+}
+
+.yolo-chat-list-more-button.is-open svg {
+  transform: rotate(90deg) scale(0.96);
+}
+
+/*
+ * 删除的待确认态只改图标自身：变红并加粗描线。加底色会把 stroke: currentColor
+ * 的图标糊成色块，加边框则和同排的无框图标打架，两者都不是这里该有的语言。
+ *
+ * 上色是一次点击回执而不是状态过渡，必须瞬时完成；渐变会让人拿点击时刻和颜色
+ * 到位的时刻对表，中间的过渡色就被读成卡顿。复位方向保留淡出，让自动超时取消
+ * 时不突兀。duration 按 transition-property 的顺序对位覆盖，只改 color 一项。
+ *
+ * issue #567 Step 5：opacity/transform/pointer-events 强制置 1（与下面
+ * .is-pinned 同一惯例）——删除按钮平时靠 :hover/:focus-within 才显形，但
+ * Mod+Backspace 键盘快捷键触发确认态时这一行未必被鼠标悬停，待确认反馈必须
+ * 不依赖鼠标位置就可见。
+ */
+.yolo-chat-history li .yolo-chat-list-delete-button.is-confirming {
+  color: var(--color-red);
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+  /* L1 回执：只把 color 一项压成 0s，其余按位保留 L2 的显隐时长 */
+  transition-duration: var(--yolo-chat-list-presence-duration),
+    var(--yolo-chat-list-presence-duration),
+    var(--yolo-chat-list-response-duration), var(--yolo-anim-duration-feedback);
+}
+
+.yolo-chat-history li .yolo-chat-list-delete-button svg {
+  transition: stroke-width var(--yolo-chat-list-presence-duration) ease;
+}
+
+.yolo-chat-history li .yolo-chat-list-delete-button.is-confirming svg {
+  stroke-width: 2.5;
+  transition-duration: var(--yolo-chat-list-response-duration);
+}
+
+/*
+ * 置顶状态的静息标识。曾经是行左缘一条 accent 导轨，但一条竖线读不出「置顶」
+ * 这层意思，反而更容易被当成「当前选中的那一行」。改用星标本身：和操作区里
+ * 那颗开关同一个图标、同一个填充态，状态语言全程只有一种。
+ *
+ * 位置在行尾——静息态的行尾本来就是状态位（运行中的状态点也在这里），hover
+ * 时整块换成操作区，两者不并存：状态点由 React 侧让位（见 ChatHistoryList
+ * 里 pin-marker 的渲染条件），星标由下面的 opacity 规则让位。
+ *
+ * 绝对定位在行的内边距里（与操作区同一套做法），不占布局宽度——置顶因此不会
+ * 改变标题的可用宽度，也就不会触发一次重新截断。
+ */
+.yolo-chat-list-pin-marker {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  /* z-index 而非 auto：与操作区同理，形成层叠上下文，让遮罩 ::before 只垫在
+     星标之下，而不是掉到行背景之后 */
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  color: var(--interactive-accent);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+.yolo-chat-list-pin-marker svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  stroke-width: var(--icon-stroke);
+  fill: currentColor;
+}
+
+/* 遮罩：与操作区同一条 28px 渐变、同样的两层叠法（理由见
+   --yolo-chat-list-row-tint 的注释），让被盖住的长标题淡出而不是被硬切一刀。 */
+.yolo-chat-list-pin-marker::before {
+  content: '';
+  position: absolute;
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-history-surface) 28px
+    );
+}
+
+/* 交给操作区里的星标按钮，选择器与操作区的显形规则一一对应 */
+.yolo-chat-history
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-pin-marker,
+.yolo-chat-list-dropdown-item:has(
+    .yolo-chat-list-dropdown-item-actions.is-more-open
+  )
+  .yolo-chat-list-pin-marker {
+  opacity: 0;
+}
+
+.yolo-chat-list-dropdown-item {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+
+.yolo-chat-list-ctx-menu {
+  /*
+   * issue #567 Step 3（追加需求）：菜单 createPortal 到 <body>（见
+   * ChatHistoryList.tsx），不再是列表滚动容器的 DOM 后代——
+   * 逃开了 surface.css 那条 overflow:hidden 的物理裁剪，窄弹层里靠右侧会话
+   * 弹出的菜单不会再被削掉。position 从 absolute（相对弹层内容定位）换成
+   * fixed（相对视口），top/left 也随之变成视口坐标。z-index 必须盖过
+   * --default 变体的 1000（src/styles/popover/surface.css）——Portal 后两者
+   * 是 <body> 下的兄弟节点，层叠顺序只看 z-index，不再天然继承弹层内部的
+   * 绘制顺序。
+   */
+  position: fixed;
+  z-index: 1010;
+  /*
+   * 宽度随内容自适应而不是固定死。width: max-content 让盒子撑到最长一行
+   * 文案的自然宽度；min/max 兜住两端——短文案（如「置顶」）不再空荡，长文案
+   * （如「Export conversation to vault」）到 max-width 才换行，而不是在固定
+   * 176px 里过早折断。真实渲染宽高由 ChatHistoryList.tsx 的 useLayoutEffect
+   * 量出来后再钳一次位置（基准是视口，不是母弹层），越界翻转同样在那处理。
+   */
+  width: max-content;
+  min-width: 148px;
+  max-width: 240px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 4px;
+  box-shadow: var(--shadow-s);
+  opacity: 0;
+  transform: scale(0.9);
+  transform-origin: top center;
+  pointer-events: none;
+  outline: none;
+  transition:
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-exit) ease;
+}
+
+.yolo-chat-list-ctx-menu.is-open {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.yolo-chat-list-ctx-menu button {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-normal);
+  padding: 7px 9px;
+  border-radius: var(--radius-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.yolo-chat-list-ctx-menu button svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.yolo-chat-list-ctx-menu button:hover,
+.yolo-chat-list-ctx-menu button:focus-visible,
+.yolo-chat-list-ctx-menu button:active {
+  background: var(--background-modifier-hover) !important;
+  outline: none;
+}
+
+.yolo-chat-list-ctx-menu button.danger {
+  color: var(--color-red);
+}
+
+/* 待确认态：文案已说明下一步，视觉上与行内按钮统一，只加粗图标描线 */
+.yolo-chat-list-ctx-menu button.danger.is-confirming svg {
+  stroke-width: 2.5;
+}
+
+.yolo-chat-list-ctx-menu hr {
+  border: none;
+  border-top: 1px solid var(--background-modifier-border);
+  margin: 3px 2px;
+}
+
+/* 当前对话：静息态就有底色，和悬停同一档但不随指针离开消失 */
+.yolo-chat-history
+  li.yolo-chat-list-dropdown-item.is-current:not(.is-pin-moving) {
+  --yolo-chat-list-row-tint: var(--background-modifier-hover);
+
+  background: var(--yolo-chat-list-row-tint) !important;
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+/* 时间分组标题：不可交互，只是列表里的一行小字 */
+.yolo-chat-history li.yolo-chat-history-group {
+  padding: var(--size-4-3) var(--size-4-3) var(--size-2-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  cursor: default;
+  transition: transform var(--yolo-chat-list-reorder-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+.yolo-chat-history li.yolo-chat-history-group:first-child {
+  padding-top: var(--size-2-2);
+}
+
+.yolo-chat-history-list.is-collapsing .yolo-chat-history-group,
+.yolo-chat-history-list.is-reordering .yolo-chat-history-group {
+  transition: none;
+}
+
+/* 列表底部的「任务对话」入口与任务列表顶部的返回行 */
+.yolo-chat-history li.yolo-chat-history-task-entry {
+  padding: 0;
+  margin-top: var(--size-4-3);
+}
+
+.yolo-chat-history-task-entry > button,
+button.yolo-chat-history-back {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: var(--size-2-3) var(--size-4-2);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.yolo-chat-history-task-entry > button > span:first-child {
+  flex: 1;
+  text-align: left;
+}
+
+.yolo-chat-history-task-entry > button:hover,
+button.yolo-chat-history-back:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.yolo-chat-history-task-header {
+  flex-shrink: 0;
+  padding: 0 var(--size-4-2) var(--size-2-2);
+}
+
+.yolo-chat-history-task-header .yolo-chat-list-origin-filters {
+  border-bottom: 0;
+  padding: var(--size-2-2) 0 0;
+  background: transparent;
+}
+
+.yolo-chat-history .yolo-chat-list-search {
+  position: static;
+  padding: 0 var(--size-4-2) var(--size-2-3);
+  border-bottom: 0;
+  background: transparent;
+}
+
+.yolo-chat-history .yolo-chat-list-search-field {
+  padding: var(--size-2-2) var(--size-2-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+}
+
+.yolo-chat-history .yolo-chat-list-legend {
+  background: transparent;
+}

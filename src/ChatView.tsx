@@ -405,11 +405,9 @@ export class ChatView extends ItemView {
   }
 
   /**
-   * issue #567. Opens the history dropdown — used by the "Open chat
-   * history" command (`main.ts`) so it's reachable via the command palette,
-   * a bound keyboard shortcut, or Commander. The in-content History button
-   * (`ChatHeader`) keeps its own direct click handler; this is a second
-   * entry point onto the same `ChatListDropdown` instance.
+   * issue #567. Reveals the chat sidebar and focuses its history search —
+   * used by the "Open chat history" command (`main.ts`) so it's reachable
+   * via the command palette, a bound keyboard shortcut, or Commander.
    */
   openChatHistory(): void {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
@@ -883,7 +881,7 @@ export class ChatView extends ItemView {
    * text, blur commits. An empty/unchanged submission is treated as a
    * cancel. Commit calls through `ChatRef.renameCurrentConversation` so
    * history list, tab label, and CLI session overlays all stay in sync —
-   * the same rename path `ChatHeader`'s history dropdown uses.
+   * the same rename path the sidebar history list uses.
    */
   private beginTitleEditing(): void {
     const titleEl = this.getHeaderTitleEl()
@@ -1039,7 +1037,7 @@ export class ChatView extends ItemView {
    * `src/components/modals/ConfirmModal.tsx`) before deleting the active
    * conversation. Delete cleanup + post-delete conversation switching is
    * `ChatRef.deleteCurrentConversation`'s sunk implementation, shared with
-   * `ChatHeader`'s history dropdown.
+   * the sidebar history list.
    */
   private confirmDeleteCurrentConversation(): void {
     new ConfirmModal(this.app, {

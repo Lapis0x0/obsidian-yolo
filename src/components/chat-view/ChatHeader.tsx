@@ -1,4 +1,4 @@
-import { Download, History, Plus } from 'lucide-react'
+import { Download, PanelLeft, Plus } from 'lucide-react'
 import type {
   Dispatch,
   MutableRefObject,
@@ -10,7 +10,6 @@ import { useEffect, useRef } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import type { ChatMode } from '../../core/agent/chat-mode'
 import { isModuleChatMode } from '../../core/agent/chat-mode'
-import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
   type CliRuntimeId,
@@ -18,19 +17,9 @@ import {
   RUNTIME_CAPABILITIES,
   isCliRuntime,
 } from '../../core/cli-runtime'
-import type {
-  ChatConversationCliSession,
-  ChatConversationMetadata,
-} from '../../database/json/chat/types'
-import type {
-  ChatConversationCompactionState,
-  ChatMessage,
-} from '../../types/chat'
-import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type { MentionableBlockData } from '../../types/mentionable'
 
 import { AssistantSelector } from './AssistantSelector'
-import { ChatListDropdown } from './ChatListDropdown'
 import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'
 import ViewToggle from './ViewToggle'
@@ -64,40 +53,11 @@ export type ChatHeaderProps = {
   handleNewChat: (selectedBlock?: MentionableBlockData) => void
   handleExportChatToVault: (conversationId: string) => void
   currentConversationId: string
-  chatList: ChatConversationMetadata[]
-  activeHistoryConversationId: string
-  runSummariesByConversationId: Map<string, AgentConversationRunSummary>
-  handleLoadConversation: (conversationId: string) => Promise<void>
-  getConversationById: (id: string) => Promise<{
-    messages: ChatMessage[]
-    overrides: ConversationOverrideSettings | null | undefined
-    assistantId?: string
-    conversationModelId?: string
-    messageModelMap?: Record<string, string>
-    activeBranchByUserMessageId?: Record<string, string>
-    assistantGroupBoundaryMessageIds?: string[]
-    reasoningLevel?: string
-    compaction?: ChatConversationCompactionState
-    cliSession?: ChatConversationCliSession
-  } | null>
   /**
-   * issue #567：删除会话后的清理（CLI overlay 移除）+ 会话切换逻辑
-   * 下沉到 Chat.tsx 单一实现，供本组件与 `ChatRef.deleteCurrentConversation`
-   * 共用，取代原先直接内联在 `onDelete` 里的那段逻辑。
+   * 侧边栏处于抽屉形态时，头部最左侧给一个开抽屉的按钮；常驻列和窄轨各自
+   * 带展开 / 收起按钮，不需要它。
    */
-  deleteConversationWithCleanup: (conversationId: string) => Promise<void>
-  updateConversationTitle: (id: string, title: string) => Promise<void>
-  syncCliConversationTitle: (conversationId: string, title: string) => void
-  toggleConversationPinned: (id: string) => Promise<void>
-  generateConversationTitle: (
-    id: string,
-    messages: ChatMessage[],
-    options?: {
-      force?: boolean
-    },
-  ) => Promise<string | null>
-  /** 见 `ChatListDropdown` 的 `openHandleRef` 文档注释。 */
-  historyOpenHandleRef: MutableRefObject<(() => void) | null>
+  onOpenSidebar?: () => void
 }
 
 export function ChatHeader({
@@ -119,17 +79,7 @@ export function ChatHeader({
   handleNewChat,
   handleExportChatToVault,
   currentConversationId,
-  chatList,
-  activeHistoryConversationId,
-  runSummariesByConversationId,
-  handleLoadConversation,
-  getConversationById,
-  deleteConversationWithCleanup,
-  updateConversationTitle,
-  syncCliConversationTitle,
-  toggleConversationPinned,
-  generateConversationTitle,
-  historyOpenHandleRef,
+  onOpenSidebar,
 }: ChatHeaderProps) {
   const { t } = useLanguage()
   const headerRef = useRef<HTMLDivElement | null>(null)
@@ -198,6 +148,16 @@ export function ChatHeader({
       }`}
     >
       <div className="yolo-chat-header-left">
+        {onOpenSidebar ? (
+          <button
+            type="button"
+            className="clickable-icon"
+            aria-label={t('sidebar.chatSidebar.open', 'Open sidebar')}
+            onClick={onOpenSidebar}
+          >
+            <PanelLeft size={18} />
+          </button>
+        ) : null}
         <ViewToggle
           activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
           onChangeChatSurface={(surface) => {
@@ -265,49 +225,6 @@ export function ChatHeader({
               <Download size={18} />
             </button>
           ) : null}
-          <ChatListDropdown
-            chatList={chatList}
-            currentConversationId={activeHistoryConversationId}
-            runSummariesByConversationId={runSummariesByConversationId}
-            openHandleRef={historyOpenHandleRef}
-            onSelect={(conversationId) => {
-              if (conversationId === activeHistoryConversationId) return
-              void handleLoadConversation(conversationId)
-            }}
-            onDelete={(conversationId) => {
-              void deleteConversationWithCleanup(conversationId)
-            }}
-            onUpdateTitle={async (conversationId, newTitle) => {
-              await updateConversationTitle(conversationId, newTitle)
-              syncCliConversationTitle(conversationId, newTitle)
-            }}
-            onTogglePinned={(conversationId) => {
-              void toggleConversationPinned(conversationId)
-            }}
-            onRetryTitle={async (conversationId) => {
-              const conversation = await getConversationById(conversationId)
-              if (!conversation) {
-                console.error(
-                  'Failed to retry conversation title generation: conversation not found',
-                  {
-                    conversationId,
-                  },
-                )
-                return
-              }
-              const title = await generateConversationTitle(
-                conversationId,
-                conversation.messages,
-                {
-                  force: true,
-                },
-              )
-              if (title) syncCliConversationTitle(conversationId, title)
-            }}
-            onExportConversation={handleExportChatToVault}
-          >
-            <History size={18} />
-          </ChatListDropdown>
         </div>
       </div>
     </div>

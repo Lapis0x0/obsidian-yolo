@@ -1,0 +1,168 @@
+/*
+ * YOLO Chat 侧边栏的外壳：常驻列、窄轨、抽屉三种形态（形态判断见
+ * useChatSidebarLayout.ts）。列表本身的样式在 history.css。
+ *
+ * 外壳铺满 .view-content，侧边栏用负外边距抵掉宿主的内边距，贴到叶子的左、上、
+ * 下边缘；对话容器仍然留在原来的内边距里，排版不受影响。
+ */
+
+.yolo-chat-shell {
+  --yolo-chat-sidebar-background: var(--background-secondary);
+  --yolo-chat-sidebar-width: 260px;
+  --yolo-chat-sidebar-rail-width: 52px;
+  /* Obsidian 给 .view-content 的内边距，侧边栏要贴边就得逐边抵掉 */
+  --yolo-chat-shell-pad-block-start: var(--size-4-3);
+  --yolo-chat-shell-pad-inline-start: var(--size-4-3);
+  --yolo-chat-shell-pad-block-end: var(--size-4-8);
+
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.yolo-chat-shell > .yolo-chat-container {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yolo-chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-height: 0;
+  margin-block: calc(var(--yolo-chat-shell-pad-block-start) * -1)
+    calc(var(--yolo-chat-shell-pad-block-end) * -1);
+  margin-inline-start: calc(var(--yolo-chat-shell-pad-inline-start) * -1);
+  background: var(--yolo-chat-sidebar-background);
+  border-inline-end: 1px solid var(--background-modifier-border);
+}
+
+.yolo-chat-sidebar--column {
+  width: var(--yolo-chat-sidebar-width);
+  margin-inline-end: var(--size-4-3);
+}
+
+/* 窄轨 ------------------------------------------------------------------ */
+
+.yolo-chat-sidebar--rail {
+  width: var(--yolo-chat-sidebar-rail-width);
+  align-items: center;
+  gap: var(--size-2-3);
+  padding: var(--size-4-3) 0;
+  margin-inline-end: var(--size-4-3);
+}
+
+button.yolo-chat-sidebar-rail-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-chat-sidebar-rail-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-chat-sidebar-rail-button--primary {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.yolo-chat-sidebar-rail-spacer {
+  flex: 1;
+}
+
+/* 抽屉 ------------------------------------------------------------------ */
+
+.yolo-chat-sidebar--drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 20;
+  width: min(var(--yolo-chat-sidebar-width), 85%);
+  box-shadow: var(--shadow-l);
+  transform: translateX(calc(-100% - var(--yolo-chat-shell-pad-inline-start)));
+  transition: transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
+}
+
+.yolo-chat-sidebar--drawer.is-open {
+  transform: none;
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-scrim {
+  position: absolute;
+  inset: calc(var(--yolo-chat-shell-pad-block-start) * -1)
+    calc(var(--yolo-chat-shell-pad-inline-start) * -1)
+    calc(var(--yolo-chat-shell-pad-block-end) * -1);
+  z-index: 19;
+  background: var(--background-modifier-cover);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
+}
+
+.yolo-chat-sidebar-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+/* 顶部：标题 + 搜索 + 收起 ------------------------------------------------ */
+
+.yolo-chat-sidebar-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-4-3) var(--size-4-2) var(--size-2-3) var(--size-4-4);
+}
+
+.yolo-chat-sidebar-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-chat-sidebar-actions {
+  flex-shrink: 0;
+  padding: var(--size-2-1) var(--size-4-2) var(--size-4-2);
+}
+
+button.yolo-chat-sidebar-new-chat {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  padding: 0 var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+}
+
+button.yolo-chat-sidebar-new-chat:hover {
+  background: var(--background-modifier-hover);
+}

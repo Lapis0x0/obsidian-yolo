@@ -71,18 +71,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { ChatConversationMetadata } from '../../database/json/chat/types'
 
 import {
-  ChatListDropdown,
+  ChatHistoryList,
   clampContextMenuPosition,
   computeMiddleTruncatedTitle,
   computeNextHighlightedIndex,
-  handlePopoverEscapeKeyDown,
   navigateContextMenu,
   registerChatListMenuKeys,
   registerChatListPanelKeys,
   resolveChatListDeleteConfirmation,
   resolveChatListSearchKeyboardAction,
   splitTitleForMiddleTruncation,
-} from './ChatListDropdown'
+} from './ChatHistoryList'
 
 const chat = (
   id: string,
@@ -109,7 +108,7 @@ const createTree = (
   chatList: ChatConversationMetadata[],
   onSelect = jest.fn(),
 ) =>
-  ChatListDropdown({
+  ChatHistoryList({
     chatList,
     currentConversationId: '',
     runSummariesByConversationId: new Map(),
@@ -119,7 +118,6 @@ const createTree = (
     onTogglePinned: jest.fn(),
     onRetryTitle: jest.fn(),
     onExportConversation: jest.fn(),
-    children: <span>History</span>,
   })
 
 // ChatListItem 由 React.memo 包装：元素的 type 是 memo 对象，内层组件函数在
@@ -135,19 +133,9 @@ const historyRows = (tree: ReactElement) =>
     return typeof inner === 'function' && inner.name === 'ChatListItem'
   })
 
-// YoloPopoverContent 是 forwardRef 组件：元素的 type 是 forwardRef 对象，内层
-// 渲染函数在 .render 字段上。
-const findByRenderName = (tree: ReactElement, name: string) =>
-  walkElements(tree).find((element) => {
-    const type = element.type as { render?: { name?: string } } | undefined
-    return (
-      typeof type === 'object' && type !== null && type.render?.name === name
-    )
-  })
-
 // issue #567：点击误触治理的测试需要拿到行内每个操作按钮真正的
 // onClick/onMouseDown 处理函数（不能用 renderToStaticMarkup，那会丢掉函数）。
-// 把 row（ChatListDropdown 传给 ChatListItem 的 props）实际调用一次，拿到
+// 把 row（ChatHistoryList 传给 ChatListItem 的 props）实际调用一次，拿到
 // ChatListItem 渲染出的真实元素树，再在树里按 className 找目标按钮。
 const renderRow = (row: ReactElement) =>
   (unwrapMemoType(row.type) as (props: typeof row.props) => ReactElement)(
@@ -189,17 +177,16 @@ const createInteractionTree = (chatList: ChatConversationMetadata[]) => {
     onRetryTitle: jest.fn(),
     onExportConversation: jest.fn(),
   }
-  const tree = ChatListDropdown({
+  const tree = ChatHistoryList({
     chatList,
     currentConversationId: '',
     runSummariesByConversationId: new Map(),
-    children: <span>History</span>,
     ...mocks,
   })
   return { tree, mocks }
 }
 
-describe('ChatListDropdown', () => {
+describe('ChatHistoryList', () => {
   beforeEach(() => {
     mockSearchQuery = ''
   })
@@ -267,9 +254,9 @@ describe('ChatListDropdown', () => {
     expect(html.match(/data-runtime-id=/g)).toHaveLength(3)
   })
 
-  // issue #567：删除图标从「更多」展开组移回常驻行内图标，顺序为
-  // 改名 / 置顶 / 删除 / ⋯，不再需要先点「更多」才能看到删除。
-  it('renders the delete icon inline between pin and more, always present (not gated by the more-menu toggle)', () => {
+  // 侧边栏一行只有两百多像素：悬停只露删除和 ⋯，改名 / 置顶 / 重试命名 /
+  // 导出都收进 ⋯ 菜单。删除仍常驻行内（issue #567），排在 ⋯ 之前。
+  it('renders only delete and more inline, delete first, always reachable by Tab', () => {
     const rows = historyRows(createTree([chat('yolo', 'Normal')]))
     expect(rows).toHaveLength(1)
     const row = rows[0]
@@ -280,16 +267,14 @@ describe('ChatListDropdown', () => {
       ),
     )
 
-    const pinIndex = html.indexOf('yolo-chat-list-pin-button')
     const deleteIndex = html.indexOf('yolo-chat-list-delete-button')
     const moreIndex = html.indexOf('yolo-chat-list-more-button')
-
-    expect(pinIndex).toBeGreaterThan(-1)
-    expect(deleteIndex).toBeGreaterThan(pinIndex)
+    expect(deleteIndex).toBeGreaterThan(-1)
     expect(moreIndex).toBeGreaterThan(deleteIndex)
+    expect(html).not.toContain('aria-label="Edit"')
+    expect(html).not.toContain('aria-label="Pin"')
+    expect(html).not.toContain('aria-label="Retry title"')
 
-    // 挂在展开组里时用 tabIndex={isMoreMenuOpen ? undefined : -1} 防止收起态
-    // 被 Tab 到；现在常驻显示，不应该再带这个 -1（与 Pencil/Star 的可达性一致）。
     const tagStart = html.lastIndexOf('<button', deleteIndex)
     const tagEnd = html.indexOf('>', tagStart)
     const deleteButtonTag = html.slice(tagStart, tagEnd + 1)
@@ -300,9 +285,7 @@ describe('ChatListDropdown', () => {
   // issue #567：点击误触治理。选中会话是靠 motion.li 的 onMouseDown
   // 触发的（不是 onClick），所以每个操作图标点击不得冒泡到条目本身——断言的
   // 落点是「点完操作图标之后 onSelect 没被调过」，而不是检查某个内部布尔值。
-  // 覆盖面对齐任务里点名的元素：改名铅笔 / 置顶星标 / 行内删除 / ⋯ 展开条
-  // 内部按钮（RetryTitle、Export）/ ⋯ 本身；右键菜单触发的 Esc 分层已经在下面
-  // 的 handlePopoverEscapeKeyDown 用例里覆盖，这里不重复。
+  // 覆盖面是行内剩下的两个按钮：删除与 ⋯。
   describe('action icon clicks do not select the row or leak past the actions area', () => {
     // itemHandlers.onRetryTitle 的 .finally() 和 useDeleteConfirmation 的
     // request() 都用 window.setTimeout 做反馈时长/自动复位；jest 的
@@ -345,35 +328,6 @@ describe('ChatListDropdown', () => {
       expect(mocks.onSelect).not.toHaveBeenCalled()
     })
 
-    it('pin (star) click toggles pin, stops propagation, and never selects the row', async () => {
-      const { rendered, mocks } = buildRow()
-      const pinButton = findButtonByClass(rendered, 'yolo-chat-list-pin-button')
-      expect(pinButton).toBeDefined()
-      const stopPropagation = jest.fn()
-      ;(
-        pinButton?.props as { onClick?: (e: unknown) => void } | undefined
-      )?.onClick?.({ stopPropagation })
-      await Promise.resolve()
-      expect(stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onTogglePinned).toHaveBeenCalledWith('yolo')
-      expect(mocks.onSelect).not.toHaveBeenCalled()
-    })
-
-    it('rename (pencil) click stops propagation and never selects the row', () => {
-      const { rendered, mocks } = buildRow()
-      const editButton = findButtonByClass(
-        rendered,
-        'yolo-chat-list-dropdown-item-icon',
-      )
-      expect(editButton).toBeDefined()
-      const stopPropagation = jest.fn()
-      ;(
-        editButton?.props as { onClick?: (e: unknown) => void } | undefined
-      )?.onClick?.({ stopPropagation })
-      expect(stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onSelect).not.toHaveBeenCalled()
-    })
-
     it('inline delete click (first press, entering confirm state) stops propagation and never selects the row', () => {
       const { rendered, mocks } = buildRow()
       const deleteButton = findButtonByClass(
@@ -386,46 +340,6 @@ describe('ChatListDropdown', () => {
         deleteButton?.props as { onClick?: (e: unknown) => void } | undefined
       )?.onClick?.({ stopPropagation })
       expect(stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onSelect).not.toHaveBeenCalled()
-    })
-
-    it('retry-title click inside the "more" strip stops propagation and never selects the row', async () => {
-      const { rendered, mocks } = buildRow()
-      // .yolo-chat-list-dropdown-item-icon 命中好几个按钮（改名/删除/retry/
-      // export/更多都带这个类），Retry title 要按 aria-label 精确匹配。
-      const retryButton = walkElements(rendered).find(
-        (el) =>
-          el.type === 'button' &&
-          (el.props as { 'aria-label'?: string })['aria-label'] ===
-            'Retry title',
-      )
-      expect(retryButton).toBeDefined()
-      const stopPropagation = jest.fn()
-      ;(
-        retryButton?.props as { onClick?: (e: unknown) => void } | undefined
-      )?.onClick?.({ stopPropagation })
-      await Promise.resolve()
-      expect(stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onRetryTitle).toHaveBeenCalledWith('yolo')
-      expect(mocks.onSelect).not.toHaveBeenCalled()
-    })
-
-    it('export click inside the "more" strip stops propagation and never selects the row', async () => {
-      const { rendered, mocks } = buildRow()
-      const exportButton = walkElements(rendered).find(
-        (el) =>
-          el.type === 'button' &&
-          (el.props as { 'aria-label'?: string })['aria-label'] ===
-            'Export conversation to vault',
-      )
-      expect(exportButton).toBeDefined()
-      const stopPropagation = jest.fn()
-      ;(
-        exportButton?.props as { onClick?: (e: unknown) => void } | undefined
-      )?.onClick?.({ stopPropagation })
-      await Promise.resolve()
-      expect(stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onExportConversation).toHaveBeenCalledWith('yolo')
       expect(mocks.onSelect).not.toHaveBeenCalled()
     })
 
@@ -517,7 +431,10 @@ describe('ChatListDropdown', () => {
     })
 
     const buildSearchInputKeyDown = (chatList: ChatConversationMetadata[]) => {
+      // 搜索框只在唤出或有搜索词时渲染；mock 的 useState 让空串初值取这个值
+      mockSearchQuery = 'n'
       const { tree, mocks } = createInteractionTree(chatList)
+      mockSearchQuery = ''
       const searchInput = findInputByClass(tree, 'yolo-chat-list-search-input')
       if (!searchInput) throw new Error('expected the search input')
       return {
@@ -583,39 +500,6 @@ describe('ChatListDropdown', () => {
   })
 })
 
-// issue #567：Esc 改由 Obsidian scope 分层。Radix onEscapeKeyDown 永远
-// preventDefault，避免它在 popout / 自绘菜单场景里抢着 dismiss 弹层。
-describe('handlePopoverEscapeKeyDown', () => {
-  it('always prevents Radix from dismissing the popover', () => {
-    const preventDefault = jest.fn()
-
-    handlePopoverEscapeKeyDown({ preventDefault })
-
-    expect(preventDefault).toHaveBeenCalledTimes(1)
-  })
-
-  it('wires the popover content onEscapeKeyDown prop so Radix never dismisses on Escape', () => {
-    const content = findByRenderName(
-      createTree([chat('yolo', 'Normal')]),
-      'YoloPopoverContent',
-    )
-    expect(content).toBeDefined()
-    expect(content?.props.onEscapeKeyDown).toBe(handlePopoverEscapeKeyDown)
-  })
-
-  it('wires the popover content onInteractOutside prop so clicks inside the portaled menu do not close the popover', () => {
-    const content = findByRenderName(
-      createTree([chat('yolo', 'Normal')]),
-      'YoloPopoverContent',
-    )
-    expect(content).toBeDefined()
-    expect(typeof content?.props.onInteractOutside).toBe('function')
-  })
-})
-
-// issue #567（追加需求）：菜单不再钳在母弹层范围内，只需不超出视口——
-// 母弹层可能很窄，越靠边缘的会话右键时菜单应该允许溢出母弹层但不能越过屏幕。
-// 钳制的纯计算见 ChatListDropdown.tsx 的 clampContextMenuPosition。
 describe('clampContextMenuPosition', () => {
   const viewport = { width: 1000, height: 800 }
 
@@ -817,7 +701,7 @@ describe('computeNextHighlightedIndex', () => {
 })
 
 // issue #567：搜索框键盘事件 → 动作的判定，纯函数。键位取舍（Mod+P
-// 与 Obsidian 命令面板冲突、换成 Mod+Shift+P）见 ChatListDropdown.tsx 里
+// 与 Obsidian 命令面板冲突、换成 Mod+Shift+P）见 ChatHistoryList.tsx 里
 // resolveChatListSearchKeyboardAction 头注释。
 describe('resolveChatListSearchKeyboardAction', () => {
   it('resolves ArrowUp/ArrowDown to navigate actions', () => {
@@ -931,7 +815,7 @@ describe('resolveChatListSearchKeyboardAction', () => {
 
 // issue #567：删除两步确认的判定，从原先 ChatListItem 内部的
 // useDeleteConfirmation 提升为纯函数——键盘 Mod+Backspace 和行内删除按钮现在
-// 共用同一份状态，见 ChatListDropdown.tsx 里这个函数头注释。
+// 共用同一份状态，见 ChatHistoryList.tsx 里这个函数头注释。
 describe('resolveChatListDeleteConfirmation', () => {
   it('arms when nothing is currently pending confirmation', () => {
     expect(resolveChatListDeleteConfirmation(null, 'a')).toBe('arm')

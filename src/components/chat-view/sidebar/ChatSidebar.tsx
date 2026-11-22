@@ -1,0 +1,230 @@
+import { PanelLeft, Search, SquarePen } from 'lucide-react'
+import { Scope } from 'obsidian'
+import { useEffect, useRef } from 'react'
+
+import { useApp } from '../../../contexts/app-context'
+import { useLanguage } from '../../../contexts/language-context'
+import type { AgentConversationRunSummary } from '../../../core/agent/service'
+import type { ChatConversationMetadata } from '../../../database/json/chat/types'
+import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
+
+import type { ChatSidebarLayout } from './useChatSidebarLayout'
+
+export type ChatSidebarHandle = {
+  /** 让侧边栏可见（展开窄轨 / 打开抽屉）并唤出历史搜索。 */
+  openSearch: () => void
+}
+
+type ChatSidebarProps = {
+  layout: ChatSidebarLayout
+  drawerOpen: boolean
+  onCloseDrawer: () => void
+  onToggle: () => void
+  onNewChat: () => void
+  chatList: ChatConversationMetadata[]
+  currentConversationId: string
+  runSummariesByConversationId: Map<string, AgentConversationRunSummary>
+  onSelectConversation: (conversationId: string) => void | Promise<void>
+  onDeleteConversation: (conversationId: string) => void | Promise<void>
+  onUpdateTitle: (
+    conversationId: string,
+    newTitle: string,
+  ) => void | Promise<void>
+  onTogglePinned: (conversationId: string) => void | Promise<void>
+  onRetryTitle: (conversationId: string) => void | Promise<void>
+  onExportConversation: (conversationId: string) => void | Promise<void>
+  handleRef: React.MutableRefObject<ChatSidebarHandle | null>
+}
+
+/**
+ * YOLO Chat 的左侧边栏：标题、新对话、对话历史。
+ *
+ * 三种形态由 `useChatSidebarLayout` 按对话外壳宽度决定：宽时常驻一列（可收成
+ * 窄轨），窄时隐藏、以抽屉盖在对话上。抽屉关着时组件仍然挂载，只是移出视野并
+ * 设为 inert，搜索词、展开的分组等状态在开合之间保留。
+ */
+export function ChatSidebar({
+  layout,
+  drawerOpen,
+  onCloseDrawer,
+  onToggle,
+  onNewChat,
+  chatList,
+  currentConversationId,
+  runSummariesByConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  onUpdateTitle,
+  onTogglePinned,
+  onRetryTitle,
+  onExportConversation,
+  handleRef,
+}: ChatSidebarProps) {
+  const { t } = useLanguage()
+  const app = useApp()
+  const asideRef = useRef<HTMLElement | null>(null)
+  const historyHandleRef = useRef<ChatHistoryListHandle | null>(null)
+  // 窄轨上点搜索要先展开、等历史列表挂载后再唤出搜索
+  const pendingSearchRef = useRef(false)
+
+  const isDrawer = layout === 'drawer'
+  const isHidden = isDrawer && !drawerOpen
+
+  // inert 没有进 React 18 的 props 类型，直接写 DOM 属性。关着的抽屉不可聚焦、
+  // 不进 Tab 顺序，也不会被读屏读到。
+  useEffect(() => {
+    if (asideRef.current) asideRef.current.inert = isHidden
+  }, [isHidden])
+
+  // 抽屉打开期间 Esc 关抽屉。列表自己的 scope（焦点在列表里时）压在它上面，
+  // 先处理改名取消、收起搜索，无事可做时同样回调到这里。
+  useEffect(() => {
+    if (!isDrawer || !drawerOpen) return
+    const scope = new Scope(app.keymap.scope)
+    scope.register([], 'Escape', () => {
+      onCloseDrawer()
+      return false
+    })
+    app.keymap.pushScope(scope)
+    return () => app.keymap.popScope(scope)
+  }, [app, drawerOpen, isDrawer, onCloseDrawer])
+
+  useEffect(() => {
+    if (layout === 'rail' || !pendingSearchRef.current) return
+    if (isDrawer && !drawerOpen) return
+    pendingSearchRef.current = false
+    historyHandleRef.current?.focusSearch()
+  })
+
+  handleRef.current = {
+    openSearch: () => {
+      if (layout === 'rail') {
+        pendingSearchRef.current = true
+        onToggle()
+        return
+      }
+      if (isDrawer && !drawerOpen) {
+        pendingSearchRef.current = true
+        onToggle()
+        return
+      }
+      historyHandleRef.current?.focusSearch()
+    },
+  }
+
+  const closeIfDrawer = () => {
+    if (isDrawer) onCloseDrawer()
+  }
+
+  const newChatLabel = t('chat.newChat', 'New chat')
+  const searchLabel = t('sidebar.chatSidebar.search', 'Search conversations')
+
+  if (layout === 'rail') {
+    return (
+      <aside
+        ref={asideRef}
+        className="yolo-chat-sidebar yolo-chat-sidebar--rail"
+      >
+        <button
+          type="button"
+          className="yolo-chat-sidebar-rail-button yolo-chat-sidebar-rail-button--primary"
+          aria-label={newChatLabel}
+          onClick={onNewChat}
+        >
+          <SquarePen size={16} />
+        </button>
+        <button
+          type="button"
+          className="yolo-chat-sidebar-rail-button"
+          aria-label={searchLabel}
+          onClick={() => handleRef.current?.openSearch()}
+        >
+          <Search size={16} />
+        </button>
+        <div className="yolo-chat-sidebar-rail-spacer" />
+        <button
+          type="button"
+          className="yolo-chat-sidebar-rail-button"
+          aria-label={t('sidebar.chatSidebar.expand', 'Expand sidebar')}
+          onClick={onToggle}
+        >
+          <PanelLeft size={16} />
+        </button>
+      </aside>
+    )
+  }
+
+  return (
+    <>
+      {isDrawer ? (
+        <div
+          className={`yolo-chat-sidebar-scrim${drawerOpen ? ' is-open' : ''}`}
+          aria-hidden="true"
+          onClick={onCloseDrawer}
+        />
+      ) : null}
+      <aside
+        ref={asideRef}
+        className={`yolo-chat-sidebar yolo-chat-sidebar--${layout}${
+          drawerOpen ? ' is-open' : ''
+        }`}
+      >
+        <div className="yolo-chat-sidebar-header">
+          <span className="yolo-chat-sidebar-title">
+            {t('sidebar.chatSidebar.title', 'YOLO')}
+          </span>
+          <button
+            type="button"
+            className="clickable-icon"
+            aria-label={searchLabel}
+            onClick={() => historyHandleRef.current?.focusSearch()}
+          >
+            <Search size={16} />
+          </button>
+          <button
+            type="button"
+            className="clickable-icon"
+            aria-label={
+              isDrawer
+                ? t('sidebar.chatSidebar.close', 'Close sidebar')
+                : t('sidebar.chatSidebar.collapse', 'Collapse sidebar')
+            }
+            onClick={isDrawer ? onCloseDrawer : onToggle}
+          >
+            <PanelLeft size={16} />
+          </button>
+        </div>
+        <div className="yolo-chat-sidebar-actions">
+          <button
+            type="button"
+            className="yolo-chat-sidebar-new-chat"
+            onClick={() => {
+              onNewChat()
+              closeIfDrawer()
+            }}
+          >
+            <SquarePen size={16} />
+            <span>{newChatLabel}</span>
+          </button>
+        </div>
+        <ChatHistoryList
+          chatList={chatList}
+          currentConversationId={currentConversationId}
+          runSummariesByConversationId={runSummariesByConversationId}
+          onSelect={(conversationId) => {
+            closeIfDrawer()
+            if (conversationId === currentConversationId) return
+            return onSelectConversation(conversationId)
+          }}
+          onDelete={onDeleteConversation}
+          onUpdateTitle={onUpdateTitle}
+          onTogglePinned={onTogglePinned}
+          onRetryTitle={onRetryTitle}
+          onExportConversation={onExportConversation}
+          onIdleEscape={isDrawer ? onCloseDrawer : undefined}
+          handleRef={historyHandleRef}
+        />
+      </aside>
+    </>
+  )
+}

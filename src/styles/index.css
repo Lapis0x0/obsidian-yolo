@@ -29,6 +29,8 @@
 @import './chat/image-preview.css';
 @import './chat/message.css';
 @import './chat/popover.css';
+@import './chat/history.css';
+@import './chat/sidebar.css';
 @import './chat/edit-diff.css';
 @import './chat/external-agent-card.css';
 @import './chat/subagent-card.css';

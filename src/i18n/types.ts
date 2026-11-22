@@ -97,13 +97,10 @@ export type TranslationKeys = {
       searchPlaceholder?: string
       empty?: string
       noTaskConversations?: string
-      historySections?: string
-      myConversations?: string
       taskConversations?: string
       taskConversationSources?: string
       allSources?: string
       externalAgent?: string
-      current?: string
       pinConversation?: string
       unpinConversation?: string
       retryTitle?: string
@@ -113,7 +110,6 @@ export type TranslationKeys = {
       exportShort?: string
       moreActions?: string
       confirmDelete?: string
-      openHistory?: string
       legend?: {
         navigate?: string
         open?: string
@@ -121,6 +117,22 @@ export type TranslationKeys = {
         pin?: string
         rename?: string
       }
+      groups?: {
+        pinned?: string
+        today?: string
+        yesterday?: string
+        week?: string
+        month?: string
+        older?: string
+      }
+    }
+    chatSidebar?: {
+      title?: string
+      search?: string
+      open?: string
+      close?: string
+      collapse?: string
+      expand?: string
     }
     chat?: {
       exportSuccess?: string

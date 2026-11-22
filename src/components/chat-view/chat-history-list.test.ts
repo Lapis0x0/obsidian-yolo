@@ -5,6 +5,7 @@ import type {
 
 import {
   captureChatListOrder,
+  groupChatHistoryByTime,
   partitionChatHistory,
   sortChatListForDisplay,
 } from './chat-history-list'
@@ -156,5 +157,68 @@ describe('chat list display order', () => {
         orderSnapshot: snapshot,
       }).map((chat) => chat.id),
     ).toEqual(['b', 'a'])
+  })
+})
+
+describe('groupChatHistoryByTime', () => {
+  // 本地时间 2026-11-22 15:00
+  const now = new Date(2026, 10, 22, 15, 0, 0).getTime()
+  const at = (y: number, m: number, d: number, h = 12) =>
+    new Date(y, m - 1, d, h).getTime()
+  const item = (
+    id: string,
+    updatedAt: number,
+    isPinned = false,
+  ): ChatConversationMetadata => ({
+    id,
+    title: id,
+    updatedAt,
+    schemaVersion: 1,
+    isPinned,
+  })
+
+  it('marks only the first conversation of each calendar group', () => {
+    const starts = groupChatHistoryByTime({
+      chatList: [
+        item('pinned', at(2026, 1, 1), true),
+        item('today-1', at(2026, 11, 22, 9)),
+        item('today-2', at(2026, 11, 22, 0)),
+        item('yesterday', at(2026, 11, 21, 23)),
+        item('week', at(2026, 11, 16)),
+        item('month', at(2026, 11, 1)),
+        item('older', at(2026, 9, 1)),
+      ],
+      section: 'user',
+      orderSnapshot: null,
+      now,
+    })
+    expect([...starts.entries()]).toEqual([
+      ['pinned', 'pinned'],
+      ['today-1', 'today'],
+      ['yesterday', 'yesterday'],
+      ['week', 'week'],
+      ['month', 'month'],
+      ['older', 'older'],
+    ])
+  })
+
+  it('does not group pinned conversations in the task section', () => {
+    const starts = groupChatHistoryByTime({
+      chatList: [item('task', at(2026, 11, 22), true)],
+      section: 'task',
+      orderSnapshot: null,
+      now,
+    })
+    expect(starts.get('task')).toBe('today')
+  })
+
+  it('groups by the frozen order time while the list is being browsed', () => {
+    const starts = groupChatHistoryByTime({
+      chatList: [item('ran-just-now', at(2026, 11, 22))],
+      section: 'user',
+      orderSnapshot: new Map([['ran-just-now', at(2026, 11, 20)]]),
+      now,
+    })
+    expect(starts.get('ran-just-now')).toBe('week')
   })
 })

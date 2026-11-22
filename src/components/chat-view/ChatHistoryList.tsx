@@ -1,4 +1,3 @@
-import * as Popover from '@radix-ui/react-popover'
 import {
   AnimatePresence,
   motion,
@@ -7,6 +6,8 @@ import {
 } from 'framer-motion'
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Ellipsis,
   Pencil,
@@ -53,21 +54,19 @@ import {
   getNodeDocument,
   getNodeWindow,
 } from '../../utils/dom/window-context'
-import { YoloPopoverContent } from '../common/popover'
 
 import {
   type ChatHistorySection,
+  type ChatHistoryTimeGroup,
   type ChatListOrderSnapshot,
   type TaskConversationOrigin,
   type TaskOriginFilter,
   captureChatListOrder,
+  groupChatHistoryByTime,
   partitionChatHistory,
   sortChatListForDisplay,
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
-
-let rememberedHistorySection: ChatHistorySection = 'user'
-let rememberedTaskOriginFilter: TaskOriginFilter = 'all'
 
 function useLatestRef<T>(value: T) {
   const ref = useRef(value)
@@ -75,27 +74,12 @@ function useLatestRef<T>(value: T) {
   return ref
 }
 
-/**
- * issue #567：Esc 改由 Obsidian keymap scope 分层消费（弹层一层、自绘右键
- * 菜单一层），不再靠 Radix 的 onEscapeKeyDown 自己数「这是第几次 Esc」。
- * Radix 的 document 捕获监听在 popout 窗口里对不上，而且和自绘菜单的开关
- * 时序叠在一起会把两次不同菜单的 Esc 算成「Esc 两次 → 关弹层」。
- *
- * 这里只做一件事：永远 preventDefault，让 Radix 不要 dismiss。真正的关闭
- * 由 panel / menu scope 的 Escape 绑定负责。
- */
-export function handlePopoverEscapeKeyDown(
-  event: Pick<KeyboardEvent, 'preventDefault'>,
-): void {
-  event.preventDefault()
-}
-
 type ChatListKeymapScope = {
   register: Scope['register']
 }
 
 export type ChatListPanelKeyHandlers = {
-  /** 改名编辑态中：取消改名。否则：关闭弹层。 */
+  /** 改名编辑态中：取消改名。否则：清空并收起搜索，或让列表交出焦点。 */
   onEscape: () => void
   /**
    * 改名输入框持有焦点时，方向键 / Enter / 快捷键必须放行给输入框，
@@ -110,9 +94,9 @@ export type ChatListPanelKeyHandlers = {
 }
 
 /**
- * 历史弹层打开期间 push 的 keymap scope。键位与
+ * 焦点在历史列表里期间 push 的 keymap scope。键位与
  * `resolveChatListSearchKeyboardAction` 一致，但挂在 `app.keymap` 上——
- * 主窗口 / popout 共用同一套 scope 栈，不再依赖弹层 DOM 是否收到 keydown。
+ * 主窗口 / popout 共用同一套 scope 栈，不再依赖列表 DOM 是否收到 keydown。
  */
 export function registerChatListPanelKeys(
   scope: ChatListKeymapScope,
@@ -617,23 +601,14 @@ const ChatListItem = memo(function ChatListItem({
   isUpdatingTitle,
   isPinned,
   canPin,
-  canRetryTitle,
-  canExport,
   isRetrying,
   isConfirmingDelete,
   onMouseEnter,
   onMouseLeave,
-  isMoreMenuOpen,
   onSelect,
   onRequestDelete,
-  onTogglePinned,
-  onRetryTitle,
-  onExport,
-  onStartEdit,
   onFinishEdit,
-  onToggleMoreMenu,
-  onCloseMoreMenu,
-  onLongPress,
+  onOpenMenu,
   onContextMenu,
   isContextMenuOpen,
   isMobile,
@@ -652,25 +627,17 @@ const ChatListItem = memo(function ChatListItem({
   isUpdatingTitle: boolean
   isPinned: boolean
   canPin: boolean
-  canRetryTitle: boolean
-  canExport: boolean
   isRetrying: boolean
   /** issue #567：确认态提升到 ChatListDropdown，键盘删除快捷键和行内
    *  删除按钮共用同一份状态（见 resolveChatListDeleteConfirmation）。 */
   isConfirmingDelete: boolean
   onMouseEnter: (conversationId: string) => void
   onMouseLeave: (conversationId: string) => void
-  isMoreMenuOpen: boolean
   onSelect: (conversationId: string) => void
   onRequestDelete: (conversationId: string) => void
-  onTogglePinned: (conversationId: string) => void
-  onRetryTitle: (conversationId: string) => void
-  onExport: (conversationId: string) => void
-  onStartEdit: (conversationId: string) => void
   onFinishEdit: (conversationId: string, title: string) => void
-  onToggleMoreMenu: (conversationId: string) => void
-  onCloseMoreMenu: (conversationId: string) => void
-  onLongPress?: (conversationId: string, cardEl: HTMLElement) => void
+  /** ⋯ 按钮与移动端长按：在这一行下方打开操作菜单（无指针坐标，锚在行上） */
+  onOpenMenu: (conversationId: string, cardEl: HTMLElement) => void
   onContextMenu?: (
     conversationId: string,
     cardEl: HTMLElement,
@@ -693,13 +660,6 @@ const ChatListItem = memo(function ChatListItem({
     null,
   )
   const [editingTitle, setEditingTitle] = useState(title)
-  /**
-   * 星标的 L1 回执（动画本体在 popover.css）。用瞬时态而不是直接挂在 .is-pinned
-   * 上：后者会让每次打开面板时所有已置顶的行一起弹一下——回执只属于刚刚发生的
-   * 那一次操作。首帧不弹同理（面板打开、列表重挂载都不是"操作"）。
-   */
-  const [pinPulse, setPinPulse] = useState<'pin' | 'unpin' | null>(null)
-  const previousPinnedRef = useRef(isPinned)
   const resolvedTitle = displayTitle ?? title
   const { titleTextRef, truncatedTitle } =
     useMiddleTruncatedTitle(resolvedTitle)
@@ -733,12 +693,6 @@ const ChatListItem = memo(function ChatListItem({
 
   useEffect(() => clearPress, [clearPress])
 
-  useEffect(() => {
-    if (previousPinnedRef.current === isPinned) return
-    previousPinnedRef.current = isPinned
-    setPinPulse(isPinned ? 'pin' : 'unpin')
-  }, [isPinned])
-
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLLIElement>) => {
       if (!isMobile || !e.isPrimary || e.button !== 0 || isEditing) {
@@ -753,11 +707,11 @@ const ChatListItem = memo(function ChatListItem({
         pressTimerRef.current = null
         pressStartRef.current = null
         if (itemRef.current) {
-          onLongPress?.(conversationId, itemRef.current)
+          onOpenMenu(conversationId, itemRef.current)
         }
       }, 420)
     },
-    [conversationId, isEditing, isMobile, onLongPress],
+    [conversationId, isEditing, isMobile, onOpenMenu],
   )
 
   const handlePointerMove = useCallback(
@@ -869,6 +823,8 @@ const ChatListItem = memo(function ChatListItem({
         }
       }}
       className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}${
+        isCurrent ? ' is-current' : ''
+      }${
         isContextMenuOpen ? ' is-ctx-open' : ''
       }${isReordering ? ' is-pin-moving' : ''}${
         isEditing ? ' is-editing' : ''
@@ -913,11 +869,6 @@ const ChatListItem = memo(function ChatListItem({
             {cliRuntimeId ? (
               <ChatRuntimeBadge runtimeId={cliRuntimeId} />
             ) : null}
-            {isCurrent ? (
-              <span className="yolo-chat-list-dropdown-item-current-badge">
-                {t('sidebar.chatList.current', 'Current')}
-              </span>
-            ) : null}
           </div>
           {runSummary?.isActive ? (
             <span
@@ -951,16 +902,13 @@ const ChatListItem = memo(function ChatListItem({
       ) : null}
       <div
         className={`yolo-chat-list-dropdown-item-actions${
-          isMoreMenuOpen ? ' is-more-open' : ''
+          isContextMenuOpen ? ' is-more-open' : ''
         }`}
-        // issue #567：选中会话是靠 motion.li 的 onMouseDown 触发的
-        // （见下方 onMouseDown 与它旁边的注释），不是 onClick——mousedown 比
-        // click 先完成一整轮事件派发，下面每个操作按钮身上的 stopPropagation
-        // 都只挂在 onClick 上，拦不住这条路径；li 自己虽然也用
-        // e.target.closest('button') 排除按钮，但按钮之间的空隙、展开条的
-        // padding 命中的不是 <button>，那条判断会失手，点击就穿透成「选中这
-        // 一行」。修法是在这整个操作区的入口拦一次 mousedown，覆盖区内所有
-        // 按钮和空隙，不需要逐个按钮补——单一防线，覆盖面更完整也更好维护。
+        // issue #567：选中会话是靠 motion.li 的 onMouseDown 触发的，不是
+        // onClick——mousedown 比 click 先完成一整轮事件派发，按钮身上的
+        // stopPropagation 只挂在 onClick 上拦不住这条路径；按钮之间的空隙命中的
+        // 也不是 <button>。在整个操作区入口拦一次 mousedown，覆盖区内所有按钮
+        // 和空隙。
         onMouseDown={(e) => e.stopPropagation()}
       >
         {isEditing ? (
@@ -980,139 +928,44 @@ const ChatListItem = memo(function ChatListItem({
             <Check />
           </button>
         ) : null}
-        {!isMobile ? (
+        {/* 侧边栏一行只有两百多像素，悬停只露删除和 ⋯ 两个图标，不能盖住半行
+            标题让点击落空。改名、置顶、重试命名、导出都在 ⋯ 菜单里，键盘
+            快捷键照旧。删除留在行内：两步确认（onRequestDelete），与
+            Mod+Backspace 共用一份状态。 */}
+        {!isMobile && !isEditing ? (
           <>
-            {!isEditing ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseMoreMenu(conversationId)
-                  onStartEdit(conversationId)
-                }}
-                className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                aria-label={t('common.edit', 'Edit')}
-              >
-                <Pencil size={16} />
-              </button>
-            ) : null}
-            {canPin ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseMoreMenu(conversationId)
-                  onTogglePinned(conversationId)
-                }}
-                className={`clickable-icon yolo-chat-list-pin-button${
-                  isPinned ? ' is-pinned' : ''
-                }`}
-                aria-label={
-                  isPinned
-                    ? t('sidebar.chatList.unpinConversation', 'Unpin')
-                    : t('sidebar.chatList.pinConversation', 'Pin')
-                }
-                aria-pressed={isPinned}
-                data-pin-pulse={pinPulse ?? undefined}
-                onAnimationEnd={() => setPinPulse(null)}
-              >
-                <Star />
-              </button>
-            ) : null}
-            {/* issue #567：删除从 ⋯ 菜单/更多展开组移回常驻行内图标（改名 /
-                置顶 / 删除 / ⋯），不再需要先展开才能删。issue #567：两步
-                确认状态提升到了 ChatListDropdown（onRequestDelete），行内点击
-                和 Mod+Backspace 键盘快捷键走同一份状态机
-                （resolveChatListDeleteConfirmation），不会各自以为自己是
-                「第一下」。 */}
-            {!isEditing ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRequestDelete(conversationId)
-                }}
-                className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
-                  isConfirmingDelete ? ' is-confirming' : ''
-                }`}
-                aria-label={deleteActionLabel}
-                title={deleteActionLabel}
-              >
-                <Trash2 size={16} />
-              </button>
-            ) : null}
-            {!isEditing ? (
-              <div
-                className={`yolo-chat-list-inline-actions${
-                  isMoreMenuOpen ? ' is-open' : ''
-                }`}
-                aria-hidden={isMoreMenuOpen ? undefined : 'true'}
-              >
-                <div className="yolo-chat-list-inline-actions-inner">
-                  {canRetryTitle ? (
-                    <button
-                      type="button"
-                      disabled={isRetrying}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCloseMoreMenu(conversationId)
-                        onRetryTitle(conversationId)
-                      }}
-                      className={`clickable-icon yolo-chat-list-dropdown-item-icon${
-                        isRetrying ? ' is-pending' : ''
-                      }`}
-                      aria-label={t(
-                        'sidebar.chatList.retryTitle',
-                        'Retry title',
-                      )}
-                      aria-busy={isRetrying ? 'true' : undefined}
-                      tabIndex={isMoreMenuOpen ? undefined : -1}
-                    >
-                      <RotateCcw
-                        className={isRetrying ? 'yolo-spinner' : undefined}
-                      />
-                    </button>
-                  ) : null}
-                  {canExport ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCloseMoreMenu(conversationId)
-                        onExport(conversationId)
-                      }}
-                      className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                      aria-label={t(
-                        'sidebar.chatList.exportConversation',
-                        'Export conversation to vault',
-                      )}
-                      tabIndex={isMoreMenuOpen ? undefined : -1}
-                    >
-                      <Download size={16} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-            {!isEditing ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleMoreMenu(conversationId)
-                }}
-                className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-more-button${
-                  isMoreMenuOpen ? ' is-open' : ''
-                }`}
-                aria-labelledby={moreActionsLabelId}
-                aria-expanded={isMoreMenuOpen ? 'true' : 'false'}
-              >
-                <Ellipsis size={16} />
-                <span id={moreActionsLabelId} className="yolo-sr-only">
-                  {t('sidebar.chatList.moreActions', 'More actions')}
-                </span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRequestDelete(conversationId)
+              }}
+              className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
+                isConfirmingDelete ? ' is-confirming' : ''
+              }`}
+              aria-label={deleteActionLabel}
+              title={deleteActionLabel}
+            >
+              <Trash2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (itemRef.current) onOpenMenu(conversationId, itemRef.current)
+              }}
+              className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-more-button${
+                isContextMenuOpen ? ' is-open' : ''
+              }`}
+              aria-labelledby={moreActionsLabelId}
+              aria-haspopup="menu"
+              aria-expanded={isContextMenuOpen ? 'true' : 'false'}
+            >
+              <Ellipsis size={16} />
+              <span id={moreActionsLabelId} className="yolo-sr-only">
+                {t('sidebar.chatList.moreActions', 'More actions')}
+              </span>
+            </button>
           </>
         ) : null}
       </div>
@@ -1150,7 +1003,19 @@ function extractConversationText(messages: SerializedChatMessage[]): string {
   return text.toLowerCase()
 }
 
-export function ChatListDropdown({
+export type ChatHistoryListHandle = {
+  /** 唤出搜索框并聚焦（侧边栏顶部的搜索按钮、「打开对话历史」命令）。 */
+  focusSearch: () => void
+}
+
+/**
+ * 对话历史列表，常驻在 YOLO Chat 侧边栏里。
+ *
+ * 它原本是头部「历史」按钮的弹出层，弹层「打开期间」的语义在这里换成了「交互
+ * 期间」：指针在列表上或焦点在列表里。排序快照、键盘高亮只在交互期间生效，
+ * 键盘 scope 只在焦点在列表里时压栈。
+ */
+export function ChatHistoryList({
   chatList,
   currentConversationId,
   runSummariesByConversationId,
@@ -1160,8 +1025,8 @@ export function ChatListDropdown({
   onTogglePinned,
   onRetryTitle,
   onExportConversation,
-  openHandleRef,
-  children,
+  onIdleEscape,
+  handleRef,
 }: {
   chatList: ChatConversationMetadata[]
   currentConversationId: string
@@ -1176,20 +1041,24 @@ export function ChatListDropdown({
   onRetryTitle: (conversationId: string) => void | Promise<void>
   onExportConversation: (conversationId: string) => void | Promise<void>
   /**
-   * issue #567：外部（`ChatView` 的 view-header action / 命令 /
-   * ⋯ 窗格菜单）需要以编程方式打开这个弹层，但它的 `open` 状态完全是本组件
-   * 内部 `useState`（见 `handleOpenChange`）。没有引入受控 prop 或
-   * `forwardRef`（会让 `ChatListDropdown.test.tsx` 直接函数调用组件的既有
-   * 写法失效）——改为可选的一次性回调 ref：挂载后把「打开」函数写进去，
-   * 供 `ChatRef.openChatHistory` 调用。
+   * Esc 无事可做（没在改名、没开搜索）时的去处。抽屉里用来关抽屉；不传则
+   * 列表交出焦点。
    */
-  openHandleRef?: React.MutableRefObject<(() => void) | null>
-  children: React.ReactNode
+  onIdleEscape?: () => void
+  /**
+   * 命令式入口：侧边栏和 `ChatRef.openChatHistory` 需要唤出搜索。用一次性
+   * 回调 ref 而不是 `forwardRef`，因为测试把本组件当普通函数调用。
+   */
+  handleRef?: React.MutableRefObject<ChatHistoryListHandle | null>
 }) {
   const { t } = useLanguage()
   const app = useApp()
   const chatManager = useChatManager()
-  const [open, setOpen] = useState(false)
+  // 交互期间 = 指针在列表上 || 焦点在列表里 || 右键菜单开着（菜单 Portal
+  // 在列表 DOM 之外，指针移上去不能算离开）。
+  const [isPointerInside, setIsPointerInside] = useState(false)
+  const [isFocusWithin, setIsFocusWithin] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [focusedConversationId, setFocusedConversationId] = useState<
     string | null
   >(null)
@@ -1197,12 +1066,9 @@ export function ChatListDropdown({
     useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeSection, setActiveSection] = useState<ChatHistorySection>(
-    rememberedHistorySection,
-  )
-  const [taskOriginFilter, setTaskOriginFilter] = useState<TaskOriginFilter>(
-    rememberedTaskOriginFilter,
-  )
+  const [activeSection, setActiveSection] = useState<ChatHistorySection>('user')
+  const [taskOriginFilter, setTaskOriginFilter] =
+    useState<TaskOriginFilter>('all')
   const [showArchived, setShowArchived] = useState(false)
   const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
   const [updatingTitleIds, setUpdatingTitleIds] = useState<Set<string>>(
@@ -1212,9 +1078,6 @@ export function ChatListDropdown({
   const [retryingConversationIds, setRetryingConversationIds] = useState<
     Set<string>
   >(new Set())
-  const [moreMenuConversationId, setMoreMenuConversationId] = useState<
-    string | null
-  >(null)
   const [orderSnapshot, setOrderSnapshot] =
     useState<ChatListOrderSnapshot | null>(null)
   const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(
@@ -1248,6 +1111,8 @@ export function ChatListDropdown({
   const pinFlightIdRef = useRef<string | null>(null)
   const previousDisplayIndexRef = useRef<Map<string, number>>(new Map())
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
+  const activeMenuIdRef = useLatestRef(activeMenuId)
+  const interacting = isPointerInside || isFocusWithin || activeMenuId !== null
   const [menuPosition, setMenuPosition] = useState<{
     top: number
     left: number
@@ -1259,7 +1124,7 @@ export function ChatListDropdown({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
     null,
   )
-  const triggerRef = useRef<HTMLButtonElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -1324,6 +1189,9 @@ export function ChatListDropdown({
     setConfirmingDeleteId(null)
   }, [])
 
+  // 有搜索词时搜索框必然在，收起搜索框总是连同清空搜索词一起做
+  const isSearchVisible = isSearchOpen || searchQuery !== ''
+
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
     [searchQuery],
@@ -1359,7 +1227,6 @@ export function ChatListDropdown({
 
   useEffect(() => {
     if (taskOriginFilter !== 'all' && !taskOrigins.includes(taskOriginFilter)) {
-      rememberedTaskOriginFilter = 'all'
       setTaskOriginFilter('all')
     }
   }, [taskOriginFilter, taskOrigins])
@@ -1440,6 +1307,20 @@ export function ChatListDropdown({
     showArchived,
   ])
 
+  // 搜索结果按相关性排，不分组
+  const timeGroupStarts = useMemo(
+    () =>
+      normalizedQuery
+        ? new Map<string, ChatHistoryTimeGroup>()
+        : groupChatHistoryByTime({
+            chatList: renderedChatList,
+            section: activeSection,
+            orderSnapshot,
+            now: Date.now(),
+          }),
+    [activeSection, normalizedQuery, orderSnapshot, renderedChatList],
+  )
+
   const displayChatIndexById = useMemo(() => {
     const map = new Map<string, number>()
     renderedChatList.forEach((chat, index) => {
@@ -1472,62 +1353,54 @@ export function ChatListDropdown({
     setContentMatches((prev) => (prev.size === 0 ? prev : new Set()))
   }, [])
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        // 每次打开重新采样排序时间，这是列表顺序唯一的更新时机
-        setOrderSnapshot(null)
-        setActiveSection(rememberedHistorySection)
-        setTaskOriginFilter(rememberedTaskOriginFilter)
-        const nextFocusedConversationId =
-          pinnedSortedChatList.find((chat) => chat.id === currentConversationId)
-            ?.id ??
-          pinnedSortedChatList[0]?.id ??
-          null
-        setFocusedConversationId(nextFocusedConversationId)
-        focusedIndexRef.current = null
-        setScrollIntoViewConversationId(null)
-        setEditingId(null)
-        setSearchQuery('')
-        setShowArchived(false)
-        setIsHoveringArchiveRow(false)
-        setMoreMenuConversationId(null)
-        setActiveMenuId(null)
-        setMenuPosition(null)
-        resetDeleteConfirmationState()
-        setPendingDeletionIds((previous) =>
-          previous.size === 0 ? previous : new Set(),
-        )
-        clearContentMatches()
-      } else {
-        setEditingId(null)
-        setFocusedConversationId(null)
-        setScrollIntoViewConversationId(null)
-        setIsHoveringArchiveRow(false)
-        setMoreMenuConversationId(null)
-        setActiveMenuId(null)
-        setMenuPosition(null)
-        resetDeleteConfirmationState()
-      }
-      setOpen(nextOpen)
-    },
-    [
-      clearContentMatches,
-      currentConversationId,
-      pinnedSortedChatList,
-      resetDeleteConfirmationState,
-    ],
-  )
+  // 交互结束：键盘高亮、行内展开、待确认删除这类瞬时态一并收起，排序回到
+  // 实时 updatedAt。改名不在此列——改名时焦点在输入框里，交互不会结束。
+  useEffect(() => {
+    if (interacting) return
+    setFocusedConversationId(null)
+    focusedIndexRef.current = null
+    setScrollIntoViewConversationId(null)
+    setIsHoveringArchiveRow(false)
+    setActiveMenuId(null)
+    setMenuPosition(null)
+    resetDeleteConfirmationState()
+    setOrderSnapshot(null)
+  }, [interacting, resetDeleteConfirmationState])
+
+  /** 列表内部操作结束后焦点的落点：有搜索框就回搜索框，否则回列表根。 */
+  const focusListHome = useCallback(() => {
+    const target = searchInputRef.current ?? rootRef.current
+    target?.focus({ preventScroll: true })
+  }, [])
+
+  const hideSearch = useCallback(() => {
+    setSearchQuery('')
+    setIsSearchOpen(false)
+    clearContentMatches()
+    rootRef.current?.focus({ preventScroll: true })
+  }, [clearContentMatches])
 
   useEffect(() => {
-    if (!openHandleRef) return
-    openHandleRef.current = () => handleOpenChange(true)
-    return () => {
-      if (openHandleRef.current) {
-        openHandleRef.current = null
-      }
+    if (!handleRef) return
+    handleRef.current = {
+      focusSearch: () => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus()
+          searchInputRef.current.select()
+          return
+        }
+        setIsSearchOpen(true)
+      },
     }
-  }, [openHandleRef, handleOpenChange])
+    return () => {
+      handleRef.current = null
+    }
+  }, [handleRef])
+
+  // 搜索框刚挂载时接住焦点（由 focusSearch 唤出）
+  useEffect(() => {
+    if (isSearchVisible) searchInputRef.current?.focus()
+  }, [isSearchVisible])
 
   // issue #567（追加需求）：菜单不再钳在母弹层（历史弹层本身很窄）
   // 范围内，只需不超出视口。母弹层的 .yolo-popover-surface 有 overflow:hidden
@@ -1548,11 +1421,11 @@ export function ChatListDropdown({
   const closeContextMenu = useCallback(() => {
     setActiveMenuId(null)
     setMenuPosition(null)
-    // 焦点回到搜索框，而不是右键那一行。关菜单后如果 focus 停在卡片上，
-    // :focus-within 会让原条目继续显示 selected，再 hover / 方向键就会出现
-    // 两条同时高亮（pjeby 在 #567 里报的 phantom selection）。
-    searchInputRef.current?.focus({ preventScroll: true })
-  }, [])
+    // 焦点回到搜索框或列表根，而不是右键那一行。关菜单后如果 focus 停在卡片
+    // 上，:focus-within 会让原条目继续显示 selected，再 hover / 方向键就会
+    // 出现两条同时高亮（pjeby 在 #567 里报的 phantom selection）。
+    focusListHome()
+  }, [focusListHome])
 
   const openContextMenu = useCallback(
     (
@@ -1564,7 +1437,6 @@ export function ChatListDropdown({
       // 视口坐标，不再减去弹层的 contentRect——菜单已经 Portal 到 <body>。
       const anchorLeft = pointer?.clientX ?? cardRect.left
       const anchorTop = pointer?.clientY ?? cardRect.bottom + 6
-      setMoreMenuConversationId(null)
       setFocusedConversationId(chatId)
       contextMenuAnchorRef.current = cardEl
       contextMenuAnchorModeRef.current = pointer ? 'pointer' : 'anchor'
@@ -1616,6 +1488,7 @@ export function ChatListDropdown({
     deleteConversation,
     retryingConversationIds,
     updatingTitleIds,
+    focusListHome,
   })
 
   const itemHandlers = useMemo(
@@ -1623,14 +1496,8 @@ export function ChatListDropdown({
       onMouseEnter: (conversationId: string) => {
         setFocusedConversationId(conversationId)
         setScrollIntoViewConversationId(null)
-        setMoreMenuConversationId((prev) =>
-          prev !== null && prev !== conversationId ? null : prev,
-        )
       },
       onMouseLeave: (conversationId: string) => {
-        setMoreMenuConversationId((prev) =>
-          prev === conversationId ? null : prev,
-        )
         // issue #567：指针移出这一行是待确认态的复位条件之一（另一半是
         // 超时），确认态提升到父组件后挪到这里——只复位「正好是这一行」的确认，
         // 不影响别的行（旧的行内 useDeleteConfirmation 天然只管自己，这里用 id
@@ -1640,13 +1507,11 @@ export function ChatListDropdown({
         }
       },
       onSelect: (conversationId: string) => {
-        void Promise.resolve(itemActionsRef.current.onSelect(conversationId))
-          .then(() => {
-            setOpen(false)
-          })
-          .catch((error) => {
-            console.error('Failed to select conversation', error)
-          })
+        void Promise.resolve(
+          itemActionsRef.current.onSelect(conversationId),
+        ).catch((error) => {
+          console.error('Failed to select conversation', error)
+        })
       },
       // issue #567：两步确认——沿用 resolveChatListDeleteConfirmation
       // 的判定，行内删除按钮和 Mod+Backspace 键盘快捷键都走这一个入口，共用
@@ -1669,11 +1534,9 @@ export function ChatListDropdown({
           return
         }
         resetDeleteConfirmationState()
-        setMoreMenuConversationId(null)
         itemActionsRef.current.deleteConversation(conversationId)
       },
       onTogglePinned: (conversationId: string) => {
-        setMoreMenuConversationId(null)
         // 行内星标、Mod+Shift+S、右键菜单三个入口都走这里，重排位移因此只需
         // 在这一处挂号（真正开始位移的时机见 pinFlightIdRef 旁的 layout effect）
         pinFlightIdRef.current = conversationId
@@ -1716,7 +1579,6 @@ export function ChatListDropdown({
           })
       },
       onExport: (conversationId: string) => {
-        setMoreMenuConversationId(null)
         void Promise.resolve(
           itemActionsRef.current.onExportConversation(conversationId),
         ).catch((error) => {
@@ -1724,7 +1586,6 @@ export function ChatListDropdown({
         })
       },
       onStartEdit: (conversationId: string) => {
-        setMoreMenuConversationId(null)
         setEditingId(conversationId)
       },
       onFinishEdit: (conversationId: string, title: string) => {
@@ -1737,10 +1598,10 @@ export function ChatListDropdown({
         )
           .then(() => {
             setEditingId(null)
-            // issue #567：提交改名后把焦点送回搜索框，键盘链路（↑↓/
+            // issue #567：提交改名后把焦点送回列表，键盘链路（↑↓/
             // Enter/快捷键）不因为改名而在 <body> 上断掉——与 Esc 取消改名
-            // 走的是同一个「焦点回搜索框」终点。
-            searchInputRef.current?.focus({ preventScroll: true })
+            // 走的是同一个终点。
+            itemActionsRef.current.focusListHome()
           })
           .catch((error) => {
             console.error('Failed to update conversation title', error)
@@ -1756,18 +1617,11 @@ export function ChatListDropdown({
             })
           })
       },
-      onToggleMoreMenu: (conversationId: string) => {
-        setMoreMenuConversationId((prev) =>
-          prev === conversationId ? null : conversationId,
-        )
-      },
-      onCloseMoreMenu: (conversationId: string) => {
-        setMoreMenuConversationId((prev) =>
-          prev === conversationId ? null : prev,
-        )
-      },
-      onLongPress: (conversationId: string, cardEl: HTMLElement) => {
-        if (!Platform.isMobileApp) {
+      // ⋯ 按钮与移动端长按共用：同一行再按一次 ⋯ 是收起
+      onOpenMenu: (conversationId: string, cardEl: HTMLElement) => {
+        if (activeMenuIdRef.current === conversationId) {
+          setActiveMenuId(null)
+          setMenuPosition(null)
           return
         }
         openContextMenu(conversationId, cardEl)
@@ -1793,11 +1647,32 @@ export function ChatListDropdown({
     }
   }, [activeMenuId])
 
-  // 面板打开期间新出现的会话补录一次排序时间，之后它同样不再随运行状态换位
+  // 菜单 Portal 在列表之外，列表上的 onPointerDownCapture 只管得到列表内部的
+  // 点击；列表外（对话区、编辑器）的点击在这里关菜单。监听挂在菜单所在文档上，
+  // popout 窗口里同样生效。
   useEffect(() => {
-    if (!open) return
+    if (activeMenuId === null) return
+    const ownerDocument = getNodeDocument(rootRef.current)
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node) {
+        if (contextMenuRef.current?.contains(target)) return
+        if (listRef.current?.contains(target)) return
+      }
+      setActiveMenuId(null)
+      setMenuPosition(null)
+    }
+    ownerDocument.addEventListener('pointerdown', handlePointerDown, true)
+    return () =>
+      ownerDocument.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [activeMenuId])
+
+  // 交互期间冻结排序：开始时给每个会话记下排序时间，期间新出现的会话补录一次，
+  // 之后同样不再随运行状态换位——否则并行运行的会话会在指针底下反复换位。
+  useEffect(() => {
+    if (!interacting) return
     setOrderSnapshot((previous) => captureChatListOrder(chatList, previous))
-  }, [chatList, open])
+  }, [chatList, interacting])
 
   // FLIP 的 Play：条目已经被摁回删除前的位置（Invert），下一帧松手，交给 CSS 过渡
   // 平移回 0。全程只动 transform，不触发 layout。
@@ -1886,7 +1761,7 @@ export function ChatListDropdown({
   }, [chatList])
 
   useEffect(() => {
-    if (!open) return
+    if (!interacting) return
     if (renderedChatList.length === 0) {
       setFocusedConversationId(null)
       focusedIndexRef.current = null
@@ -1933,12 +1808,11 @@ export function ChatListDropdown({
     displayChatIndexById,
     focusedConversationId,
     normalizedQuery,
-    open,
+    interacting,
     renderedChatList,
   ])
 
   useEffect(() => {
-    if (!open) return
     if (!normalizedQuery) {
       clearContentMatches()
       return
@@ -1986,7 +1860,6 @@ export function ChatListDropdown({
     chatManager,
     clearContentMatches,
     normalizedQuery,
-    open,
     scopedChatList,
     titleMatches,
   ])
@@ -2006,11 +1879,11 @@ export function ChatListDropdown({
 
   // issue #567：F2 改名走 editingId（与鼠标点铅笔同一条路径），取消用 Esc
   // （panel scope 的 Escape 绑定）、提交用 Enter（TitleInput 自带）——两条
-  // 退出路径都要把焦点送回搜索框。
+  // 退出路径都要把焦点送回列表。
   const cancelEdit = useCallback(() => {
     setEditingId(null)
-    searchInputRef.current?.focus({ preventScroll: true })
-  }, [])
+    focusListHome()
+  }, [focusListHome])
 
   const panelKeyHandlersRef = useLatestRef({
     onEscape: () => {
@@ -2018,9 +1891,25 @@ export function ChatListDropdown({
         cancelEdit()
         return
       }
-      handleOpenChange(false)
+      if (isSearchVisible) {
+        hideSearch()
+        return
+      }
+      if (onIdleEscape) {
+        onIdleEscape()
+        return
+      }
+      // 列表交出焦点，scope 随之出栈
+      const active = rootRef.current?.ownerDocument.activeElement
+      if (active instanceof HTMLElement) active.blur()
     },
-    shouldIgnoreListKeys: () => editingId !== null,
+    // 改名输入框，或焦点停在列表里的按钮（归档开关、任务对话入口）上时，
+    // Enter / 方向键归它们自己。
+    shouldIgnoreListKeys: () => {
+      if (editingId !== null) return true
+      const active = rootRef.current?.ownerDocument.activeElement
+      return active instanceof HTMLElement && active.tagName === 'BUTTON'
+    },
     onNavigate: (direction: 'up' | 'down') => {
       if (renderedChatList.length === 0) return
       const nextIndex = computeNextHighlightedIndex(
@@ -2035,13 +1924,9 @@ export function ChatListDropdown({
     onOpen: () => {
       const conversationId = focusedConversationId ?? renderedChatList[0]?.id
       if (!conversationId) return
-      void Promise.resolve(onSelect(conversationId))
-        .then(() => {
-          handleOpenChange(false)
-        })
-        .catch((error) => {
-          console.error('Failed to select conversation from list', error)
-        })
+      void Promise.resolve(onSelect(conversationId)).catch((error) => {
+        console.error('Failed to select conversation from list', error)
+      })
     },
     onDelete: () => {
       if (!focusedConversationId) return
@@ -2059,11 +1944,11 @@ export function ChatListDropdown({
 
   const panelScopeRef = useRef<Scope | null>(null)
 
-  // 弹层打开期间把快捷键挂到 Obsidian keymap scope 上，而不是搜索框的
+  // 焦点在列表里期间把快捷键挂到 Obsidian keymap scope 上，而不是搜索框的
   // React onKeyDown。popout 窗口里宿主会在捕获层消费 Ctrl/Cmd 组合键，
   // DOM 监听根本收不到；scope 跨窗口有效（issue #567，pjeby）。
   useEffect(() => {
-    if (!open) return
+    if (!isFocusWithin) return
     const panelScope = new Scope(app.keymap.scope)
     registerChatListPanelKeys(panelScope, {
       onEscape: () => panelKeyHandlersRef.current.onEscape(),
@@ -2084,7 +1969,7 @@ export function ChatListDropdown({
         panelScopeRef.current = null
       }
     }
-  }, [app, open, panelKeyHandlersRef])
+  }, [app, isFocusWithin, panelKeyHandlersRef])
 
   // 自绘右键/长按菜单是独立的一层 scope：Esc 只关菜单。父 scope 是上面
   // 刚 push 的弹层 scope，菜单关掉后自动回到弹层那一层。
@@ -2118,45 +2003,42 @@ export function ChatListDropdown({
     [],
   )
 
-  return (
-    <Popover.Root open={open} onOpenChange={handleOpenChange}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          ref={triggerRef}
-          className="clickable-icon"
-          aria-label={t('sidebar.chatList.openHistory', 'Chat history')}
-        >
-          {children}
-        </button>
-      </Popover.Trigger>
+  const groupLabels: Record<ChatHistoryTimeGroup, string> = {
+    pinned: t('sidebar.chatList.groups.pinned', 'Pinned'),
+    today: t('sidebar.chatList.groups.today', 'Today'),
+    yesterday: t('sidebar.chatList.groups.yesterday', 'Yesterday'),
+    week: t('sidebar.chatList.groups.week', 'Previous 7 days'),
+    month: t('sidebar.chatList.groups.month', 'Previous 30 days'),
+    older: t('sidebar.chatList.groups.older', 'Older'),
+  }
 
-      <YoloPopoverContent
-        anchorRef={triggerRef}
-        variant="default"
-        minWidth={280}
-        maxHeight={400}
-        className="yolo-chat-list-dropdown-content"
-        sideOffset={8}
-        onEscapeKeyDown={handlePopoverEscapeKeyDown}
-        // issue #567（追加需求）：ctx-menu 现在 createPortal 到
-        // <body>，DOM 上不再是这个 Popover.Content 的后代。Radix 的
-        // outside-interaction 探测（pointerdown-outside / focus-outside，见
-        // usePointerDownOutside / useFocusOutside）按 DOM 包含关系判断，会把
-        // 点击/聚焦菜单本身判成"在弹层外"，从而连累整个历史弹层一起关闭。
-        // onInteractOutside 是 Radix 提供的、专门拦这类误判的钩子（在内部
-        // dismiss 判定之前调用，preventDefault 即可让这次交互不触发关闭）：
-        // 命中目标在菜单 DOM 内就拦下，其余情况放行、按 Radix 默认行为处理。
-        onInteractOutside={(e) => {
-          const target = e.detail.originalEvent.target
-          if (
-            target instanceof Node &&
-            contextMenuRef.current?.contains(target)
-          ) {
-            e.preventDefault()
-          }
-        }}
-      >
+  const closeMenus = () => {
+    setActiveMenuId(null)
+    setMenuPosition(null)
+    resetDeleteConfirmationState()
+  }
+
+  const switchSection = (section: ChatHistorySection) => {
+    setActiveSection(section)
+    setShowArchived(false)
+    closeMenus()
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="yolo-chat-history"
+      tabIndex={-1}
+      onPointerEnter={() => setIsPointerInside(true)}
+      onPointerLeave={() => setIsPointerInside(false)}
+      onFocus={() => setIsFocusWithin(true)}
+      onBlur={(e) => {
+        const next = e.relatedTarget
+        if (next instanceof Node && e.currentTarget.contains(next)) return
+        setIsFocusWithin(false)
+      }}
+    >
+      {isSearchVisible ? (
         <div className="yolo-chat-list-search">
           <div className="yolo-chat-list-search-field">
             <Search size={13} className="yolo-chat-list-search-icon" />
@@ -2178,150 +2060,111 @@ export function ChatListDropdown({
             />
           </div>
         </div>
-        <div
-          className="yolo-chat-list-section-tabs"
-          role="group"
-          aria-label={t(
-            'sidebar.chatList.historySections',
-            'Conversation categories',
-          )}
-        >
+      ) : null}
+      {activeSection === 'task' ? (
+        <div className="yolo-chat-history-task-header">
           <button
             type="button"
-            aria-pressed={activeSection === 'user'}
-            className={`yolo-chat-list-section-tab${
-              activeSection === 'user' ? ' is-active' : ''
-            }`}
-            onClick={() => {
-              rememberedHistorySection = 'user'
-              setActiveSection('user')
-              setShowArchived(false)
-              setMoreMenuConversationId(null)
-              setActiveMenuId(null)
-              setMenuPosition(null)
-              resetDeleteConfirmationState()
-            }}
+            className="yolo-chat-history-back"
+            onClick={() => switchSection('user')}
           >
-            <span>
-              {t('sidebar.chatList.myConversations', 'My conversations')}
-            </span>
-            <span className="yolo-chat-list-section-count">
-              {userChatList.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeSection === 'task'}
-            className={`yolo-chat-list-section-tab${
-              activeSection === 'task' ? ' is-active' : ''
-            }`}
-            onClick={() => {
-              rememberedHistorySection = 'task'
-              setActiveSection('task')
-              setShowArchived(false)
-              setMoreMenuConversationId(null)
-              setActiveMenuId(null)
-              setMenuPosition(null)
-              resetDeleteConfirmationState()
-            }}
-          >
+            <ChevronLeft size={14} />
             <span>
               {t('sidebar.chatList.taskConversations', 'Task conversations')}
             </span>
-            <span className="yolo-chat-list-section-count">
-              {taskChatList.length}
-            </span>
           </button>
-        </div>
-        {activeSection === 'task' && taskOrigins.length > 1 ? (
-          <div
-            className="yolo-chat-list-origin-filters"
-            aria-label={t(
-              'sidebar.chatList.taskConversationSources',
-              'Task conversation sources',
-            )}
-          >
-            <button
-              type="button"
-              className={`yolo-chat-list-origin-filter${
-                taskOriginFilter === 'all' ? ' is-active' : ''
-              }`}
-              aria-pressed={taskOriginFilter === 'all'}
-              onClick={() => {
-                rememberedTaskOriginFilter = 'all'
-                setTaskOriginFilter('all')
-                setShowArchived(false)
-              }}
+          {taskOrigins.length > 1 ? (
+            <div
+              className="yolo-chat-list-origin-filters"
+              aria-label={t(
+                'sidebar.chatList.taskConversationSources',
+                'Task conversation sources',
+              )}
             >
-              {t('sidebar.chatList.allSources', 'All')}
-            </button>
-            {taskOrigins.map((origin) => (
               <button
-                key={origin}
                 type="button"
                 className={`yolo-chat-list-origin-filter${
-                  taskOriginFilter === origin ? ' is-active' : ''
+                  taskOriginFilter === 'all' ? ' is-active' : ''
                 }`}
-                aria-pressed={taskOriginFilter === origin}
+                aria-pressed={taskOriginFilter === 'all'}
                 onClick={() => {
-                  rememberedTaskOriginFilter = origin
-                  setTaskOriginFilter(origin)
+                  setTaskOriginFilter('all')
                   setShowArchived(false)
                 }}
               >
-                {origin === 'external-agent'
-                  ? t('sidebar.chatList.externalAgent', 'External Agent')
-                  : origin}
+                {t('sidebar.chatList.allSources', 'All')}
               </button>
-            ))}
-          </div>
-        ) : null}
-        <ul
-          ref={listRef}
-          className={`yolo-model-select-list${collapse ? ' is-collapsing' : ''}${
-            pinShift?.phase === 'invert' ? ' is-reordering' : ''
-          }`}
-          onPointerDownCapture={(e) => {
-            if (activeMenuId === null) {
-              return
-            }
-            if (
-              e.target instanceof Element &&
-              e.target.closest('.yolo-chat-list-ctx-menu')
-            ) {
-              return
-            }
-            setActiveMenuId(null)
-            setMenuPosition(null)
-          }}
-          onScroll={() => {
-            setActiveMenuId(null)
-            setMenuPosition(null)
-          }}
-        >
-          {scopedChatList.length === 0 ? (
-            <li className="yolo-chat-list-dropdown-empty">
-              {activeSection === 'user'
-                ? t('sidebar.chatList.empty', 'No conversations')
-                : t(
-                    'sidebar.chatList.noTaskConversations',
-                    'No task conversations',
-                  )}
-            </li>
-          ) : filteredChatList.length === 0 ? (
-            <li className="yolo-chat-list-dropdown-empty">
-              {t('common.noResults', 'No matches found')}
-            </li>
-          ) : (
-            <>
-              {/* initial={false} 让面板打开时条目直接就位，只有删除才播放退场 */}
-              {/* presenceAffectsLayout={false}：默认 true 时 AnimatePresence 每次
-                  重渲都发布新的 presence context，所有 motion 条目被 context 强制
-                  重渲，ChatListItem 的 memo 形同虚设——流式回复期间面板就会退回
-                  每帧全量重渲。该开关只服务于 framer 的 layout 动画（退场时让兄弟
-                  条目重测布局），本列表的补位是手写 FLIP（shiftY），不依赖它。 */}
-              <AnimatePresence initial={false} presenceAffectsLayout={false}>
-                {renderedChatList.map((chat) => (
+              {taskOrigins.map((origin) => (
+                <button
+                  key={origin}
+                  type="button"
+                  className={`yolo-chat-list-origin-filter${
+                    taskOriginFilter === origin ? ' is-active' : ''
+                  }`}
+                  aria-pressed={taskOriginFilter === origin}
+                  onClick={() => {
+                    setTaskOriginFilter(origin)
+                    setShowArchived(false)
+                  }}
+                >
+                  {origin === 'external-agent'
+                    ? t('sidebar.chatList.externalAgent', 'External Agent')
+                    : origin}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <ul
+        ref={listRef}
+        className={`yolo-chat-history-list${collapse ? ' is-collapsing' : ''}${
+          pinShift?.phase === 'invert' ? ' is-reordering' : ''
+        }`}
+        onPointerDownCapture={(e) => {
+          if (activeMenuId === null) {
+            return
+          }
+          if (
+            e.target instanceof Element &&
+            e.target.closest('.yolo-chat-list-ctx-menu')
+          ) {
+            return
+          }
+          setActiveMenuId(null)
+          setMenuPosition(null)
+        }}
+        onScroll={() => {
+          setActiveMenuId(null)
+          setMenuPosition(null)
+        }}
+      >
+        {scopedChatList.length === 0 ? (
+          <li className="yolo-chat-list-dropdown-empty">
+            {activeSection === 'user'
+              ? t('sidebar.chatList.empty', 'No conversations')
+              : t(
+                  'sidebar.chatList.noTaskConversations',
+                  'No task conversations',
+                )}
+          </li>
+        ) : filteredChatList.length === 0 ? (
+          <li className="yolo-chat-list-dropdown-empty">
+            {t('common.noResults', 'No matches found')}
+          </li>
+        ) : (
+          <>
+            {/* initial={false} 让列表挂载时条目直接就位，只有删除才播放退场 */}
+            {/* presenceAffectsLayout={false}：默认 true 时 AnimatePresence 每次
+                重渲都发布新的 presence context，所有 motion 条目被 context 强制
+                重渲，ChatListItem 的 memo 形同虚设——流式回复期间列表就会退回
+                每帧全量重渲。该开关只服务于 framer 的 layout 动画（退场时让兄弟
+                条目重测布局），本列表的补位是手写 FLIP（shiftY），不依赖它。 */}
+            <AnimatePresence initial={false} presenceAffectsLayout={false}>
+              {renderedChatList.flatMap((chat) => {
+                const group = timeGroupStarts.get(chat.id)
+                const shiftY = resolveShiftY(chat.id)
+                const row = (
                   <ChatListItem
                     key={chat.id}
                     title={chat.title}
@@ -2330,6 +2173,7 @@ export function ChatListDropdown({
                     runSummary={runSummariesByConversationId.get(chat.id)}
                     isCurrent={chat.id === currentConversationId}
                     isFocused={
+                      interacting &&
                       focusedConversationId === chat.id &&
                       !isHoveringArchiveRow &&
                       activeMenuId === null
@@ -2341,160 +2185,209 @@ export function ChatListDropdown({
                     isUpdatingTitle={updatingTitleIds.has(chat.id)}
                     isPinned={Boolean(chat.isPinned)}
                     canPin={activeSection === 'user'}
-                    canRetryTitle={!chat.cliSession}
-                    canExport={!chat.cliSession}
                     isRetrying={retryingConversationIds.has(chat.id)}
                     isConfirmingDelete={confirmingDeleteId === chat.id}
-                    isMoreMenuOpen={moreMenuConversationId === chat.id}
                     isContextMenuOpen={activeMenuId === chat.id}
                     isMobile={isMobile}
                     conversationId={chat.id}
-                    shiftY={resolveShiftY(chat.id)}
+                    shiftY={shiftY}
                     isReordering={pinShift?.conversationId === chat.id}
                     onMouseEnter={itemHandlers.onMouseEnter}
                     onMouseLeave={itemHandlers.onMouseLeave}
                     onSelect={itemHandlers.onSelect}
                     onRequestDelete={itemHandlers.onRequestDelete}
-                    onRetryTitle={itemHandlers.onRetryTitle}
-                    onTogglePinned={itemHandlers.onTogglePinned}
-                    onExport={itemHandlers.onExport}
-                    onStartEdit={itemHandlers.onStartEdit}
                     onFinishEdit={itemHandlers.onFinishEdit}
-                    onToggleMoreMenu={itemHandlers.onToggleMoreMenu}
-                    onCloseMoreMenu={itemHandlers.onCloseMoreMenu}
-                    onLongPress={itemHandlers.onLongPress}
+                    onOpenMenu={itemHandlers.onOpenMenu}
                     onContextMenu={itemHandlers.onContextMenu}
                   />
-                ))}
-              </AnimatePresence>
-              {shouldUseArchive && archivedChatList.length > 0 && (
-                <li
-                  className="yolo-chat-list-dropdown-archive-row"
-                  onMouseEnter={() => {
-                    setIsHoveringArchiveRow(true)
-                  }}
-                  onMouseLeave={() => {
-                    setIsHoveringArchiveRow(false)
+                )
+                if (!group) return [row]
+                // 分组标题跟着它下面那一行一起位移，补位时不会被行盖住
+                return [
+                  <li
+                    key={`group-${chat.id}`}
+                    className="yolo-chat-history-group"
+                    style={
+                      shiftY
+                        ? { transform: `translateY(${shiftY}px)` }
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  >
+                    {groupLabels[group]}
+                  </li>,
+                  row,
+                ]
+              })}
+            </AnimatePresence>
+            {shouldUseArchive && archivedChatList.length > 0 && (
+              <li
+                className="yolo-chat-list-dropdown-archive-row"
+                onMouseEnter={() => {
+                  setIsHoveringArchiveRow(true)
+                }}
+                onMouseLeave={() => {
+                  setIsHoveringArchiveRow(false)
+                }}
+              >
+                <button
+                  type="button"
+                  className="yolo-chat-list-dropdown-archive-toggle"
+                  onClick={() => {
+                    setShowArchived((prev) => !prev)
                   }}
                 >
-                  <button
-                    type="button"
-                    className="yolo-chat-list-dropdown-archive-toggle"
-                    onClick={() => {
-                      setShowArchived((prev) => !prev)
-                    }}
-                  >
-                    <span className="yolo-chat-list-dropdown-archive-toggle-label">
-                      {showArchived
-                        ? t('sidebar.chatList.hideArchived', 'Hide archived')
-                        : `${t('sidebar.chatList.archived', 'Archived')} (${archivedChatList.length})`}
-                    </span>
-                  </button>
-                </li>
-              )}
-            </>
-          )}
-        </ul>
-        {!Platform.isMobile ? <ChatListKeyboardLegend /> : null}
-        {activeMenuChat && menuPosition
-          ? createPortal(
-              // issue #567（追加需求）：Portal 到 <body>，逃出母弹层
-              // .yolo-popover-surface 的 overflow:hidden 裁剪（所有权归
-              // src/styles/popover/surface.css，本次未改那条规则）。定位坐标
-              // 系见 openContextMenu / 下面 useLayoutEffect 顶部注释；
-              // onInteractOutside（挂在 YoloPopoverContent 上）负责防止点击
-              // 这个已经不在弹层 DOM 内的菜单被 Radix 误判成"点击外部"从而
-              // 连累整个历史弹层关闭。
-              <div
-                ref={contextMenuRef}
-                className="yolo-chat-list-ctx-menu is-open"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
-                role="menu"
-                tabIndex={-1}
-                aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-              >
-                {activeSection === 'user' ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-act="pin"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setActiveMenuId(null)
-                      setMenuPosition(null)
-                      // 走 itemHandlers 这一个入口（原先在这里重复了一遍
-                      // 置顶逻辑）：重排位移的挂号只在那里做，菜单不能绕过。
-                      itemHandlers.onTogglePinned(activeMenuChat.id)
-                    }}
-                  >
-                    <Star size={16} />
-                    <span>
-                      {activeMenuChat.isPinned
-                        ? t('sidebar.chatList.unpinConversation', 'Unpin')
-                        : t('sidebar.chatList.pinConversation', 'Pin')}
-                    </span>
-                  </button>
-                ) : null}
+                  <span className="yolo-chat-list-dropdown-archive-toggle-label">
+                    {showArchived
+                      ? t('sidebar.chatList.hideArchived', 'Hide archived')
+                      : `${t('sidebar.chatList.archived', 'Archived')} (${archivedChatList.length})`}
+                  </span>
+                </button>
+              </li>
+            )}
+          </>
+        )}
+        {activeSection === 'user' &&
+        !normalizedQuery &&
+        taskChatList.length > 0 ? (
+          <li className="yolo-chat-history-task-entry">
+            <button type="button" onClick={() => switchSection('task')}>
+              <span>
+                {t('sidebar.chatList.taskConversations', 'Task conversations')}
+              </span>
+              <span className="yolo-chat-list-section-count">
+                {taskChatList.length}
+              </span>
+              <ChevronRight size={14} />
+            </button>
+          </li>
+        ) : null}
+      </ul>
+      {isSearchVisible && !Platform.isMobile ? (
+        <ChatListKeyboardLegend />
+      ) : null}
+      {activeMenuChat && menuPosition
+        ? createPortal(
+            // Portal 到 <body>：列表是独立滚动容器（overflow），菜单留在里面会被
+            // 裁剪。定位坐标系见 openContextMenu / 下面 useLayoutEffect 顶部注释。
+            <div
+              ref={contextMenuRef}
+              className="yolo-chat-list-ctx-menu is-open"
+              style={{ top: menuPosition.top, left: menuPosition.left }}
+              role="menu"
+              tabIndex={-1}
+              aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+            >
+              {activeSection === 'user' ? (
                 <button
                   type="button"
                   role="menuitem"
-                  data-act="rename"
+                  data-act="pin"
                   onClick={(e) => {
                     e.stopPropagation()
                     setActiveMenuId(null)
                     setMenuPosition(null)
-                    setMoreMenuConversationId(null)
-                    setEditingId(activeMenuChat.id)
+                    // 走 itemHandlers 这一个入口（原先在这里重复了一遍
+                    // 置顶逻辑）：重排位移的挂号只在那里做，菜单不能绕过。
+                    itemHandlers.onTogglePinned(activeMenuChat.id)
                   }}
                 >
-                  <Pencil size={16} />
-                  <span>{t('common.edit', 'Edit')}</span>
+                  <Star size={16} />
+                  <span>
+                    {activeMenuChat.isPinned
+                      ? t('sidebar.chatList.unpinConversation', 'Unpin')
+                      : t('sidebar.chatList.pinConversation', 'Pin')}
+                  </span>
                 </button>
-                {!activeMenuChat.cliSession ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-act="retitle"
-                    disabled={retryingConversationIds.has(activeMenuChat.id)}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setActiveMenuId(null)
-                      setMenuPosition(null)
-                      itemHandlers.onRetryTitle(activeMenuChat.id)
-                    }}
-                  >
-                    <RotateCcw size={16} />
-                    <span>
-                      {t('sidebar.chatList.retryTitle', 'Retry title')}
-                    </span>
-                  </button>
-                ) : null}
-                {!activeMenuChat.cliSession ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-act="export"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setActiveMenuId(null)
-                      setMenuPosition(null)
-                      setMoreMenuConversationId(null)
-                      void Promise.resolve(
-                        onExportConversation(activeMenuChat.id),
-                      ).catch((error) => {
-                        console.error('Failed to export conversation', error)
-                      })
-                    }}
-                  >
-                    <Download size={16} />
-                    <span>{t('sidebar.chatList.exportShort', 'Export')}</span>
-                  </button>
-                ) : null}
-              </div>,
-              getNodeBody(triggerRef.current),
-            )
-          : null}
-      </YoloPopoverContent>
-    </Popover.Root>
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                data-act="rename"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveMenuId(null)
+                  setMenuPosition(null)
+                  setEditingId(activeMenuChat.id)
+                }}
+              >
+                <Pencil size={16} />
+                <span>{t('common.edit', 'Edit')}</span>
+              </button>
+              {!activeMenuChat.cliSession ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-act="retitle"
+                  disabled={retryingConversationIds.has(activeMenuChat.id)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setActiveMenuId(null)
+                    setMenuPosition(null)
+                    itemHandlers.onRetryTitle(activeMenuChat.id)
+                  }}
+                >
+                  <RotateCcw size={16} />
+                  <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
+                </button>
+              ) : null}
+              {!activeMenuChat.cliSession ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-act="export"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setActiveMenuId(null)
+                    setMenuPosition(null)
+                    void Promise.resolve(
+                      onExportConversation(activeMenuChat.id),
+                    ).catch((error) => {
+                      console.error('Failed to export conversation', error)
+                    })
+                  }}
+                >
+                  <Download size={16} />
+                  <span>{t('sidebar.chatList.exportShort', 'Export')}</span>
+                </button>
+              ) : null}
+              <hr />
+              {/* 两步确认与行内删除、Mod+Backspace 共用一份状态：第一下只改文案，
+                  菜单不关，第二下才删。 */}
+              <button
+                type="button"
+                role="menuitem"
+                data-act="delete"
+                className={`danger${
+                  confirmingDeleteId === activeMenuChat.id
+                    ? ' is-confirming'
+                    : ''
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const confirming =
+                    confirmingDeleteIdRef.current === activeMenuChat.id
+                  itemHandlers.onRequestDelete(activeMenuChat.id)
+                  if (confirming) {
+                    setActiveMenuId(null)
+                    setMenuPosition(null)
+                  }
+                }}
+              >
+                <Trash2 size={16} />
+                <span>
+                  {confirmingDeleteId === activeMenuChat.id
+                    ? t(
+                        'sidebar.chatList.confirmDelete',
+                        'Click again to delete',
+                      )
+                    : t('common.delete', 'Delete')}
+                </span>
+              </button>
+            </div>,
+            getNodeBody(rootRef.current),
+          )
+        : null}
+    </div>
   )
 }

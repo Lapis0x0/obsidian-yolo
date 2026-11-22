@@ -125,3 +125,54 @@ export function partitionChatHistory({
     archivedChatList: archivedNonPinnedChats.filter(matchesOrigin),
   }
 }
+
+export type ChatHistoryTimeGroup =
+  | 'pinned'
+  | 'today'
+  | 'yesterday'
+  | 'week'
+  | 'month'
+  | 'older'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * 给按显示顺序排好的列表标出每个时间分组的第一条。只记分组起点，分组标题因此
+ * 能插在同一个扁平列表里，不打断删除 / 置顶补位用的连续索引。
+ *
+ * 时间按本地日历日算：「今天」从本地零点起，「前 7 天」「前 30 天」从今天零点往前
+ * 数。排序时间与列表排序同源（交互期间取快照），两者不会互相矛盾。置顶只在
+ * 「我的对话」里成组。
+ */
+export function groupChatHistoryByTime({
+  chatList,
+  section,
+  orderSnapshot,
+  now,
+}: {
+  chatList: ChatConversationMetadata[]
+  section: ChatHistorySection
+  orderSnapshot: ChatListOrderSnapshot | null
+  now: number
+}): Map<string, ChatHistoryTimeGroup> {
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+  const today = startOfToday.getTime()
+  const groupOf = (chat: ChatConversationMetadata): ChatHistoryTimeGroup => {
+    if (section === 'user' && chat.isPinned) return 'pinned'
+    const time = orderSnapshot?.get(chat.id) ?? chat.updatedAt
+    if (time >= today) return 'today'
+    if (time >= today - DAY_MS) return 'yesterday'
+    if (time >= today - 7 * DAY_MS) return 'week'
+    if (time >= today - 30 * DAY_MS) return 'month'
+    return 'older'
+  }
+  const starts = new Map<string, ChatHistoryTimeGroup>()
+  let previous: ChatHistoryTimeGroup | null = null
+  chatList.forEach((chat) => {
+    const group = groupOf(chat)
+    if (group !== previous) starts.set(chat.id, group)
+    previous = group
+  })
+  return starts
+}

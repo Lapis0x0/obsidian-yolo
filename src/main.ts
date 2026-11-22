@@ -2551,8 +2551,7 @@ export default class YoloPlugin extends Plugin {
     })
 
     // issue #567 Step 2：只在活动叶子是聊天视图时可用，让命令面板/快捷键/
-    // Commander 能达到聊天内容区的历史弹层入口（该入口本身仍锚定在
-    // ChatHeader 的 History 按钮上，命令只是多一条打开路径）。
+    // Commander 能直达对话历史：展开侧边栏（或打开抽屉）并唤出历史搜索。
     this.addCommand({
       id: 'open-chat-history',
       name: this.t('commands.openChatHistory'),
