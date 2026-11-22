@@ -1714,7 +1714,7 @@ export const en: TranslationKeys = {
       pluginUpdateModeNotifyDesc:
         'New versions are announced and downloaded in the background, ready to install when you confirm.',
       pluginUpdateModeOffDesc:
-        'Nothing is announced or downloaded. Update by hand in community plugins or Settings → Modules.',
+        "New versions aren't announced. Update by hand in community plugins or Settings → Modules.",
       exportConfig: 'Export settings',
       exportConfigDesc:
         'Export current plugin settings to a JSON file for use in other vaults.',

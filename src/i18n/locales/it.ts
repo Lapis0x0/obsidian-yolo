@@ -1580,7 +1580,7 @@ export const it: DeepPartial<TranslationKeys> = {
       pluginUpdateModeNotifyDesc:
         'Le nuove versioni vengono segnalate e scaricate in background, pronte da installare quando confermi.',
       pluginUpdateModeOffDesc:
-        'Nessun avviso e nessun download. Aggiorna manualmente dai plugin della community o da Impostazioni → Moduli.',
+        'Le nuove versioni non vengono segnalate. Aggiorna manualmente dai plugin della community o da Impostazioni → Moduli.',
       resetSettings: 'Ripristina impostazioni',
       resetSettingsDesc:
         'Ripristina tutte le impostazioni ai valori predefiniti.',

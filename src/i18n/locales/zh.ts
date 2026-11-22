@@ -1604,7 +1604,7 @@ export const zh: TranslationKeys = {
       pluginUpdateModeNotifyDesc:
         '检测到新版本时提醒你，并在后台提前下载好，确认后即可安装。',
       pluginUpdateModeOffDesc:
-        '不提醒，也不下载。可以在社区插件或「设置 → 模块」中手动更新。',
+        '不提醒新版本。需要时可以在社区插件或「设置 → 模块」中手动更新。',
       exportConfig: '导出配置',
       exportConfigDesc:
         '将当前插件配置导出为 JSON 文件，方便在其他笔记库中导入使用。',

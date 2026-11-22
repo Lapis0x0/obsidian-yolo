@@ -1,6 +1,12 @@
 import { LoaderCircle, PackageOpen, TriangleAlert } from 'lucide-react'
 import { Notice, setIcon } from 'obsidian'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
@@ -255,6 +261,19 @@ export function ModulesTab({
     }
   }, [])
 
+  // The catalog on screen is the copy cached at startup. Whoever opens this
+  // tab is here to see what is current, so fetch it fresh while the cached one
+  // stays up; the retry button does the same.
+  const checkForUpdates = useCallback(() => {
+    service.checkForUpdates().catch(() => {
+      // Already reported by the service; the cached catalog stays on screen.
+    })
+  }, [service])
+
+  useEffect(() => {
+    checkForUpdates()
+  }, [checkForUpdates])
+
   useEffect(() => {
     if (
       selection.kind === 'module' &&
@@ -420,7 +439,7 @@ export function ModulesTab({
               settingsIconsByModuleId={settingsIconsByModuleId}
               busy={busy}
               onAction={handleAction}
-              onRetry={() => void service.refresh()}
+              onRetry={checkForUpdates}
             />
           )}
         </main>
