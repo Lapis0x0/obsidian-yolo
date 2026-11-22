@@ -296,11 +296,13 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       (await client.responses.create(body, {
         signal: options?.signal,
       })) as AsyncIterable<ResponseStreamEvent>,
+      options?.signal,
     )
   }
 
   private async toStream(
     stream: AsyncIterable<ResponseStreamEvent>,
+    signal?: AbortSignal,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
     if (!(Symbol.asyncIterator in Object(stream))) {
       throw new Error('Expected a streaming ChatGPT OAuth response')
@@ -313,6 +315,20 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       async *[Symbol.asyncIterator]() {
         for await (const event of stream) {
           yield* adapter.parseStreamEvent(event, state)
+
+          // The terminal event completes the response even if HTTP closes early.
+          if (
+            event.type === 'response.completed' ||
+            event.type === 'response.incomplete'
+          ) {
+            return
+          }
+        }
+
+        if (!signal?.aborted) {
+          throw new Error(
+            'ChatGPT OAuth response stream ended unexpectedly before a terminal event',
+          )
         }
       },
     }
