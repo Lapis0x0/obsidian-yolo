@@ -70,20 +70,12 @@ export type TranslationKeys = {
 
   sidebar?: {
     runtimeSelector: {
-      modeAccessibleLabel: string
-      chatLabel: string
-      cliLabel: string
-      chatDescription: string
-      cliDescription: string
-      accessibleLabel: string
-      menuLabel: string
       claudeCodeLabel: string
       claudeCodeShortLabel: string
       codexLabel: string
       hermesLabel: string
       piLabel: string
       ompLabel: string
-      variantToggleHint: string
       grokLabel: string
       codebuddyLabel: string
       codebuddyShortLabel: string
@@ -1546,6 +1538,19 @@ export type TranslationKeys = {
 
   // Chat Interface
   chat: {
+    agentPicker?: {
+      search?: string
+      yoloGroup?: string
+      cliGroup?: string
+      pin?: string
+      unpin?: string
+      unpinShort?: string
+      pinLimit?: string
+      profileCount?: string
+      pinnedCount?: string
+      newChatWith?: string
+      newChatWithAgent?: string
+    }
     ribbonMenu: {
       openInSidebar: string
       openInTab: string
@@ -1753,9 +1758,6 @@ export type TranslationKeys = {
       sessionFallbackDividerTitle?: string
       sessionFallbackDividerDescription?: string
       sessionFallbackUnknownProfile?: string
-    }
-    hermesProfileSelector?: {
-      accessibleLabel?: string
     }
     cliControls?: {
       defaultModel?: string

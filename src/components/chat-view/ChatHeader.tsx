@@ -1,40 +1,29 @@
-import { Download, PanelLeft, Plus } from 'lucide-react'
-import type {
-  Dispatch,
-  MutableRefObject,
-  RefObject,
-  SetStateAction,
-} from 'react'
+import { ChevronDown, Download, PanelLeft, Plus } from 'lucide-react'
+import type { Dispatch, RefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import type { ChatMode } from '../../core/agent/chat-mode'
-import { isModuleChatMode } from '../../core/agent/chat-mode'
 import {
   type ChatRuntimeId,
-  type CliRuntimeId,
   type CliRuntimeScope,
   RUNTIME_CAPABILITIES,
-  isCliRuntime,
 } from '../../core/cli-runtime'
 import type { MentionableBlockData } from '../../types/mentionable'
 
-import { AssistantSelector } from './AssistantSelector'
-import { HermesProfileSelector } from './HermesProfileSelector'
-import { RuntimeSelector } from './RuntimeSelector'
-import ViewToggle from './ViewToggle'
+import { AgentPicker, useAgentDisplay } from './agent-picker/AgentPicker'
+import type { AgentRef } from './agent-picker/agentRef'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 
 export type ChatHeaderProps = {
   isSidebarPlacement: boolean
   activeRuntimeId: ChatRuntimeId
-  handleRuntimeChange: (runtimeId: ChatRuntimeId) => void
-  lastCliRuntimeIdRef: MutableRefObject<CliRuntimeId>
-  cliRuntimeAvailable: boolean
+  /** 当前对话正在和谁对话 */
+  currentAgent: AgentRef
+  /** 在头部换 Agent：切换当前对话的 Agent，不开新对话 */
+  onSwitchAgent: (ref: AgentRef) => void
+  /** CLI 运行时可用时才传，选择器据此列出 CLI Agent */
   cliRuntimeScope: CliRuntimeScope | undefined
-  /** Gates the assistant selector — hidden while a module chat mode is active. */
-  chatMode: ChatMode
 
   // workspace-wide header 测量：containerRef 由 Chat.tsx 持有（同一节点也
   // 服务于其他用途），这里只读取 .current 做宽度测量；isWorkspaceWideHeader
@@ -45,11 +34,6 @@ export type ChatHeaderProps = {
   setIsWorkspaceWideHeader: Dispatch<SetStateAction<boolean>>
   setWorkspaceWideHeaderHeight: Dispatch<SetStateAction<number>>
 
-  conversationAssistantId: string
-  handleConversationAssistantSelect: (assistantId: string) => void
-  /** `undefined` means the default Hermes profile. Ignored by non-Hermes runtimes. */
-  hermesProfileId: string | undefined
-  handleHermesProfileSelect: (profileId: string | undefined) => void
   handleNewChat: (selectedBlock?: MentionableBlockData) => void
   handleExportChatToVault: (conversationId: string) => void
   currentConversationId: string
@@ -63,19 +47,13 @@ export type ChatHeaderProps = {
 export function ChatHeader({
   isSidebarPlacement,
   activeRuntimeId,
-  handleRuntimeChange,
-  lastCliRuntimeIdRef,
-  cliRuntimeAvailable,
+  currentAgent,
+  onSwitchAgent,
   cliRuntimeScope,
-  chatMode,
   containerRef,
   isWorkspaceWideHeader,
   setIsWorkspaceWideHeader,
   setWorkspaceWideHeaderHeight,
-  conversationAssistantId,
-  handleConversationAssistantSelect,
-  hermesProfileId,
-  handleHermesProfileSelect,
   handleNewChat,
   handleExportChatToVault,
   currentConversationId,
@@ -83,6 +61,7 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   const { t } = useLanguage()
   const headerRef = useRef<HTMLDivElement | null>(null)
+  const agentDisplay = useAgentDisplay(currentAgent, cliRuntimeScope)
 
   useEffect(() => {
     if (isSidebarPlacement) {
@@ -158,51 +137,27 @@ export function ChatHeader({
             <PanelLeft size={18} />
           </button>
         ) : null}
-        <ViewToggle
-          activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
-          onChangeChatSurface={(surface) => {
-            handleRuntimeChange(
-              surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
-            )
-          }}
-          showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
+        <AgentPicker
+          current={currentAgent}
+          onPick={onSwitchAgent}
+          cliRuntimeScope={cliRuntimeScope}
+          triggerClassName="yolo-assistant-selector-button yolo-chat-header-agent"
+          triggerContent={
+            <>
+              <div className="yolo-assistant-selector-current-icon">
+                {agentDisplay.icon}
+              </div>
+              <div className="yolo-assistant-selector-current">
+                {agentDisplay.name}
+              </div>
+              <div className="yolo-assistant-selector-icon">
+                <ChevronDown size={10} />
+              </div>
+            </>
+          }
         />
-        {isCliRuntime(activeRuntimeId) ? (
-          <RuntimeSelector
-            currentRuntimeId={activeRuntimeId}
-            onRuntimeChange={handleRuntimeChange}
-          />
-        ) : null}
       </div>
       <div className="yolo-chat-header-right">
-        {RUNTIME_CAPABILITIES[activeRuntimeId].hasAssistants &&
-        !isModuleChatMode(chatMode) ? (
-          <AssistantSelector
-            currentAssistantId={conversationAssistantId}
-            triggerClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-button--workspace-floating'
-                : undefined
-            }
-            contentClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-content--workspace-floating'
-                : undefined
-            }
-            onAssistantChange={(assistant) => {
-              handleConversationAssistantSelect(assistant.id)
-            }}
-          />
-        ) : null}
-        {activeRuntimeId === 'hermes' &&
-        !isModuleChatMode(chatMode) &&
-        cliRuntimeScope ? (
-          <HermesProfileSelector
-            cliRuntimeScope={cliRuntimeScope}
-            currentProfileId={hermesProfileId}
-            onProfileChange={handleHermesProfileSelect}
-          />
-        ) : null}
         <div className="yolo-chat-header-buttons">
           <button
             type="button"

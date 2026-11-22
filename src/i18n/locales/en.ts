@@ -61,21 +61,12 @@ export const en: TranslationKeys = {
 
   sidebar: {
     runtimeSelector: {
-      modeAccessibleLabel: 'Chat mode',
-      chatLabel: 'Agent',
-      cliLabel: 'CLI',
-      chatDescription: 'Built-in YOLO chat',
-      cliDescription: 'Use CLI for tasks',
-      accessibleLabel: 'CLI provider: {runtime}',
-      menuLabel: 'CLI provider',
       claudeCodeLabel: 'Claude Code',
       claudeCodeShortLabel: 'CC',
       codexLabel: 'Codex',
       hermesLabel: 'Hermes',
       piLabel: 'Pi',
       ompLabel: 'omp',
-      variantToggleHint:
-        'Switch between {base} and {variant} — changing channel starts a new session',
       grokLabel: 'Grok',
       codebuddyLabel: 'CodeBuddy',
       codebuddyShortLabel: 'CB',
@@ -1811,6 +1802,19 @@ export const en: TranslationKeys = {
   },
 
   chat: {
+    agentPicker: {
+      search: 'Search agents',
+      yoloGroup: 'YOLO',
+      cliGroup: 'CLI',
+      pin: 'Pin {name} to the sidebar',
+      unpin: 'Unpin {name}',
+      unpinShort: 'Unpin',
+      pinLimit: 'Up to {count} pinned agents — unpin one first',
+      profileCount: '{count} profiles',
+      pinnedCount: '{count} / {max} pinned',
+      newChatWith: 'New chat with {name}',
+      newChatWithAgent: 'New chat with an agent',
+    },
     ribbonMenu: {
       openInSidebar: 'Open in sidebar',
       openInTab: 'Open in tab',
@@ -2037,9 +2041,6 @@ export const en: TranslationKeys = {
       sessionFallbackDividerDescription:
         'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
       sessionFallbackUnknownProfile: 'previous',
-    },
-    hermesProfileSelector: {
-      accessibleLabel: 'Hermes profile: {profile}',
     },
     cliControls: {
       defaultModel: '{provider} default model',

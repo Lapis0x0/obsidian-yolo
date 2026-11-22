@@ -61,21 +61,12 @@ export const zh: TranslationKeys = {
 
   sidebar: {
     runtimeSelector: {
-      modeAccessibleLabel: '聊天模式',
-      chatLabel: 'Agent',
-      cliLabel: 'CLI',
-      chatDescription: 'YOLO 内置对话',
-      cliDescription: '使用 CLI 执行复杂任务',
-      accessibleLabel: 'CLI 提供方：{runtime}',
-      menuLabel: 'CLI 提供方',
       claudeCodeLabel: 'Claude Code',
       claudeCodeShortLabel: 'CC',
       codexLabel: 'Codex',
       hermesLabel: 'Hermes',
       piLabel: 'Pi',
       ompLabel: 'omp',
-      variantToggleHint:
-        '在 {base} 与 {variant} 之间切换——更换渠道会开启新会话',
       grokLabel: 'Grok',
       codebuddyLabel: 'CodeBuddy',
       codebuddyShortLabel: 'CB',
@@ -1721,6 +1712,19 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
+    agentPicker: {
+      search: '搜索 Agent',
+      yoloGroup: 'YOLO',
+      cliGroup: 'CLI',
+      pin: '把 {name} 钉到侧边栏',
+      unpin: '取消钉住 {name}',
+      unpinShort: '取消钉住',
+      pinLimit: '最多钉 {count} 个，先取消一个',
+      profileCount: '{count} 个 profile',
+      pinnedCount: '已钉 {count} / {max}',
+      newChatWith: '用 {name} 开新对话',
+      newChatWithAgent: '选择 Agent 新建对话',
+    },
     ribbonMenu: {
       openInSidebar: '在侧边栏中打开',
       openInTab: '在标签页中打开',
@@ -1930,9 +1934,6 @@ export const zh: TranslationKeys = {
       sessionFallbackDividerDescription:
         '原 agent「{profile}」不可用，已切换到 default，此前的对话不在它的记忆中。',
       sessionFallbackUnknownProfile: '此前的',
-    },
-    hermesProfileSelector: {
-      accessibleLabel: 'Hermes agent：{profile}',
     },
     cliControls: {
       defaultModel: '{provider} 默认模型',

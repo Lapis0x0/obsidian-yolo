@@ -1,0 +1,117 @@
+/*
+ * 统一的 Agent 选择器（agent-picker/AgentPicker.tsx）。行、图标、元信息、
+ * 页脚沿用 settings/assistants.css 里的 .yolo-assistant-selector-* —— 外部
+ * 主题可能 target 这些类名，不改名；这里只补选择器新增的部分。
+ */
+
+.yolo-agent-picker-search {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  padding: var(--size-2-2) var(--size-4-2) var(--size-2-3);
+  margin-bottom: var(--size-2-1);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-muted) 16%, transparent);
+  color: var(--text-muted);
+}
+
+.yolo-agent-picker-search input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-agent-picker li.yolo-agent-picker-group {
+  padding: var(--size-4-2) var(--size-4-2) var(--size-2-1);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  cursor: default;
+  background: transparent !important;
+}
+
+.yolo-agent-picker li.yolo-agent-picker-empty {
+  padding: var(--size-4-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  cursor: default;
+  background: transparent !important;
+}
+
+img.yolo-agent-picker-logo {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.yolo-agent-picker-row--nested {
+  padding-inline-start: var(--size-4-4);
+}
+
+/* 钉住按钮：和编辑按钮同一套小方块。已钉住的行常显，方便一眼看出钉了谁。 */
+button.yolo-agent-picker-pin {
+  all: unset;
+  width: 24px !important;
+  height: 24px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 5px !important;
+  background: var(--background-primary) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-muted) 22%, transparent) !important;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-agent-picker-pin:hover {
+  background: var(--background-modifier-hover) !important;
+  color: var(--text-normal);
+}
+
+button.yolo-agent-picker-pin.is-pinned {
+  color: var(--interactive-accent);
+}
+
+button.yolo-agent-picker-pin.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yolo-assistant-selector-item:has(.yolo-agent-picker-pin.is-pinned)
+  .yolo-assistant-selector-item-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.yolo-agent-picker-expand {
+  color: var(--text-muted);
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-agent-picker-expand.is-expanded {
+  transform: rotate(90deg);
+}
+
+.yolo-agent-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+}
+
+.yolo-agent-picker-pin-count {
+  flex: 1;
+  padding-inline-start: var(--size-2-3);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.yolo-agent-picker-footer button.yolo-assistant-selector-footer-btn {
+  width: auto !important;
+}

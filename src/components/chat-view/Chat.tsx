@@ -80,6 +80,7 @@ import { ObsidianIcon } from '../common/ObsidianIcon'
 
 // removed Prompt Templates feature
 
+import { useAgentSwitching } from './agent-picker/useAgentSwitching'
 import { AssistantRenderStreamProvider } from './assistant-render-stream-context'
 import {
   CLAUDE_CODE_CHAT_MODES,
@@ -1664,23 +1665,30 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
   }))
 
+  const canUseCliRuntime = cliRuntimeAvailable && cliRuntimeScope !== undefined
+  const { currentAgent, switchAgent, startNewChatWithAgent } =
+    useAgentSwitching({
+      activeRuntimeId,
+      conversationAssistantId,
+      hermesProfileId,
+      canUseCliRuntime,
+      handleRuntimeChange,
+      handleNewChat,
+      selectAssistant: handleConversationAssistantSelect,
+      switchHermesProfile,
+    })
+
   const header = (
     <ChatHeader
       isSidebarPlacement={isSidebarPlacement}
       activeRuntimeId={activeRuntimeId}
-      handleRuntimeChange={handleRuntimeChange}
-      lastCliRuntimeIdRef={lastCliRuntimeIdRef}
-      cliRuntimeAvailable={cliRuntimeAvailable}
-      cliRuntimeScope={cliRuntimeScope}
-      chatMode={chatMode}
+      currentAgent={currentAgent}
+      onSwitchAgent={switchAgent}
+      cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       containerRef={containerRef}
       isWorkspaceWideHeader={isWorkspaceWideHeader}
       setIsWorkspaceWideHeader={setIsWorkspaceWideHeader}
       setWorkspaceWideHeaderHeight={setWorkspaceWideHeaderHeight}
-      conversationAssistantId={conversationAssistantId}
-      handleConversationAssistantSelect={handleConversationAssistantSelect}
-      hermesProfileId={hermesProfileId}
-      handleHermesProfileSelect={switchHermesProfile}
       handleNewChat={handleNewChat}
       handleExportChatToVault={handleExportChatToVault}
       currentConversationId={currentConversationId}
@@ -1717,6 +1725,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       onCloseDrawer={sidebarLayout.closeDrawer}
       onToggle={sidebarLayout.toggle}
       onNewChat={() => handleNewChat()}
+      onNewChatWithAgent={startNewChatWithAgent}
+      cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       chatList={chatList}
       currentConversationId={activeHistoryConversationId}
       runSummariesByConversationId={runSummariesByConversationId}

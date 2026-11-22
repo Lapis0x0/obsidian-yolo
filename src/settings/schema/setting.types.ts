@@ -617,6 +617,10 @@ export const yoloSettingsSchema = z.object({
       autoContextCompactionThresholdRatio: z.number().min(0).max(1).optional(),
       // Font scale factor for chat messages (1 = default)
       chatFontScale: z.number().min(0.7).max(1.5).optional(),
+      // Agents pinned under "New chat" in the chat sidebar, as serialized
+      // `AgentRef`s (`assistant:<id>` / `cli:<runtime>` / `hermes:<profile>`).
+      // Unknown entries are skipped on read, not dropped from storage.
+      pinnedAgents: z.array(z.string()).optional(),
       // Image reading & compression for vision tool calls
       imageReadingEnabled: z.boolean().optional(),
       imageCompressionEnabled: z.boolean().optional(),

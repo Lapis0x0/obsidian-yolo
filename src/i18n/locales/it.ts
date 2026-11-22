@@ -77,21 +77,12 @@ export const it: DeepPartial<TranslationKeys> = {
 
   sidebar: {
     runtimeSelector: {
-      modeAccessibleLabel: 'Modalità chat',
-      chatLabel: 'Agent',
-      cliLabel: 'CLI',
-      chatDescription: 'Chat integrata di YOLO',
-      cliDescription: 'Usa CLI per attività',
-      accessibleLabel: 'Provider CLI: {runtime}',
-      menuLabel: 'Provider CLI',
       claudeCodeLabel: 'Claude Code',
       claudeCodeShortLabel: 'CC',
       codexLabel: 'Codex',
       hermesLabel: 'Hermes',
       piLabel: 'Pi',
       ompLabel: 'omp',
-      variantToggleHint:
-        'Passa tra {base} e {variant} — cambiare canale avvia una nuova sessione',
       grokLabel: 'Grok',
       codebuddyLabel: 'CodeBuddy',
       codebuddyShortLabel: 'CB',
@@ -1668,6 +1659,19 @@ export const it: DeepPartial<TranslationKeys> = {
   },
 
   chat: {
+    agentPicker: {
+      search: 'Cerca agenti',
+      yoloGroup: 'YOLO',
+      cliGroup: 'CLI',
+      pin: 'Fissa {name} nella barra laterale',
+      unpin: 'Rimuovi {name} dai fissati',
+      unpinShort: 'Rimuovi dai fissati',
+      pinLimit: 'Al massimo {count} agenti fissati: rimuovine uno prima',
+      profileCount: '{count} profili',
+      pinnedCount: '{count} / {max} fissati',
+      newChatWith: 'Nuova chat con {name}',
+      newChatWithAgent: 'Nuova chat con un agente',
+    },
     ribbonMenu: {
       openInSidebar: 'Apri nella barra laterale',
       openInTab: 'Apri in una scheda',
@@ -1897,9 +1901,6 @@ export const it: DeepPartial<TranslationKeys> = {
       sessionFallbackDividerDescription:
         'L\'agente originale "{profile}" non è disponibile, quindi questa conversazione è passata al profilo predefinito: i messaggi precedenti non fanno parte della sua memoria.',
       sessionFallbackUnknownProfile: 'precedente',
-    },
-    hermesProfileSelector: {
-      accessibleLabel: 'Profilo Hermes: {profile}',
     },
     cliControls: {
       defaultModel: 'Modello predefinito di {provider}',

@@ -1,13 +1,17 @@
-import { PanelLeft, Search, SquarePen } from 'lucide-react'
+import { ChevronDown, PanelLeft, Search, SquarePen } from 'lucide-react'
 import { Scope } from 'obsidian'
 import { useEffect, useRef } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../../core/agent/service'
+import type { CliRuntimeScope } from '../../../core/cli-runtime'
 import type { ChatConversationMetadata } from '../../../database/json/chat/types'
+import { AgentPicker } from '../agent-picker/AgentPicker'
+import type { AgentRef } from '../agent-picker/agentRef'
 import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
 
+import { PinnedAgents } from './PinnedAgents'
 import type { ChatSidebarLayout } from './useChatSidebarLayout'
 
 export type ChatSidebarHandle = {
@@ -21,6 +25,10 @@ type ChatSidebarProps = {
   onCloseDrawer: () => void
   onToggle: () => void
   onNewChat: () => void
+  /** 新对话菜单、钉住的 Agent：用指定的 Agent 开新对话 */
+  onNewChatWithAgent: (ref: AgentRef) => void
+  /** CLI 运行时可用时才传 */
+  cliRuntimeScope: CliRuntimeScope | undefined
   chatList: ChatConversationMetadata[]
   currentConversationId: string
   runSummariesByConversationId: Map<string, AgentConversationRunSummary>
@@ -49,6 +57,8 @@ export function ChatSidebar({
   onCloseDrawer,
   onToggle,
   onNewChat,
+  onNewChatWithAgent,
+  cliRuntimeScope,
   chatList,
   currentConversationId,
   runSummariesByConversationId,
@@ -141,6 +151,11 @@ export function ChatSidebar({
         >
           <Search size={16} />
         </button>
+        <PinnedAgents
+          cliRuntimeScope={cliRuntimeScope}
+          compact
+          onStart={onNewChatWithAgent}
+        />
         <div className="yolo-chat-sidebar-rail-spacer" />
         <button
           type="button"
@@ -195,17 +210,40 @@ export function ChatSidebar({
           </button>
         </div>
         <div className="yolo-chat-sidebar-actions">
-          <button
-            type="button"
-            className="yolo-chat-sidebar-new-chat"
-            onClick={() => {
-              onNewChat()
+          <div className="yolo-chat-sidebar-new-chat">
+            <button
+              type="button"
+              className="yolo-chat-sidebar-new-chat-main"
+              onClick={() => {
+                onNewChat()
+                closeIfDrawer()
+              }}
+            >
+              <SquarePen size={16} />
+              <span>{newChatLabel}</span>
+            </button>
+            <AgentPicker
+              onPick={(ref) => {
+                onNewChatWithAgent(ref)
+                closeIfDrawer()
+              }}
+              cliRuntimeScope={cliRuntimeScope}
+              triggerClassName="yolo-chat-sidebar-new-chat-menu"
+              triggerLabel={t(
+                'chat.agentPicker.newChatWithAgent',
+                'New chat with an agent',
+              )}
+              triggerContent={<ChevronDown size={14} />}
+            />
+          </div>
+          <PinnedAgents
+            cliRuntimeScope={cliRuntimeScope}
+            compact={false}
+            onStart={(ref) => {
+              onNewChatWithAgent(ref)
               closeIfDrawer()
             }}
-          >
-            <SquarePen size={16} />
-            <span>{newChatLabel}</span>
-          </button>
+          />
         </div>
         <ChatHistoryList
           chatList={chatList}

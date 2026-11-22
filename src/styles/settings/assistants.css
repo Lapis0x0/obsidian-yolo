@@ -92,12 +92,6 @@
   overflow: hidden;
 }
 
-.yolo-assistant-selector-content.yolo-assistant-selector-content--workspace-floating {
-  width: auto;
-  min-width: max(var(--radix-popover-trigger-width, 0px), 200px);
-  max-width: 240px;
-}
-
 .yolo-assistant-selector-list {
   max-height: 300px;
   overflow-y: auto;
@@ -257,13 +251,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-/* In compact workspace-floating mode, keep palette rich rows but
-   shrink width back to the floating constraints. */
-.yolo-assistant-selector-content--palette.yolo-assistant-selector-content--workspace-floating {
-  min-width: max(var(--radix-popover-trigger-width, 0px), 220px);
-  max-width: 260px;
 }
 
 .yolo-assistant-selector-content--palette .yolo-assistant-selector-list {
@@ -461,14 +448,6 @@ button.yolo-assistant-selector-action-btn:hover {
   outline: 2px solid
     color-mix(in srgb, var(--interactive-accent) 60%, transparent);
   outline-offset: 1px;
-}
-
-/* In workspace-floating mode actions stay (Default is also editable),
-   but allow the tool-count chip to wrap below model id on narrow widths. */
-.yolo-assistant-selector-content--palette.yolo-assistant-selector-content--workspace-floating
-  .yolo-assistant-selector-item-meta {
-  flex-wrap: wrap;
-  row-gap: 2px;
 }
 
 .yolo-assistant-selector-footer {

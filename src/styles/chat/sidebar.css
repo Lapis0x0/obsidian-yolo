@@ -145,24 +145,127 @@ button.yolo-chat-sidebar-rail-button--primary {
   padding: var(--size-2-1) var(--size-4-2) var(--size-4-2);
 }
 
-button.yolo-chat-sidebar-new-chat {
+/* 新对话：左边开默认对话，右边 ▾ 选一个 Agent 再开 */
+.yolo-chat-sidebar-new-chat {
   display: flex;
-  align-items: center;
-  gap: var(--size-2-3);
-  width: 100%;
   height: 36px;
-  margin: 0;
-  padding: 0 var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background: var(--background-primary);
+  overflow: hidden;
+}
+
+.yolo-chat-sidebar-new-chat:has(button[data-state='open']) {
+  border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+}
+
+button.yolo-chat-sidebar-new-chat-main,
+button.yolo-chat-sidebar-new-chat-menu {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-medium);
   cursor: pointer;
 }
 
-button.yolo-chat-sidebar-new-chat:hover {
+button.yolo-chat-sidebar-new-chat-main {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  gap: var(--size-2-3);
+  padding: 0 var(--size-4-3);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+button.yolo-chat-sidebar-new-chat-menu {
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  border-inline-start: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+button.yolo-chat-sidebar-new-chat-main:hover,
+button.yolo-chat-sidebar-new-chat-menu:hover,
+button.yolo-chat-sidebar-new-chat-menu[data-state='open'] {
   background: var(--background-modifier-hover);
+}
+
+button.yolo-chat-sidebar-new-chat-menu svg {
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+button.yolo-chat-sidebar-new-chat-menu[data-state='open'] svg {
+  transform: rotate(180deg);
+}
+
+/* 钉住的 Agent ------------------------------------------------------------- */
+
+.yolo-chat-sidebar-pinned {
+  display: flex;
+  gap: var(--size-2-1);
+  padding-top: var(--size-2-3);
+}
+
+.yolo-chat-sidebar-pinned.is-compact {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-2-3);
+  padding: var(--size-2-3) 0 0;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--size-2-2);
+}
+
+button.yolo-chat-sidebar-pinned-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-2-2);
+  width: 48px;
+  height: auto;
+  margin: 0;
+  padding: var(--size-2-3) 0;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-chat-sidebar-pinned-agent.is-compact {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+button.yolo-chat-sidebar-pinned-agent:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.yolo-chat-sidebar-pinned-agent-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+
+.yolo-chat-sidebar-pinned-agent-name {
+  max-width: 46px;
+  overflow: hidden;
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
