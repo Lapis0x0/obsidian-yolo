@@ -1,4 +1,4 @@
-import { ChevronDown, FileText } from 'lucide-react'
+import { Ban, Bot, ChevronDown, FileText, Folder, Globe } from 'lucide-react'
 import { type App, Modal } from 'obsidian'
 import { useMemo, useState } from 'react'
 import { type Root, createRoot } from 'react-dom/client'
@@ -20,7 +20,13 @@ import type YoloPlugin from '../../../main'
 import type { ChatProject } from '../../../types/project.types'
 import { ObsidianIcon } from '../../common/ObsidianIcon'
 import { ConfirmModal } from '../../modals/ConfirmModal'
-import { AgentWorkspaceScopeEditor } from '../../settings/sections/AgentWorkspaceScopeEditor'
+import { ScopeEditorModal } from '../../settings/scope/ScopeEditorModal'
+import {
+  estimateFiles,
+  rulesFromWorkspaceScope,
+  workspaceScopeFromRules,
+} from '../../settings/scope/scopeRules'
+import { collectScopeCandidateFiles } from '../../settings/scope/scopeVault'
 import { AgentPicker, useAgentDisplay } from '../agent-picker/AgentPicker'
 import { parseAgentRef, serializeAgentRef } from '../agent-picker/agentRef'
 
@@ -49,6 +55,95 @@ export function useExistingInstructionFiles(
   )
 }
 
+/**
+ * 工作区卡片：列出包含 / 排除的路径和可访问文件数，「编辑范围」打开与 Agent
+ * 设置同一个范围编辑器。项目的工作区总是生效，没有开关。
+ */
+function WorkspaceCard({
+  value,
+  color,
+  onChange,
+}: {
+  value: ChatProject['workspaceScope']
+  color: string
+  onChange: (value: ChatProject['workspaceScope']) => void
+}) {
+  const { t } = useLanguage()
+  const app = useApp()
+  const rules = useMemo(() => rulesFromWorkspaceScope(value), [value])
+  const candidateFiles = useMemo(
+    () => collectScopeCandidateFiles(app.vault),
+    [app.vault],
+  )
+  const estimate = useMemo(
+    () => estimateFiles(candidateFiles, rules),
+    [candidateFiles, rules],
+  )
+  const openEditor = () => {
+    new ScopeEditorModal(app, app.vault, {
+      rules,
+      defaultRules: [],
+      allowFiles: true,
+      variant: 'agent',
+      candidateFiles,
+      onSave: (nextRules) =>
+        onChange({
+          enabled: true,
+          ...workspaceScopeFromRules(nextRules),
+        }),
+    }).open()
+  }
+
+  return (
+    <div className="yolo-project-card">
+      {value.include.length === 0 ? (
+        <div className="yolo-project-card-row">
+          <Globe size={15} className="yolo-project-card-row-icon" />
+          <span className="yolo-project-card-row-main">
+            {t('chat.projects.wholeVault', 'Whole vault')}
+          </span>
+        </div>
+      ) : null}
+      {value.include.map((path) => (
+        <div key={`include:${path}`} className="yolo-project-card-row">
+          <Folder
+            size={15}
+            className="yolo-project-card-row-icon"
+            style={{ color }}
+          />
+          <span className="yolo-project-card-row-main">{path}</span>
+        </div>
+      ))}
+      {value.exclude.map((path) => (
+        <div key={`exclude:${path}`} className="yolo-project-card-row">
+          <Ban size={15} className="yolo-project-card-row-icon" />
+          <span className="yolo-project-card-row-main">{path}</span>
+          <span className="yolo-project-card-row-meta">
+            {t('chat.projects.excluded', 'Excluded')}
+          </span>
+        </div>
+      ))}
+      <div className="yolo-project-card-footer">
+        <span>
+          {t(
+            'chat.projects.accessibleFiles',
+            '{matched} / {total} files accessible',
+          )
+            .replace('{matched}', estimate.matched.toLocaleString())
+            .replace('{total}', estimate.total.toLocaleString())}
+        </span>
+        <button
+          type="button"
+          className="yolo-project-card-button"
+          onClick={openEditor}
+        >
+          {t('settings.scope.editRange', 'Edit range')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function DefaultAgentField({
   value,
   cliRuntimeScope,
@@ -65,40 +160,36 @@ function DefaultAgentField({
     cliRuntimeScope,
   )
   return (
-    <div className="yolo-project-form-agent">
-      <AgentPicker
-        current={ref ?? undefined}
-        onPick={(picked) => onChange(serializeAgentRef(picked))}
-        cliRuntimeScope={cliRuntimeScope}
-        triggerClassName="yolo-assistant-selector-button yolo-project-form-agent-trigger"
-        triggerContent={
-          <>
-            {ref ? (
-              <div className="yolo-assistant-selector-current-icon">
-                {display.icon}
-              </div>
-            ) : null}
-            <div className="yolo-assistant-selector-current">
-              {ref
-                ? display.name
-                : t('chat.projects.followCurrentAgent', 'Current agent')}
-            </div>
-            <div className="yolo-assistant-selector-icon">
-              <ChevronDown size={10} />
-            </div>
-          </>
-        }
-      />
-      {ref ? (
-        <button
-          type="button"
-          className="yolo-project-form-link"
-          onClick={() => onChange(undefined)}
-        >
-          {t('chat.projects.clearDefaultAgent', 'Use the current agent')}
-        </button>
-      ) : null}
-    </div>
+    <AgentPicker
+      current={ref ?? undefined}
+      onPick={(picked) => onChange(serializeAgentRef(picked))}
+      cliRuntimeScope={cliRuntimeScope}
+      triggerClassName="yolo-project-agent-trigger"
+      triggerContent={
+        <>
+          <span
+            className={`yolo-project-agent-avatar${
+              ref ? ` is-${ref.kind === 'assistant' ? 'yolo' : 'cli'}` : ''
+            }`}
+          >
+            {ref ? display.icon : <Bot size={14} />}
+          </span>
+          <span className="yolo-project-agent-name">
+            {ref
+              ? display.name
+              : t('chat.projects.followCurrentAgent', 'Current agent')}
+          </span>
+          <span className="yolo-project-agent-source">
+            {ref
+              ? ref.kind === 'assistant'
+                ? 'YOLO'
+                : 'CLI'
+              : t('chat.projects.noDefaultAgent', 'Not set')}
+          </span>
+          <ChevronDown size={13} className="yolo-project-agent-chevron" />
+        </>
+      }
+    />
   )
 }
 
@@ -115,12 +206,14 @@ function ProjectForm({
   const [name, setName] = useState(project?.name ?? '')
   const [icon, setIcon] = useState(project?.icon ?? PROJECT_ICONS[0])
   const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0])
+  const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [workspaceScope, setWorkspaceScope] = useState<
     ChatProject['workspaceScope']
   >(project?.workspaceScope ?? { enabled: true, include: [], exclude: [] })
   const [defaultAgent, setDefaultAgent] = useState(project?.defaultAgent)
   const instructionFiles = useExistingInstructionFiles(app, workspaceScope)
   const trimmedName = name.trim()
+  const colorStyle = { '--yolo-project-color': color } as React.CSSProperties
 
   const save = () => {
     if (!trimmedName) return
@@ -152,42 +245,50 @@ function ProjectForm({
   }
 
   return (
-    <div className="yolo-project-form">
-      <label className="yolo-project-form-field">
-        <span className="yolo-project-form-label">
-          {t('chat.projects.name', 'Name')}
-        </span>
-        <input
-          type="text"
-          value={name}
-          autoFocus
-          placeholder={t('chat.projects.namePlaceholder', 'e.g. Thesis')}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') save()
-          }}
-        />
-      </label>
-
-      <div className="yolo-project-form-field">
-        <span className="yolo-project-form-label">
-          {t('chat.projects.appearance', 'Icon')}
-        </span>
-        <div className="yolo-project-form-swatches">
-          {PROJECT_ICONS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={`yolo-project-icon-option${item === icon ? ' is-selected' : ''}`}
-              style={{ '--yolo-project-color': color } as React.CSSProperties}
-              aria-pressed={item === icon}
-              aria-label={item}
-              onClick={() => setIcon(item)}
-            >
-              <ObsidianIcon name={item} />
-            </button>
-          ))}
+    <div className="yolo-project-form" style={colorStyle}>
+      <div className="yolo-project-form-identity">
+        <div className="yolo-project-form-name-row">
+          <button
+            type="button"
+            className="yolo-project-form-icon"
+            aria-label={t('chat.projects.chooseIcon', 'Choose icon')}
+            aria-expanded={iconPickerOpen}
+            onClick={() => setIconPickerOpen((open) => !open)}
+          >
+            <ObsidianIcon name={icon} />
+          </button>
+          <input
+            type="text"
+            className="yolo-project-form-name"
+            value={name}
+            autoFocus
+            aria-label={t('chat.projects.name', 'Name')}
+            placeholder={t('chat.projects.namePlaceholder', 'e.g. Thesis')}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') save()
+            }}
+          />
         </div>
+        {iconPickerOpen ? (
+          <div className="yolo-project-form-swatches">
+            {PROJECT_ICONS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`yolo-project-icon-option${item === icon ? ' is-selected' : ''}`}
+                aria-pressed={item === icon}
+                aria-label={item}
+                onClick={() => {
+                  setIcon(item)
+                  setIconPickerOpen(false)
+                }}
+              >
+                <ObsidianIcon name={item} />
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="yolo-project-form-swatches">
           {PROJECT_COLORS.map((item) => (
             <button
@@ -207,24 +308,28 @@ function ProjectForm({
         <span className="yolo-project-form-label">
           {t('chat.projects.workspace', 'Workspace')}
         </span>
-        <span className="yolo-project-form-hint">
-          {t(
-            'chat.projects.workspaceHint',
-            "Replaces the agent's own workspace for every conversation in this project. CLI agents use their own tools and are not restricted.",
-          )}
-        </span>
-        <AgentWorkspaceScopeEditor
-          app={app}
-          vault={app.vault}
+        <WorkspaceCard
           value={workspaceScope}
+          color={color}
           onChange={setWorkspaceScope}
         />
       </div>
 
       <div className="yolo-project-form-field">
-        <span className="yolo-project-form-label">
-          {t('chat.projects.defaultAgent', 'Default agent')}
-        </span>
+        <div className="yolo-project-form-label-row">
+          <span className="yolo-project-form-label">
+            {t('chat.projects.defaultAgent', 'Default agent')}
+          </span>
+          {defaultAgent ? (
+            <button
+              type="button"
+              className="yolo-project-form-link"
+              onClick={() => setDefaultAgent(undefined)}
+            >
+              {t('chat.projects.clearDefaultAgent', 'Use the current agent')}
+            </button>
+          ) : null}
+        </div>
         <DefaultAgentField
           value={defaultAgent}
           cliRuntimeScope={cliRuntimeScope}
@@ -237,26 +342,36 @@ function ProjectForm({
           <span className="yolo-project-form-label">
             {t('chat.projects.instructions', 'Project instructions')}
           </span>
+          {instructionFiles.map((path) => (
+            <div key={path} className="yolo-project-card yolo-project-card-row">
+              <FileText size={15} className="yolo-project-card-row-icon" />
+              <span className="yolo-project-card-row-main is-stacked">
+                <span className="yolo-project-card-path">{path}</span>
+                <span className="yolo-project-card-row-meta">
+                  {t(
+                    'chat.projects.instructionsExists',
+                    'Exists · every conversation in this project reads it',
+                  )}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="yolo-project-card-button"
+                onClick={() => {
+                  void app.workspace.openLinkText(path, '', 'tab')
+                  onClose()
+                }}
+              >
+                {t('chat.projects.open', 'Open')}
+              </button>
+            </div>
+          ))}
           <span className="yolo-project-form-hint">
             {t(
               'chat.projects.instructionsHint',
               'Every conversation in this project reads these files — the same AGENTS.md that Claude Code and Codex read.',
             )}
           </span>
-          {instructionFiles.map((path) => (
-            <button
-              key={path}
-              type="button"
-              className="yolo-project-form-file"
-              onClick={() => {
-                void app.workspace.openLinkText(path, '', 'tab')
-                onClose()
-              }}
-            >
-              <FileText size={14} />
-              <span>{path}</span>
-            </button>
-          ))}
         </div>
       ) : null}
 

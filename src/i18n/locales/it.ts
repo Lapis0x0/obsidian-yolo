@@ -1685,8 +1685,6 @@ export const it: DeepPartial<TranslationKeys> = {
       namePlaceholder: 'es. Tesi',
       appearance: 'Icona',
       workspace: 'Area di lavoro',
-      workspaceHint:
-        "Sostituisce l'area di lavoro dell'agente per ogni conversazione del progetto. Gli agenti CLI usano i propri strumenti e non sono limitati.",
       defaultAgent: 'Agente predefinito',
       followCurrentAgent: 'Agente corrente',
       clearDefaultAgent: "Usa l'agente corrente",
@@ -1709,6 +1707,12 @@ export const it: DeepPartial<TranslationKeys> = {
       running: 'In esecuzione',
       waiting: 'In attesa di te',
       viewAll: 'Mostra tutte le {count} conversazioni',
+      excluded: 'Escluso',
+      accessibleFiles: '{matched} / {total} file accessibili',
+      chooseIcon: 'Scegli icona',
+      noDefaultAgent: 'Non impostato',
+      instructionsExists: 'Esiste · ogni conversazione del progetto lo legge',
+      open: 'Apri',
     },
     ribbonMenu: {
       openInSidebar: 'Apri nella barra laterale',

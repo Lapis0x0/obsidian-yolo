@@ -352,35 +352,81 @@ button.yolo-project-home-settings:hover {
 .yolo-project-form {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-4);
+  gap: 22px;
 }
 
-.yolo-project-form-field {
+/* 第一行：图标按钮 + 名称；下面是颜色，与名称左缘对齐 */
+.yolo-project-form-identity {
   display: flex;
   flex-direction: column;
-  gap: var(--size-2-3);
+  gap: 10px;
 }
 
-.yolo-project-form-label {
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
+.yolo-project-form-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.yolo-project-form-hint {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+button.yolo-project-form-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--yolo-project-color) 18%, transparent);
+  box-shadow: none;
+  color: var(--yolo-project-color);
+  cursor: pointer;
 }
 
-.yolo-project-form-field input[type='text'] {
-  width: 100%;
+button.yolo-project-form-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+input[type='text'].yolo-project-form-name {
+  flex: 1;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 11px;
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-medium);
 }
 
 .yolo-project-form-swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-2-2);
+  gap: 8px;
+  padding-inline-start: 54px;
+}
+
+.yolo-project-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yolo-project-form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.yolo-project-form-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+.yolo-project-form-hint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.55;
 }
 
 button.yolo-project-icon-option,
@@ -417,8 +463,8 @@ button.yolo-project-icon-option svg {
 }
 
 button.yolo-project-color-option {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--yolo-project-color);
 }
@@ -426,13 +472,141 @@ button.yolo-project-color-option {
 button.yolo-project-color-option.is-selected {
   box-shadow:
     0 0 0 2px var(--background-primary),
-    0 0 0 4px var(--yolo-project-color);
+    0 0 0 3.5px var(--yolo-project-color);
 }
 
-.yolo-project-form-agent {
+/* 卡片：工作区、项目指令共用 */
+.yolo-project-card {
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 11px;
+  background: var(--background-secondary);
+}
+
+.yolo-project-card-row {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-project-card > .yolo-project-card-row:last-child,
+.yolo-project-card.yolo-project-card-row {
+  border-bottom: 0;
+}
+
+.yolo-project-card.yolo-project-card-row {
+  padding-inline-end: 6px;
+}
+
+.yolo-project-card-row-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.yolo-project-card-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-project-card-row-main.is-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-project-card-path {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-card-row-meta {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-card-footer > span {
+  flex: 1;
+}
+
+button.yolo-project-card-button {
+  flex-shrink: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: var(--radius-m);
+  font-size: var(--font-ui-smaller);
+}
+
+/* 默认 Agent：整行选择器 */
+button.yolo-project-agent-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 11px;
+  background: var(--background-secondary);
+  box-shadow: none;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+button.yolo-project-agent-trigger:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-project-agent-avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.yolo-project-agent-avatar.is-cli {
+  border-radius: 8px;
+}
+
+.yolo-project-agent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-ui-small);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-project-agent-source {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-agent-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
 }
 
 button.yolo-project-form-link {
@@ -447,33 +621,13 @@ button.yolo-project-form-link {
   cursor: pointer;
 }
 
-button.yolo-project-form-file {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--size-2-3);
-  width: 100%;
-  height: auto;
-  margin: 0;
-  padding: var(--size-2-3) var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-primary);
-  box-shadow: none;
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  cursor: pointer;
-}
-
-button.yolo-project-form-file:hover {
-  background: var(--background-modifier-hover);
-}
-
 .yolo-project-form-actions {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
-  padding-top: var(--size-2-3);
+  gap: 10px;
+  margin: 0 calc(var(--size-4-4) * -1);
+  padding: 14px var(--size-4-4) 0;
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 .yolo-project-form-actions-spacer {

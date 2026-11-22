@@ -1738,8 +1738,6 @@ export const zh: TranslationKeys = {
       namePlaceholder: '例如：毕业论文',
       appearance: '图标',
       workspace: '工作区',
-      workspaceHint:
-        '项目里的每个对话都用这个工作区，取代 Agent 自己的工作区。CLI Agent 用自己的工具，不受限制。',
       defaultAgent: '默认 Agent',
       followCurrentAgent: '当前 Agent',
       clearDefaultAgent: '改为使用当前 Agent',
@@ -1761,6 +1759,12 @@ export const zh: TranslationKeys = {
       running: '运行中',
       waiting: '等你确认',
       viewAll: '查看全部 {count} 个对话',
+      excluded: '排除',
+      accessibleFiles: '可访问 {matched} / {total} 个文件',
+      chooseIcon: '选择图标',
+      noDefaultAgent: '未设置',
+      instructionsExists: '已存在 · 项目里的每个对话都会读取',
+      open: '打开',
     },
     ribbonMenu: {
       openInSidebar: '在侧边栏中打开',

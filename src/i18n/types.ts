@@ -1564,7 +1564,6 @@ export type TranslationKeys = {
       namePlaceholder?: string
       appearance?: string
       workspace?: string
-      workspaceHint?: string
       defaultAgent?: string
       followCurrentAgent?: string
       clearDefaultAgent?: string
@@ -1585,6 +1584,12 @@ export type TranslationKeys = {
       running?: string
       waiting?: string
       viewAll?: string
+      excluded?: string
+      accessibleFiles?: string
+      chooseIcon?: string
+      noDefaultAgent?: string
+      instructionsExists?: string
+      open?: string
     }
     ribbonMenu: {
       openInSidebar: string

@@ -1828,8 +1828,6 @@ export const en: TranslationKeys = {
       namePlaceholder: 'e.g. Thesis',
       appearance: 'Icon',
       workspace: 'Workspace',
-      workspaceHint:
-        "Replaces the agent's own workspace for every conversation in this project. CLI agents use their own tools and are not restricted.",
       defaultAgent: 'Default agent',
       followCurrentAgent: 'Current agent',
       clearDefaultAgent: 'Use the current agent',
@@ -1851,6 +1849,13 @@ export const en: TranslationKeys = {
       running: 'Running',
       waiting: 'Waiting for you',
       viewAll: 'View all {count} conversations',
+      excluded: 'Excluded',
+      accessibleFiles: '{matched} / {total} files accessible',
+      chooseIcon: 'Choose icon',
+      noDefaultAgent: 'Not set',
+      instructionsExists:
+        'Exists · every conversation in this project reads it',
+      open: 'Open',
     },
     ribbonMenu: {
       openInSidebar: 'Open in sidebar',
