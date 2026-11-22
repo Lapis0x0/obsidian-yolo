@@ -1,4 +1,7 @@
-import { App, normalizePath } from 'obsidian'
+// eslint-disable-next-line import/no-nodejs-modules -- the test stubs the desktop-only readdir that liteSkills imports dynamically
+import * as fsPromises from 'node:fs/promises'
+
+import { App, FileSystemAdapter, normalizePath } from 'obsidian'
 
 import {
   type ModuleChatModeSkillSourceV1,
@@ -574,6 +577,59 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
       '[YOLO] Failed to list skills in ".claude/skills"',
       expect.any(Error),
     )
+    warn.mockRestore()
+  })
+
+  it('on desktop skips only the dangling entry of a failed listing', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        '.claude/skills': {
+          files: [],
+          folders: ['.claude/skills/healthy', '.claude/skills/dead-link'],
+        },
+        '.claude/skills/healthy': {
+          files: ['.claude/skills/healthy/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        '.claude/skills/healthy/SKILL.md': [
+          '---',
+          'name: healthy',
+          'description: listed beside a dangling link',
+          '---',
+          'body',
+        ].join('\n'),
+      },
+    })
+    const adapter = app.vault.adapter as unknown as Record<string, unknown>
+    Object.setPrototypeOf(adapter, FileSystemAdapter.prototype)
+    adapter.getFullPath = (path: string) => `/vault/${path}`
+    adapter.stat = (path: string) =>
+      path === '.claude/skills/dead-link'
+        ? Promise.reject(new Error('ENOENT: no such file or directory, stat'))
+        : Promise.resolve({ type: 'folder' })
+    const list = app.vault.adapter.list.bind(app.vault.adapter)
+    jest
+      .spyOn(app.vault.adapter, 'list')
+      .mockImplementation((path) =>
+        path === '.claude/skills'
+          ? Promise.reject(new Error('ENOENT: no such file or directory, stat'))
+          : list(path),
+      )
+    const readdir = jest
+      .spyOn(fsPromises, 'readdir')
+      .mockResolvedValue(['healthy', 'dead-link'] as never)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const entries = await listLiteSkillEntries(app, { settings })
+
+    expect(readdir).toHaveBeenCalledWith('/vault/.claude/skills')
+    expect(entries.map((entry) => entry.name)).toContain('healthy')
+    expect(warn).toHaveBeenCalledWith(
+      '[YOLO] Skipped unreadable skill entry ".claude/skills/dead-link"',
+    )
+    readdir.mockRestore()
     warn.mockRestore()
   })
 

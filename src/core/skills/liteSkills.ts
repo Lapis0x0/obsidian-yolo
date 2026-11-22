@@ -1,4 +1,11 @@
-import { App, EventRef, TAbstractFile, TFile, normalizePath } from 'obsidian'
+import {
+  App,
+  EventRef,
+  FileSystemAdapter,
+  TAbstractFile,
+  TFile,
+  normalizePath,
+} from 'obsidian'
 
 import {
   YOLO_SKILLS_INDEX_FILE_NAME,
@@ -207,6 +214,45 @@ const toLiteSkillEntry = ({
   }
 }
 
+/**
+ * `adapter.list`, except one unreadable entry costs only that entry. The
+ * desktop adapter stats every entry it lists, so a single dangling symlink or
+ * junction (often left behind in `.claude/skills` by another tool) fails the
+ * whole listing. On desktop the names can still be read without following
+ * them, and each entry is then stat'ed on its own.
+ */
+const listDirSkippingUnreadableEntries = async (
+  adapter: App['vault']['adapter'],
+  dir: string,
+): Promise<Awaited<ReturnType<typeof adapter.list>>> => {
+  try {
+    return await adapter.list(dir)
+  } catch (error) {
+    if (!(adapter instanceof FileSystemAdapter)) {
+      throw error
+    }
+    // eslint-disable-next-line import/no-nodejs-modules -- desktop-only branch (FileSystemAdapter), dynamically imported so mobile never loads it
+    const fs = await import('node:fs/promises')
+    const names = await fs.readdir(adapter.getFullPath(dir))
+    const listing: Awaited<ReturnType<typeof adapter.list>> = {
+      files: [],
+      folders: [],
+    }
+    for (const name of names) {
+      const path = normalizePath(`${dir}/${name}`)
+      const stat = await adapter.stat(path).catch(() => null)
+      if (stat?.type === 'folder') {
+        listing.folders.push(path)
+      } else if (stat?.type === 'file') {
+        listing.files.push(path)
+      } else {
+        console.warn(`[YOLO] Skipped unreadable skill entry "${path}"`)
+      }
+    }
+    return listing
+  }
+}
+
 const listSkillPathsInDir = async (
   adapter: App['vault']['adapter'],
   skillsDir: string,
@@ -218,11 +264,9 @@ const listSkillPathsInDir = async (
 
   let listing: Awaited<ReturnType<typeof adapter.list>>
   try {
-    listing = await adapter.list(normalizedDir)
+    listing = await listDirSkippingUnreadableEntries(adapter, normalizedDir)
   } catch (error) {
-    // The desktop adapter stats every entry, so a single unreadable one (e.g.
-    // a dangling symlink or junction) fails the whole listing. One broken
-    // directory must not take down skills from every other directory.
+    // One broken directory must not take down skills from every other one.
     console.warn(`[YOLO] Failed to list skills in "${normalizedDir}"`, error)
     return []
   }
