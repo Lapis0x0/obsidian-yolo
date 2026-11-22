@@ -182,8 +182,8 @@ export type YoloChatSurfaceProps = {
   editingAssistantMessageId: string | null
   setEditingAssistantMessageId: Dispatch<SetStateAction<string | null>>
   emptyStateWorkspaceTitle?: ReactNode
-  /** See `ChatConversationPaneProps['emptyStateModuleContent']`. */
-  emptyStateModuleContent?: {
+  /** See `ChatConversationPaneProps['emptyStateOverride']`. */
+  emptyStateOverride?: {
     title: ReactNode
     description: ReactNode
     icon?: ReactNode
@@ -283,7 +283,7 @@ export function YoloChatSurface({
   editingAssistantMessageId,
   setEditingAssistantMessageId,
   emptyStateWorkspaceTitle,
-  emptyStateModuleContent,
+  emptyStateOverride,
   bottomSpacerHeight,
   footerContent,
   runtimeActions,
@@ -1656,7 +1656,7 @@ export function YoloChatSurface({
           ),
         }}
         emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
-        emptyStateModuleContent={emptyStateModuleContent}
+        emptyStateOverride={emptyStateOverride}
         emptyStateAskDescription={t(
           'chat.emptyState.askDescription',
           '适合提问、润色与改写，专注表达本身',

@@ -60,7 +60,7 @@ import type {
   MentionableImage,
   MentionableWebSelection,
 } from '../../types/mentionable'
-import { findChatProject } from '../../types/project.types'
+import type { ChatProject } from '../../types/project.types'
 import {
   REASONING_LEVELS,
   ReasoningLevel,
@@ -81,6 +81,7 @@ import { ObsidianIcon } from '../common/ObsidianIcon'
 
 // removed Prompt Templates feature
 
+import { type AgentRef, parseAgentRef } from './agent-picker/agentRef'
 import { useAgentSwitching } from './agent-picker/useAgentSwitching'
 import { AssistantRenderStreamProvider } from './assistant-render-stream-context'
 import {
@@ -116,6 +117,9 @@ import {
 } from './hooks/useMobileViewport'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
+import { buildProjectHomeEmptyState } from './projects/ProjectHome'
+import { ProjectSettingsModal } from './projects/ProjectSettingsModal'
+import { useConversationProject } from './projects/useConversationProject'
 import type { QueryProgressState } from './QueryProgress'
 import { ChatSidebar, type ChatSidebarHandle } from './sidebar/ChatSidebar'
 import { useChatSidebarLayout } from './sidebar/useChatSidebarLayout'
@@ -355,6 +359,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     updateConversationTitle,
     toggleConversationPinned,
     generateConversationTitle,
+    setConversationProject,
+    clearConversationsProject,
     chatList,
   } = useChatHistory()
   const chatManager = useChatManager()
@@ -507,26 +513,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }),
     [conversationAssistantId, settings],
   )
-  // 当前 YOLO 对话所属的项目。归属只记在对话上，这里从已加载的元数据读；
-  // 项目被删后 id 悬空，读出来就是「不在项目里」。
-  const conversationProjectId = useMemo(
-    () => chatList.find((chat) => chat.id === currentConversationId)?.projectId,
-    [chatList, currentConversationId],
-  )
-  const conversationProject = useMemo(
-    () => findChatProject(settings.projects, conversationProjectId),
-    [conversationProjectId, settings.projects],
-  )
+  // 当前对话所属的项目。由 useConversationProject 在下方求出后写入；请求上下文
+  // 在发请求时经 getter 读取，对话进出项目不必重建 builder。
+  const conversationProjectRef = useRef<ChatProject | null>(null)
   const requestContextBuilder = useMemo(() => {
     return new RequestContextBuilder(app, effectiveSettings, {
-      project: conversationProject,
+      getProject: () => conversationProjectRef.current,
       systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
       getPromptSourceRevision: () =>
         agentService.getPromptSourceWatcher().getRevision(),
       promptSourcePathsCallback: (paths) =>
         agentService.getPromptSourceWatcher().setWatchedPaths(paths),
     })
-  }, [app, effectiveSettings, agentService, conversationProject])
+  }, [app, effectiveSettings, agentService])
   // Recreated whenever `effectiveSettings` changes — ChatSessionController
   // reads it through this ref (never a captured reference) so a settings
   // change doesn't leave the controller calling a stale instance.
@@ -1104,6 +1103,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ),
     [activeHistoryConversationId, chatList],
   )
+  const { project: conversationProject, enterProject } = useConversationProject(
+    {
+      projects: settings.projects,
+      chatList,
+      conversationId: activeHistoryConversationId,
+      setConversationProject,
+    },
+  )
+  conversationProjectRef.current = conversationProject
+
   const currentConversationTitle = useMemo(() => {
     const rawTitle = activeHistoryConversationId
       ? chatList.find(
@@ -1692,6 +1701,88 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       switchHermesProfile,
     })
 
+  // 进入项目：用项目的默认 Agent 开一个归入该项目的新对话。默认 Agent 已不
+  // 存在或此刻用不了时，就用当前 Agent。
+  const openProject = useCallback(
+    (project: ChatProject) => {
+      enterProject(project.id)
+      const ref = project.defaultAgent
+        ? parseAgentRef(project.defaultAgent)
+        : null
+      const usable =
+        ref &&
+        (ref.kind === 'assistant'
+          ? settings.assistants.some(
+              (assistant) => assistant.id === ref.assistantId,
+            )
+          : canUseCliRuntime)
+      if (ref && usable) {
+        startNewChatWithAgent(ref)
+        return
+      }
+      handleNewChat()
+    },
+    [
+      canUseCliRuntime,
+      enterProject,
+      handleNewChat,
+      settings.assistants,
+      startNewChatWithAgent,
+    ],
+  )
+
+  const startGlobalNewChat = useCallback(() => {
+    enterProject(null)
+    handleNewChat()
+  }, [enterProject, handleNewChat])
+
+  const startGlobalNewChatWithAgent = useCallback(
+    (ref: AgentRef) => {
+      enterProject(null)
+      startNewChatWithAgent(ref)
+    },
+    [enterProject, startNewChatWithAgent],
+  )
+
+  const deleteProject = useCallback(
+    async (project: ChatProject) => {
+      await clearConversationsProject(project.id)
+      await setSettings({
+        ...settings,
+        projects: (settings.projects ?? []).filter(
+          (item) => item.id !== project.id,
+        ),
+      })
+    },
+    [clearConversationsProject, setSettings, settings],
+  )
+
+  // 新建 / 编辑项目。新建保存后直接进入这个项目。
+  const openProjectSettings = useCallback(
+    (project?: ChatProject) => {
+      new ProjectSettingsModal(app, plugin, {
+        project,
+        cliRuntimeScope: canUseCliRuntime ? cliRuntimeScope : undefined,
+        onSaved: (saved) => {
+          if (!project) openProject(saved)
+        },
+        onDelete: (deleted) => {
+          void deleteProject(deleted).catch((error: unknown) => {
+            console.error('Failed to delete project', error)
+          })
+        },
+      }).open()
+    },
+    [
+      app,
+      canUseCliRuntime,
+      cliRuntimeScope,
+      deleteProject,
+      openProject,
+      plugin,
+    ],
+  )
+
   const header = (
     <ChatHeader
       isSidebarPlacement={isSidebarPlacement}
@@ -1738,8 +1829,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       drawerOpen={sidebarLayout.drawerOpen}
       onCloseDrawer={sidebarLayout.closeDrawer}
       onToggle={sidebarLayout.toggle}
-      onNewChat={() => handleNewChat()}
-      onNewChatWithAgent={startNewChatWithAgent}
+      onNewChat={startGlobalNewChat}
+      onNewChatWithAgent={startGlobalNewChatWithAgent}
+      projects={settings.projects}
+      currentProjectId={conversationProject?.id}
+      onOpenProject={openProject}
+      onOpenProjectSettings={openProjectSettings}
+      onMoveToProject={setConversationProject}
       cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       chatList={chatList}
       currentConversationId={activeHistoryConversationId}
@@ -1884,18 +1980,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const currentModuleModeOption = isModuleChatMode(chatMode)
     ? moduleModeOptions.find((option) => option.value === chatMode)
     : undefined
-  const emptyStateModuleContent = currentModuleModeOption
-    ? {
-        title: currentModuleModeOption.label,
-        description: currentModuleModeOption.description ?? '',
-        icon: (
-          <ObsidianIcon
-            name={currentModuleModeOption.icon}
-            className="yolo-chat-empty-state-module-icon"
-          />
-        ),
-      }
-    : undefined
+  const emptyStateOverride = conversationProject
+    ? buildProjectHomeEmptyState(conversationProject, () =>
+        openProjectSettings(conversationProject),
+      )
+    : currentModuleModeOption
+      ? {
+          title: currentModuleModeOption.label,
+          description: currentModuleModeOption.description ?? '',
+          icon: (
+            <ObsidianIcon
+              name={currentModuleModeOption.icon}
+              className="yolo-chat-empty-state-module-icon"
+            />
+          ),
+        }
+      : undefined
   const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
   // Main-input display/config differences are looked up from the static
   // capability table rather than branched inline; only "which data source" ternaries stay here.
@@ -2166,6 +2266,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               }
               footerContent={mainInputFooter}
               emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+              emptyStateOverride={emptyStateOverride}
               onRewriteUserMessage={handleCliUserMessageRewrite}
               onPresentedDraftHandled={consumePresentedCliDraft}
               cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
@@ -2188,7 +2289,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 editingAssistantMessageId={editingAssistantMessageId}
                 setEditingAssistantMessageId={setEditingAssistantMessageId}
                 emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
-                emptyStateModuleContent={emptyStateModuleContent}
+                emptyStateOverride={emptyStateOverride}
                 bottomSpacerHeight={inputOverlayHeight}
                 footerContent={mainInputFooter}
                 runtimeActions={runtimeActions}

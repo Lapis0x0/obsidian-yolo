@@ -231,8 +231,10 @@ type RequestContextBuilderOptions = {
    * workspace scope replaces the assistant's (no intersection), and the
    * scope's `AGENTS.md` / `CLAUDE.md` are always loaded. Null/omitted means
    * "not in a project": everything follows the assistant as before.
+   * Read at request time — conversations move in and out of projects
+   * without the builder being recreated.
    */
-  project?: ChatProject | null
+  getProject?: () => ChatProject | null
 }
 
 /**
@@ -561,7 +563,7 @@ export class RequestContextBuilder {
   private app: App
   private settings: YoloSettings
   private includeSkills: boolean
-  private project: ChatProject | null
+  private readonly getProject: () => ChatProject | null
   private systemPromptSnapshotStore?: SystemPromptSnapshotStore
   private getPromptSourceRevision?: () => number
   private promptSourcePathsCallback?: (paths: Set<string>) => void
@@ -581,7 +583,7 @@ export class RequestContextBuilder {
     this.getPromptSourceRevision = options?.getPromptSourceRevision
     this.promptSourcePathsCallback = options?.promptSourcePathsCallback
     this.resolveModuleFileTextRenderer = options?.resolveModuleFileTextRenderer
-    this.project = options?.project ?? null
+    this.getProject = options?.getProject ?? (() => null)
   }
 
   /**
@@ -598,9 +600,10 @@ export class RequestContextBuilder {
     workspaceScope: AssistantWorkspaceScope | undefined
     projectInstructionsEnabled: boolean
   } {
-    if (useAssistant && this.project) {
+    const project = this.getProject()
+    if (useAssistant && project) {
       return {
-        workspaceScope: this.project.workspaceScope,
+        workspaceScope: project.workspaceScope,
         projectInstructionsEnabled: true,
       }
     }
@@ -2110,13 +2113,12 @@ ${entries}
         : null,
       // Moving a conversation into / out of a project, or editing the
       // project's scope, changes the scope rule and instruction files.
-      project:
-        useAssistant && this.project
-          ? {
-              id: this.project.id,
-              workspaceScope: this.project.workspaceScope,
-            }
-          : null,
+      project: (() => {
+        const project = useAssistant ? this.getProject() : null
+        return project
+          ? { id: project.id, workspaceScope: project.workspaceScope }
+          : null
+      })(),
     })
   }
 

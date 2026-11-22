@@ -1551,6 +1551,32 @@ export type TranslationKeys = {
       newChatWith?: string
       newChatWithAgent?: string
     }
+    projects?: {
+      section?: string
+      newTitle?: string
+      editTitle?: string
+      name?: string
+      namePlaceholder?: string
+      appearance?: string
+      workspace?: string
+      workspaceHint?: string
+      defaultAgent?: string
+      followCurrentAgent?: string
+      clearDefaultAgent?: string
+      instructions?: string
+      instructionsHint?: string
+      deleteTitle?: string
+      deleteMessage?: string
+      create?: string
+      expand?: string
+      collapse?: string
+      noConversations?: string
+      moveToProject?: string
+      removeFromProject?: string
+      wholeVault?: string
+      excludedCount?: string
+      listSeparator?: string
+    }
     ribbonMenu: {
       openInSidebar: string
       openInTab: string

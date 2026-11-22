@@ -1802,7 +1802,7 @@ describe('RequestContextBuilder project instructions injection', () => {
     project?: ChatProject,
   ): Promise<string> {
     const builder = new RequestContextBuilder(app as never, settings, {
-      project,
+      getProject: () => project ?? null,
     })
     const requestMessages = await builder.generateRequestMessages({
       systemPromptSnapshotMode: 'create',

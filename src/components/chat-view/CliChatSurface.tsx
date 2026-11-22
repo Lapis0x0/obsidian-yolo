@@ -42,6 +42,7 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { getChatSurfacePreset } from './chat-surface-presets'
 import type { ChatSurfacePreset } from './chat-surface-presets'
+import type { ChatConversationPaneProps } from './ChatConversationPane'
 import { CliSubagentProvider } from './cli-subagent-context'
 import type { AcceptedCliDraft } from './cliChatIntegration'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
@@ -77,6 +78,8 @@ export type CliChatSurfaceProps = {
   actions: ChatRuntimeActions
   footerContent: ReactNode
   emptyStateWorkspaceTitle?: ReactNode
+  /** See `ChatConversationPaneProps['emptyStateOverride']`. */
+  emptyStateOverride?: ChatConversationPaneProps['emptyStateOverride']
   onRewriteUserMessage: (
     sourceMessage: ChatUserMessage,
     editedMessage: ChatUserMessage,
@@ -467,6 +470,7 @@ export function CliChatSurface({
   actions,
   footerContent,
   emptyStateWorkspaceTitle,
+  emptyStateOverride,
   onRewriteUserMessage,
   onPresentedDraftHandled,
   cachedModels,
@@ -996,6 +1000,7 @@ export function CliChatSurface({
         )}
         emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
         emptyStateIconMode="cli"
+        emptyStateOverride={emptyStateOverride}
         footerContent={footerContent}
       />
     </LiveEdgeFollowProvider>

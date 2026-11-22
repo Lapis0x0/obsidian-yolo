@@ -32,6 +32,7 @@
 @import './chat/history.css';
 @import './chat/sidebar.css';
 @import './chat/agent-picker.css';
+@import './chat/projects.css';
 @import './chat/edit-diff.css';
 @import './chat/external-agent-card.css';
 @import './chat/subagent-card.css';

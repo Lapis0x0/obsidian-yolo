@@ -160,12 +160,12 @@ export type ChatConversationPaneProps = {
   emptyStateIcon?: ReactNode
   emptyStateIconMode?: string
   /**
-   * Full override for a module chat mode's empty state — the registry's
-   * resolved label/description (and optionally icon) instead of the
-   * ask/agent copy. Takes priority over every other `emptyState*` prop when
-   * present (module modes are a complete, decoupled product surface).
+   * Full override for the empty state, taking priority over every other
+   * `emptyState*` prop: a project's home (the empty state of a new
+   * conversation in a project) or a module chat mode's registry label and
+   * description — both are complete surfaces rather than ask/agent copy.
    */
-  emptyStateModuleContent?: {
+  emptyStateOverride?: {
     title: ReactNode
     description: ReactNode
     icon?: ReactNode
@@ -214,7 +214,7 @@ export function ChatConversationPane({
   emptyStateAgentFullDescription,
   emptyStateIcon,
   emptyStateIconMode,
-  emptyStateModuleContent,
+  emptyStateOverride,
   footerContent,
   onTimelineVirtualizationChange,
   onUserMessageViewportChange,
@@ -240,7 +240,7 @@ export function ChatConversationPane({
   const isYoloAgent = isToolChatMode(chatMode) && yoloEnabled
   const maxCopy = isMaxMode ? emptyStateMaxCopy : undefined
   const emptyStateTitle =
-    emptyStateModuleContent?.title ??
+    emptyStateOverride?.title ??
     emptyStateWorkspaceTitle ??
     (maxCopy
       ? yoloEnabled
@@ -252,7 +252,7 @@ export function ChatConversationPane({
           ? emptyStateAgentTitle
           : emptyStateAskTitle)
   const emptyStateDescription =
-    emptyStateModuleContent?.description ??
+    emptyStateOverride?.description ??
     (maxCopy
       ? yoloEnabled
         ? maxCopy.fullDescription
@@ -274,7 +274,7 @@ export function ChatConversationPane({
   // The icon states the mode, not the trust profile: Max keeps the selector's
   // bolt in both of its states.
   const resolvedEmptyStateIcon =
-    emptyStateModuleContent?.icon ??
+    emptyStateOverride?.icon ??
     emptyStateIcon ??
     (isMaxMode ? (
       <Zap size={18} strokeWidth={2} />

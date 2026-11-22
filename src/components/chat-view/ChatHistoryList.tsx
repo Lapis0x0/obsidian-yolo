@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Download,
   Ellipsis,
+  FolderInput,
   Pencil,
   RotateCcw,
   Search,
@@ -49,6 +50,7 @@ import {
 } from '../../styles/tokens/motion'
 import type { SerializedChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
+import type { ChatProject } from '../../types/project.types'
 import {
   getNodeBody,
   getNodeDocument,
@@ -67,6 +69,7 @@ import {
   sortChatListForDisplay,
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { showMoveToProjectMenu } from './projects/moveToProjectMenu'
 
 function useLatestRef<T>(value: T) {
   const ref = useRef(value)
@@ -1026,6 +1029,8 @@ export function ChatHistoryList({
   onRetryTitle,
   onExportConversation,
   onIdleEscape,
+  projects,
+  onMoveToProject,
   handleRef,
 }: {
   chatList: ChatConversationMetadata[]
@@ -1045,6 +1050,15 @@ export function ChatHistoryList({
    * 列表交出焦点。
    */
   onIdleEscape?: () => void
+  /**
+   * 项目。属于现有项目的对话在侧边栏项目区里列出，这里只在搜索时出现；
+   * ⋯ 菜单提供「移到项目」。不传则不涉及项目。
+   */
+  projects?: readonly ChatProject[]
+  onMoveToProject?: (
+    conversationId: string,
+    projectId: string | null,
+  ) => unknown
   /**
    * 命令式入口：侧边栏和 `ChatRef.openChatHistory` 需要唤出搜索。用一次性
    * 回调 ref 而不是 `forwardRef`，因为测试把本组件当普通函数调用。
@@ -1197,9 +1211,20 @@ export function ChatHistoryList({
     [searchQuery],
   )
 
+  const projectIds = useMemo(
+    () => new Set((projects ?? []).map((project) => project.id)),
+    [projects],
+  )
   const userChatList = useMemo(
-    () => chatList.filter((chat) => getChatConversationOrigin(chat) === 'user'),
-    [chatList],
+    () =>
+      chatList.filter(
+        (chat) =>
+          getChatConversationOrigin(chat) === 'user' &&
+          (normalizedQuery.length > 0 ||
+            !chat.projectId ||
+            !projectIds.has(chat.projectId)),
+      ),
+    [chatList, normalizedQuery, projectIds],
   )
   const taskChatList = useMemo(
     () => chatList.filter((chat) => getChatConversationOrigin(chat) !== 'user'),
@@ -2314,6 +2339,39 @@ export function ChatHistoryList({
                 <Pencil size={16} />
                 <span>{t('common.edit', 'Edit')}</span>
               </button>
+              {activeSection === 'user' &&
+              projects &&
+              projects.length > 0 &&
+              onMoveToProject ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-act="project"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const doc = e.currentTarget.ownerDocument
+                    setActiveMenuId(null)
+                    setMenuPosition(null)
+                    showMoveToProjectMenu({
+                      projects,
+                      conversation: activeMenuChat,
+                      onMove: onMoveToProject,
+                      position: { x: rect.right, y: rect.top },
+                      doc,
+                      removeLabel: t(
+                        'chat.projects.removeFromProject',
+                        'Remove from project',
+                      ),
+                    })
+                  }}
+                >
+                  <FolderInput size={16} />
+                  <span>
+                    {t('chat.projects.moveToProject', 'Move to project')}
+                  </span>
+                </button>
+              ) : null}
               {!activeMenuChat.cliSession ? (
                 <button
                   type="button"

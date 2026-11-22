@@ -1,0 +1,445 @@
+/*
+ * 项目：侧边栏的项目区、项目主页（项目里新对话的空状态）、新建 / 编辑项目
+ * 弹窗。项目的颜色经 --yolo-project-color 由组件内联给出。
+ */
+
+/* 侧边栏项目区 ------------------------------------------------------------ */
+
+.yolo-chat-sidebar-projects {
+  flex-shrink: 0;
+  max-height: 40%;
+  overflow-y: auto;
+  padding-bottom: var(--size-2-3);
+}
+
+.yolo-chat-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-2-3) var(--size-4-2) var(--size-2-1) var(--size-4-4);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+.yolo-chat-sidebar-section-header > span {
+  flex: 1;
+}
+
+.yolo-chat-sidebar-section-header > button.clickable-icon {
+  padding: var(--size-2-1);
+}
+
+ul.yolo-chat-sidebar-project-list,
+ul.yolo-chat-sidebar-project-conversations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.yolo-chat-sidebar-project {
+  display: flex;
+  align-items: center;
+  margin: 0 var(--size-4-2);
+  border-radius: var(--radius-m);
+}
+
+.yolo-chat-sidebar-project:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-chat-sidebar-project.is-active {
+  background: var(--background-modifier-active-hover);
+}
+
+.yolo-chat-sidebar-project button {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+/* 图标位：平时是项目图标，悬停换成展开箭头 */
+button.yolo-chat-sidebar-project-toggle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 30px;
+  padding: 0;
+  color: var(--yolo-project-color);
+}
+
+.yolo-chat-sidebar-project-icon,
+.yolo-chat-sidebar-project-chevron {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--yolo-anim-duration-response) var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-response) var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-project-icon {
+  display: grid;
+  place-items: center;
+}
+
+.yolo-chat-sidebar-project-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.yolo-chat-sidebar-project-chevron {
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.yolo-chat-sidebar-project:hover .yolo-chat-sidebar-project-icon,
+button.yolo-chat-sidebar-project-toggle:focus-visible
+  .yolo-chat-sidebar-project-icon {
+  opacity: 0;
+}
+
+.yolo-chat-sidebar-project:hover .yolo-chat-sidebar-project-chevron,
+button.yolo-chat-sidebar-project-toggle:focus-visible
+  .yolo-chat-sidebar-project-chevron {
+  opacity: 1;
+}
+
+button.yolo-chat-sidebar-project-toggle[aria-expanded='true']
+  .yolo-chat-sidebar-project-chevron {
+  transform: rotate(90deg);
+}
+
+button.yolo-chat-sidebar-project-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--size-2-3);
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--size-2-1) 0 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  text-align: start;
+}
+
+.yolo-chat-sidebar-project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-chat-sidebar-project-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-chat-sidebar-project button.yolo-chat-sidebar-project-settings {
+  flex-shrink: 0;
+  padding: var(--size-2-1);
+  margin-inline-end: var(--size-2-1);
+  opacity: 0;
+}
+
+.yolo-chat-sidebar-project:hover button.yolo-chat-sidebar-project-settings,
+.yolo-chat-sidebar-project
+  button.yolo-chat-sidebar-project-settings:focus-visible {
+  opacity: 1;
+}
+
+ul.yolo-chat-sidebar-project-conversations {
+  margin-inline-start: calc(var(--size-4-2) + 28px);
+  margin-inline-end: var(--size-4-2);
+}
+
+button.yolo-chat-sidebar-project-conversation {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 var(--size-2-3);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.yolo-chat-sidebar-project-conversation:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-chat-sidebar-project-conversation.is-active {
+  background: var(--background-modifier-active-hover);
+  color: var(--text-normal);
+}
+
+.yolo-chat-sidebar-project-conversations-empty {
+  padding: var(--size-2-2) var(--size-2-3);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+button.yolo-chat-sidebar-project-empty {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--size-2-3);
+  width: calc(100% - var(--size-4-2) * 2);
+  height: 30px;
+  margin: 0 var(--size-4-2);
+  padding: 0 var(--size-2-3);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+button.yolo-chat-sidebar-project-empty:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+/* 项目主页 ---------------------------------------------------------------- */
+
+.yolo-project-home-icon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  color: var(--yolo-project-color);
+  background: color-mix(in srgb, var(--yolo-project-color) 16%, transparent);
+}
+
+.yolo-project-home-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.yolo-chat-empty-state-icon:has(.yolo-project-home-icon) {
+  background: transparent;
+}
+
+/* 宽屏居中布局默认藏起图标和说明；项目主页的说明是项目的边界和入口，要留着 */
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-icon:has(.yolo-project-home-icon) {
+  display: inline-flex;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-description:has(.yolo-project-home) {
+  display: block;
+  margin-top: var(--size-4-2);
+}
+
+.yolo-project-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-2-3);
+  /* 空状态浮层整体不接收指针，只有这里的按钮要能点 */
+  pointer-events: auto;
+}
+
+.yolo-project-home-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--size-2-2) var(--size-4-3);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-project-home-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.yolo-project-home-fact-muted {
+  color: var(--text-faint);
+}
+
+button.yolo-project-home-file,
+button.yolo-project-home-settings {
+  height: auto;
+  margin: 0;
+  padding: var(--size-2-1) var(--size-2-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+button.yolo-project-home-file:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-project-home-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-faint);
+}
+
+button.yolo-project-home-settings:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+/* 新建 / 编辑项目弹窗 ------------------------------------------------------ */
+
+.yolo-project-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.yolo-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-4);
+}
+
+.yolo-project-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-3);
+}
+
+.yolo-project-form-label {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-project-form-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.yolo-project-form-field input[type='text'] {
+  width: 100%;
+}
+
+.yolo-project-form-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+}
+
+button.yolo-project-icon-option,
+button.yolo-project-color-option {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+button.yolo-project-icon-option {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+button.yolo-project-icon-option:hover {
+  background: var(--background-modifier-hover);
+}
+
+button.yolo-project-icon-option.is-selected {
+  background: color-mix(in srgb, var(--yolo-project-color) 16%, transparent);
+  color: var(--yolo-project-color);
+}
+
+button.yolo-project-icon-option svg {
+  width: 16px;
+  height: 16px;
+}
+
+button.yolo-project-color-option {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--yolo-project-color);
+}
+
+button.yolo-project-color-option.is-selected {
+  box-shadow:
+    0 0 0 2px var(--background-primary),
+    0 0 0 4px var(--yolo-project-color);
+}
+
+.yolo-project-form-agent {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+button.yolo-project-form-link {
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-project-form-file {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--size-2-3);
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: var(--size-2-3) var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+button.yolo-project-form-file:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-project-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding-top: var(--size-2-3);
+}
+
+.yolo-project-form-actions-spacer {
+  flex: 1;
+}

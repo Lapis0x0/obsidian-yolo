@@ -7,11 +7,13 @@ import { useLanguage } from '../../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../../core/agent/service'
 import type { CliRuntimeScope } from '../../../core/cli-runtime'
 import type { ChatConversationMetadata } from '../../../database/json/chat/types'
+import type { ChatProject } from '../../../types/project.types'
 import { AgentPicker } from '../agent-picker/AgentPicker'
 import type { AgentRef } from '../agent-picker/agentRef'
 import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
 
 import { PinnedAgents } from './PinnedAgents'
+import { SidebarProjects } from './SidebarProjects'
 import type { ChatSidebarLayout } from './useChatSidebarLayout'
 
 export type ChatSidebarHandle = {
@@ -41,6 +43,13 @@ type ChatSidebarProps = {
   onTogglePinned: (conversationId: string) => void | Promise<void>
   onRetryTitle: (conversationId: string) => void | Promise<void>
   onExportConversation: (conversationId: string) => void | Promise<void>
+  projects: readonly ChatProject[] | undefined
+  /** 当前对话所属的项目 */
+  currentProjectId: string | undefined
+  onOpenProject: (project: ChatProject) => void
+  /** 不传项目表示新建 */
+  onOpenProjectSettings: (project?: ChatProject) => void
+  onMoveToProject: (conversationId: string, projectId: string | null) => unknown
   handleRef: React.MutableRefObject<ChatSidebarHandle | null>
 }
 
@@ -68,6 +77,11 @@ export function ChatSidebar({
   onTogglePinned,
   onRetryTitle,
   onExportConversation,
+  projects,
+  currentProjectId,
+  onOpenProject,
+  onOpenProjectSettings,
+  onMoveToProject,
   handleRef,
 }: ChatSidebarProps) {
   const { t } = useLanguage()
@@ -245,8 +259,27 @@ export function ChatSidebar({
             }}
           />
         </div>
+        <SidebarProjects
+          projects={projects ?? []}
+          chatList={chatList}
+          currentConversationId={currentConversationId}
+          currentProjectId={currentProjectId}
+          onOpenProject={(project) => {
+            onOpenProject(project)
+            closeIfDrawer()
+          }}
+          onOpenProjectSettings={onOpenProjectSettings}
+          onMoveToProject={onMoveToProject}
+          onSelectConversation={(conversationId) => {
+            closeIfDrawer()
+            if (conversationId === currentConversationId) return
+            void onSelectConversation(conversationId)
+          }}
+        />
         <ChatHistoryList
           chatList={chatList}
+          projects={projects}
+          onMoveToProject={onMoveToProject}
           currentConversationId={currentConversationId}
           runSummariesByConversationId={runSummariesByConversationId}
           onSelect={(conversationId) => {
