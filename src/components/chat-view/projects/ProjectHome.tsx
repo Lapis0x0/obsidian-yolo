@@ -1,7 +1,9 @@
-import { FileText, FolderOpen, Settings2 } from 'lucide-react'
+import { Brain, FileText, FolderOpen, Settings2 } from 'lucide-react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
+import { useSettings } from '../../../contexts/settings-context'
+import { resolveMemoryIndexPaths } from '../../../core/memory/memoryStore'
 import type { ChatProject } from '../../../types/project.types'
 import { ObsidianIcon } from '../../common/ObsidianIcon'
 
@@ -26,10 +28,19 @@ function ProjectHomeDetails({
 }) {
   const { t } = useLanguage()
   const app = useApp()
+  const { settings } = useSettings()
   const instructionFiles = useExistingInstructionFiles(
     app,
     project.workspaceScope,
   )
+  // 项目记忆由 Agent 在项目里的对话中写下；还没有时不显示
+  const memoryIndexPath = resolveMemoryIndexPaths({
+    settings,
+    projectId: project.id,
+  }).project
+  const hasMemory =
+    memoryIndexPath !== null &&
+    app.vault.getFileByPath(memoryIndexPath) !== null
   const { include, exclude } = project.workspaceScope
   const workspaceText =
     include.length > 0
@@ -62,6 +73,18 @@ function ProjectHomeDetails({
             <span>{path}</span>
           </button>
         ))}
+        {hasMemory && memoryIndexPath ? (
+          <button
+            type="button"
+            className="yolo-project-home-fact yolo-project-home-file"
+            onClick={() =>
+              void app.workspace.openLinkText(memoryIndexPath, '', 'tab')
+            }
+          >
+            <Brain size={13} />
+            <span>{t('chat.projects.memory', 'Project memory')}</span>
+          </button>
+        ) : null}
       </div>
       <button
         type="button"

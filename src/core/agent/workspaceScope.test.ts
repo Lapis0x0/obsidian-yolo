@@ -567,6 +567,22 @@ describe('buildScopeExemptPathSet', () => {
     )
   })
 
+  it("exempts the project's memory directory when enforcing a project's scope", () => {
+    const exemptPaths = buildScopeExemptPathSet({
+      settings: {
+        ...memorySettings,
+        projects: [
+          { id: 'p1', name: 'Thesis' },
+          { id: 'p2', name: 'Novel' },
+        ],
+      },
+      workspaceScope: { ...scope({ include: ['School'] }), projectId: 'p1' },
+    })
+
+    expect(exemptPaths).toContain('YOLO/memory/projects/Thesis/')
+    expect(exemptPaths).not.toContain('YOLO/memory/projects/Novel/')
+  })
+
   it('lets scoped tool calls reach memory files but not another assistant', () => {
     const exemptPaths = buildScopeExemptPathSet({ settings: memorySettings })
     const workspace = scope({ include: ['Projects'] })

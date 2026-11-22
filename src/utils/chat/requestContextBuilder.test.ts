@@ -6,14 +6,20 @@ jest.mock('../../database/json/chat/promptSnapshotStore', () => ({
 }))
 
 jest.mock('../../core/memory/memoryStore', () => ({
-  readMemoryIndexes: jest.fn(async () => ({ global: null, assistant: null })),
+  readMemoryIndexes: jest.fn(async () => ({
+    global: null,
+    assistant: null,
+    project: null,
+  })),
   resolveMemoryIndexPaths: jest.fn(() => ({
     global: 'YOLO/memory/global/MEMORY.md',
     assistant: null,
+    project: null,
   })),
   resolveMemoryDirPaths: jest.fn(() => ({
     global: 'YOLO/memory/global',
     assistant: null,
+    project: null,
   })),
 }))
 
@@ -2611,7 +2617,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
   }
 
   afterAll(() => {
-    memMock.mockResolvedValue({ global: null, assistant: null })
+    memMock.mockResolvedValue({ global: null, assistant: null, project: null })
   })
 
   it('does not include skill loading guidance in generic tool instructions', async () => {
@@ -2619,7 +2625,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
       includeSkills: false,
     })
 
-    memMock.mockResolvedValue({ global: null, assistant: null })
+    memMock.mockResolvedValue({ global: null, assistant: null, project: null })
 
     const messages = await builder.generateRequestMessages({
       messages: userMessages,
@@ -2785,7 +2791,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
       systemPromptSnapshotStore: store,
     })
 
-    memMock.mockResolvedValue({ global: null, assistant: null })
+    memMock.mockResolvedValue({ global: null, assistant: null, project: null })
 
     const withoutOnDemand = await builder.generateRequestMessages({
       messages: userMessages,
@@ -2835,8 +2841,9 @@ describe('RequestContextBuilder system prompt freezing', () => {
     pathsMock.mockReturnValue({
       global: 'Custom/memory/global',
       assistant: 'Custom/memory/Scoped agent',
+      project: null,
     })
-    memMock.mockResolvedValue({ global: null, assistant: null })
+    memMock.mockResolvedValue({ global: null, assistant: null, project: null })
 
     try {
       const builder = new RequestContextBuilder(makeApp(), baseSettings, {
@@ -2861,12 +2868,56 @@ describe('RequestContextBuilder system prompt freezing', () => {
       pathsMock.mockReturnValue({
         global: 'YOLO/memory/global',
         assistant: null,
+        project: null,
+      })
+    }
+  })
+
+  it('names the project memory directory and injects its index inside a project', async () => {
+    const pathsMock = jest.mocked(resolveMemoryDirPaths)
+    pathsMock.mockReturnValue({
+      global: 'YOLO/memory/global',
+      assistant: 'YOLO/memory/Scoped agent',
+      project: 'YOLO/memory/projects/Thesis',
+    })
+    memMock.mockResolvedValue({
+      global: null,
+      assistant: null,
+      project: 'PROJECT_MEMORY',
+    })
+
+    try {
+      const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+        includeSkills: false,
+      })
+      const messages = await builder.generateRequestMessages({
+        messages: userMessages,
+        model,
+        conversationId: 'conv-memory-project',
+        systemPromptSnapshotMode: 'create',
+      })
+
+      const systemContent = getSystemContent(messages)
+      expect(systemContent).toContain('<project>\nPROJECT_MEMORY\n</project>')
+      expect(systemContent).toContain(
+        '`YOLO/memory/projects/Thesis/` only to this project',
+      )
+    } finally {
+      pathsMock.mockReturnValue({
+        global: 'YOLO/memory/global',
+        assistant: null,
+        project: null,
+      })
+      memMock.mockResolvedValue({
+        global: null,
+        assistant: null,
+        project: null,
       })
     }
   })
 
   it('omits the assistant location from memory rules when no assistant is active', async () => {
-    memMock.mockResolvedValue({ global: null, assistant: null })
+    memMock.mockResolvedValue({ global: null, assistant: null, project: null })
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {
       includeSkills: false,
     })
@@ -2891,7 +2942,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
       systemPromptSnapshotStore: store,
     })
 
-    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V1',
+      assistant: null,
+      project: null,
+    })
     memMock.mockClear()
 
     const first = await builder.generateRequestMessages({
@@ -2903,7 +2958,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
     expect(getSystemContent(first)).toContain('MEM_V1')
 
     // MEMORY.md is rewritten mid-conversation (e.g. an fs_write tool call).
-    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V2',
+      assistant: null,
+      project: null,
+    })
 
     const second = await builder.generateRequestMessages({
       messages: userMessages,
@@ -2935,7 +2994,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
       getPromptSourceRevision: () => revision,
     })
 
-    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V1',
+      assistant: null,
+      project: null,
+    })
     memMock.mockClear()
 
     const first = await builder.generateRequestMessages({
@@ -2947,7 +3010,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
     expect(getSystemContent(first)).toContain('MEM_V1')
 
     revision += 1
-    memMock.mockResolvedValue({ global: 'MEM_EXTERNAL', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_EXTERNAL',
+      assistant: null,
+      project: null,
+    })
 
     const second = await builder.generateRequestMessages({
       messages: userMessages,
@@ -2967,7 +3034,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
       systemPromptSnapshotStore: store,
     })
 
-    memMock.mockResolvedValue({ global: 'MEM_BEFORE_COMPACT', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_BEFORE_COMPACT',
+      assistant: null,
+      project: null,
+    })
     memMock.mockClear()
 
     const beforeCompact = await builder.generateRequestMessages({
@@ -2978,7 +3049,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
     })
     expect(getSystemContent(beforeCompact)).toContain('MEM_BEFORE_COMPACT')
 
-    memMock.mockResolvedValue({ global: 'MEM_AFTER_COMPACT', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_AFTER_COMPACT',
+      assistant: null,
+      project: null,
+    })
 
     const afterMemoryWrite = await builder.generateRequestMessages({
       messages: userMessages,
@@ -3009,7 +3084,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
   it('refreshes the snapshot when a prompt-relevant setting changes', async () => {
     const store = new SystemPromptSnapshotStore()
-    memMock.mockResolvedValue({ global: 'MEM', assistant: null })
+    memMock.mockResolvedValue({ global: 'MEM', assistant: null, project: null })
 
     const builderA = new RequestContextBuilder(makeApp(), baseSettings, {
       includeSkills: false,
@@ -3041,7 +3116,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
   it('injects runtime mode prompt and refreshes when it changes', async () => {
     const store = new SystemPromptSnapshotStore()
-    memMock.mockResolvedValue({ global: 'MEM', assistant: null })
+    memMock.mockResolvedValue({ global: 'MEM', assistant: null, project: null })
 
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {
       includeSkills: false,
@@ -3067,7 +3142,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
   it('does NOT refresh the snapshot for a setting that never reaches the system prompt', async () => {
     const store = new SystemPromptSnapshotStore()
-    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V1',
+      assistant: null,
+      project: null,
+    })
 
     const builderA = new RequestContextBuilder(makeApp(), baseSettings, {
       includeSkills: false,
@@ -3083,7 +3162,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
     // Memory changes AND an unrelated, non-system setting (chatOptions) changes.
     // The fingerprint must be unchanged, so the frozen V1 snapshot is kept.
-    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V2',
+      assistant: null,
+      project: null,
+    })
     const builderB = new RequestContextBuilder(
       makeApp(),
       {
@@ -3112,7 +3195,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
       systemPromptSnapshotStore: store,
     })
 
-    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V1',
+      assistant: null,
+      project: null,
+    })
     const estimate = await builder.generateRequestMessages({
       messages: userMessages,
       model,
@@ -3122,7 +3209,11 @@ describe('RequestContextBuilder system prompt freezing', () => {
     expect(getSystemContent(estimate)).toContain('MEM_V1')
 
     // The estimate must not have frozen V1: the real request sees current memory.
-    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    memMock.mockResolvedValue({
+      global: 'MEM_V2',
+      assistant: null,
+      project: null,
+    })
     const real = await builder.generateRequestMessages({
       messages: userMessages,
       model,
@@ -3204,6 +3295,7 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
     memMock.mockImplementation(async ({ assistantId }) => ({
       global: 'GLOBAL_MEMORY',
       assistant: assistantId ? 'ASSISTANT_MEMORY' : null,
+      project: null,
     }))
   })
 

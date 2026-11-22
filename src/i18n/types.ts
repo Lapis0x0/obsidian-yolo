@@ -1576,6 +1576,7 @@ export type TranslationKeys = {
       wholeVault?: string
       excludedCount?: string
       listSeparator?: string
+      memory?: string
     }
     ribbonMenu: {
       openInSidebar: string

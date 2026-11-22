@@ -11,6 +11,7 @@ export const YOLO_SNIPPETS_FILE_NAME = 'snippets.md'
 export const YOLO_MEMORY_SUBDIR = 'memory'
 export const YOLO_MEMORY_INDEX_FILE_NAME = 'MEMORY.md'
 export const YOLO_MEMORY_GLOBAL_DIR_NAME = 'global'
+export const YOLO_MEMORY_PROJECTS_DIR_NAME = 'projects'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 // Cleanup-only: the retired PGlite-backed vector store used to snapshot here.
 // The only remaining reader of this name is `DatabaseManager`'s legacy-artifact

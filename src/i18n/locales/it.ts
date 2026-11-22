@@ -1700,6 +1700,7 @@ export const it: DeepPartial<TranslationKeys> = {
       wholeVault: 'Intero vault',
       excludedCount: '{count} esclusi',
       listSeparator: ', ',
+      memory: 'Memoria del progetto',
     },
     ribbonMenu: {
       openInSidebar: 'Apri nella barra laterale',

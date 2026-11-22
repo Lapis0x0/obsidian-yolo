@@ -1842,6 +1842,7 @@ export const en: TranslationKeys = {
       wholeVault: 'Whole vault',
       excludedCount: '{count} excluded',
       listSeparator: ', ',
+      memory: 'Project memory',
     },
     ribbonMenu: {
       openInSidebar: 'Open in sidebar',

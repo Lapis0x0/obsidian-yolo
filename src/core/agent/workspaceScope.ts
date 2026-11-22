@@ -258,9 +258,19 @@ export function buildAllowedSkillPathSet(
 }
 
 /**
+ * The workspace scope a run enforces. Inside a project it is the project's
+ * scope, tagged with the project id so the scope gates can exempt that
+ * project's memory directory, the same way they exempt the run assistant's.
+ * Built per run and never persisted.
+ */
+export type RunWorkspaceScope = AssistantWorkspaceScope & {
+  projectId?: string
+}
+
+/**
  * Every host-managed path a workspace-scoped run may still touch: the skills
- * it was granted, plus its own two memory directories (global + this
- * assistant's). Memory is host-managed data like skills are — an assistant
+ * it was granted, plus its own memory directories (global, this assistant's,
+ * and inside a project that project's). Memory is host-managed data like skills are — an assistant
  * whose `include` happens not to list `<baseDir>/memory` must still be able
  * to read and write its own memory through the generic file tools, which is
  * the only way to reach it since the dedicated memory tools were removed.
@@ -276,9 +286,12 @@ export function buildAllowedSkillPathSet(
 export function buildScopeExemptPathSet({
   allowedSkillPaths,
   settings,
+  workspaceScope,
 }: {
   allowedSkillPaths?: readonly string[]
   settings?: MemorySettingsLike | null
+  /** The scope being enforced; a project's scope also exempts its memory. */
+  workspaceScope?: RunWorkspaceScope | null
 }): Set<string> | undefined {
   const exemptPaths = new Set(
     (allowedSkillPaths ?? []).map(normalizeExemptPath),
@@ -291,8 +304,13 @@ export function buildScopeExemptPathSet({
   const memoryDirs = resolveMemoryDirPaths({
     settings: settings ?? undefined,
     assistantId: settings?.currentAssistantId,
+    projectId: workspaceScope?.projectId,
   })
-  for (const dir of [memoryDirs.global, memoryDirs.assistant]) {
+  for (const dir of [
+    memoryDirs.global,
+    memoryDirs.assistant,
+    memoryDirs.project,
+  ]) {
     if (dir) exemptPaths.add(`${normalizePath(dir)}/`)
   }
   return exemptPaths.size > 0 ? exemptPaths : undefined

@@ -40,6 +40,7 @@ describe('resolveMemoryDirPaths', () => {
     ).toEqual({
       global: 'Vault/Brain/memory/global',
       assistant: 'Vault/Brain/memory/Writer',
+      project: null,
     })
   })
 
@@ -49,7 +50,7 @@ describe('resolveMemoryDirPaths', () => {
         settings: { assistants: [{ id: 'a1', name: 'Writer' }] },
         assistantId: 'missing',
       }),
-    ).toEqual({ global: 'YOLO/memory/global', assistant: null })
+    ).toEqual({ global: 'YOLO/memory/global', assistant: null, project: null })
   })
 
   it('stays in step with the index paths', () => {
@@ -64,6 +65,66 @@ describe('resolveMemoryDirPaths', () => {
   })
 })
 
+describe('project memory', () => {
+  const settings = {
+    assistants: [{ id: 'a1', name: 'Writer' }],
+    projects: [
+      { id: 'p2', name: 'Thesis' },
+      { id: 'p1', name: 'Thesis' },
+      { id: 'p3', name: 'Re/search' },
+    ],
+  }
+
+  it('lives under projects/ and only exists inside a project', () => {
+    expect(
+      resolveMemoryDirPaths({ settings, assistantId: 'a1', projectId: 'p3' }),
+    ).toEqual({
+      global: 'YOLO/memory/global',
+      assistant: 'YOLO/memory/Writer',
+      project: 'YOLO/memory/projects/Re_search',
+    })
+    expect(resolveMemoryDirPaths({ settings, assistantId: 'a1' }).project).toBe(
+      null,
+    )
+    expect(
+      resolveMemoryDirPaths({ settings, projectId: 'deleted' }).project,
+    ).toBe(null)
+  })
+
+  it('suffixes same-named projects by id order', () => {
+    expect(resolveMemoryDirPaths({ settings, projectId: 'p1' }).project).toBe(
+      'YOLO/memory/projects/Thesis',
+    )
+    expect(resolveMemoryDirPaths({ settings, projectId: 'p2' }).project).toBe(
+      'YOLO/memory/projects/Thesis (2)',
+    )
+  })
+
+  it('reads the project index alongside the others', async () => {
+    const app = createMockApp({
+      'YOLO/memory/global/MEMORY.md': 'global',
+      'YOLO/memory/projects/Re_search/MEMORY.md': 'project',
+    })
+    expect(
+      await readMemoryIndexes({
+        app,
+        settings,
+        assistantId: 'a1',
+        projectId: 'p3',
+      }),
+    ).toEqual({ global: 'global', assistant: null, project: 'project' })
+  })
+
+  it('keeps an assistant named "projects" out of the projects tree', () => {
+    expect(
+      resolveAssistantMemoryDirName({
+        settings: undefined,
+        assistant: { id: 'a9', name: 'Projects' },
+      }),
+    ).toBe('projects (assistant)')
+  })
+})
+
 describe('resolveMemoryIndexPaths', () => {
   it('resolves both indexes under the configured base directory', () => {
     const settings = {
@@ -74,6 +135,7 @@ describe('resolveMemoryIndexPaths', () => {
     expect(resolveMemoryIndexPaths({ settings, assistantId: 'a1' })).toEqual({
       global: 'YOLO/memory/global/MEMORY.md',
       assistant: 'YOLO/memory/Writer/MEMORY.md',
+      project: null,
     })
   })
 
@@ -88,6 +150,7 @@ describe('resolveMemoryIndexPaths', () => {
     ).toEqual({
       global: 'Vault/Brain/memory/global/MEMORY.md',
       assistant: 'Vault/Brain/memory/Writer/MEMORY.md',
+      project: null,
     })
 
     expect(
@@ -221,6 +284,7 @@ describe('readMemoryIndexes', () => {
     ).toEqual({
       global: '- [A](a.md) — when A',
       assistant: '- [B](b.md) — when B',
+      project: null,
     })
   })
 
@@ -228,7 +292,7 @@ describe('readMemoryIndexes', () => {
     const app = createMockApp({})
     expect(
       await readMemoryIndexes({ app, settings, assistantId: 'a1' }),
-    ).toEqual({ global: null, assistant: null })
+    ).toEqual({ global: null, assistant: null, project: null })
   })
 
   it('treats a whitespace-only file as absent', async () => {
@@ -238,7 +302,7 @@ describe('readMemoryIndexes', () => {
     })
     expect(
       await readMemoryIndexes({ app, settings, assistantId: 'a1' }),
-    ).toEqual({ global: null, assistant: 'kept' })
+    ).toEqual({ global: null, assistant: 'kept', project: null })
   })
 
   it('reads only global when one side is missing', async () => {
@@ -247,7 +311,7 @@ describe('readMemoryIndexes', () => {
     })
     expect(
       await readMemoryIndexes({ app, settings, assistantId: 'a1' }),
-    ).toEqual({ global: 'global only', assistant: null })
+    ).toEqual({ global: 'global only', assistant: null, project: null })
   })
 
   it('never reads an assistant index when no assistant is passed', async () => {
@@ -262,6 +326,6 @@ describe('readMemoryIndexes', () => {
         app,
         settings: { ...settings, currentAssistantId: 'a1' },
       }),
-    ).toEqual({ global: 'global', assistant: null })
+    ).toEqual({ global: 'global', assistant: null, project: null })
   })
 })

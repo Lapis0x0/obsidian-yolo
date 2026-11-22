@@ -222,6 +222,7 @@ export const fsReadDefinition = defineTool({
     const scopeExemptPathSet = buildScopeExemptPathSet({
       allowedSkillPaths,
       settings,
+      workspaceScope,
     })
 
     const results: Array<

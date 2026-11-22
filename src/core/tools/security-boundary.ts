@@ -67,6 +67,7 @@ export function enforceBuiltinToolSecurityBoundary(
     const exemptPaths = buildScopeExemptPathSet({
       allowedSkillPaths,
       settings,
+      workspaceScope,
     })
     const offendingPath = findPathOutsideScope(toolName, args, workspaceScope, {
       exemptPaths,

@@ -16,7 +16,7 @@ describe('chat-runtime-inputs', () => {
     expect(resolveWorkspaceScopeForRuntimeInput(assistant)).toEqual(scope)
   })
 
-  it("lets a project's scope replace the assistant's, with no intersection", () => {
+  it("lets a project's scope replace the assistant's, tagged with the project", () => {
     const assistant = {
       workspaceScope: { enabled: true, include: ['notes/'], exclude: [] },
     } as unknown as Assistant
@@ -29,7 +29,7 @@ describe('chat-runtime-inputs', () => {
         createdAt: 0,
         updatedAt: 0,
       }),
-    ).toBe(projectScope)
+    ).toEqual({ ...projectScope, projectId: 'p' })
   })
 
   it('returns undefined workspace scope when assistant is missing or has none', () => {

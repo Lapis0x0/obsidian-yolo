@@ -1752,6 +1752,7 @@ export const zh: TranslationKeys = {
       wholeVault: '整个仓库',
       excludedCount: '排除 {count} 项',
       listSeparator: '、',
+      memory: '项目记忆',
     },
     ribbonMenu: {
       openInSidebar: '在侧边栏中打开',

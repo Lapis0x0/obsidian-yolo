@@ -503,6 +503,7 @@ export class AgentToolGateway {
     const exemptPaths = buildScopeExemptPathSet({
       allowedSkillPaths: this.allowedSkillPaths,
       settings: this.mcpManager.getSettingsSnapshot(),
+      workspaceScope: this.workspaceScope,
     })
     try {
       const parsed = parseToolName(request.name)

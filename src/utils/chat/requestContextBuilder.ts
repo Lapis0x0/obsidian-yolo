@@ -14,6 +14,7 @@ import type {
 } from '../../core/agent/systemPromptSnapshotStore'
 import { toModelToolName } from '../../core/mcp/localFileTools'
 import {
+  type MemoryDirPaths,
   readMemoryIndexes,
   resolveMemoryDirPaths,
   resolveMemoryIndexPaths,
@@ -292,6 +293,23 @@ type MentionedFileProperty = {
 type MentionedFileContextEntry = {
   file: TFile
   source: 'file' | 'folder'
+}
+
+/**
+ * The `Location` line of `<memory_rules>`: names the real directories so the
+ * model writes facts into the right layer. Fixed text in the cache prefix —
+ * the no-project wording must stay byte-identical across releases.
+ */
+const buildMemoryLocationRule = (dirs: MemoryDirPaths): string => {
+  const global = `\`${dirs.global}/\` applies to every assistant`
+  if (dirs.project) {
+    return dirs.assistant
+      ? `- Location: ${global}; \`${dirs.assistant}/\` only to this one; \`${dirs.project}/\` only to this project. Facts about this project (its goals, decisions, conventions) go to the project; facts private to this assistant go to the assistant; everything else goes to global.`
+      : `- Location: ${global}; \`${dirs.project}/\` only to this project. Facts about this project go there, everything else goes to global.`
+  }
+  return dirs.assistant
+    ? `- Location: ${global}; \`${dirs.assistant}/\` only to this one. Facts private to this assistant go there, everything else goes to global.`
+    : `- Location: ${global}.`
 }
 
 const MAX_MENTIONED_FILE_OUTLINES = 10
@@ -2046,12 +2064,14 @@ ${entries}
     const memoryPaths = resolveMemoryIndexPaths({
       settings: this.settings,
       assistantId: this.settings.currentAssistantId,
+      projectId: useAssistant ? this.getProject()?.id : undefined,
     })
 
     if (this.promptSourcePathsCallback) {
       const watchedPaths = new Set<string>()
       if (memoryPaths.global) watchedPaths.add(memoryPaths.global)
       if (memoryPaths.assistant) watchedPaths.add(memoryPaths.assistant)
+      if (memoryPaths.project) watchedPaths.add(memoryPaths.project)
       const scopeContext = this.resolveScopeContext(assistant, useAssistant)
       resolveProjectInstructionFilePaths(
         this.app,
@@ -2319,20 +2339,28 @@ ${modePersonaPrompt.trim()}
       })
     }
 
-    // Memory block — bucket: memory. Only the two MEMORY.md indexes are
-    // injected, in full; the fact files they point at are read on demand with
-    // the ordinary file tools. The XML shape is part of the provider cache
-    // prefix — keep it stable.
+    // Memory block — bucket: memory. Only the MEMORY.md indexes are injected,
+    // in full; the fact files they point at are read on demand with the
+    // ordinary file tools. The XML shape is part of the provider cache
+    // prefix — keep it stable. Project memory exists only inside a project,
+    // which (like the project's scope) applies only when the assistant does.
+    const projectId = useAssistant ? this.getProject()?.id : undefined
     const memoryDirPaths = resolveMemoryDirPaths({
       settings: this.settings,
       assistantId: currentAssistant?.id,
+      projectId,
     })
     const memoryIndexes = await readMemoryIndexes({
       app: this.app,
       settings: this.settings,
       assistantId: currentAssistant?.id,
+      projectId,
     })
-    if (memoryIndexes.global || memoryIndexes.assistant) {
+    if (
+      memoryIndexes.global ||
+      memoryIndexes.assistant ||
+      memoryIndexes.project
+    ) {
       const memoryParts: string[] = []
       if (memoryIndexes.global) {
         memoryParts.push(`<global>
@@ -2343,6 +2371,11 @@ ${memoryIndexes.global}
         memoryParts.push(`<assistant>
 ${memoryIndexes.assistant}
 </assistant>`)
+      }
+      if (memoryIndexes.project) {
+        memoryParts.push(`<project>
+${memoryIndexes.project}
+</project>`)
       }
       sections.push({
         bucket: 'memory',
@@ -2360,9 +2393,7 @@ ${memoryParts.join('\n\n')}
     // in the cache prefix, and read-only modes simply never use its write half.
     // It names the real directories rather than a tool, because the modes that
     // can write use different file tools (`fs_write` / `write_file`).
-    const memoryLocationRule = memoryDirPaths.assistant
-      ? `- Location: \`${memoryDirPaths.global}/\` applies to every assistant; \`${memoryDirPaths.assistant}/\` only to this one. Facts private to this assistant go there, everything else goes to global.`
-      : `- Location: \`${memoryDirPaths.global}/\` applies to every assistant.`
+    const memoryLocationRule = buildMemoryLocationRule(memoryDirPaths)
     sections.push({
       bucket: 'system',
       id: 'system.memory-rules',
