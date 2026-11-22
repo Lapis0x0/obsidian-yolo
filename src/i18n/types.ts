@@ -69,11 +69,6 @@ export type TranslationKeys = {
   }
 
   sidebar?: {
-    tabs: {
-      chat: string
-      agent?: string
-      composer: string
-    }
     runtimeSelector: {
       modeAccessibleLabel: string
       chatLabel: string
@@ -137,38 +132,6 @@ export type TranslationKeys = {
     chat?: {
       exportSuccess?: string
       exportError?: string
-    }
-    composer: {
-      title: string
-      subtitle: string
-      backToChat: string
-      modelSectionTitle: string
-      contextSectionTitle: string
-      ragToggle: string
-      ragToggleDesc: string
-      sections?: {
-        modelWithPrompt?: {
-          title: string
-        }
-        model?: {
-          title?: string
-          desc?: string
-        }
-        parameters?: {
-          title: string
-          desc: string
-        }
-        context?: {
-          title: string
-          desc: string
-        }
-      }
-      continuationPrompt?: string
-      maxContinuationChars?: string
-      referenceRulesPlaceholder?: string
-      knowledgeBaseTitle?: string
-      knowledgeBasePlaceholder?: string
-      knowledgeBaseHint?: string
     }
   }
 
@@ -2261,9 +2224,9 @@ export type TranslationKeys = {
 
   // Sparkle sidebar page
   sparkle?: {
+    title?: string
     settings?: {
       open?: string
-      back?: string
     }
     similarNotes?: {
       title?: string

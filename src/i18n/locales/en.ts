@@ -60,11 +60,6 @@ export const en: TranslationKeys = {
   },
 
   sidebar: {
-    tabs: {
-      chat: 'Chat',
-      agent: 'Agent',
-      composer: 'Sparkle',
-    },
     runtimeSelector: {
       modeAccessibleLabel: 'Chat mode',
       chatLabel: 'Agent',
@@ -129,43 +124,6 @@ export const en: TranslationKeys = {
     chat: {
       exportSuccess: 'Exported chat to {path}',
       exportError: 'Could not export conversation',
-    },
-    composer: {
-      title: 'Sparkle',
-      subtitle:
-        'Configure continuation parameters and context before generating.',
-      backToChat: 'Back to chat',
-      modelSectionTitle: 'Model',
-      contextSectionTitle: 'Context sources',
-      ragToggle: 'Enable retrieval with embeddings',
-      ragToggleDesc:
-        'Fetch similar notes via embeddings before generating new text.',
-      sections: {
-        modelWithPrompt: {
-          title: 'Model & prompt',
-        },
-        model: {
-          title: 'Model selection',
-          desc: 'Choose which model powers these tasks.',
-        },
-        parameters: {
-          title: 'Parameters',
-          desc: 'Adjust parameters for the model used in this view.',
-        },
-        context: {
-          title: 'Context management',
-          desc: 'Prioritize the content sources referenced when this view runs.',
-        },
-      },
-      continuationPrompt: 'Continuation system prompt',
-      maxContinuationChars: 'Max continuation characters',
-      referenceRulesPlaceholder:
-        'Select folders whose content should be fully injected.',
-      knowledgeBaseTitle: 'Knowledge base',
-      knowledgeBasePlaceholder:
-        'Select folders or files used as the retrieval scope (leave empty for all).',
-      knowledgeBaseHint:
-        'Enable embedding search to limit the retrieval scope.',
     },
   },
 
@@ -2625,9 +2583,9 @@ export const en: TranslationKeys = {
   },
 
   sparkle: {
+    title: 'Sparkle',
     settings: {
       open: 'Sparkle settings',
-      back: 'Back',
     },
     similarNotes: {
       title: 'Similar notes',

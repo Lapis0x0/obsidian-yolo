@@ -60,11 +60,6 @@ export const zh: TranslationKeys = {
   },
 
   sidebar: {
-    tabs: {
-      chat: 'Chat',
-      agent: 'Agent',
-      composer: '灵光写作',
-    },
     runtimeSelector: {
       modeAccessibleLabel: '聊天模式',
       chatLabel: 'Agent',
@@ -129,39 +124,6 @@ export const zh: TranslationKeys = {
     chat: {
       exportSuccess: '已导出聊天记录到 {path}',
       exportError: '导出失败',
-    },
-    composer: {
-      title: '灵光写作',
-      subtitle: '在续写之前先配置模型、上下文与规则',
-      backToChat: '返回 Chat',
-      modelSectionTitle: '模型设置',
-      contextSectionTitle: '上下文来源',
-      ragToggle: '启用 RAG 检索',
-      ragToggleDesc: '续写前通过 embedding 召回相似的笔记片段。',
-      sections: {
-        modelWithPrompt: {
-          title: '模型选择与提示词',
-        },
-        model: {
-          title: '模型选择',
-          desc: '选择用于灵光写作任务的模型。',
-        },
-        parameters: {
-          title: '参数设置',
-          desc: '修改灵光写作所用模型的参数。',
-        },
-        context: {
-          title: '上下文管理',
-          desc: '设定灵光写作任务执行时优先参考的内容来源。',
-        },
-      },
-      continuationPrompt: '续写系统提示词',
-      maxContinuationChars: '续写传入字符数',
-      referenceRulesPlaceholder: '点击选择需要完整注入上下文的文件夹。',
-      knowledgeBaseTitle: '知识库',
-      knowledgeBasePlaceholder:
-        '点击选择用作检索范围的文件夹或文件（留空表示全库）。',
-      knowledgeBaseHint: '开启 RAG 搜索后可限定检索范围。',
     },
   },
 
@@ -2471,9 +2433,9 @@ export const zh: TranslationKeys = {
   },
 
   sparkle: {
+    title: '灵光写作',
     settings: {
       open: '灵光写作设置',
-      back: '返回',
     },
     similarNotes: {
       title: '相似笔记',

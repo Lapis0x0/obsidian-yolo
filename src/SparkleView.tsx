@@ -32,7 +32,7 @@ export class SparkleView extends ItemView {
   }
 
   getDisplayText(): string {
-    return this.plugin.t('sidebar.tabs.composer', 'Sparkle')
+    return this.plugin.t('sparkle.title', 'Sparkle')
   }
 
   getIcon(): string {

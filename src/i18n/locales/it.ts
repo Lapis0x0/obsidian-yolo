@@ -76,11 +76,6 @@ export const it: DeepPartial<TranslationKeys> = {
   },
 
   sidebar: {
-    tabs: {
-      chat: 'Chat',
-      agent: 'Agent',
-      composer: 'Sparkle',
-    },
     runtimeSelector: {
       modeAccessibleLabel: 'Modalità chat',
       chatLabel: 'Agent',
@@ -145,43 +140,6 @@ export const it: DeepPartial<TranslationKeys> = {
     chat: {
       exportSuccess: 'Chat esportata in {path}',
       exportError: 'Impossibile esportare la conversazione',
-    },
-    composer: {
-      title: 'Sparkle',
-      subtitle:
-        'Configura i parametri di continuazione e il contesto prima di generare.',
-      backToChat: 'Torna alla chat',
-      modelSectionTitle: 'Modello',
-      contextSectionTitle: 'Fonti di contesto',
-      ragToggle: 'Abilita recupero con embeddings',
-      ragToggleDesc:
-        'Recupera note simili tramite embeddings prima di generare nuovo testo.',
-      sections: {
-        modelWithPrompt: {
-          title: 'Modello e prompt',
-        },
-        model: {
-          title: 'Selezione modello',
-          desc: 'Scegli quale modello alimenta queste attività.',
-        },
-        parameters: {
-          title: 'Parametri',
-          desc: 'Regola i parametri per il modello usato in questa vista.',
-        },
-        context: {
-          title: 'Gestione contesto',
-          desc: 'Dai priorità alle fonti di contenuto referenziate quando questa vista viene eseguita.',
-        },
-      },
-      continuationPrompt: 'Prompt di sistema per continuazione',
-      maxContinuationChars: 'Caratteri massimi di continuazione',
-      referenceRulesPlaceholder:
-        'Seleziona le cartelle il cui contenuto deve essere completamente iniettato.',
-      knowledgeBaseTitle: 'Base di conoscenza',
-      knowledgeBasePlaceholder:
-        'Seleziona cartelle o file usati come ambito di recupero (lascia vuoto per tutti).',
-      knowledgeBaseHint:
-        "Abilita la ricerca embeddings per limitare l'ambito di recupero.",
     },
   },
 
