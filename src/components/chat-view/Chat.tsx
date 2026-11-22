@@ -118,7 +118,11 @@ import {
 } from './hooks/useMobileViewport'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
-import { buildProjectHomeEmptyState } from './projects/ProjectHome'
+import {
+  ProjectHomeBody,
+  ProjectHomeHeader,
+  selectProjectConversations,
+} from './projects/ProjectHome'
 import { ProjectSettingsModal } from './projects/ProjectSettingsModal'
 import { useConversationProject } from './projects/useConversationProject'
 import type { QueryProgressState } from './QueryProgress'
@@ -1124,6 +1128,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
   )
   conversationProjectRef.current = conversationProject
+  const projectConversations = useMemo(
+    () =>
+      conversationProject
+        ? selectProjectConversations(chatList, conversationProject.id)
+        : [],
+    [chatList, conversationProject],
+  )
 
   const currentConversationTitle = useMemo(() => {
     const rawTitle = activeHistoryConversationId
@@ -1992,10 +2003,37 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const currentModuleModeOption = isModuleChatMode(chatMode)
     ? moduleModeOptions.find((option) => option.value === chatMode)
     : undefined
+  // 项目主页：页头作为空状态放在输入框上方；主体（对话列表与右栏）在宽屏时
+  // 放到输入框下方的空白区域，窄屏时接在页头下面
+  const projectHomeHeader = conversationProject ? (
+    <ProjectHomeHeader
+      project={conversationProject}
+      conversations={projectConversations}
+      runSummariesByConversationId={runSummariesByConversationId}
+      onOpenSettings={() => openProjectSettings(conversationProject)}
+    />
+  ) : null
+  const projectHomeBody = conversationProject ? (
+    <ProjectHomeBody
+      project={conversationProject}
+      conversations={projectConversations}
+      runSummariesByConversationId={runSummariesByConversationId}
+      onSelectConversation={(conversationId) =>
+        void handleLoadConversation(conversationId)
+      }
+    />
+  ) : null
   const emptyStateOverride = conversationProject
-    ? buildProjectHomeEmptyState(conversationProject, () =>
-        openProjectSettings(conversationProject),
-      )
+    ? {
+        content: isSidebarPlacement ? (
+          <>
+            {projectHomeHeader}
+            {projectHomeBody}
+          </>
+        ) : (
+          projectHomeHeader
+        ),
+      }
     : currentModuleModeOption
       ? {
           title: currentModuleModeOption.label,
@@ -2237,7 +2275,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         contextUsage={
           isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
         }
-        showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
+        showQuickAccess={
+          activeSurfaceEmpty && !isSidebarPlacement && !conversationProject
+        }
         quickAccessSkillEntries={
           isCliRuntimeActive ? [] : quickAccessSkillEntries
         }
@@ -2389,6 +2429,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               />
             </SubagentDetailRequestContext.Provider>
           )}
+          {projectHomeBody && activeSurfaceEmpty && !isSidebarPlacement ? (
+            <div className="yolo-project-home-below">{projectHomeBody}</div>
+          ) : null}
         </div>
       </div>
     </AssistantRenderStreamProvider>

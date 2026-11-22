@@ -161,15 +161,17 @@ export type ChatConversationPaneProps = {
   emptyStateIconMode?: string
   /**
    * Full override for the empty state, taking priority over every other
-   * `emptyState*` prop: a project's home (the empty state of a new
-   * conversation in a project) or a module chat mode's registry label and
-   * description — both are complete surfaces rather than ask/agent copy.
+   * `emptyState*` prop. A module chat mode supplies its registry label and
+   * description; a project's home (the empty state of a new conversation in
+   * a project) supplies its own `content`, laid out by itself.
    */
-  emptyStateOverride?: {
-    title: ReactNode
-    description: ReactNode
-    icon?: ReactNode
-  }
+  emptyStateOverride?:
+    | {
+        title: ReactNode
+        description: ReactNode
+        icon?: ReactNode
+      }
+    | { content: ReactNode }
   footerContent: ReactNode
   onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
@@ -239,8 +241,16 @@ export function ChatConversationPane({
   const isMaxMode = chatMode === 'max'
   const isYoloAgent = isToolChatMode(chatMode) && yoloEnabled
   const maxCopy = isMaxMode ? emptyStateMaxCopy : undefined
+  const customEmptyState =
+    emptyStateOverride && 'content' in emptyStateOverride
+      ? emptyStateOverride.content
+      : null
+  const textOverride =
+    emptyStateOverride && !('content' in emptyStateOverride)
+      ? emptyStateOverride
+      : undefined
   const emptyStateTitle =
-    emptyStateOverride?.title ??
+    textOverride?.title ??
     emptyStateWorkspaceTitle ??
     (maxCopy
       ? yoloEnabled
@@ -252,7 +262,7 @@ export function ChatConversationPane({
           ? emptyStateAgentTitle
           : emptyStateAskTitle)
   const emptyStateDescription =
-    emptyStateOverride?.description ??
+    textOverride?.description ??
     (maxCopy
       ? yoloEnabled
         ? maxCopy.fullDescription
@@ -274,7 +284,7 @@ export function ChatConversationPane({
   // The icon states the mode, not the trust profile: Max keeps the selector's
   // bolt in both of its states.
   const resolvedEmptyStateIcon =
-    emptyStateOverride?.icon ??
+    textOverride?.icon ??
     emptyStateIcon ??
     (isMaxMode ? (
       <Zap size={18} strokeWidth={2} />
@@ -320,21 +330,27 @@ export function ChatConversationPane({
                   }}
                 >
                   <div className="yolo-chat-empty-state-overlay-inner">
-                    <div className="yolo-chat-empty-state">
-                      <div
-                        key={resolvedEmptyStateIconMode}
-                        className="yolo-chat-empty-state-icon"
-                        data-mode={resolvedEmptyStateIconMode}
-                      >
-                        {resolvedEmptyStateIcon}
+                    {customEmptyState ? (
+                      <div className="yolo-chat-empty-state yolo-chat-empty-state--custom">
+                        {customEmptyState}
                       </div>
-                      <div className="yolo-chat-empty-state-title">
-                        {emptyStateTitle}
+                    ) : (
+                      <div className="yolo-chat-empty-state">
+                        <div
+                          key={resolvedEmptyStateIconMode}
+                          className="yolo-chat-empty-state-icon"
+                          data-mode={resolvedEmptyStateIconMode}
+                        >
+                          {resolvedEmptyStateIcon}
+                        </div>
+                        <div className="yolo-chat-empty-state-title">
+                          {emptyStateTitle}
+                        </div>
+                        <div className="yolo-chat-empty-state-description">
+                          {emptyStateDescription}
+                        </div>
                       </div>
-                      <div className="yolo-chat-empty-state-description">
-                        {emptyStateDescription}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </motion.div>
               ) : null}

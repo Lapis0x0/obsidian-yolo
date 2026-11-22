@@ -1578,8 +1578,6 @@ export type TranslationKeys = {
       moveToProject?: string
       removeFromProject?: string
       wholeVault?: string
-      excludedCount?: string
-      listSeparator?: string
       memory?: string
       running?: string
       waiting?: string
@@ -1590,6 +1588,17 @@ export type TranslationKeys = {
       noDefaultAgent?: string
       instructionsExists?: string
       open?: string
+      justNow?: string
+      conversationCount?: string
+      runningCount?: string
+      lastActivity?: string
+      more?: string
+      conversations?: string
+      noConversationsHint?: string
+      openInObsidian?: string
+      memoryCount?: string
+      memoryEmpty?: string
+      viewMemory?: string
     }
     ribbonMenu: {
       openInSidebar: string

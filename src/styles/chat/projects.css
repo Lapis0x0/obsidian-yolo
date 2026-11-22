@@ -251,96 +251,375 @@ button.yolo-chat-sidebar-project-empty:hover {
   color: var(--text-muted);
 }
 
-/* 项目主页 ---------------------------------------------------------------- */
+/* 项目主页 ----------------------------------------------------------------
+ * 项目里新对话的空状态。页头（ProjectHomeHeader）在输入框上方；主体
+ * （ProjectHomeBody：对话列表 + 右栏）宽屏时在输入框下方的
+ * .yolo-project-home-below 里，窄屏时接在页头下面。
+ */
+
+.yolo-chat-empty-state.yolo-chat-empty-state--custom {
+  width: min(var(--yolo-chat-content-max-width, 720px), 100%);
+  padding: 0;
+  background: transparent;
+  text-align: start;
+  /* 空状态浮层整体不接收指针，项目主页里有按钮和列表 */
+  pointer-events: auto;
+}
+
+.yolo-chat-container--sidebar
+  .yolo-chat-empty-state.yolo-chat-empty-state--custom {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  padding: var(--size-4-4) var(--yolo-chat-sidebar-inline-padding, 12px);
+  box-sizing: border-box;
+}
+
+/* 宽屏：输入框下方的区域放主体，取代空状态原本的下方留白 */
+.yolo-chat-container--centered.yolo-chat-container--empty-state:has(
+    > .yolo-project-home-below
+  )::after {
+  content: none;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state:has(
+    > .yolo-project-home-below
+  )
+  > .yolo-chat-conversation-surface {
+  flex: 2 1 0;
+}
+
+.yolo-project-home-below {
+  flex: 5 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.yolo-project-home-below > .yolo-project-home-body {
+  width: var(--yolo-chat-content-max-width);
+  margin: 0 auto;
+  padding: 28px 0 32px;
+}
+
+.yolo-project-home-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+}
 
 .yolo-project-home-icon {
   display: grid;
+  flex-shrink: 0;
   place-items: center;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--yolo-project-color) 18%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--yolo-project-color) 30%, transparent);
   color: var(--yolo-project-color);
-  background: color-mix(in srgb, var(--yolo-project-color) 16%, transparent);
 }
 
 .yolo-project-home-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
 }
 
-.yolo-chat-empty-state-icon:has(.yolo-project-home-icon) {
-  background: transparent;
-}
-
-/* 宽屏居中布局默认藏起图标和说明；项目主页的说明是项目的边界和入口，要留着 */
-.yolo-chat-container--centered.yolo-chat-container--empty-state
-  .yolo-chat-empty-state-icon:has(.yolo-project-home-icon) {
-  display: inline-flex;
-}
-
-.yolo-chat-container--centered.yolo-chat-container--empty-state
-  .yolo-chat-empty-state-description:has(.yolo-project-home) {
-  display: block;
-  margin-top: var(--size-4-2);
-}
-
-.yolo-project-home {
+.yolo-project-home-heading {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  align-items: center;
-  gap: var(--size-2-3);
-  /* 空状态浮层整体不接收指针，只有这里的按钮要能点 */
-  pointer-events: auto;
+  gap: 6px;
+  min-width: 200px;
+}
+
+h1.yolo-project-home-title {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: 28px;
+  font-weight: var(--font-semibold);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .yolo-project-home-facts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--size-2-2) var(--size-4-3);
-  font-size: var(--font-ui-small);
-}
-
-.yolo-project-home-fact {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--size-2-2);
-  min-width: 0;
-  color: var(--text-muted);
-}
-
-.yolo-project-home-fact-muted {
+  gap: 0;
+  padding-top: 2px;
   color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
-button.yolo-project-home-file,
-button.yolo-project-home-settings {
-  height: auto;
+.yolo-project-home-facts-separator {
+  padding: 0 7px;
+}
+
+.yolo-project-home-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button.yolo-project-home-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
   margin: 0;
-  padding: var(--size-2-1) var(--size-2-2);
-  border: 0;
-  border-radius: var(--radius-s);
+  padding: 0 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
   background: transparent;
   box-shadow: none;
+  color: var(--text-muted);
   font-size: var(--font-ui-small);
   cursor: pointer;
 }
 
-button.yolo-project-home-file:hover {
+button.yolo-project-home-button.is-icon {
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+
+button.yolo-project-home-button:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
-button.yolo-project-home-settings {
-  display: inline-flex;
+/* 主体：对话列表 + 右栏，空间不够时右栏换到下面 */
+.yolo-project-home-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 28px;
+  box-sizing: border-box;
+}
+
+.yolo-project-home-conversations {
+  display: flex;
+  flex: 999 1 320px;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.yolo-project-home-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-project-home-section-title h2 {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-project-home-section-title span,
+.yolo-project-home-empty {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-home-empty {
+  padding: 14px 10px;
+}
+
+.yolo-project-home-conversation-list {
+  display: flex;
+  flex-direction: column;
+}
+
+button.yolo-project-home-conversation {
+  display: flex;
   align-items: center;
-  gap: var(--size-2-2);
+  justify-content: flex-start;
+  gap: 14px;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 12px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  text-align: start;
+  cursor: pointer;
+}
+
+button.yolo-project-home-conversation:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-project-home-conversation-title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--font-ui-medium);
+}
+
+.yolo-project-home-conversation-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-project-home-conversation-time {
+  flex-shrink: 0;
+  min-width: 64px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-align: end;
+}
+
+/* 右栏卡片 */
+.yolo-project-home-aside {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+  max-width: 340px;
+}
+
+.yolo-chat-container--sidebar .yolo-project-home-aside {
+  max-width: none;
+}
+
+.yolo-project-home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 14px;
+  background: var(--background-secondary);
+}
+
+.yolo-project-home-card.is-memory {
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+}
+
+.yolo-project-home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-project-home-card-head button,
+button.yolo-project-home-card-link {
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  cursor: pointer;
+}
+
+button.yolo-project-home-card-link {
+  align-self: flex-start;
+  padding-top: 2px;
+}
+
+.yolo-project-home-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.yolo-project-home-card-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+}
+
+.yolo-project-home-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.yolo-project-home-card-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-project-home-card-item > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-project-home-card-item svg {
+  flex-shrink: 0;
   color: var(--text-faint);
 }
 
-button.yolo-project-home-settings:hover {
-  background: var(--background-modifier-hover);
+.yolo-project-home-card-item svg.yolo-project-home-card-folder {
+  color: var(--yolo-project-color);
+}
+
+.yolo-project-home-card-item.is-muted {
+  color: var(--text-faint);
+}
+
+.yolo-project-home-card-note {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+}
+
+.yolo-project-home-card-path {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-project-home-card-preview {
+  max-height: 150px;
+  overflow: hidden;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--background-primary);
   color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.75;
+  -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent);
+  mask-image: linear-gradient(180deg, #000 75%, transparent);
+}
+
+.yolo-project-home-card-preview > .is-heading {
+  margin-bottom: 2px;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-project-home-card-entry {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
 }
 
 /* 新建 / 编辑项目弹窗 ------------------------------------------------------ */

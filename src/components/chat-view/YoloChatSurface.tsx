@@ -62,6 +62,7 @@ import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { getChatSurfacePreset } from './chat-surface-presets'
+import type { ChatConversationPaneProps } from './ChatConversationPane'
 import {
   buildAssistantErrorContinuation,
   getDisplayedAssistantToolMessages,
@@ -183,11 +184,7 @@ export type YoloChatSurfaceProps = {
   setEditingAssistantMessageId: Dispatch<SetStateAction<string | null>>
   emptyStateWorkspaceTitle?: ReactNode
   /** See `ChatConversationPaneProps['emptyStateOverride']`. */
-  emptyStateOverride?: {
-    title: ReactNode
-    description: ReactNode
-    icon?: ReactNode
-  }
+  emptyStateOverride?: ChatConversationPaneProps['emptyStateOverride']
   bottomSpacerHeight: number
   footerContent: ReactNode
   runtimeActions: ChatRuntimeActions

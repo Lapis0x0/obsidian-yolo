@@ -1701,8 +1701,6 @@ export const it: DeepPartial<TranslationKeys> = {
       moveToProject: 'Sposta nel progetto',
       removeFromProject: 'Rimuovi dal progetto',
       wholeVault: 'Intero vault',
-      excludedCount: '{count} esclusi',
-      listSeparator: ', ',
       memory: 'Memoria del progetto',
       running: 'In esecuzione',
       waiting: 'In attesa di te',
@@ -1713,6 +1711,19 @@ export const it: DeepPartial<TranslationKeys> = {
       noDefaultAgent: 'Non impostato',
       instructionsExists: 'Esiste · ogni conversazione del progetto lo legge',
       open: 'Apri',
+      justNow: 'proprio ora',
+      conversationCount: '{count} conversazioni',
+      runningCount: '{count} in esecuzione',
+      lastActivity: 'Ultima attività {time}',
+      more: 'Altro',
+      conversations: 'Conversazioni',
+      noConversationsHint:
+        'Le conversazioni avviate qui appartengono a questo progetto.',
+      openInObsidian: 'Apri in Obsidian',
+      memoryCount: '{count} voci',
+      memoryEmpty:
+        'Gli agenti annotano qui i fatti duraturi su questo progetto mentre lavori.',
+      viewMemory: 'Visualizza e gestisci',
     },
     ribbonMenu: {
       openInSidebar: 'Apri nella barra laterale',

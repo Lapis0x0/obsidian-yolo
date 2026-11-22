@@ -1843,8 +1843,6 @@ export const en: TranslationKeys = {
       moveToProject: 'Move to project',
       removeFromProject: 'Remove from project',
       wholeVault: 'Whole vault',
-      excludedCount: '{count} excluded',
-      listSeparator: ', ',
       memory: 'Project memory',
       running: 'Running',
       waiting: 'Waiting for you',
@@ -1856,6 +1854,19 @@ export const en: TranslationKeys = {
       instructionsExists:
         'Exists · every conversation in this project reads it',
       open: 'Open',
+      justNow: 'just now',
+      conversationCount: '{count} conversations',
+      runningCount: '{count} running',
+      lastActivity: 'Last activity {time}',
+      more: 'More',
+      conversations: 'Conversations',
+      noConversationsHint:
+        'Conversations you start here belong to this project.',
+      openInObsidian: 'Open in Obsidian',
+      memoryCount: '{count} entries',
+      memoryEmpty:
+        'Agents record durable facts about this project here as you work.',
+      viewMemory: 'View and manage',
     },
     ribbonMenu: {
       openInSidebar: 'Open in sidebar',
