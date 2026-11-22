@@ -81,8 +81,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
     enabledChatModels[0]?.id ??
     ''
   const tabCompletionChatModel =
-    enabledChatModels.find((model) => model.id === tabCompletionModelId) ??
-    null
+    enabledChatModels.find((model) => model.id === tabCompletionModelId) ?? null
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
   const [tabNumberInputs, setTabNumberInputs] = useState({
@@ -489,7 +488,9 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
 
                 <ObsidianSetting
                   name={t('settings.continuation.tabCompletionLengthPreset')}
-                  desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
+                  desc={t(
+                    'settings.continuation.tabCompletionLengthPresetDesc',
+                  )}
                   className="yolo-settings-card"
                 >
                   <ObsidianDropdown
