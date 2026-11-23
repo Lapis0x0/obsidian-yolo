@@ -1066,9 +1066,11 @@ button.yolo-model-select-default-action:hover {
   text-underline-offset: 2px;
 }
 
+/* 整段被删时这一侧没有文字，占住一行审阅文字的高度（与
+ * .yolo-inline-review-line 同一行高）。height 必须带长度单位，裸的行高
+ * 数值会被浏览器整条丢弃 */
 .yolo-inline-review-deletion-placeholder {
-  height: var(--line-height-normal);
-  min-height: 1em;
+  height: calc(var(--yolo-leading-ui-multiline) * 1em);
 }
 
 .yolo-inline-review-floating-actions .yolo-apply-action {
