@@ -24,8 +24,8 @@
 @import './action-toast.css';
 @import './acknowledgement-modal.css';
 @import './yolo-icon.css';
-@import './chat/view-header-title.css';
 @import './chat/input.css';
+@import './chat/topbar.css';
 @import './chat/image-preview.css';
 @import './chat/message.css';
 @import './chat/popover.css';

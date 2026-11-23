@@ -9,7 +9,9 @@ import type {
   ChatRef,
   ChatRuntimeSnapshot,
 } from './components/chat-view/Chat'
+import type { NativeHeaderSlots } from './components/chat-view/ChatHeader'
 import ChatSidebarTabs from './components/chat-view/ChatSidebarTabs'
+import { showMoveToProjectMenu } from './components/chat-view/projects/moveToProjectMenu'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { CHAT_VIEW_TYPE } from './constants'
 import { AppProvider } from './contexts/app-context'
@@ -36,15 +38,7 @@ import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
-  // issue #567: Obsidian's `leaf.updateHeader()` only refreshes the
-  // tab-strip label, never the pane-top `.view-header-title` element — that
-  // element only gets its initial text once, at leaf-open time. Runtime
-  // instances expose it as an undocumented `titleEl: HTMLElement` property
-  // (verified empirically; not part of the public `ItemView`/`View` types),
-  // so we read it through a local type narrowing rather than `any`.
-  private isEditingTitle = false
-  private currentConversationRenamable = false
-  private boundTitleEl: HTMLElement | null = null
+  private nativeHeaderSlots: NativeHeaderSlots | undefined
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private restoredConversationId?: string
@@ -151,9 +145,6 @@ export class ChatView extends ItemView {
       pendingPayload?.placement ?? manager.getLeafPlacement(this.leaf)
     manager.registerLeaf(this.leaf, placement)
     const leafSummary = manager.getLeafSummary(this.leaf)
-    this.currentConversationRenamable = Boolean(
-      leafSummary?.currentConversationPersisted,
-    )
     this.updateDisplayTitle(leafSummary?.currentConversationTitle)
     this.initialChatProps = this.getInitialChatProps(pendingPayload)
 
@@ -216,8 +207,6 @@ export class ChatView extends ItemView {
     this.root = null
     this.mountedHost = null
     this.mountedDoc = null
-    this.boundTitleEl = null
-    this.isEditingTitle = false
     await this.disposeCliRuntimeScope()
   }
 
@@ -290,11 +279,6 @@ export class ChatView extends ItemView {
     this.mountedHost = newHost
     this.mountedDoc = newHost.ownerDocument
     await this.render()
-    // Defensive: rebuild only replaces view-content (children[1]), so the
-    // header/titleEl should survive untouched — but re-sync anyway in case a
-    // platform's pop-out path ever recreates the whole leaf DOM including
-    // the header (see class-level note on `titleEl`).
-    this.syncHeaderTitleElement()
   }
 
   render(): Promise<void> {
@@ -359,6 +343,9 @@ export class ChatView extends ItemView {
                                 ...(this.initialChatProps ?? {}),
                                 cliRuntimeScope: this.cliRuntimeScope,
                                 seededRuntimeSnapshot,
+                                onOpenConversationMenu:
+                                  this.openConversationMenu,
+                                nativeHeader: this.ensureNativeHeaderSlots(),
                               }}
                               onConversationContextChange={(context) => {
                                 const manager =
@@ -367,17 +354,9 @@ export class ChatView extends ItemView {
                                 this.updateRestoredConversationFromContext(
                                   context,
                                 )
-                                // Only a persisted conversation has a
-                                // rename path (ChatRef.renameCurrentConversation
-                                // no-ops otherwise) — gate the pane title's
-                                // click-to-edit affordance on the same flag.
-                                this.currentConversationRenamable = Boolean(
-                                  context.currentConversationPersisted,
-                                )
                                 this.updateDisplayTitle(
                                   context.currentConversationTitle,
                                 )
-                                this.syncHeaderTitleElement()
                                 void this.persistLeafViewState(context)
                               }}
                               onRuntimeSnapshotChange={(snapshot) => {
@@ -823,150 +802,60 @@ export class ChatView extends ItemView {
         this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
       ).updateHeader?.()
     }
-
-    // `updateHeader()` above only refreshes the tab label — the pane-top
-    // title element needs its text synced separately (see class-level note).
-    this.syncHeaderTitleElement()
-  }
-
-  private getHeaderTitleEl(): HTMLElement | null {
-    return (this as ItemView & { titleEl?: HTMLElement }).titleEl ?? null
   }
 
   /**
-   * Keeps the native `.view-header-title` element's text, editable-affordance
-   * class, and click binding in sync with `displayTitle` /
-   * `currentConversationRenamable`. Cheap and idempotent — safe to call from
-   * every place the underlying element or its bound state might have moved
-   * (title change, conversation-context change, rebuild after popout).
+   * 在原生视图标题栏里留两个挂载点给对话顶部栏：标题区放面包屑（原生标题
+   * 元素由 CSS 藏起来），按钮区放在原生 ⋯ 前面。标题栏是叶子自带的 DOM，
+   * 弹出窗口重建时也不会换，所以挂载点建一次、之后复用。
    */
-  private syncHeaderTitleElement(): void {
-    const titleEl = this.getHeaderTitleEl()
-    if (!titleEl) return
-
-    if (!this.isEditingTitle && titleEl.textContent !== this.displayTitle) {
-      titleEl.textContent = this.displayTitle
+  private ensureNativeHeaderSlots(): NativeHeaderSlots | undefined {
+    const header = this.containerEl.children[0] as HTMLElement | undefined
+    if (!header?.classList.contains('view-header')) return undefined
+    if (
+      this.nativeHeaderSlots?.header === header &&
+      this.nativeHeaderSlots.title.isConnected &&
+      this.nativeHeaderSlots.actions.isConnected
+    ) {
+      return this.nativeHeaderSlots
     }
-
-    titleEl.toggleClass(
-      'yolo-view-header-title-editable',
-      this.currentConversationRenamable && !this.isEditingTitle,
+    const titleContainer = header.querySelector<HTMLElement>(
+      '.view-header-title-container',
     )
-    if (this.currentConversationRenamable && !this.isEditingTitle) {
-      titleEl.setAttribute(
-        'aria-label',
-        this.plugin.t(
-          'chat.paneTitle.renameAriaLabel',
-          'Click to rename conversation',
-        ),
-      )
-    } else if (!this.isEditingTitle) {
-      titleEl.removeAttribute('aria-label')
-    }
-
-    if (titleEl !== this.boundTitleEl) {
-      this.boundTitleEl = titleEl
-      this.registerDomEvent(titleEl, 'click', this.handleTitleClick)
-    }
-  }
-
-  private handleTitleClick = (): void => {
-    if (this.isEditingTitle || !this.currentConversationRenamable) return
-    this.beginTitleEditing()
+    const actionsContainer = header.querySelector<HTMLElement>('.view-actions')
+    if (!titleContainer || !actionsContainer) return undefined
+    const title = titleContainer.createDiv({
+      cls: 'yolo-view-header-slot yolo-view-header-title-slot',
+    })
+    const actions = header.ownerDocument.createElement('div')
+    actions.className = 'yolo-view-header-slot yolo-view-header-actions-slot'
+    actionsContainer.prepend(actions)
+    this.nativeHeaderSlots = { header, title, actions }
+    return this.nativeHeaderSlots
   }
 
   /**
-   * Turns the pane title into a plain contenteditable field: select-all on
-   * entry, Enter commits (via blur), Esc cancels and restores the previous
-   * text, blur commits. An empty/unchanged submission is treated as a
-   * cancel. Commit calls through `ChatRef.renameCurrentConversation` so
-   * history list, tab label, and CLI session overlays all stay in sync —
-   * the same rename path the sidebar history list uses.
+   * 自绘顶部栏的 ⋯（没有原生标题栏时才出现）：和原生 ⋯、标签页右键同一份
+   * 内容（onPaneMenu），挂在按钮下方。
    */
-  private beginTitleEditing(): void {
-    const titleEl = this.getHeaderTitleEl()
-    if (!titleEl || this.isEditingTitle) return
-
-    this.isEditingTitle = true
-    const originalTitle = this.displayTitle
-
-    titleEl.contentEditable = 'true'
-    titleEl.spellcheck = false
-    titleEl.addClass('yolo-view-header-title-editing')
-    titleEl.removeClass('yolo-view-header-title-editable')
-    titleEl.setAttribute(
-      'aria-label',
-      this.plugin.t(
-        'chat.paneTitle.editingAriaLabel',
-        'Editing conversation title',
-      ),
+  private openConversationMenu = (anchor: HTMLElement): void => {
+    const menu = new Menu()
+    this.onPaneMenu(menu, 'more-options')
+    const rect = anchor.getBoundingClientRect()
+    menu.showAtPosition(
+      { x: rect.left, y: rect.bottom + 4 },
+      anchor.ownerDocument,
     )
-
-    titleEl.focus()
-    const selection = titleEl.ownerDocument.getSelection()
-    if (selection) {
-      const range = titleEl.ownerDocument.createRange()
-      range.selectNodeContents(titleEl)
-      selection.removeAllRanges()
-      selection.addRange(range)
-    }
-
-    let settled = false
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        titleEl.blur()
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        finish(false)
-      }
-    }
-    const onBlur = () => finish(true)
-
-    const finish = (commit: boolean): void => {
-      if (settled) return
-      settled = true
-      titleEl.removeEventListener('keydown', onKeyDown)
-      titleEl.removeEventListener('blur', onBlur)
-      titleEl.removeAttribute('contenteditable')
-      titleEl.removeClass('yolo-view-header-title-editing')
-      this.isEditingTitle = false
-
-      const trimmedTitle = (titleEl.textContent ?? '').trim()
-      // Blank or unchanged submissions are treated as a cancel.
-      if (!commit || !trimmedTitle || trimmedTitle === originalTitle) {
-        this.syncHeaderTitleElement()
-        return
-      }
-
-      const renamePromise =
-        this.chatRef.current?.renameCurrentConversation(trimmedTitle)
-      if (!renamePromise) {
-        this.syncHeaderTitleElement()
-        return
-      }
-
-      // Optimistic: reflect the typed title immediately (pane + tab). The
-      // async round trip through onConversationContextChange will confirm
-      // (no-op) or, on failure below, we revert.
-      this.updateDisplayTitle(trimmedTitle)
-      renamePromise.catch((error: unknown) => {
-        console.error('[YOLO] Failed to rename conversation', error)
-        this.updateDisplayTitle(originalTitle)
-      })
-    }
-
-    titleEl.addEventListener('keydown', onKeyDown)
-    titleEl.addEventListener('blur', onBlur)
   }
 
   /**
-   * issue #567. Adds a conversation-management group to the pane's
-   * native "···" menu: rename / pin-toggle / export / delete. All four act
-   * on the active conversation and are disabled when it isn't persisted yet
-   * (a brand-new, not-yet-saved chat has nothing to rename/pin/export/
-   * delete) — export is omitted entirely when the active runtime doesn't
-   * support vault export, matching `ChatHeader`'s conditional rendering.
+   * issue #567. Adds a conversation-management group to the pane menu:
+   * rename / pin-toggle / move to project / export / delete. Shared by the
+   * tab's context menu and the chat top bar's ⋯ (`openConversationMenu`).
+   * Every item acts on the active conversation and is disabled when it isn't
+   * persisted yet (a brand-new chat has nothing to act on); export is omitted
+   * when the active runtime doesn't support vault export, and move when there
+   * are no projects.
    */
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source)
@@ -983,7 +872,7 @@ export class ChatView extends ItemView {
         .setDisabled(!persisted)
         .onClick(() => {
           if (!persisted) return
-          this.beginTitleEditing()
+          this.chatRef.current?.beginRenameCurrentConversation()
         }),
     )
 
@@ -994,13 +883,51 @@ export class ChatView extends ItemView {
             ? this.plugin.t('sidebar.chatList.unpinConversation', 'Unpin')
             : this.plugin.t('sidebar.chatList.pinConversation', 'Pin'),
         )
-        .setIcon(state?.pinned ? 'star-off' : 'star')
+        .setIcon(state?.pinned ? 'pin-off' : 'pin')
         .setDisabled(!persisted)
         .onClick(() => {
           if (!persisted) return
           void this.chatRef.current?.toggleCurrentConversationPinned()
         }),
     )
+
+    const projects = this.plugin.settings.projects
+    if (projects.length > 0) {
+      menu.addItem((item) =>
+        item
+          .setTitle(
+            this.plugin.t('chat.projects.moveToProject', 'Move to project'),
+          )
+          .setIcon('folder-input')
+          .setDisabled(!persisted)
+          .onClick((event) => {
+            if (!persisted || !state) return
+            const doc = this.containerEl.ownerDocument
+            const fallback = this.containerEl.getBoundingClientRect()
+            showMoveToProjectMenu({
+              projects,
+              conversation: {
+                id: state.conversationId,
+                projectId: state.projectId,
+              },
+              onMove: (conversationId, projectId) =>
+                this.chatRef.current?.moveConversationToProject(
+                  conversationId,
+                  projectId,
+                ),
+              position:
+                event instanceof MouseEvent
+                  ? { x: event.clientX, y: event.clientY }
+                  : { x: fallback.left + 16, y: fallback.top + 48 },
+              doc,
+              removeLabel: this.plugin.t(
+                'chat.projects.removeFromProject',
+                'Remove from project',
+              ),
+            })
+          }),
+      )
+    }
 
     if (state?.canExport) {
       menu.addItem((item) =>

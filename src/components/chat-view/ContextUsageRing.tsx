@@ -39,7 +39,9 @@ export type ContextUsageRingProps = {
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>
 
 /**
- * Compact ring showing prompt-token usage against the model context window.
+ * Ring plus percentage showing prompt-token usage against the model context
+ * window; lives in the chat top bar. Without a known window size the label
+ * falls back to the raw token count.
  * Rendered as a `<button>` so it can act as a Popover trigger.
  *
  * IMPORTANT: when used as `<Popover.Trigger asChild>`, Radix's `Slot` clones
@@ -94,39 +96,40 @@ const ContextUsageRing = forwardRef<HTMLButtonElement, ContextUsageRingProps>(
         data-has-max={hasMax ? 'true' : 'false'}
         aria-label={titleLabel}
       >
-        <svg
-          className="yolo-context-usage-ring__svg"
-          viewBox="0 0 20 20"
-          aria-hidden="true"
-        >
-          <circle
-            className="yolo-context-usage-ring__track"
-            cx="10"
-            cy="10"
-            r={RING_RADIUS}
-          />
-          {hasMax ? (
+        <span className="yolo-context-usage-ring__dial">
+          <svg
+            className="yolo-context-usage-ring__svg"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
             <circle
-              className="yolo-context-usage-ring__progress"
+              className="yolo-context-usage-ring__track"
               cx="10"
               cy="10"
               r={RING_RADIUS}
-              strokeDasharray={RING_CIRCUMFERENCE}
-              strokeDashoffset={dashOffset}
             />
+            {hasMax ? (
+              <circle
+                className="yolo-context-usage-ring__progress"
+                cx="10"
+                cy="10"
+                r={RING_RADIUS}
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={dashOffset}
+              />
+            ) : null}
+          </svg>
+          {!hasMax ? (
+            <span
+              className="yolo-context-usage-ring__unknown-mark"
+              aria-hidden="true"
+            >
+              ?
+            </span>
           ) : null}
-        </svg>
-        {!hasMax ? (
-          <span
-            className="yolo-context-usage-ring__unknown-mark"
-            aria-hidden="true"
-          >
-            ?
-          </span>
-        ) : null}
-        <span className="yolo-context-usage-ring__sr-only">
-          {percentLabel ??
-            `${formatTokenCount(promptTokens)}${unknownMaxSuffix}`}
+        </span>
+        <span className="yolo-context-usage-ring__value">
+          {percentLabel ?? formatTokenCount(promptTokens)}
         </span>
       </button>
     )

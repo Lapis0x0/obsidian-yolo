@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover'
-import { type RefObject, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { CliContextUsageCategory } from '../../core/cli-runtime/types'
@@ -73,14 +73,26 @@ export function anchorBreakdownToServerTotal(
   }
 }
 
+/** 对话顶部栏显示的上下文占用：YOLO 和 CLI 运行时各自组装后交给头部 */
+export type ChatContextUsage = {
+  promptTokens: number
+  maxContextTokens: number | null
+  cacheHitRate?: number
+  label: string
+  /** When provided, the popover includes the native local-estimate breakdown. */
+  buildBreakdownInputs?: () =>
+    | ContextBreakdownInputs
+    | null
+    | Promise<ContextBreakdownInputs | null>
+  /** Provider-reported categories (Claude getContextUsage). */
+  categories?: readonly CliContextUsageCategory[]
+}
+
 export type ContextUsagePopoverProps = {
   promptTokens: number
   maxContextTokens: number | null
   cacheHitRate?: number
   label: string
-  /** Anchor ref pointing at the input-container so the popover lines up with
-   * the input box (not just the ring). */
-  anchorRef: RefObject<HTMLElement | null>
   /** When provided, opens the native per-bucket local estimate breakdown. */
   buildInputs?: () =>
     | ContextBreakdownInputs
@@ -96,7 +108,6 @@ export default function ContextUsagePopover({
   maxContextTokens,
   cacheHitRate,
   label,
-  anchorRef,
   buildInputs,
   categories,
 }: ContextUsagePopoverProps) {
@@ -159,16 +170,6 @@ export default function ContextUsagePopover({
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
-      {/* Radix typing wants RefObject<Measurable> with no null in current.
-          HTMLElement is structurally Measurable; the cast is safe and avoids
-          forcing the caller to keep two refs in lockstep. */}
-      <Popover.Anchor
-        virtualRef={
-          anchorRef as unknown as React.RefObject<{
-            getBoundingClientRect: () => DOMRect
-          }>
-        }
-      />
       <Popover.Trigger asChild>
         <ContextUsageRing
           promptTokens={promptTokens}
@@ -178,14 +179,13 @@ export default function ContextUsagePopover({
       </Popover.Trigger>
       <YoloPopoverContent
         variant="default"
-        anchorRef={anchorRef}
-        side="top"
-        align="start"
+        side="bottom"
+        align="end"
         sideOffset={8}
         collisionPadding={8}
         className="yolo-context-breakdown-popover"
         onOpenAutoFocus={(event) => {
-          // Don't steal focus from the input box.
+          // Don't steal focus from the composer.
           event.preventDefault()
         }}
       >

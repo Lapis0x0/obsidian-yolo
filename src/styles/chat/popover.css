@@ -1307,22 +1307,11 @@ body.is-tablet button.yolo-chat-input-model-select {
    宽度跟随 anchor（即 .yolo-chat-user-input-container）；
    背景 / 阴影沿用 --default 变体（见 popover/surface.css）。 */
 .yolo-popover-surface.yolo-context-breakdown-popover {
-  /* Keep the surface border for definition; drop only the shadow so the card
-   * sits flush above the input without a floating drop-shadow. */
-  box-shadow: none;
-  /* Width tracks the popper anchor element (the input-container, supplied via
-   * Popover.Anchor virtualRef in ContextUsagePopover). The Radix var is
-   * `--radix-popper-anchor-width` (note: popper, not popover) — popover-level
-   * vars only expose trigger width, which here is the tiny ring. */
-  width: var(--radix-popper-anchor-width);
-  /* Do NOT set `max-height` + `overflow: auto` here. The popover is anchored
-   * to the input container (auto-growing Lexical editor), and Radix Popper
-   * observes both anchor and content via ResizeObserver. A scrollbar that
-   * toggles on/off at the height threshold flips content width, which feeds
-   * back into the anchor-width binding above and causes a runaway
-   * "ResizeObserver loop completed with undelivered notifications" storm
-   * (thousands/sec). Content is small enough (6 rows + bar + header) that no
-   * cap is needed. */
+  /* Hangs below the ring in the chat top bar. Fixed width: the content is a
+   * fixed set of rows, and a width that tracked the content would jitter as
+   * the numbers change. No max-height either — six rows plus a bar never
+   * need to scroll. */
+  width: min(420px, calc(100vw - 16px));
   overflow: visible;
   padding: 10px 14px 6px;
 }

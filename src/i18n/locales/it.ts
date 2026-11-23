@@ -1786,7 +1786,6 @@ export const it: DeepPartial<TranslationKeys> = {
     newChat: 'Nuova chat',
     untitledConversation: 'Nuova chat',
     paneTitle: {
-      renameAriaLabel: 'Clicca per rinominare la conversazione',
       editingAriaLabel: 'Modifica del titolo della conversazione',
     },
     paneMenu: {

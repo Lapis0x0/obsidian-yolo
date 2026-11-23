@@ -1,0 +1,476 @@
+/*
+ * 对话页顶部栏（ChatHeader）：面包屑（项目 / 对话标题）、Agent 胶囊、上下文
+ * 占用、新对话。两种落点：
+ * - 原生视图标题栏显示着（桌面端标签页）：面包屑和按钮挂进 ChatView 在标题
+ *   栏里留的两个挂载点（.yolo-view-header-slot），⋯ 用原生的。
+ * - 没有原生标题栏（Obsidian 侧栏、用户关了标题栏、移动端）：自己画一条
+ *   .yolo-chat-topbar，带 ⋯；侧边栏摆放再加 `--compact` 收起次要信息。
+ */
+
+/* 原生标题栏 ------------------------------------------------------------ */
+
+/* 标题由挂载点里的面包屑显示，原生标题元素和它的文件路径一并藏起来 */
+.workspace-leaf-content[data-type='yolo-chat-view']
+  > .view-header
+  .view-header-title-container
+  > :not(.yolo-view-header-slot) {
+  display: none;
+}
+
+.yolo-view-header-slot:empty {
+  display: none;
+}
+
+.yolo-view-header-title-slot {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.yolo-view-header-actions-slot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-end: 2px;
+}
+
+/* 原生标题栏只盖在正文列上方：侧边栏属于视图内容，标题栏却横跨整个视图，
+ * 不处理的话它会压在侧边栏顶上。做法是让标题栏浮在叶子顶部、左边让出侧边栏
+ * 的宽度，内容区铺满整个高度（侧边栏于是顶到最上面），对话容器再往下让出
+ * 标题栏的高度。挂载点非空就说明顶部栏正挂在原生标题栏里。 */
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  ) {
+  --yolo-chat-header-inset: 0px;
+  position: relative;
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  ):has(.yolo-chat-sidebar--column) {
+  --yolo-chat-header-inset: var(--yolo-chat-sidebar-width);
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  ):has(.yolo-chat-sidebar--rail) {
+  --yolo-chat-header-inset: var(--yolo-chat-sidebar-rail-width);
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  )
+  > .view-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--yolo-chat-header-inset);
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  )
+  > .view-content {
+  height: 100%;
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  )
+  .yolo-chat-container {
+  padding-top: var(--header-height);
+}
+
+/* 侧边栏头部那一行和标题栏同高，两边的文字落在同一条线上 */
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  )
+  .yolo-chat-sidebar-header {
+  box-sizing: border-box;
+  height: var(--header-height);
+  padding-block: 0;
+  margin-bottom: 6px;
+}
+
+/* 自绘的栏 -------------------------------------------------------------- */
+
+.yolo-chat-topbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  margin-bottom: var(--size-2-2);
+}
+
+/* 面包屑 ---------------------------------------------------------------- */
+
+.yolo-chat-topbar-crumb {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+}
+
+button.yolo-chat-topbar-project,
+button.yolo-chat-topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  cursor: var(--cursor);
+}
+
+button.yolo-chat-topbar-project {
+  flex: 0 1 auto;
+  color: var(--text-muted);
+}
+
+button.yolo-chat-topbar-project:hover,
+button.yolo-chat-topbar-title.is-editable:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.yolo-chat-topbar-project-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--yolo-project-color) 20%, transparent);
+  color: var(--yolo-project-color);
+}
+
+.yolo-chat-topbar-project-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
+.yolo-chat-topbar-project-name,
+.yolo-chat-topbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-chat-topbar-sep {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.yolo-chat-topbar-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+/* 没有项目时标题是第一段，去掉按钮内边距带来的缩进，和下方正文左缘对齐 */
+span.yolo-chat-topbar-title {
+  padding: 0 6px;
+}
+
+button.yolo-chat-topbar-title {
+  display: block;
+  line-height: 28px;
+  text-align: start;
+}
+
+input.yolo-chat-topbar-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font: inherit;
+  font-weight: var(--font-medium);
+}
+
+/* Agent 胶囊 ------------------------------------------------------------ */
+
+button.yolo-chat-topbar-agent {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 45%;
+  height: 32px;
+  margin-inline-start: 8px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: var(--cursor);
+}
+
+button.yolo-chat-topbar-agent:hover,
+button.yolo-chat-topbar-agent[data-state='open'] {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-chat-topbar-agent-avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+}
+
+.yolo-chat-topbar-agent-avatar.is-yolo {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  color: var(--interactive-accent);
+}
+
+.yolo-chat-topbar-agent-avatar.is-cli {
+  border-radius: 6px;
+}
+
+.yolo-chat-topbar-agent-avatar svg {
+  width: 12px;
+  height: 12px;
+}
+
+.yolo-chat-topbar-agent-avatar img {
+  width: 16px;
+  height: 16px;
+}
+
+.yolo-chat-topbar-agent-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 来源和模型比名字先让位 */
+.yolo-chat-topbar-agent-meta {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-chat-topbar-agent-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+/* 图标按钮 -------------------------------------------------------------- */
+
+.yolo-chat-topbar-icon.clickable-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* 上下文占用 ------------------------------------------------------------ */
+
+/* The ring carries `.clickable-icon`: Obsidian core and themes style text
+ * buttons through `button:not(.clickable-icon)` (Primary, for one, adds
+ * `padding: 8px 12px`). What remains to reset is `.clickable-icon`'s own
+ * padding, radius, color and hover tint, which the `button.` selectors below
+ * outrank. */
+button.yolo-context-usage-ring {
+  --yolo-context-usage-ring-color: var(--text-muted);
+  /* Default track tone for the SVG ring — overridden on hover/open below. */
+  --yolo-context-usage-ring-track-stroke: color-mix(
+    in srgb,
+    var(--background-modifier-border) 70%,
+    transparent
+  );
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  color: var(--yolo-context-usage-ring-color);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  cursor: var(--cursor);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.yolo-context-usage-ring:hover,
+button.yolo-context-usage-ring:focus,
+button.yolo-context-usage-ring:active,
+button.yolo-context-usage-ring[data-state='open'] {
+  --yolo-context-usage-ring-track-stroke: color-mix(
+    in srgb,
+    var(--text-faint) 80%,
+    transparent
+  );
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--yolo-context-usage-ring-color);
+}
+
+button.yolo-context-usage-ring:focus:not(:focus-visible) {
+  background: transparent;
+}
+
+button.yolo-context-usage-ring:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.yolo-context-usage-ring[data-tone='warning'] {
+  --yolo-context-usage-ring-color: var(--text-warning);
+}
+
+.yolo-context-usage-ring[data-tone='danger'] {
+  --yolo-context-usage-ring-color: var(--text-error);
+}
+
+.yolo-context-usage-ring__dial {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* `svg.` outranks core `.clickable-icon svg { opacity: var(--icon-opacity) }`,
+ * which would otherwise dim the ring at rest. */
+svg.yolo-context-usage-ring__svg {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+  transform: rotate(-90deg);
+}
+
+.yolo-context-usage-ring__track,
+.yolo-context-usage-ring__progress {
+  fill: none;
+  stroke-width: 2.4;
+}
+
+.yolo-context-usage-ring__track {
+  stroke: var(--yolo-context-usage-ring-track-stroke);
+  transition: stroke var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-context-usage-ring__progress {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset var(--yolo-anim-duration-feedback) ease,
+    stroke var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-context-usage-ring__unknown-mark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 8px;
+  font-weight: var(--font-semibold);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.yolo-context-usage-ring__value {
+  line-height: 1;
+}
+
+/* 侧边栏摆放：宽度只有一两百像素，只留最要紧的 ------------------------ */
+
+.yolo-chat-topbar--compact {
+  height: 40px;
+}
+
+.yolo-chat-topbar--compact .yolo-chat-topbar-project-name,
+.yolo-chat-topbar--compact .yolo-chat-topbar-agent-meta,
+.yolo-chat-topbar--compact .yolo-context-usage-ring__value {
+  display: none;
+}
+
+.yolo-chat-topbar--compact button.yolo-chat-topbar-agent {
+  margin-inline-start: 4px;
+}
+
+/* 挂进原生标题栏：尺寸跟随原生标题栏（40px 高，标题用文件标题的字号） */
+
+.yolo-view-header-title-slot .yolo-chat-topbar-crumb {
+  gap: 2px;
+  font-size: var(--file-header-font-size, var(--font-ui-small));
+}
+
+.yolo-view-header-title-slot .yolo-chat-topbar-title {
+  font-weight: var(--file-header-font-weight, var(--font-normal));
+}
+
+.yolo-view-header-title-slot button.yolo-chat-topbar-project,
+.yolo-view-header-title-slot button.yolo-chat-topbar-title,
+.yolo-view-header-title-slot input.yolo-chat-topbar-title-input {
+  height: 24px;
+}
+
+.yolo-view-header-title-slot button.yolo-chat-topbar-title {
+  line-height: 24px;
+}
+
+.yolo-view-header-actions-slot button.yolo-chat-topbar-agent {
+  gap: 6px;
+  max-width: 360px;
+  height: 26px;
+  margin-inline-start: 0;
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-s);
+}
+
+.yolo-view-header-actions-slot .yolo-chat-topbar-agent-avatar {
+  width: 18px;
+  height: 18px;
+}
+
+.yolo-view-header-actions-slot button.yolo-context-usage-ring {
+  height: 26px;
+}
+
+/* 窄视图（侧边栏成了抽屉）里，胶囊只留 Agent 名，把位置让给标题 */
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    .yolo-chat-shell--drawer
+  )
+  .yolo-chat-topbar-agent-meta {
+  display: none;
+}

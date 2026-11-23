@@ -1930,7 +1930,6 @@ export const en: TranslationKeys = {
     newChat: 'New chat',
     untitledConversation: 'New chat',
     paneTitle: {
-      renameAriaLabel: 'Click to rename conversation',
       editingAriaLabel: 'Editing conversation title',
     },
     paneMenu: {

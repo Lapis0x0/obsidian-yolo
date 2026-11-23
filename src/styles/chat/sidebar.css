@@ -6,10 +6,15 @@
  * 下边缘；对话容器仍然留在原来的内边距里，排版不受影响。
  */
 
-.yolo-chat-shell {
-  --yolo-chat-sidebar-background: var(--background-secondary);
+/* 宽度定义在叶子上而不是外壳上：原生标题栏（外壳之外）要按它让出位置，
+ * 见 topbar.css */
+.workspace-leaf-content[data-type='yolo-chat-view'] {
   --yolo-chat-sidebar-width: 260px;
   --yolo-chat-sidebar-rail-width: 52px;
+}
+
+.yolo-chat-shell {
+  --yolo-chat-sidebar-background: var(--background-secondary);
   /* Obsidian 给 .view-content 的内边距，侧边栏要贴边就得逐边抵掉 */
   --yolo-chat-shell-pad-block-start: var(--size-4-3);
   --yolo-chat-shell-pad-inline-start: var(--size-4-3);

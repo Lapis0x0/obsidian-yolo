@@ -94,13 +94,14 @@ import {
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'
+import { resolveCliSelectedModel } from './chat-input/CliRuntimeControls'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge, {
   selectBadgeMentionables,
 } from './chat-input/MentionableBadge'
 import type { SlashCommand } from './chat-input/plugins/mention/SkillSlashPlugin'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
-import { ChatHeader } from './ChatHeader'
+import { ChatHeader, type NativeHeaderSlots } from './ChatHeader'
 import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
@@ -111,6 +112,7 @@ import type {
 } from './ChatSessionController'
 import { ChatSessionController } from './ChatSessionController'
 import CliChatSurface from './CliChatSurface'
+import type { ChatContextUsage } from './ContextUsagePopover'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import {
   useMobileChatViewContentClass,
@@ -218,13 +220,15 @@ export type ChatRef = {
   getCurrentConversationModelId: () => string | undefined
   getRuntimeSnapshot: () => ChatRuntimeSnapshot
   /**
-   * Renames the currently active conversation. No-ops when there is no
-   * active persisted conversation to rename (e.g. a brand-new, not-yet-saved
-   * chat) — the pane-title inline editor (ChatView) only enters edit mode
-   * when a persisted conversation is active, so this guard is defense in
-   * depth rather than the primary gate.
+   * Puts the top bar's conversation title into inline edit mode (the pane
+   * menu's Rename). No-ops when there is no persisted conversation.
    */
-  renameCurrentConversation: (title: string) => Promise<void>
+  beginRenameCurrentConversation: () => void
+  /** Moves a conversation into a project, or out of one with `null`. */
+  moveConversationToProject: (
+    conversationId: string,
+    projectId: string | null,
+  ) => Promise<void>
   /** Open a delegated subagent's detail view in this chat (#645). */
   openSubagentDetail: (conversationId: string, source: TaskSource) => void
   /**
@@ -268,6 +272,7 @@ export type ConversationMenuState = {
   persisted: boolean
   pinned: boolean
   canExport: boolean
+  projectId?: string
 }
 
 /**
@@ -304,6 +309,10 @@ export type ChatProps = {
   seededRuntimeSnapshot?: ChatRuntimeSnapshot
   /** 每当影响 ChatRuntimeSnapshot 的 state 变化时上报当前快照。 */
   onRuntimeSnapshotChange?: (snapshot: ChatRuntimeSnapshot) => void
+  /** 顶部栏 ⋯：由 ChatView 弹出和标签页右键同一份的对话菜单 */
+  onOpenConversationMenu?: (anchor: HTMLElement) => void
+  /** 原生视图标题栏里留给顶部栏的挂载点，见 ChatView.ensureNativeHeaderSlots */
+  nativeHeader?: NativeHeaderSlots
   onConversationContextChange?: (context: {
     currentConversationId?: string
     currentConversationPersisted?: boolean
@@ -554,8 +563,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     containerElement,
     mobileKeyboardViewportHeight !== null,
   )
-  const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
-  const [workspaceWideHeaderHeight, setWorkspaceWideHeaderHeight] = useState(0)
   // 侧边栏 + 对话容器的外壳。侧边栏是常驻列还是抽屉，按它的宽度判断。
   const shellRef = useRef<HTMLDivElement | null>(null)
   const sidebarLayout = useChatSidebarLayout(app, shellRef)
@@ -828,21 +835,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ? ' yolo-chat-container--sidebar'
       : ' yolo-chat-container--centered'
   }${
-    !isSidebarPlacement && isWorkspaceWideHeader
-      ? ' yolo-chat-container--workspace-wide-header'
-      : ''
-  }${
     mobileKeyboardViewportHeight !== null
       ? ' yolo-chat-container--mobile-keyboard-managed'
       : ''
   }`
   const fontScale = settings.chatOptions.chatFontScale
   const containerStyle = {
-    ...(!isSidebarPlacement && isWorkspaceWideHeader
-      ? {
-          '--yolo-chat-workspace-header-height': `${workspaceWideHeaderHeight}px`,
-        }
-      : {}),
     ...(mobileKeyboardViewportHeight !== null
       ? {
           '--yolo-chat-mobile-viewport-height': `${mobileKeyboardViewportHeight}px`,
@@ -1144,6 +1142,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       : undefined
     return getConversationDisplayTitle(rawTitle, untitledFallback)
   }, [activeHistoryConversationId, chatList, untitledFallback])
+
+  // 顶部栏标题的原地重命名；面板菜单的「重命名」也走这里
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false)
+  useEffect(() => {
+    setIsRenamingTitle(false)
+  }, [activeHistoryConversationId])
+  const renameConversation = useCallback(
+    async (conversationId: string, title: string) => {
+      await updateConversationTitle(conversationId, title)
+      syncCliConversationTitle(conversationId, title)
+    },
+    [syncCliConversationTitle, updateConversationTitle],
+  )
 
   useEffect(() => {
     props.onConversationContextChange?.({
@@ -1670,17 +1681,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     openSubagentDetail: (conversationId: string, source: TaskSource) => {
       setSubagentDetailRequest({ conversationId, source })
     },
-    renameCurrentConversation: async (title: string) => {
-      const trimmedTitle = title.trim()
-      if (
-        !trimmedTitle ||
-        !activeHistoryConversationId ||
-        !currentConversationPersisted
-      ) {
-        return
-      }
-      await updateConversationTitle(activeHistoryConversationId, trimmedTitle)
-      syncCliConversationTitle(activeHistoryConversationId, trimmedTitle)
+    beginRenameCurrentConversation: () => {
+      if (!currentConversationPersisted) return
+      setIsRenamingTitle(true)
+    },
+    moveConversationToProject: async (conversationId, projectId) => {
+      await setConversationProject(conversationId, projectId)
     },
     exportCurrentConversation: () => {
       if (!RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport) return
@@ -1696,6 +1702,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         chatList.find((chat) => chat.id === activeHistoryConversationId)
           ?.isPinned ?? false,
       canExport: RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport,
+      projectId: conversationProject?.id,
     }),
     toggleCurrentConversationPinned: async () => {
       if (!activeHistoryConversationId || !currentConversationPersisted) {
@@ -1806,26 +1813,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const header = (
-    <ChatHeader
-      isSidebarPlacement={isSidebarPlacement}
-      activeRuntimeId={activeRuntimeId}
-      currentAgent={currentAgent}
-      onSwitchAgent={switchAgent}
-      cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
-      containerRef={containerRef}
-      isWorkspaceWideHeader={isWorkspaceWideHeader}
-      setIsWorkspaceWideHeader={setIsWorkspaceWideHeader}
-      setWorkspaceWideHeaderHeight={setWorkspaceWideHeaderHeight}
-      handleNewChat={handleNewChat}
-      handleExportChatToVault={handleExportChatToVault}
-      currentConversationId={currentConversationId}
-      onOpenSidebar={
-        sidebarLayout.layout === 'drawer' ? sidebarLayout.toggle : undefined
-      }
-    />
-  )
-
   const retryConversationTitle = useCallback(
     async (conversationId: string) => {
       const conversation = await getConversationById(conversationId)
@@ -1865,10 +1852,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       runSummariesByConversationId={runSummariesByConversationId}
       onSelectConversation={handleLoadConversation}
       onDeleteConversation={deleteConversationWithCleanup}
-      onUpdateTitle={async (conversationId, newTitle) => {
-        await updateConversationTitle(conversationId, newTitle)
-        syncCliConversationTitle(conversationId, newTitle)
-      }}
+      onUpdateTitle={renameConversation}
       onTogglePinned={toggleConversationPinned}
       onRetryTitle={retryConversationTitle}
       onExportConversation={handleExportChatToVault}
@@ -1910,7 +1894,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return buildContextBreakdownInputsRef.current(chatMessagesStateRef.current)
   }, [buildContextBreakdownInputsRef])
 
-  const mainInputContextUsage = useMemo<ChatUserInputProps['contextUsage']>(
+  const mainInputContextUsage = useMemo<ChatContextUsage | undefined>(
     () =>
       headerContextUsage
         ? {
@@ -1925,9 +1909,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : undefined,
     [headerContextUsage, buildMainInputContextBreakdownInputs, t],
   )
-  const cliInputContextUsage = useMemo<
-    ChatUserInputProps['contextUsage']
-  >(() => {
+  const cliInputContextUsage = useMemo<ChatContextUsage | undefined>(() => {
     const usage = activeCliConversationSnapshot?.contextUsage
     if (!usage) return undefined
     return {
@@ -1942,6 +1924,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : {}),
     }
   }, [activeCliConversationSnapshot?.contextUsage, t])
+
   // `/` 菜单按运行时 capability 组装原生动作条目：supportsContextCompaction
   // 贡献压缩上下文，hasPluginManagement 贡献插件管理，hasNativeMcpPanel
   // 贡献 MCP 状态；hermes 仅支持压缩上下文（`/compress`），无插件管理与 MCP 状态。
@@ -2047,6 +2030,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
       : undefined
   const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
+
+  // 顶部栏 Agent 胶囊里跟在名字后面的模型：YOLO 用对话当前模型，CLI 用会话
+  // 配置里实际生效的模型（和输入框模型选择器同一口径）
+  const headerModelLabel = isCliRuntimeActive
+    ? (resolveCliSelectedModel(
+        activeCliConversationSnapshot?.configuration ?? null,
+        cliModelCatalog.get(activeRuntimeId),
+      ).selected?.label ?? null)
+    : currentConversationModel
+      ? (currentConversationModel.name ?? currentConversationModel.model)
+      : null
+  const header = (
+    <ChatHeader
+      isSidebarPlacement={isSidebarPlacement}
+      nativeHeader={props.nativeHeader}
+      currentAgent={currentAgent}
+      onSwitchAgent={switchAgent}
+      cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
+      modelLabel={headerModelLabel}
+      title={currentConversationTitle}
+      canRename={currentConversationPersisted}
+      renaming={isRenamingTitle}
+      onRenamingChange={setIsRenamingTitle}
+      onRename={(title) =>
+        renameConversation(activeHistoryConversationId, title)
+      }
+      project={conversationProject}
+      onOpenProject={openProject}
+      onOpenMenu={props.onOpenConversationMenu}
+      contextUsage={
+        isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
+      }
+      handleNewChat={handleNewChat}
+      onOpenSidebar={
+        sidebarLayout.layout === 'drawer' ? sidebarLayout.toggle : undefined
+      }
+    />
+  )
+
   // Main-input display/config differences are looked up from the static
   // capability table rather than branched inline; only "which data source" ternaries stay here.
   const mainInputCapabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
@@ -2272,9 +2294,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             : false
         }
         onAbort={handleMainInputAbort}
-        contextUsage={
-          isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
-        }
         showQuickAccess={
           activeSurfaceEmpty && !isSidebarPlacement && !conversationProject
         }

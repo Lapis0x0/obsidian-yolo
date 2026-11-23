@@ -153,7 +153,8 @@ const createView = (
     app: {},
     leaf: {},
     containerEl: {
-      children: [{}, host],
+      // 叶子的第一个子元素：不是原生标题栏，ChatView 就不留挂载点
+      children: [{ classList: { contains: () => false } }, host],
       win: { cancelAnimationFrame: jest.fn() },
     },
     root: null,

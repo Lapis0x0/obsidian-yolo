@@ -1833,7 +1833,6 @@ export const zh: TranslationKeys = {
     newChat: '新对话',
     untitledConversation: '新对话',
     paneTitle: {
-      renameAriaLabel: '点击重命名对话',
       editingAriaLabel: '正在编辑对话标题',
     },
     paneMenu: {

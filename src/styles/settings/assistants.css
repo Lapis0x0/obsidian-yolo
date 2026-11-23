@@ -10,80 +10,6 @@
   gap: var(--size-4-1);
 }
 
-/* Assistant selector styles - matched with model selector */
-.yolo-chat-header-right button.yolo-assistant-selector-button {
-  all: unset;
-  display: flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border: 0 !important;
-  padding: 0 !important;
-  font-size: var(--font-smallest) !important;
-  font-weight: var(--font-medium) !important;
-  color: var(--text-muted) !important;
-  cursor: pointer !important;
-  height: auto !important;
-  min-width: 34px !important;
-  flex: 0 100 auto !important;
-  margin-left: auto !important;
-}
-
-.yolo-chat-header-right button.yolo-assistant-selector-button:hover {
-  color: var(--text-normal) !important;
-  background-color: transparent !important;
-}
-
-.yolo-chat-header-right
-  button.yolo-assistant-selector-button[data-state='open'] {
-  color: var(--text-normal) !important;
-}
-
-.yolo-chat-header-right .yolo-assistant-selector-current {
-  flex-shrink: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.yolo-chat-header-right .yolo-assistant-selector-icon {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.yolo-assistant-selector-current-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: linear-gradient(
-    135deg,
-    color-mix(
-      in srgb,
-      var(--h1-color, var(--interactive-accent)) 90%,
-      transparent
-    ),
-    color-mix(
-      in srgb,
-      var(--h1-color, var(--interactive-accent)) 60%,
-      #ffffff 12%
-    )
-  );
-  color: var(--text-on-accent, #ffffff);
-  box-shadow: 0 0 8px rgba(var(--interactive-accent-rgb, 128 90 213), 0.25);
-}
-
-.yolo-assistant-selector-current-icon svg {
-  width: 12px;
-  height: 12px;
-}
-
 .yolo-assistant-selector-content {
   padding: var(--size-2-1);
   min-width: 240px;
@@ -687,12 +613,6 @@ button.yolo-assistant-selector-footer-btn:hover {
 }
 
 /* ==================== Emoji Icon Styles (No Background) ==================== */
-
-/* 助手选择器当前图标 - emoji 无背景 */
-.yolo-assistant-selector-current-icon:has(.yolo-icon-emoji) {
-  background: none;
-  box-shadow: none;
-}
 
 /* 助手选择器列表项图标 - emoji 无背景 */
 .yolo-assistant-selector-item-icon:has(.yolo-icon-emoji) {

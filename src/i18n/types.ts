@@ -1659,7 +1659,6 @@ export type TranslationKeys = {
     newChat: string
     untitledConversation?: string
     paneTitle?: {
-      renameAriaLabel?: string
       editingAriaLabel?: string
     }
     /** ⋯ pane menu (view header, `ItemView.onPaneMenu`) — issue #567 Step 2. */

@@ -16,6 +16,26 @@ import { ReasoningSelect } from './ReasoningSelect'
 
 const LOADING_VALUE = '__yolo_cli_loading__'
 
+/**
+ * CLI 会话当前实际使用的模型：会话配置里选中的那个，没选就是 CLI 自报的
+ * 默认模型。配置还没加载时用上次缓存的模型列表。输入框的模型选择器和对话
+ * 顶部栏的 Agent 胶囊都按这个口径显示。
+ */
+export function resolveCliSelectedModel(
+  configuration: CliRuntimeConfiguration | null,
+  cachedModels: readonly CliRuntimeModel[] = [],
+): { models: readonly CliRuntimeModel[]; selected: CliRuntimeModel | null } {
+  const models = configuration?.models.length
+    ? configuration.models
+    : cachedModels
+  const selected =
+    models.find((model) => model.id === configuration?.modelId) ??
+    models.find((model) => model.isDefault) ??
+    models[0] ??
+    null
+  return { models, selected }
+}
+
 type CliRuntimeControlsProps = {
   configuration: CliRuntimeConfiguration | null
   cachedModels?: readonly CliRuntimeModel[]
@@ -39,9 +59,10 @@ export function CliRuntimeControls({
   onToggleDefaultModel,
 }: CliRuntimeControlsProps) {
   const { t } = useLanguage()
-  const models = configuration?.models.length
-    ? configuration.models
-    : cachedModels
+  const { models, selected: selectedModel } = resolveCliSelectedModel(
+    configuration,
+    cachedModels,
+  )
   const descriptor = getCliRuntimeDescriptor(runtimeId)
   const providerName = t(descriptor.labelKey, descriptor.defaultLabel)
   const providerLabel = providerName.toUpperCase()
@@ -49,11 +70,6 @@ export function CliRuntimeControls({
     'chat.cliControls.defaultModel',
     '{provider} default model',
   ).replace('{provider}', providerName)
-  const selectedModel =
-    models.find((model) => model.id === configuration?.modelId) ??
-    models.find((model) => model.isDefault) ??
-    models[0] ??
-    null
   const efforts = selectedModel?.reasoningEfforts ?? []
   const reasoningLevels: ReasoningLevel[] = [
     'auto',

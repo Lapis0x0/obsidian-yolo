@@ -27,7 +27,6 @@ import {
   availableBuiltinChatModes,
   isModuleChatMode,
 } from '../../../core/agent/chat-mode'
-import type { CliContextUsageCategory } from '../../../core/cli-runtime/types'
 import { getYoloSnippetsPath } from '../../../core/paths/yoloPaths'
 import type { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
@@ -45,9 +44,7 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import ContextUsagePopover from '../ContextUsagePopover'
 import { useSnippetEntries } from '../hooks/useSnippetEntries'
-import type { ContextBreakdownInputs } from '../useContextBreakdown'
 
 import {
   type ChatInputEditorSeed,
@@ -139,20 +136,6 @@ export type ChatUserInputProps = {
   isGenerating?: boolean
   canQueueWhileGenerating?: boolean
   onAbort?: () => void
-  // 上下文窗口占用环，传入时显示在发送按钮左侧
-  contextUsage?: {
-    promptTokens: number
-    maxContextTokens: number | null
-    cacheHitRate?: number
-    label: string
-    /** When provided, the popover includes the native local-estimate breakdown. */
-    buildBreakdownInputs?: () =>
-      | ContextBreakdownInputs
-      | null
-      | Promise<ContextBreakdownInputs | null>
-    /** Provider-reported categories (Claude getContextUsage). */
-    categories?: readonly CliContextUsageCategory[]
-  }
   showQuickAccess?: boolean
   /** Runtime-native skills; bypasses assistant-specific YOLO skill policy. */
   skillEntries?: LiteSkillEntry[]
@@ -216,7 +199,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       isGenerating = false,
       canQueueWhileGenerating = true,
       onAbort,
-      contextUsage,
       showQuickAccess = false,
       skillEntries,
       quickAccessSkillEntries,
@@ -723,19 +705,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         />
       ) : null
 
-    const renderContextUsageControl = () =>
-      contextUsage ? (
-        <ContextUsagePopover
-          promptTokens={contextUsage.promptTokens}
-          maxContextTokens={contextUsage.maxContextTokens}
-          cacheHitRate={contextUsage.cacheHitRate}
-          label={contextUsage.label}
-          anchorRef={containerRef}
-          buildInputs={contextUsage.buildBreakdownInputs}
-          categories={contextUsage.categories}
-        />
-      ) : null
-
     const renderSubmitControl = () => (
       <SubmitButton
         onClick={() => coreRef.current?.submit()}
@@ -946,7 +915,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 )}
               </div>
               <div className="yolo-chat-user-input-controls__right">
-                {renderContextUsageControl()}
                 {renderSubmitControl()}
               </div>
             </div>
@@ -959,7 +927,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 onUpload={(files) => coreRef.current?.uploadFiles(files)}
               />
               <div className="yolo-chat-user-input-send-row__right">
-                {renderContextUsageControl()}
                 {renderSubmitControl()}
               </div>
             </div>
