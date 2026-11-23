@@ -73,7 +73,6 @@ import type {
   ConversationTimelineRendererContract,
 } from './conversation-surface-contract'
 import { ConversationSurface } from './ConversationSurface'
-import { syncRenderedLatexSelection } from './rendered-source-copy'
 import { LiveEdgeFollowProvider } from './live-edge-follow-context'
 import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'
@@ -84,6 +83,7 @@ import {
 } from './messageNavigatorUtils'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import { syncRenderedLatexSelection } from './rendered-source-copy'
 import {
   type SubagentDetailRequest,
   useSubagentDetailRequest,
@@ -703,9 +703,10 @@ export function YoloChatSurface({
     onDismiss: dismissHistoricalUserMessage,
   })
 
-  // 与迁移前完全一致：仅在渲染出的 Markdown 上同步渲染态 LaTeX 的选区。
+  // 仅在渲染出的 Markdown 上同步渲染态 LaTeX 的选区。
+  // 消息列表按会话 id 重新挂载，滚动容器随之换成新元素；监听必须跟着当前元素
+  // 重绑，否则切换会话后选区判断仍对着已卸载的旧容器，高亮再也不会被清除。
   useEffect(() => {
-    const chatMessagesElement = chatMessagesRef.current
     if (!chatMessagesElement) {
       return
     }
@@ -767,7 +768,7 @@ export function YoloChatSurface({
         latexSelectionSyncFrameRef.current = null
       }
     }
-  }, [])
+  }, [chatMessagesElement])
 
   const activeStreamingMessageId = useMemo(() => {
     for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
