@@ -8,8 +8,11 @@
 // 回收之后 UI 读到 null，LiveTaskCard 回落到已持久化的工具结果，这正是终态内容的
 // 长期归宿，因此回收不会丢失用户可见的信息。
 
-/** snapshot 中 stdout/stderr 字段的最大字符数（超出时从前端截断） */
-const SNAPSHOT_MAX_CHARS = 1 * 1024 * 1024 // 1MB chars
+// snapshot 中 stdout/stderr 字段的最大字符数（超出时从前端截断）。
+// 实时视图只是「现在在发生什么」的窗口：命令结束后模型拿到、会话里保存的输出
+// 本就只有 32 KB（session-manager 的 MAX_OUTPUT_BYTES），实时快照与它同一量级，
+// 多出来的部分运行结束后谁也看不到，却要在运行期间逐行渲染、逐块拼接（#665）。
+const SNAPSHOT_MAX_CHARS = 32 * 1024
 const SNAPSHOT_TRUNCATION_MARKER = '... [front truncated] ...\n'
 
 export type LiveTaskStatus = 'starting' | 'running' | 'done'
