@@ -69,7 +69,6 @@ import {
   resolveCliModePreference,
 } from './cliRuntimePreferences'
 import type { QueryProgressState } from './QueryProgress'
-import type { useChatStreamManager } from './useChatStreamManager'
 
 /**
  * 会话分支状态的可持久化裁剪：只保留仍存在于 messages 中的 user 消息 id，
@@ -127,11 +126,6 @@ export type UseYoloChatSessionParams = {
   >['createOrTouchCliConversation']
   getConversationById: ReturnType<typeof useChatHistory>['getConversationById']
   chatList: ReturnType<typeof useChatHistory>['chatList']
-
-  // Stream manager (single instance owned by Chat.tsx)
-  submitChatMutation: ReturnType<
-    typeof useChatStreamManager
-  >['submitChatMutation']
 
   // Message/session identity — raw state stays declared in Chat.tsx (shared
   // with useChatInputController and useCliRuntimeOrchestration), threaded in
@@ -268,7 +262,6 @@ export function useYoloChatSession({
   createOrTouchCliConversation,
   getConversationById,
   chatList,
-  submitChatMutation,
   chatMessagesStateRef,
   chatMessages,
   setChatMessages,
@@ -1453,27 +1446,6 @@ export function useYoloChatSession({
     replaceInputMessage,
     t,
   ])
-
-  // Auto-run when external agent results arrive for the current conversation
-  useEffect(() => {
-    const unsubscribe = agentService.subscribeToPendingBackgroundTaskResults(
-      (conversationId) => {
-        if (conversationId !== currentConversationId) return
-        if (agentService.isRunning(conversationId)) return
-        // Pull the latest messages directly from AgentSessionService — the React
-        // closure's `chatMessages` is stale at this point because the result
-        // was just appended synchronously and React hasn't re-rendered yet.
-        const latestMessages = agentService.getState(conversationId).messages
-        submitChatMutation.mutate({
-          chatMessages: latestMessages,
-          conversationId,
-        })
-      },
-    )
-    return () => {
-      unsubscribe()
-    }
-  }, [agentService, currentConversationId, submitChatMutation])
 
   // Ensure the conversation is persisted once a run that was in-flight while
   // the persist call would have been skipped settles.

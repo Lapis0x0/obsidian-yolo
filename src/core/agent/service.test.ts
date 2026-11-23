@@ -7,8 +7,10 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { backgroundTaskCompletionBus } from './background-task/completion-bus'
 import {
+  type AgentConversationState,
   AgentSessionService,
   RUNNING_PERSIST_MIN_INTERVAL_MS,
+  buildAgentConversationRunSummary,
   mergeVisibleMessages,
   resolveVisibleHistoryPrefix,
 } from './service'
@@ -39,7 +41,6 @@ type AgentServiceInternals = {
   foregroundToolAbortersByConversation: Map<string, unknown>
   persistTimers: Map<string, unknown>
   pendingBackgroundTaskResults: Map<string, unknown>
-  autoRunScheduled: Set<string>
   pendingUserMessagesByKey: Map<string, unknown>
   continuationScheduledByKey: Set<string>
 }
@@ -1049,7 +1050,6 @@ describe('AgentSessionService dropConversation', () => {
       abort: foregroundAbort,
     })
 
-    internals.autoRunScheduled.add('conv-drop')
     internals.pendingBackgroundTaskResults.set('conv-drop', [])
     internals.pendingUserMessagesByKey.set('conv-drop::default', [
       makeUserMessage('queued-1', 'queued'),
@@ -1072,7 +1072,6 @@ describe('AgentSessionService dropConversation', () => {
     })
     expect(internals.conversationEntries.has('conv-drop')).toBe(false)
     expect(internals.persistTimers.has('conv-drop')).toBe(false)
-    expect(internals.autoRunScheduled.has('conv-drop')).toBe(false)
     expect(internals.pendingBackgroundTaskResults.has('conv-drop')).toBe(false)
     expect(internals.pendingUserMessagesByKey.has('conv-drop::default')).toBe(
       false,
@@ -1677,6 +1676,116 @@ const makeAssistantToolMessages = ({
     },
   ]
 }
+
+describe('AgentSessionService background results carry the turn on', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+  })
+
+  const pushSubagentResult = (conversationId: string, taskId: string) => {
+    const record = { ...makeFailedSubagentTaskRecord(), conversationId, taskId }
+    subagentTaskRegistry.register(record)
+    backgroundTaskCompletionBus.pushCompleted({
+      kind: 'subagent',
+      taskId,
+      conversationId,
+      record,
+    })
+  }
+
+  const startTurn = (service: AgentSessionService, conversationId: string) =>
+    service.run({
+      conversationId,
+      loopConfig: { maxAutoIterations: 100 },
+      input: buildBaseRunInput(conversationId, [makeUserMessage('u1', 'hi')]),
+    })
+
+  it('continues the turn itself, within the same turn, when a result arrives after the run settled', async () => {
+    const service = new AgentSessionService()
+    service.startBackgroundTaskResultListener()
+    try {
+      const runPromise = startTurn(service, 'conv-bg-idle')
+      runtimeInstances[0].resolveRun()
+      await runPromise
+
+      const published: AgentConversationState[] = []
+      service.subscribe('conv-bg-idle', (state) => published.push(state), {
+        emitCurrent: false,
+      })
+      pushSubagentResult('conv-bg-idle', 'task-bg-idle')
+
+      expect(runtimeInstances).toHaveLength(2)
+      const input = runtimeInstances[1].getRunInput()
+      // History carries on from the result; the replies belong to u1's turn.
+      expect(input?.messages.at(-1)).toMatchObject({ role: 'subagent_result' })
+      expect(input?.sourceUserMessageId).toBe('u1')
+      expect(
+        service.getConversationRunSummary('conv-bg-idle').anchorMessageId,
+      ).toBe('u1')
+      // No settled frame between the result arriving and the turn going on.
+      expect(published.length).toBeGreaterThan(0)
+      expect(
+        published.every(
+          (state) => buildAgentConversationRunSummary(state).isActive,
+        ),
+      ).toBe(true)
+
+      runtimeInstances[1].resolveRun()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
+  })
+
+  it('carries the turn on with results that arrived while it ran, as the run settles', async () => {
+    const service = new AgentSessionService()
+    service.startBackgroundTaskResultListener()
+    try {
+      const runPromise = startTurn(service, 'conv-bg-running')
+      pushSubagentResult('conv-bg-running', 'task-bg-running')
+      expect(runtimeInstances).toHaveLength(1)
+
+      runtimeInstances[0].resolveRun()
+      await runPromise
+
+      expect(runtimeInstances).toHaveLength(2)
+      expect(runtimeInstances[1].getRunInput()?.messages.at(-1)).toMatchObject({
+        role: 'subagent_result',
+      })
+      expect(
+        service.getConversationRunSummary('conv-bg-running').isActive,
+      ).toBe(true)
+
+      runtimeInstances[1].resolveRun()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
+  })
+
+  it('still wakes the agent with a result that arrives after the user stopped the run', async () => {
+    const service = new AgentSessionService()
+    service.startBackgroundTaskResultListener()
+    try {
+      const runPromise = startTurn(service, 'conv-bg-stopped')
+      service.abortConversation('conv-bg-stopped')
+      const abortError = new Error('aborted')
+      abortError.name = 'AbortError'
+      runtimeInstances[0].rejectRun(abortError)
+      await runPromise
+
+      pushSubagentResult('conv-bg-stopped', 'task-bg-stopped')
+
+      expect(runtimeInstances).toHaveLength(2)
+      const input = runtimeInstances[1].getRunInput()
+      expect(input?.messages.at(-1)).toMatchObject({ role: 'subagent_result' })
+      // The stopped run's abort signal does not carry over and stop it at once.
+      expect(input?.abortSignal).toBeUndefined()
+
+      runtimeInstances[1].resolveRun()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
+  })
+})
 
 describe('AgentSessionService continuation input', () => {
   beforeEach(() => {

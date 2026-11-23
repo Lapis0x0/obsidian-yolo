@@ -1338,7 +1338,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     createOrTouchCliConversation,
     getConversationById,
     chatList,
-    submitChatMutation,
     chatMessagesStateRef,
     chatMessages,
     setChatMessages,

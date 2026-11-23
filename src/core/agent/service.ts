@@ -161,7 +161,7 @@ export type AgentConversationRunSummarySubscriber = (
   summaries: Map<string, AgentConversationRunSummary>,
 ) => void
 
-type PendingApprovalRecoveryContext = {
+type LastRunContext = {
   lastRunInput: AgentRuntimeRunInput
   lastLoopConfig: AgentRuntimeLoopConfig
 }
@@ -172,10 +172,12 @@ type ConversationEntry = {
   baseMessages: ChatMessage[]
   persistState: boolean
   /**
-   * Captured when a run finalizes while tool calls still await approval.
-   * Needed because `runEntries` are removed on settle but the UI approves later.
+   * The default branch's last run input and loop config, kept after the run
+   * settles (`runEntries` are removed then) so the turn can carry on without
+   * the view: approving a tool call that still awaits approval, or a
+   * background task result arriving.
    */
-  pendingApprovalRecoveryContext?: PendingApprovalRecoveryContext
+  lastRunContext?: LastRunContext
 }
 
 type AgentRunEntry = {
@@ -685,6 +687,16 @@ const hasRunningMainToolCall = (messages: ChatMessage[]): boolean => {
   )
 }
 
+const findLastUserMessageId = (messages: ChatMessage[]): string | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'user') {
+      return message.id
+    }
+  }
+  return undefined
+}
+
 const hasPendingUserInteraction = (messages: ChatMessage[]): boolean => {
   return hasPendingApproval(messages) || hasAwaitingUserInput(messages)
 }
@@ -922,10 +934,6 @@ const buildBranchAggregateMessages = ({
   ]
 }
 
-export type PendingBackgroundTaskResultsSubscriber = (
-  conversationId: string,
-) => void
-
 export type EnqueueUserMessageResult =
   | 'enqueued'
   | 'idle'
@@ -995,14 +1003,7 @@ export class AgentSessionService {
     string,
     BackgroundTaskEvent[]
   >()
-  private pendingResultsSubscribers =
-    new Set<PendingBackgroundTaskResultsSubscriber>()
   private unsubscribeBackgroundTaskCompleted: (() => void) | null = null
-  // Conversations that have notified subscribers about an auto-run trigger but
-  // whose run hasn't yet flipped `isRunning` to true. Prevents duplicate
-  // auto-runs when multiple background completion events arrive in the gap between
-  // `submitChatMutation.mutate` and `agentService.run` actually starting.
-  private autoRunScheduled = new Set<string>()
   /**
    * Mid-run user messages queued per run key (conversationId+branchId), waiting
    * to be injected at the next `llm_request` boundary by the runtime, or used
@@ -1103,7 +1104,6 @@ export class AgentSessionService {
       }
     }
 
-    this.autoRunScheduled.delete(conversationId)
     this.pendingBackgroundTaskResults.delete(conversationId)
     this.lastPersistedAt.delete(conversationId)
     this.conversationEntries.delete(conversationId)
@@ -1209,16 +1209,6 @@ export class AgentSessionService {
     }
   }
 
-  /** Subscribe to be notified when pending background task results are ready to drain */
-  subscribeToPendingBackgroundTaskResults(
-    fn: PendingBackgroundTaskResultsSubscriber,
-  ): () => void {
-    this.pendingResultsSubscribers.add(fn)
-    return () => {
-      this.pendingResultsSubscribers.delete(fn)
-    }
-  }
-
   startBackgroundTaskResultListener(): void {
     if (this.unsubscribeBackgroundTaskCompleted) return
     this.unsubscribeBackgroundTaskCompleted =
@@ -1238,31 +1228,13 @@ export class AgentSessionService {
       this.compactCompletedBackgroundTaskRecord(event)
       return
     }
-    const isRunning = this.isRunning(conversationId)
-    const autoRunPending = this.autoRunScheduled.has(conversationId)
-
-    if (isRunning || autoRunPending) {
-      const queue = this.pendingBackgroundTaskResults.get(conversationId) ?? []
-      queue.push(event)
-      this.pendingBackgroundTaskResults.set(conversationId, queue)
-    } else {
-      this.autoRunScheduled.add(conversationId)
-      this.appendBackgroundTaskResultEvent(conversationId, event)
-      this.notifyPendingResultsSubscribers(conversationId)
+    const queue = this.pendingBackgroundTaskResults.get(conversationId) ?? []
+    queue.push(event)
+    this.pendingBackgroundTaskResults.set(conversationId, queue)
+    // A running turn takes the results in once its run settles.
+    if (!this.isRunning(conversationId)) {
+      this.deliverPendingBackgroundTaskResults(conversationId)
     }
-  }
-
-  private appendBackgroundTaskResultEvent(
-    conversationId: string,
-    event: BackgroundTaskEvent,
-  ): void {
-    const msg = this.buildBackgroundTaskResultMessage(event)
-    const entry = this.getOrCreateConversationEntry(conversationId)
-    const nextMessages = [...entry.state.messages, msg]
-    entry.baseMessages = nextMessages
-    entry.state = { ...entry.state, messages: nextMessages }
-    this.notifyConversationSubscribers(conversationId)
-    this.compactCompletedBackgroundTaskRecord(event)
   }
 
   private buildBackgroundTaskResultMessage(
@@ -1277,31 +1249,54 @@ export class AgentSessionService {
     }
   }
 
-  drainPendingBackgroundTaskResults(conversationId: string): ChatMessage[] {
+  /**
+   * Append the queued background results and carry the turn on with them, as
+   * the agent would have read them had it still been running. The service
+   * starts that run itself rather than leaving it to the view: the turn must go
+   * on whether or not its conversation is on screen, and `run` publishes the
+   * running state before returning, so no settled frame shows in between.
+   *
+   * The turn is not carried on while a tool call still waits for the user — a
+   * request then would carry that call without a result; answering it
+   * continues the turn with these results in the history.
+   */
+  private deliverPendingBackgroundTaskResults(conversationId: string): void {
     const queue = this.pendingBackgroundTaskResults.get(conversationId)
-    if (!queue || queue.length === 0) return []
-
+    if (!queue || queue.length === 0) return
+    this.pendingBackgroundTaskResults.delete(conversationId)
     queue.sort(
       (a, b) => getBackgroundTaskEventTime(a) - getBackgroundTaskEventTime(b),
     )
-    this.pendingBackgroundTaskResults.delete(conversationId)
-
-    const appended: ChatMessage[] = []
-    for (const event of queue) {
-      appended.push(this.buildBackgroundTaskResultMessage(event))
-    }
 
     const entry = this.getOrCreateConversationEntry(conversationId)
-    const nextMessages = [...entry.state.messages, ...appended]
-    entry.baseMessages = nextMessages
-    entry.state = { ...entry.state, messages: nextMessages }
-    this.notifyConversationSubscribers(conversationId)
+    const messages = [
+      ...entry.state.messages,
+      ...queue.map((event) => this.buildBackgroundTaskResultMessage(event)),
+    ]
+    entry.baseMessages = messages
+    entry.state = { ...entry.state, messages }
 
+    const context = entry.lastRunContext
+    if (context && !hasPendingUserInteraction(messages)) {
+      void this.run({
+        conversationId,
+        loopConfig: context.lastLoopConfig,
+        input: this.buildTurnContinuationInput(context.lastRunInput, messages),
+      }).catch((error: unknown) => {
+        console.error(
+          '[YOLO] continuing the turn with background task results failed',
+          error,
+        )
+      })
+    } else {
+      this.notifyConversationSubscribers(conversationId)
+    }
+
+    // Only after the results are published: the registry still backs the
+    // live card until the result message that replaces it is on screen.
     for (const event of queue) {
       this.compactCompletedBackgroundTaskRecord(event)
     }
-
-    return appended
   }
 
   private compactCompletedBackgroundTaskRecord(
@@ -1309,18 +1304,6 @@ export class AgentSessionService {
   ): void {
     if (event.kind === 'subagent') {
       subagentTaskRegistry.compactCompleted(event.taskId)
-    }
-  }
-
-  hasPendingBackgroundTaskResults(conversationId: string): boolean {
-    return (
-      (this.pendingBackgroundTaskResults.get(conversationId)?.length ?? 0) > 0
-    )
-  }
-
-  private notifyPendingResultsSubscribers(conversationId: string): void {
-    for (const fn of this.pendingResultsSubscribers) {
-      fn(conversationId)
     }
   }
 
@@ -1489,9 +1472,7 @@ export class AgentSessionService {
     conversationId: string,
   ): SubagentParentContext | undefined {
     const recovery =
-      this.conversationEntries.get(
-        conversationId,
-      )?.pendingApprovalRecoveryContext
+      this.conversationEntries.get(conversationId)?.lastRunContext
     if (!recovery) {
       return undefined
     }
@@ -1532,7 +1513,7 @@ export class AgentSessionService {
     }
 
     const conversationEntry = this.getOrCreateConversationEntry(conversationId)
-    const recoveryContext = conversationEntry.pendingApprovalRecoveryContext
+    const recoveryContext = conversationEntry.lastRunContext
     const activeRunInput = located.runEntry?.lastRunInput ?? null
     const activeLoopConfig = located.runEntry?.lastLoopConfig ?? null
     const lastRunInput = activeRunInput ?? recoveryContext?.lastRunInput ?? null
@@ -2091,6 +2072,29 @@ export class AgentSessionService {
     }
   }
 
+  /**
+   * Input for a run that carries the turn on from `messages` with the settings
+   * of the run it follows. It drops what only that run's own start meant: its
+   * source (the turn's user message is found again from the history), the
+   * assistant reply it resumed, and its abort signal — stopping goes through
+   * `abortConversation`.
+   */
+  private buildTurnContinuationInput(
+    input: AgentRuntimeRunInput,
+    messages: ChatMessage[],
+    branchId?: string,
+  ): AgentRuntimeRunInput {
+    return {
+      ...input,
+      messages,
+      requestMessages: undefined,
+      sourceUserMessageId: undefined,
+      continueAssistantMessageId: undefined,
+      abortSignal: undefined,
+      branchId,
+    }
+  }
+
   private buildContinuationInput(
     input: AgentRuntimeRunInput,
     messages: ChatMessage[],
@@ -2214,9 +2218,17 @@ export class AgentSessionService {
       input.messages,
       historyMergeAnchorMessageId,
     )
+    // The user message whose turn this run belongs to. A run that continues
+    // the turn — woken by a background result, or picking up queued messages —
+    // passes no source: its history carries on from the last message. Its
+    // replies still belong to the turn the last user message opened, so they
+    // are stamped with it and the run summary names it as the turn's owner.
+    const turnUserMessageId =
+      input.sourceUserMessageId ?? findLastUserMessageId(input.messages)
 
     const runtimeInput: AgentRuntimeRunInput = {
       ...input,
+      sourceUserMessageId: turnUserMessageId,
       drainPendingUserMessages: () => {
         const queue = this.pendingUserMessagesByKey.get(runKey)
         if (!queue || queue.length === 0) {
@@ -2252,7 +2264,7 @@ export class AgentSessionService {
       messages: [...input.messages],
       compaction: this.normalizeCompaction(input.compaction, input.messages),
       pendingCompactionAnchorMessageId: null,
-      anchorMessageId: historyMergeAnchorMessageId,
+      anchorMessageId: turnUserMessageId,
       activity,
     }
     this.recomputeConversationState(conversationId)
@@ -2417,17 +2429,12 @@ export class AgentSessionService {
       void this.run({
         conversationId,
         loopConfig: lastLoopConfig,
-        input: {
-          ...lastRunInput,
-          messages: baselineMessages,
-          requestMessages: baselineMessages,
-          // The injected user messages become the new "anchor" of this run;
-          // drop the prior sourceUserMessageId so the runtime treats this as a
-          // fresh top-level turn rather than a branch continuation.
-          sourceUserMessageId: undefined,
+        // The drained user messages become the source of this run's replies.
+        input: this.buildTurnContinuationInput(
+          lastRunInput,
+          baselineMessages,
           branchId,
-          abortSignal: undefined,
-        },
+        ),
       }).catch((error: unknown) => {
         console.error(
           '[YOLO] after-run continuation for queued user messages failed',
@@ -2490,7 +2497,6 @@ export class AgentSessionService {
           status: 'aborted',
           pendingCompactionAnchorMessageId: null,
         }
-        this.syncPendingApprovalRecoveryContext(conversationId, nextMessages)
         this.notifyConversationSubscribers(conversationId)
       }
     }
@@ -2664,7 +2670,6 @@ export class AgentSessionService {
 
     const conversationEntry = this.conversationEntries.get(conversationId)
     if (!conversationEntry) {
-      this.autoRunScheduled.delete(conversationId)
       this.pendingBackgroundTaskResults.delete(conversationId)
       return
     }
@@ -2673,34 +2678,29 @@ export class AgentSessionService {
       const defaultBranchEntry =
         runEntries.find((entry) => entry.branchId === DEFAULT_BRANCH_ID) ??
         runEntries[0]
-      if (
-        defaultBranchEntry &&
-        hasPendingApproval(defaultBranchEntry.state.messages) &&
-        defaultBranchEntry.lastRunInput &&
-        defaultBranchEntry.lastLoopConfig
-      ) {
-        conversationEntry.pendingApprovalRecoveryContext = {
-          lastRunInput: defaultBranchEntry.lastRunInput,
-          lastLoopConfig: defaultBranchEntry.lastLoopConfig,
-        }
-      }
+      // Kept even when the user stopped the run: stopping ends what the agent
+      // is doing now, not the background work it started, whose results still
+      // wake it.
+      conversationEntry.lastRunContext =
+        defaultBranchEntry.lastRunInput && defaultBranchEntry.lastLoopConfig
+          ? {
+              lastRunInput: defaultBranchEntry.lastRunInput,
+              lastLoopConfig: defaultBranchEntry.lastLoopConfig,
+            }
+          : undefined
       runEntries.forEach((entry) => {
         this.runEntriesByKey.delete(getRunKey(conversationId, entry.branchId))
       })
     }
-    this.notifyConversationSubscribers(conversationId)
 
-    // Run has finalized — release the auto-run latch so a fresh idle event
-    // (or drained queue) can schedule the next auto-run.
-    this.autoRunScheduled.delete(conversationId)
-
-    // Drain pending background task results after run completes
-    const drainedBackground =
-      this.drainPendingBackgroundTaskResults(conversationId)
-    if (drainedBackground.length > 0) {
-      this.autoRunScheduled.add(conversationId)
-      this.notifyPendingResultsSubscribers(conversationId)
+    // Results that arrived while the turn was running carry it on now; that
+    // run publishes the turn as still going, so the settled state is never
+    // shown in between.
+    if (this.pendingBackgroundTaskResults.has(conversationId)) {
+      this.deliverPendingBackgroundTaskResults(conversationId)
+      return
     }
+    this.notifyConversationSubscribers(conversationId)
   }
 
   private notifyConversationSubscribers(
@@ -2993,19 +2993,6 @@ export class AgentSessionService {
     this.persistTimers.set(state.conversationId, timer)
   }
 
-  private syncPendingApprovalRecoveryContext(
-    conversationId: string,
-    messages: ChatMessage[],
-  ): void {
-    if (hasPendingApproval(messages)) {
-      return
-    }
-    const entry = this.conversationEntries.get(conversationId)
-    if (entry) {
-      entry.pendingApprovalRecoveryContext = undefined
-    }
-  }
-
   private updateToolCallResponse({
     conversationId,
     toolCallId,
@@ -3045,7 +3032,6 @@ export class AgentSessionService {
         ...conversationEntry.state,
         messages: updatedMessages,
       }
-      this.syncPendingApprovalRecoveryContext(conversationId, updatedMessages)
     }
 
     this.recomputeConversationState(conversationId)
