@@ -138,6 +138,11 @@ export type ChatUserMessage = {
    * an empty array means it was stamped with nothing to say.
    */
   injectedContext?: InjectedContextPart[]
+  /**
+   * Sent while the agent was still working and handed to it mid-turn, so it
+   * steers the turn already under way instead of opening a new one.
+   */
+  deliveredMidTurn?: true
 }
 /** An image is kept by vault path and read when the request is built. */
 export type InjectedContextPart =
@@ -312,6 +317,7 @@ export type SerializedChatUserMessage = {
   reasoningLevel?: string
   timeContext?: string
   injectedContext?: InjectedContextPart[]
+  deliveredMidTurn?: true
 }
 export type SerializedChatAssistantMessage = {
   role: 'assistant'

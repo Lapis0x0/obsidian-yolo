@@ -761,6 +761,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         reasoningLevel: message.reasoningLevel,
         timeContext: message.timeContext,
         injectedContext: message.injectedContext,
+        deliveredMidTurn: message.deliveredMidTurn,
       }
     case 'assistant':
       return {
@@ -806,6 +807,7 @@ const deserializeChatMessage = (
         reasoningLevel: message.reasoningLevel,
         timeContext: message.timeContext,
         injectedContext: message.injectedContext,
+        deliveredMidTurn: message.deliveredMidTurn,
       }
     }
     case 'assistant':

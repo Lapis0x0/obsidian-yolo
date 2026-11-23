@@ -2218,11 +2218,11 @@ export class AgentSessionService {
       input.messages,
       historyMergeAnchorMessageId,
     )
-    // The user message whose turn this run belongs to. A run that continues
-    // the turn — woken by a background result, or picking up queued messages —
-    // passes no source: its history carries on from the last message. Its
-    // replies still belong to the turn the last user message opened, so they
-    // are stamped with it and the run summary names it as the turn's owner.
+    // The user message this run's replies answer. A run that carries the turn
+    // on — woken by a background result, or picking up queued messages —
+    // passes no source, since its history continues from the last message;
+    // its replies still answer the last user message, so they are stamped
+    // with it and the run summary names it as the turn's owner.
     const turnUserMessageId =
       input.sourceUserMessageId ?? findLastUserMessageId(input.messages)
 
@@ -2251,7 +2251,13 @@ export class AgentSessionService {
         // Remove the queued bubble and switch run-summary ownership before the
         // runtime snapshot materializes the injected messages.
         this.recomputeConversationState(conversationId)
-        return { messages: queue, sourceUserMessageId }
+        return {
+          messages: queue.map((message) => ({
+            ...message,
+            deliveredMidTurn: true as const,
+          })),
+          sourceUserMessageId,
+        }
       },
     }
     // Clear the continuation latch now that the new run is actually starting.

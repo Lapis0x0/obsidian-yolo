@@ -2097,7 +2097,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     expect(captured?.drainPendingUserMessages).toBeDefined()
     const drained = captured?.drainPendingUserMessages?.()
     expect(drained).toEqual({
-      messages: [queued],
+      messages: [{ ...queued, deliveredMidTurn: true }],
       sourceUserMessageId: queued.id,
     })
     expect(service.peekPendingUserMessages('conv-drain')).toEqual([])
@@ -2144,7 +2144,7 @@ describe('AgentSessionService mid-run user message queue', () => {
       'enqueued',
     )
     expect(runtime.getRunInput()?.drainPendingUserMessages?.()).toMatchObject({
-      messages: [queued],
+      messages: [{ ...queued, deliveredMidTurn: true }],
     })
 
     // NativeAgentRuntime publishes only its run-local tail here.
@@ -2303,7 +2303,7 @@ describe('AgentSessionService mid-run user message queue', () => {
     expect(service.peekPendingUserMessages('conv-cont')).toEqual([queued])
 
     expect(secondInput?.drainPendingUserMessages?.()).toEqual({
-      messages: [queued],
+      messages: [{ ...queued, deliveredMidTurn: true }],
       sourceUserMessageId: queued.id,
     })
     expect(service.getConversationRunSummary('conv-cont').anchorMessageId).toBe(

@@ -15,12 +15,16 @@ import type {
  * regenerated turn keeps its `turnId` and so still finds its parent's anchor,
  * which is what lets the provider fork the native transcript at the right
  * place instead of starting over.
+ *
+ * A message handed to the agent mid-turn steers the turn already under way
+ * rather than starting one, so it is not a turn here: the session was recorded
+ * under the turn it joined, and the next turn must name that one as parent.
  */
 export const resolveTurnIdentity = (
   messages: ChatMessage[],
 ): { turnId?: string; parentTurnId?: string } => {
   const userMessageIds = messages
-    .filter((message) => message.role === 'user')
+    .filter((message) => message.role === 'user' && !message.deliveredMidTurn)
     .map((message) => message.id)
   return {
     turnId: userMessageIds.at(-1),

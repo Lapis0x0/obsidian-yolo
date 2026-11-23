@@ -41,6 +41,17 @@ describe('resolveTurnIdentity', () => {
     })
   })
 
+  it('does not count a message handed over mid-turn as a turn', () => {
+    const steer = {
+      role: 'user',
+      id: 's1',
+      deliveredMidTurn: true,
+    } as unknown as ChatMessage
+    expect(
+      resolveTurnIdentity([user('u1'), assistant('a1'), steer, user('u2')]),
+    ).toEqual({ turnId: 'u2', parentTurnId: 'u1' })
+  })
+
   it('keeps the same identity when a turn is regenerated', () => {
     // Regenerating does not add a user message, so both ids are unchanged —
     // which is what lets the provider fork at the parent's anchor instead of
