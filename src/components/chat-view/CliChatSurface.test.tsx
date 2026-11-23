@@ -108,7 +108,7 @@ const mockedAssistantGroup = jest.fn(
     showDeleteAction?: boolean
     showBranchAction?: boolean
     showQuoteAction?: boolean
-    conversationRunSummary?: { anchorMessageId?: string }
+    turn?: { isEnd: boolean; runState: string }
   }) => {
     const { useChatRuntimeActions } = jest.requireActual(
       './chat-runtime-actions-context',
@@ -460,12 +460,13 @@ describe('CliChatSurface', () => {
     )
 
     expect(mockedAssistantGroup).toHaveBeenCalledTimes(1)
-    expect(
-      mockedAssistantGroup.mock.calls[0]?.[0].conversationRunSummary,
-    ).toBeUndefined()
+    expect(mockedAssistantGroup.mock.calls[0]?.[0].turn).toMatchObject({
+      isEnd: true,
+      runState: 'settled',
+    })
   })
 
-  it('binds the running turn after its own assistant group appears', () => {
+  it('runs only the latest turn, each turn ending on its own group', () => {
     const currentAssistant: ChatAssistantMessage = {
       role: 'assistant',
       id: 'assistant-current',
@@ -491,9 +492,13 @@ describe('CliChatSurface', () => {
     const currentGroup = mockedAssistantGroup.mock.calls.find(
       ([props]) => props.messages[0]?.id === 'assistant-current',
     )?.[0]
-    expect(previousGroup?.conversationRunSummary).toBeUndefined()
-    expect(currentGroup?.conversationRunSummary).toMatchObject({
-      anchorMessageId: 'user-current',
+    expect(previousGroup?.turn).toMatchObject({
+      isEnd: true,
+      runState: 'settled',
+    })
+    expect(currentGroup?.turn).toMatchObject({
+      isEnd: true,
+      runState: 'streaming',
     })
   })
 

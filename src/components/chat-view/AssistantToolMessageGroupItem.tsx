@@ -14,7 +14,6 @@ import {
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
-import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { resolveToolSetLabel } from '../../core/agent/tool-catalog'
 import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
@@ -46,6 +45,7 @@ import {
   collectGroupEditSummary,
   countFileChangeStats,
 } from '../../utils/chat/editSummary'
+import type { TimelineTurn } from '../../utils/chat/timelineTurns'
 import DotLoader from '../common/DotLoader'
 
 import AssistantEditSummary, { renderDeltaPair } from './AssistantEditSummary'
@@ -153,12 +153,18 @@ const isBranchCompleted = (messages: AssistantToolMessageGroup): boolean => {
   return getBranchTabState(messages) === 'completed'
 }
 
+/**
+ * A branch of a multi-model turn reports its own run on its messages. Past
+ * that, the group stands where its turn stands — a fact the surface computes
+ * once for the whole timeline. Surfaces without turns (Quick Ask, a subagent's
+ * transcript) only have the group's own reply state to go by.
+ */
 const getMessageGroupRunState = ({
   messages,
-  conversationRunSummary,
+  turn,
 }: {
   messages: AssistantToolMessageGroup
-  conversationRunSummary?: AgentConversationRunSummary
+  turn?: TimelineTurn
 }): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
   const latestMetadata =
@@ -183,23 +189,8 @@ const getMessageGroupRunState = ({
       return 'error'
   }
 
-  if (conversationRunSummary?.isWaitingApproval) {
-    return 'waiting-approval'
-  }
-
-  if (conversationRunSummary?.isActive) {
-    return 'streaming'
-  }
-
-  switch (conversationRunSummary?.status) {
-    case 'running':
-      return 'streaming'
-    case 'completed':
-      return 'completed'
-    case 'aborted':
-      return 'aborted'
-    case 'error':
-      return 'error'
+  if (turn) {
+    return turn.runState === 'settled' ? 'completed' : turn.runState
   }
 
   const assistantMessage = messages.find(
@@ -669,9 +660,13 @@ const buildToolRunSummaryDisplay = (
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
-  inlineInfoMessages?: AssistantToolMessageGroup
   conversationId: string
-  conversationRunSummary?: AgentConversationRunSummary
+  /**
+   * The turn this group belongs to. Its footer — usage, edit summary,
+   * actions — shows only on the turn's last slice once the turn has settled,
+   * and counts the whole turn. Absent on surfaces without turns.
+   */
+  turn?: TimelineTurn
   activeBranchKey?: string | null
   sourceUserMessageId?: string | null
   suppressFooter?: boolean
@@ -744,9 +739,8 @@ export type AssistantToolMessageGroupItemProps = {
 
 function AssistantToolMessageGroupItem({
   messages,
-  inlineInfoMessages,
   conversationId,
-  conversationRunSummary,
+  turn,
   activeBranchKey: controlledActiveBranchKey,
   sourceUserMessageId,
   suppressFooter = false,
@@ -908,11 +902,11 @@ function AssistantToolMessageGroupItem({
         messages)
     return selectedMessages
   }, [branchGroups, hasMultipleBranches, messages, resolvedActiveBranchKey])
-  // The footer's usage may span several groups (a background-task bridge), but
-  // within this group it must count only the branch on display: each branch is
-  // its own conversation with its own context.
-  const footerUsageMessages = useMemo(() => {
-    const source = inlineInfoMessages ?? displayedMessages
+  // The footer counts the whole turn (usage, edit summary), but only the
+  // branch on display: each branch is its own conversation with its own
+  // context and its own edits.
+  const turnDisplayedMessages = useMemo(() => {
+    const source = turn?.messages ?? displayedMessages
     if (!hasMultipleBranches) {
       return source
     }
@@ -921,7 +915,7 @@ function AssistantToolMessageGroupItem({
       const branchId = message.metadata?.branchId
       return !branchId || branchId === displayedBranchId
     })
-  }, [displayedMessages, hasMultipleBranches, inlineInfoMessages])
+  }, [displayedMessages, hasMultipleBranches, turn?.messages])
   const effectiveConversationId = useMemo(() => {
     if (!hasMultipleBranches) {
       return conversationId
@@ -960,8 +954,9 @@ function AssistantToolMessageGroupItem({
   )
   const groupRunState = getMessageGroupRunState({
     messages: displayedMessages,
-    conversationRunSummary,
+    turn,
   })
+  const isTurnEnd = turn?.isEnd ?? true
   const isRunActive =
     groupRunState === 'streaming' || groupRunState === 'waiting-approval'
 
@@ -1202,8 +1197,8 @@ function AssistantToolMessageGroupItem({
       !message.toolCallRequests?.length,
   )
   const baseGroupEditSummary = useMemo(
-    () => collectGroupEditSummary(displayedMessages),
-    [displayedMessages],
+    () => collectGroupEditSummary(turnDisplayedMessages),
+    [turnDisplayedMessages],
   )
 
   // Stable key identifying the set of files × rounds that need snapshot reads.
@@ -1637,6 +1632,7 @@ function AssistantToolMessageGroupItem({
         )}
       </div>
       {groupEditSummary &&
+        isTurnEnd &&
         !suppressFooter &&
         !hasPendingAssistantShell &&
         !isRunActive && (
@@ -1665,12 +1661,13 @@ function AssistantToolMessageGroupItem({
           />
         )}
       {displayedMessages.length > 0 &&
+        isTurnEnd &&
         !hasPendingAssistantShell &&
         !isRunActive &&
         !suppressFooter && (
           <div className="yolo-assistant-message-footer">
             {showInlineInfo && (
-              <LLMResponseInlineInfo messages={footerUsageMessages} />
+              <LLMResponseInlineInfo messages={turnDisplayedMessages} />
             )}
             <AssistantToolMessageGroupActions
               messages={displayedMessages}

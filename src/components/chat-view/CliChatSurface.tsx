@@ -33,6 +33,13 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
+import {
+  type TimelineTurn,
+  type TurnFacts,
+  buildTurnFacts,
+  getLatestTurnRunState,
+  getSliceTurn,
+} from '../../utils/chat/timelineTurns'
 import { getNodeWindow } from '../../utils/dom/window-context'
 
 import AssistantErrorCard from './AssistantErrorCard'
@@ -53,7 +60,6 @@ import { openEditSummaryFile } from './openEditSummaryFile'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
-  findAssistantGroupIdForRunAnchor,
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
@@ -318,16 +324,6 @@ function CliUserMessage({
   )
 }
 
-const getLatestUserMessageId = (
-  messages: readonly ChatMessage[],
-): string | undefined => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role === 'user') return message.id
-  }
-  return undefined
-}
-
 const getSourceUserMessageForGroup = (
   messages: readonly ChatMessage[],
   groupMessageIds: readonly string[],
@@ -440,17 +436,14 @@ const toAgentRunStatus = (
 
 const buildRunSummary = ({
   conversationId,
-  messages,
   runState,
 }: {
   conversationId: string
-  messages: readonly ChatMessage[]
   runState: CliRuntimeRunState
 }): AgentConversationRunSummary => {
   const isActive = ACTIVE_RUN_STATES.has(runState)
   return {
     conversationId,
-    anchorMessageId: getLatestUserMessageId(messages),
     status: toAgentRunStatus(runState),
     isRunning: runState === 'running',
     isActive,
@@ -639,19 +632,41 @@ export function CliChatSurface({
     () =>
       buildRunSummary({
         conversationId,
-        messages: snapshot.messages,
         runState: snapshot.runState,
       }),
-    [conversationId, snapshot.messages, snapshot.runState],
+    [conversationId, snapshot.runState],
   )
-  const runSummaryAssistantGroupId = useMemo(
-    () =>
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages: readModel.groupedChatMessages,
-        anchorMessageId: runSummary.anchorMessageId,
-      }),
-    [readModel.groupedChatMessages, runSummary.anchorMessageId],
-  )
+  const latestTurnRunState = getLatestTurnRunState(runSummary)
+  const turnFactsRef = useRef<Map<string, TurnFacts> | undefined>(undefined)
+  const turnFacts = useMemo(() => {
+    const next = buildTurnFacts({
+      groupedChatMessages: readModel.groupedChatMessages,
+      turnBoundaryMessageIds: readModel.assistantGroupBoundaryMessageIds,
+      latestTurnRunState,
+      previous: turnFactsRef.current,
+    })
+    turnFactsRef.current = next
+    return next
+  }, [
+    latestTurnRunState,
+    readModel.assistantGroupBoundaryMessageIds,
+    readModel.groupedChatMessages,
+  ])
+  const sliceTurnsRef = useRef<Map<string, TimelineTurn>>(new Map())
+  const sliceTurns = useMemo(() => {
+    const next = new Map<string, TimelineTurn>()
+    for (const item of stableTimelineItems) {
+      if (item.kind !== 'assistant-group') continue
+      const turn = getSliceTurn(
+        turnFacts.get(item.messageIds[0] ?? ''),
+        item.messageIds,
+        sliceTurnsRef.current.get(item.renderKey),
+      )
+      if (turn) next.set(item.renderKey, turn)
+    }
+    sliceTurnsRef.current = next
+    return next
+  }, [stableTimelineItems, turnFacts])
   const reviewConversationId = snapshot.sessionRef
     ? getCliSessionConversationId(snapshot.sessionRef)
     : null
@@ -802,10 +817,7 @@ export function CliChatSurface({
           )
           return {
             conversationId: getCliSessionConversationId(snapshot.sessionRef),
-            conversationRunSummary:
-              timelineItem.groupId === runSummaryAssistantGroupId
-                ? runSummary
-                : undefined,
+            turn: sliceTurns.get(timelineItem.renderKey),
             isApplying: false,
             activeApplyRequestKey: null,
             onApply: noop,
@@ -912,8 +924,7 @@ export function CliChatSurface({
         onQuoteAssistantSelection,
         onRewriteUserMessage,
         readModel.messagesById,
-        runSummary,
-        runSummaryAssistantGroupId,
+        sliceTurns,
         snapshot.sessionRef,
         snapshot.configuration,
         snapshot.messages,
@@ -937,12 +948,17 @@ export function CliChatSurface({
             `${quote.id ?? ''}:${quote.selector?.start ?? ''}:${quote.selector?.end ?? ''}:${quote.comment ?? ''}`,
         )
         .join(',')
-      return `${baseVersion}:${cliSubagentRenderVersion}:${quoteVersion}`
+      const turn = sliceTurns.get(timelineItem.renderKey)
+      const turnVersion = turn
+        ? `${turn.isEnd}:${turn.runState}:${turn.messages.length}`
+        : ''
+      return `${baseVersion}:${cliSubagentRenderVersion}:${quoteVersion}:${turnVersion}`
     },
     [
       assistantQuotes,
       cliSubagentRenderVersion,
       focusedUserMessageId,
+      sliceTurns,
       snapshot.runState,
     ],
   )

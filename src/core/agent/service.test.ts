@@ -1463,7 +1463,6 @@ describe('AgentSessionService main activity summary', () => {
     })
 
     expect(service.getConversationRunSummary('conv-live')).toMatchObject({
-      anchorMessageId: 'u1',
       isRunning: true,
       isActive: true,
       isAbortable: true,
@@ -1484,7 +1483,6 @@ describe('AgentSessionService main activity summary', () => {
       makeToolMessage(ToolCallResponseStatus.PendingApproval),
     ])
     expect(service.getConversationRunSummary('conv-pending')).toMatchObject({
-      anchorMessageId: 'u1',
       isActive: true,
       isAbortable: true,
       isQueueable: false,
@@ -1497,7 +1495,6 @@ describe('AgentSessionService main activity summary', () => {
       makeToolMessage(ToolCallResponseStatus.AwaitingUserInput),
     ])
     expect(service.getConversationRunSummary('conv-awaiting')).toMatchObject({
-      anchorMessageId: 'u1',
       isActive: true,
       isAbortable: true,
       isQueueable: false,
@@ -1719,9 +1716,6 @@ describe('AgentSessionService background results carry the turn on', () => {
       // History carries on from the result; the replies belong to u1's turn.
       expect(input?.messages.at(-1)).toMatchObject({ role: 'subagent_result' })
       expect(input?.sourceUserMessageId).toBe('u1')
-      expect(
-        service.getConversationRunSummary('conv-bg-idle').anchorMessageId,
-      ).toBe('u1')
       // No settled frame between the result arriving and the turn going on.
       expect(published.length).toBeGreaterThan(0)
       expect(
@@ -2101,9 +2095,6 @@ describe('AgentSessionService mid-run user message queue', () => {
       sourceUserMessageId: queued.id,
     })
     expect(service.peekPendingUserMessages('conv-drain')).toEqual([])
-    expect(
-      service.getConversationRunSummary('conv-drain').anchorMessageId,
-    ).toBe(queued.id)
 
     runtime.resolveRun()
     await runPromise
@@ -2155,9 +2146,6 @@ describe('AgentSessionService mid-run user message queue', () => {
         .getState('conv-drain-history')
         .messages.map((message) => message.id),
     ).toEqual(['u0', 'a0', 'u1', 'a1', 'u2'])
-    expect(
-      service.getConversationRunSummary('conv-drain-history').anchorMessageId,
-    ).toBe('u2')
 
     runtime.resolveRun()
     await runPromise
@@ -2306,9 +2294,6 @@ describe('AgentSessionService mid-run user message queue', () => {
       messages: [{ ...queued, deliveredMidTurn: true }],
       sourceUserMessageId: queued.id,
     })
-    expect(service.getConversationRunSummary('conv-cont').anchorMessageId).toBe(
-      queued.id,
-    )
 
     secondRuntime.resolveRun()
   })

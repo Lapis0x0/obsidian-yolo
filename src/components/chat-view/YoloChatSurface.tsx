@@ -36,18 +36,19 @@ import type {
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import type { ForegroundAgentVisualTurnPlan } from '../../utils/chat/foregroundAgentVisualTurns'
-import {
-  buildForegroundAgentVisualTurnPlan,
-  getForegroundAgentFooterForGroup,
-  reuseForegroundAgentVisualTurnPlan,
-} from '../../utils/chat/foregroundAgentVisualTurns'
 import {
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
 import { collectRemovedSelectionHighlightIds } from '../../utils/chat/selection-mentionables'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
+import {
+  type TimelineTurn,
+  type TurnFacts,
+  buildTurnFacts,
+  getLatestTurnRunState,
+  getSliceTurn,
+} from '../../utils/chat/timelineTurns'
 import {
   buildSubagentResultMap,
   buildTerminalCommandResultMap,
@@ -94,10 +95,7 @@ import { useChatHistoryWindow } from './useChatHistoryWindow'
 import type { useChatInputController } from './useChatInputController'
 import type { useChatRuntimePreferences } from './useChatRuntimePreferences'
 import type { ChatTimelineReadModel } from './useChatTimelineReadModel'
-import {
-  findAssistantGroupIdForRunAnchor,
-  useStableChatTimelineItems,
-} from './useChatTimelineReadModel'
+import { useStableChatTimelineItems } from './useChatTimelineReadModel'
 import { useHistoricalUserMessageDismiss } from './useHistoricalUserMessageDismiss'
 import UserMessageItem from './UserMessageItem'
 import type { useYoloChatSession } from './useYoloChatSession'
@@ -506,27 +504,6 @@ export function YoloChatSurface({
   )
   const compactionDividerAnchorMessageId =
     latestCompactionState?.anchorMessageId ?? null
-  // The latest divider sits inside a turn that goes on past it — the model
-  // compacted through its tool, or the runtime compacted mid-run — so the
-  // slice above it is not where that turn ends and gets no footer.
-  const compactionAnchorSplitsTurn = useMemo(() => {
-    if (compactionDividerAnchorMessageId === null) {
-      return false
-    }
-    if (latestCompactionState?.triggerToolCallId) {
-      return true
-    }
-    const { messageIds, messagesById } = chatTimelineReadModel
-    const nextMessageId =
-      messageIds[messageIds.indexOf(compactionDividerAnchorMessageId) + 1]
-    const nextMessage =
-      nextMessageId === undefined ? undefined : messagesById.get(nextMessageId)
-    return nextMessage !== undefined && nextMessage.role !== 'user'
-  }, [
-    chatTimelineReadModel,
-    compactionDividerAnchorMessageId,
-    latestCompactionState?.triggerToolCallId,
-  ])
   const previousPendingCompactionAnchorMessageIdRef = useRef<string | null>(
     null,
   )
@@ -823,6 +800,44 @@ export function YoloChatSurface({
   )
   const stableChatTimelineItems = useStableChatTimelineItems(chatTimelineItems)
 
+  // Turns come from the whole conversation, not the rendered window, so the
+  // latest turn — the only one that can still be running — is always the
+  // conversation's latest even while an older stretch is on screen.
+  const latestTurnRunState = getLatestTurnRunState(
+    currentConversationRunSummary,
+  )
+  const turnFactsRef = useRef<Map<string, TurnFacts> | undefined>(undefined)
+  const turnFacts = useMemo(() => {
+    const next = buildTurnFacts({
+      groupedChatMessages,
+      turnBoundaryMessageIds:
+        chatTimelineReadModel.assistantGroupBoundaryMessageIds,
+      latestTurnRunState,
+      previous: turnFactsRef.current,
+    })
+    turnFactsRef.current = next
+    return next
+  }, [
+    chatTimelineReadModel.assistantGroupBoundaryMessageIds,
+    groupedChatMessages,
+    latestTurnRunState,
+  ])
+  const sliceTurnsRef = useRef<Map<string, TimelineTurn>>(new Map())
+  const sliceTurns = useMemo(() => {
+    const next = new Map<string, TimelineTurn>()
+    for (const item of stableChatTimelineItems) {
+      if (item.kind !== 'assistant-group') continue
+      const turn = getSliceTurn(
+        turnFacts.get(item.messageIds[0] ?? ''),
+        item.messageIds,
+        sliceTurnsRef.current.get(item.renderKey),
+      )
+      if (turn) next.set(item.renderKey, turn)
+    }
+    sliceTurnsRef.current = next
+    return next
+  }, [stableChatTimelineItems, turnFacts])
+
   const windowedToolCallIds = useMemo(
     () => collectToolCallIdsFromGroupedMessages(windowedGroupedChatMessages),
     [windowedGroupedChatMessages],
@@ -914,32 +929,6 @@ export function YoloChatSurface({
     [],
   )
 
-  const runSummaryAssistantGroupId = useMemo(
-    () =>
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages,
-        anchorMessageId: currentConversationRunSummary.anchorMessageId,
-      }),
-    [currentConversationRunSummary.anchorMessageId, groupedChatMessages],
-  )
-
-  // 后台任务结果在渲染上会接回对应 tool card，且 subagent/terminal result
-  // standalone group 会被 timeline 过滤掉；因此必须在过滤前的 grouped
-  // messages 上决定“视觉回合”的 footer 归属。
-  const foregroundAgentVisualTurnPlanRef =
-    useRef<ForegroundAgentVisualTurnPlan | null>(null)
-  const foregroundAgentVisualTurnPlan = useMemo(() => {
-    const next = buildForegroundAgentVisualTurnPlan(groupedChatMessages)
-    const stable = foregroundAgentVisualTurnPlanRef.current
-      ? reuseForegroundAgentVisualTurnPlan(
-          foregroundAgentVisualTurnPlanRef.current,
-          next,
-        )
-      : next
-    foregroundAgentVisualTurnPlanRef.current = stable
-    return stable
-  }, [groupedChatMessages])
-
   const handleAssistantGroupEditStart = useCallback(
     (messageId: string) => {
       setEditingAssistantMessageId(messageId)
@@ -1001,34 +990,15 @@ export function YoloChatSurface({
       timelineItem: ChatTimelineAssistantGroupItem,
     ): ConversationAssistantGroupProps => {
       const sourceUserMessageId = getSourceUserMessageIdForGroup(messageOrGroup)
-      const foregroundAgentFooter = getForegroundAgentFooterForGroup(
-        foregroundAgentVisualTurnPlan,
-        messageOrGroup,
-      )
-      const containsCompactionAnchor =
-        compactionDividerAnchorMessageId !== null &&
-        messageOrGroup.some(
-          (message) => message.id === compactionDividerAnchorMessageId,
-        )
-      const shouldSuppressCompactionAnchorFooter =
-        containsCompactionAnchor && compactionAnchorSplitsTurn
 
       return {
         conversationId: currentConversationId,
-        conversationRunSummary:
-          timelineItem.groupId === runSummaryAssistantGroupId
-            ? currentConversationRunSummary
-            : undefined,
+        turn: sliceTurns.get(timelineItem.renderKey),
         activeBranchKey: activeBranchByUserMessageId.get(
           sourceUserMessageId ?? '',
         ),
         sourceUserMessageId,
         continuableErrorMessageIds,
-        suppressFooter:
-          shouldSuppressCompactionAnchorFooter ||
-          foregroundAgentFooter?.suppress === true,
-        inlineInfoMessages:
-          foregroundAgentFooter?.inlineInfoMessages ?? messageOrGroup,
         isApplying,
         activeApplyRequestKey,
         onApply: (...args) => timelineHandlersRef.current.handleApply(...args),
@@ -1084,15 +1054,11 @@ export function YoloChatSurface({
       activeAssistantQuotes,
       activeBranchByUserMessageId,
       isApplying,
-      compactionDividerAnchorMessageId,
       continuableErrorMessageIds,
       currentConversationId,
-      currentConversationRunSummary,
       editingAssistantMessageId,
-      foregroundAgentVisualTurnPlan,
-      compactionAnchorSplitsTurn,
-      runSummaryAssistantGroupId,
       shouldHidePendingAssistantPlaceholders,
+      sliceTurns,
       subagentResultsByToolCallId,
       terminalCommandResultsByToolCallId,
       undoingEditSummaryTarget,
@@ -1448,17 +1414,7 @@ export function YoloChatSurface({
               message !== undefined && message.role !== 'user',
           )
         const sourceUserMessageId = getSourceUserMessageIdForGroup(messages)
-        const foregroundAgentFooter = getForegroundAgentFooterForGroup(
-          foregroundAgentVisualTurnPlan,
-          messages,
-        )
-        const containsCompactionAnchor =
-          compactionDividerAnchorMessageId !== null &&
-          timelineItem.messageIds.includes(compactionDividerAnchorMessageId)
-        const shouldSuppressCompactionAnchorFooter =
-          containsCompactionAnchor && compactionAnchorSplitsTurn
-        const isRunSummaryGroup =
-          timelineItem.groupId === runSummaryAssistantGroupId
+        const turn = sliceTurns.get(timelineItem.renderKey)
         const isEditingGroup =
           editingAssistantMessageId !== null &&
           timelineItem.messageIds.includes(editingAssistantMessageId)
@@ -1468,9 +1424,9 @@ export function YoloChatSurface({
           timelineItem.revision,
           currentConversationId,
           activeBranchByUserMessageId.get(sourceUserMessageId ?? '') ?? '',
-          foregroundAgentFooter?.suppress === true,
-          getRenderVersionObjectId(foregroundAgentFooter?.inlineInfoMessages),
-          shouldSuppressCompactionAnchorFooter,
+          turn?.isEnd ?? '',
+          turn?.runState ?? '',
+          getRenderVersionObjectId(turn?.messages),
           chatSurfacePreset.assistantActions.showInlineInfo,
           chatSurfacePreset.assistantActions.showRetryAction,
           chatSurfacePreset.assistantActions.showInsertAction,
@@ -1495,16 +1451,6 @@ export function YoloChatSurface({
           isEditingGroup ? editingAssistantMessageId : '',
           shouldHidePendingAssistantPlaceholders,
           undoingEditSummaryTarget ?? '',
-          isRunSummaryGroup,
-          isRunSummaryGroup ? currentConversationRunSummary.status : '',
-          isRunSummaryGroup ? currentConversationRunSummary.isRunning : '',
-          isRunSummaryGroup
-            ? currentConversationRunSummary.isWaitingApproval
-            : '',
-          isRunSummaryGroup
-            ? currentConversationRunSummary.isWaitingUserInput
-            : '',
-          isRunSummaryGroup ? currentConversationRunSummary.isAbortable : '',
         ].join('|')
       }
 
@@ -1552,7 +1498,6 @@ export function YoloChatSurface({
       chatMode,
       chatSurfacePreset,
       chatTimelineReadModel.messagesById,
-      compactionDividerAnchorMessageId,
       compactionDividerDescription,
       compactionDividerTitle,
       compactionPendingDescription,
@@ -1560,20 +1505,17 @@ export function YoloChatSurface({
       conversationAssistantId,
       conversationModelId,
       currentConversationId,
-      currentConversationRunSummary,
       editingAssistantMessageId,
       enteringCompactionDividerAnchorMessageId,
       focusedMessageId,
-      foregroundAgentVisualTurnPlan,
       isCurrentConversationRunActive,
-      runSummaryAssistantGroupId,
-      compactionAnchorSplitsTurn,
       messageModelMap,
       messageReasoningMap,
       queryProgress,
       reasoningLevel,
       selectedAssistantTimeContextEnabled,
       shouldHidePendingAssistantPlaceholders,
+      sliceTurns,
       subagentResultsByToolCallId,
       terminalCommandResultsByToolCallId,
       undoingEditSummaryTarget,

@@ -11,7 +11,6 @@ import type {
 
 import {
   EMPTY_CHAT_TIMELINE_READ_MODEL,
-  findAssistantGroupIdForRunAnchor,
   materializeChatTimelineReadModel,
 } from './useChatTimelineReadModel'
 
@@ -104,76 +103,5 @@ describe('materializeChatTimelineReadModel', () => {
     expect(second).toBe(first)
     expect(second.groupedChatMessages.at(1)).toBe(firstGroup)
     expect(second.groupRevisionsById.get('assistant-1')).toBe(4)
-  })
-})
-
-describe('findAssistantGroupIdForRunAnchor', () => {
-  it('does not bind a new run to the previous completed assistant group', () => {
-    const previousUser = makeUserMessage('user-1')
-    const previousAssistant: ChatAssistantMessage = {
-      ...makeAssistantMessage('assistant-1', 'previous answer'),
-      metadata: {
-        generationState: 'completed',
-        sourceUserMessageId: previousUser.id,
-      },
-    }
-    const currentUser = makeUserMessage('user-2')
-    const readModel = materializeChatTimelineReadModel({
-      messages: [previousUser, previousAssistant, currentUser],
-      assistantGroupBoundaryMessageIds: [],
-      previous: EMPTY_CHAT_TIMELINE_READ_MODEL,
-    })
-
-    expect(
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages: readModel.groupedChatMessages,
-        anchorMessageId: currentUser.id,
-      }),
-    ).toBeNull()
-  })
-
-  it('binds the run after its assistant group appears and keeps it through tools', () => {
-    const user = makeUserMessage('user-1')
-    const assistant: ChatAssistantMessage = {
-      ...makeAssistantMessage('assistant-1', ''),
-      metadata: {
-        generationState: 'streaming',
-        sourceUserMessageId: user.id,
-      },
-    }
-    const tool: ChatToolMessage = {
-      ...makeToolMessage('tool-1'),
-      metadata: { sourceUserMessageId: user.id },
-    }
-    const streamingModel = materializeChatTimelineReadModel({
-      messages: [user, assistant],
-      assistantGroupBoundaryMessageIds: [],
-      previous: EMPTY_CHAT_TIMELINE_READ_MODEL,
-    })
-    const toolModel = materializeChatTimelineReadModel({
-      messages: [
-        user,
-        {
-          ...assistant,
-          metadata: { ...assistant.metadata, generationState: 'completed' },
-        },
-        tool,
-      ],
-      assistantGroupBoundaryMessageIds: [],
-      previous: streamingModel,
-    })
-
-    expect(
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages: streamingModel.groupedChatMessages,
-        anchorMessageId: user.id,
-      }),
-    ).toBe(assistant.id)
-    expect(
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages: toolModel.groupedChatMessages,
-        anchorMessageId: user.id,
-      }),
-    ).toBe(assistant.id)
   })
 })

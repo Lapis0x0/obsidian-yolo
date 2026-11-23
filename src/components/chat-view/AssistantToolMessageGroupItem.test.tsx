@@ -386,7 +386,7 @@ describe('AssistantToolMessageGroupItem', () => {
     expect(html).not.toContain('min-height')
   })
 
-  it('hides the footer while the owning foreground run is active', () => {
+  it('hides the footer while the turn is still running', () => {
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',
       id: 'assistant-1',
@@ -401,17 +401,7 @@ describe('AssistantToolMessageGroupItem', () => {
       <AssistantToolMessageGroupItem
         messages={[assistantMessage]}
         conversationId="conversation-1"
-        conversationRunSummary={{
-          conversationId: 'conversation-1',
-          anchorMessageId: 'user-1',
-          status: 'running',
-          isRunning: true,
-          isActive: true,
-          isAbortable: true,
-          isQueueable: true,
-          isWaitingApproval: false,
-          isWaitingUserInput: false,
-        }}
+        turn={{ isEnd: true, messages: [], runState: 'streaming' }}
         showRetryAction={true}
         isApplying={false}
         activeApplyRequestKey={null}
@@ -432,6 +422,38 @@ describe('AssistantToolMessageGroupItem', () => {
     expect(mockedAssistantToolMessageGroupActions).not.toHaveBeenCalled()
   })
 
+  it('shows the footer only on the slice that ends its turn', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: 'first part of a turn that goes on below',
+      metadata: { generationState: 'completed', sourceUserMessageId: 'user-1' },
+    }
+    const render = (isEnd: boolean) =>
+      renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          messages={[assistantMessage]}
+          conversationId="conversation-1"
+          turn={{ isEnd, messages: [assistantMessage], runState: 'settled' }}
+          isApplying={false}
+          activeApplyRequestKey={null}
+          onApply={() => {}}
+          onToolMessageUpdate={() => {}}
+          onEditStart={() => {}}
+          onEditCancel={() => {}}
+          onEditSave={() => {}}
+          onDeleteGroup={() => {}}
+          onRetryGroup={() => {}}
+          onBranchGroup={() => {}}
+          onQuoteAssistantSelection={() => {}}
+          onOpenEditSummaryFile={() => {}}
+        />,
+      )
+
+    expect(render(false)).not.toContain('yolo-assistant-message-footer')
+    expect(render(true)).toContain('yolo-assistant-message-footer')
+  })
+
   it('shows the footer for a completed branch while another branch is active', () => {
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',
@@ -448,17 +470,7 @@ describe('AssistantToolMessageGroupItem', () => {
       <AssistantToolMessageGroupItem
         messages={[assistantMessage]}
         conversationId="conversation-1"
-        conversationRunSummary={{
-          conversationId: 'conversation-1',
-          anchorMessageId: 'user-1',
-          status: 'running',
-          isRunning: true,
-          isActive: true,
-          isAbortable: true,
-          isQueueable: true,
-          isWaitingApproval: false,
-          isWaitingUserInput: false,
-        }}
+        turn={{ isEnd: true, messages: [], runState: 'streaming' }}
         showRetryAction={true}
         isApplying={false}
         activeApplyRequestKey={null}
@@ -502,7 +514,7 @@ describe('AssistantToolMessageGroupItem', () => {
     renderToStaticMarkup(
       <AssistantToolMessageGroupItem
         messages={messages}
-        inlineInfoMessages={messages}
+        turn={{ isEnd: true, messages, runState: 'settled' }}
         activeBranchKey="model-b"
         conversationId="conversation-1"
         isApplying={false}
@@ -883,17 +895,7 @@ describe('AssistantToolMessageGroupItem', () => {
       const html = renderToStaticMarkup(
         <AssistantToolMessageGroupItem
           {...baseProps}
-          conversationRunSummary={{
-            conversationId: 'conversation-1',
-            anchorMessageId: 'user-1',
-            status: 'running',
-            isRunning: true,
-            isActive: true,
-            isAbortable: true,
-            isQueueable: true,
-            isWaitingApproval: false,
-            isWaitingUserInput: false,
-          }}
+          turn={{ isEnd: true, messages: [], runState: 'streaming' }}
           messages={[
             hiddenAssistantMessage,
             buildToolMessage('tool-1', [

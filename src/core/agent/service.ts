@@ -92,7 +92,6 @@ export type AgentConversationState = {
   messages: ChatMessage[]
   compaction?: ChatConversationCompactionState
   pendingCompactionAnchorMessageId?: string | null
-  anchorMessageId?: string
   errorMessage?: string
   activity?: AgentRunActivity
 }
@@ -124,8 +123,6 @@ export type AgentConversationStateFeedSubscriber = (
 
 export type AgentConversationRunSummary = {
   conversationId: string
-  /** User message that owns the currently active visual turn. */
-  anchorMessageId?: string
   status: AgentRunStatus
   isRunning: boolean
   /**
@@ -447,7 +444,6 @@ const getRuntimeSnapshotPublishMode = (
   if (
     previousState.status !== nextState.status ||
     previousState.runId !== nextState.runId ||
-    previousState.anchorMessageId !== nextState.anchorMessageId ||
     previousState.errorMessage !== nextState.errorMessage ||
     previousState.pendingCompactionAnchorMessageId !==
       nextState.pendingCompactionAnchorMessageId ||
@@ -710,20 +706,8 @@ export const buildAgentConversationRunSummary = (
   const hasRunningToolCall = hasRunningMainToolCall(state.messages)
   const isRuntimeRunning = state.status === 'running'
   const isActive = isRuntimeRunning || isWaitingApproval || hasRunningToolCall
-  let anchorMessageId = state.anchorMessageId
-  if (!anchorMessageId && isActive) {
-    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
-      const message = state.messages[index]
-      if (message.role === 'user') {
-        anchorMessageId = message.id
-        break
-      }
-    }
-  }
-
   return {
     conversationId: state.conversationId,
-    anchorMessageId,
     status: state.status,
     isRunning: isRuntimeRunning && !isWaitingApproval,
     isActive,
@@ -2222,7 +2206,7 @@ export class AgentSessionService {
     // on — woken by a background result, or picking up queued messages —
     // passes no source, since its history continues from the last message;
     // its replies still answer the last user message, so they are stamped
-    // with it and the run summary names it as the turn's owner.
+    // with it.
     const turnUserMessageId =
       input.sourceUserMessageId ?? findLastUserMessageId(input.messages)
 
@@ -2243,13 +2227,9 @@ export class AgentSessionService {
         const currentRunEntry = this.runEntriesByKey.get(runKey)
         if (currentRunEntry?.runToken === runToken) {
           currentRunEntry.sourceUserMessageId = sourceUserMessageId
-          currentRunEntry.state = {
-            ...currentRunEntry.state,
-            anchorMessageId: sourceUserMessageId,
-          }
         }
-        // Remove the queued bubble and switch run-summary ownership before the
-        // runtime snapshot materializes the injected messages.
+        // Remove the queued bubble before the runtime snapshot materializes
+        // the injected messages.
         this.recomputeConversationState(conversationId)
         return {
           messages: queue.map((message) => ({
@@ -2270,7 +2250,6 @@ export class AgentSessionService {
       messages: [...input.messages],
       compaction: this.normalizeCompaction(input.compaction, input.messages),
       pendingCompactionAnchorMessageId: null,
-      anchorMessageId: turnUserMessageId,
       activity,
     }
     this.recomputeConversationState(conversationId)
@@ -2659,7 +2638,6 @@ export class AgentSessionService {
         aggregateMessages,
       ),
       pendingCompactionAnchorMessageId,
-      anchorMessageId: runEntries.at(-1)?.state.anchorMessageId,
       errorMessage: runEntries.find((entry) => entry.state.errorMessage)?.state
         .errorMessage,
       activity: runEntries.at(-1)?.state.activity,
@@ -2916,7 +2894,6 @@ export class AgentSessionService {
       pendingCompactionAnchorMessageId:
         state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
-      anchorMessageId: state.anchorMessageId,
       activity: state.activity,
     }
   }
