@@ -646,8 +646,13 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         replayBlocks,
         replayInputJson,
       )
+      // `message_stop` completes the message, so stop reading here instead of
+      // at EOF: a server or proxy that drops the connection afterwards without
+      // ending the chunked body would otherwise fail a finished reply and lose
+      // the replay and usage that follow the loop.
       if (chunk.type === 'message_stop') {
         completed = true
+        break
       }
       if (chunk.type === 'message_start') {
         messageId = chunk.message.id
