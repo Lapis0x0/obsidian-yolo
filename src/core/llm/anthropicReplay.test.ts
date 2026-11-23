@@ -115,6 +115,27 @@ describe('AnthropicProvider Claude reply replay', () => {
     ])
   })
 
+  it('finishes at message_stop even when the connection drops afterwards', async () => {
+    const stream = (async function* () {
+      for (const event of toolTurnEvents) yield event
+      throw new Error('Premature close')
+    })()
+    const chunks = []
+    for await (const chunk of internals().streamResponseGenerator(
+      stream,
+      'claude-opus-5-5',
+    )) {
+      chunks.push(chunk)
+    }
+
+    expect(
+      chunks
+        .map((c) => c.choices?.[0]?.delta?.providerMetadata)
+        .filter(Boolean),
+    ).toEqual([{ anthropic: { content: nativeReply } }])
+    expect(chunks.at(-1)).toMatchObject({ usage: { completion_tokens: 5 } })
+  })
+
   it('keeps nothing from a stream that never finished', async () => {
     expect(
       await streamOf(toolTurnEvents.slice(0, -1), 'claude-opus-5-5'),

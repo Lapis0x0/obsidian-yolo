@@ -828,6 +828,31 @@ export class ChatGPTOAuthResponsesAdapter {
     }
   }
 
+  /**
+   * Parse a Responses event stream, stopping at its terminal event. The
+   * terminal event completes the response, so the connection is not read to
+   * EOF: a server or proxy that drops it afterwards without ending the chunked
+   * body would otherwise fail a response that already arrived whole.
+   *
+   * Returns whether the terminal event arrived, for callers whose endpoint
+   * guarantees one and so can tell a truncated stream from a finished one.
+   */
+  async *parseStream(
+    events: AsyncIterable<ResponseStreamEvent>,
+  ): AsyncGenerator<LLMResponseStreaming, boolean> {
+    const state = this.createStreamState()
+    for await (const event of events) {
+      yield* this.parseStreamEvent(event, state)
+      if (
+        event.type === 'response.completed' ||
+        event.type === 'response.incomplete'
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
   createStreamState(): StreamState {
     return {
       toolIndexByItemId: new Map(),

@@ -5,7 +5,10 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { LLMRequestNonStreaming } from '../../types/llm/request'
+import {
+  LLMRequestNonStreaming,
+  LLMRequestStreaming,
+} from '../../types/llm/request'
 
 import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 
@@ -21,7 +24,7 @@ const request: LLMRequestNonStreaming = {
   messages: [{ role: 'user', content: 'Summarize this chat in a few words.' }],
 }
 
-const createProvider = (events: ResponseStreamEvent[]) => {
+const createProvider = (events: ResponseStreamEvent[], streamError?: Error) => {
   const provider = new ChatGPTOAuthProvider({
     id: 'chatgpt-oauth',
     presetType: 'chatgpt-oauth',
@@ -33,6 +36,7 @@ const createProvider = (events: ResponseStreamEvent[]) => {
       for (const event of events) {
         yield event
       }
+      if (streamError) throw streamError
     },
   })
   const client = { responses: { create } } as unknown as OpenAI
@@ -44,17 +48,18 @@ const createProvider = (events: ResponseStreamEvent[]) => {
   return { provider, create }
 }
 
-const completed = (
+const terminalEvent = (
   output: unknown[],
   usage?: Record<string, number>,
+  status: 'completed' | 'incomplete' = 'completed',
 ): ResponseStreamEvent =>
   ({
-    type: 'response.completed',
+    type: `response.${status}`,
     response: {
       id: 'resp_1',
       created_at: 1,
       model: 'gpt-5.6-sol',
-      status: 'completed',
+      status,
       output,
       ...(usage ? { usage } : {}),
     },
@@ -75,6 +80,80 @@ const itemDone = (outputIndex: number, item: unknown): ResponseStreamEvent =>
     item,
   }) as unknown as ResponseStreamEvent
 
+describe('ChatGPTOAuthProvider.streamResponse', () => {
+  const streamRequest: LLMRequestStreaming = { ...request, stream: true }
+  const textDelta: ResponseStreamEvent = {
+    type: 'response.output_text.delta',
+    item_id: 'msg_1',
+    output_index: 0,
+    content_index: 0,
+    delta: 'First part',
+  }
+
+  it.each([
+    ['completed', 'stop'],
+    ['incomplete', 'length'],
+  ] as const)(
+    'finishes at response.%s even when the HTTP stream would close early',
+    async (status, finishReason) => {
+      const { provider } = createProvider(
+        [
+          textDelta,
+          terminalEvent(
+            [],
+            { input_tokens: 12, output_tokens: 3, total_tokens: 15 },
+            status,
+          ),
+        ],
+        new Error('Premature close'),
+      )
+      const stream = await provider.streamResponse(model, streamRequest)
+      const iterator = stream[Symbol.asyncIterator]()
+
+      await expect(iterator.next()).resolves.toMatchObject({
+        done: false,
+        value: { choices: [{ delta: { content: 'First part' } }] },
+      })
+      await expect(iterator.next()).resolves.toMatchObject({
+        done: false,
+        value: {
+          choices: [{ finish_reason: finishReason }],
+          usage: { total_tokens: 15 },
+        },
+      })
+      await expect(iterator.next()).resolves.toMatchObject({ done: true })
+    },
+  )
+
+  it.each([
+    ['a transport error', new Error('Premature close'), 'Premature close'],
+    ['an early EOF', undefined, 'stream ended unexpectedly'],
+  ] as const)(
+    'reports %s before the terminal event',
+    async (_, error, message) => {
+      const { provider } = createProvider([textDelta], error)
+      const stream = await provider.streamResponse(model, streamRequest)
+      const iterator = stream[Symbol.asyncIterator]()
+
+      await iterator.next()
+      await expect(iterator.next()).rejects.toThrow(message)
+    },
+  )
+
+  it('allows an aborted stream to end without a terminal event', async () => {
+    const controller = new AbortController()
+    const { provider } = createProvider([textDelta])
+    const stream = await provider.streamResponse(model, streamRequest, {
+      signal: controller.signal,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    await iterator.next()
+    controller.abort()
+    await expect(iterator.next()).resolves.toMatchObject({ done: true })
+  })
+})
+
 describe('ChatGPTOAuthProvider.generateResponse', () => {
   // The Codex endpoint only streams, so buffered callers (conversation titles,
   // other lightweight requests) fold the stream back into one response. Its
@@ -88,7 +167,7 @@ describe('ChatGPTOAuthProvider.generateResponse', () => {
         delta: 'Weekend trip',
       } as unknown as ResponseStreamEvent,
       itemDone(0, messageItem('msg_1', 'Weekend trip plan')),
-      completed([], {
+      terminalEvent([], {
         input_tokens: 12,
         output_tokens: 3,
         total_tokens: 15,
@@ -126,7 +205,7 @@ describe('ChatGPTOAuthProvider.generateResponse', () => {
       }),
       itemDone(1, messageItem('msg_2', ' Then I will grep.')),
       itemDone(0, messageItem('msg_1', 'Reading the file.')),
-      completed([]),
+      terminalEvent([]),
     ])
 
     const choice = (await provider.generateResponse(model, request)).choices[0]
@@ -150,7 +229,7 @@ describe('ChatGPTOAuthProvider.generateResponse', () => {
   it('keeps the terminal response output when the backend sends it', async () => {
     const { provider } = createProvider([
       itemDone(0, messageItem('msg_1', 'Streamed draft')),
-      completed([messageItem('msg_1', 'Final answer')]),
+      terminalEvent([messageItem('msg_1', 'Final answer')]),
     ])
 
     const response = await provider.generateResponse(model, request)
@@ -184,7 +263,7 @@ describe('ChatGPTOAuthProvider hosted web search', () => {
   // The Codex backend rejects `web_search_preview` with HTTP 400, so the tool
   // has to reach it under the bare `web_search` type.
   it('sends the hosted search tool as web_search', async () => {
-    const { provider, create } = createProvider([completed([])])
+    const { provider, create } = createProvider([terminalEvent([])])
 
     await provider.generateResponse(
       {
