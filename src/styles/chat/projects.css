@@ -12,7 +12,7 @@
   justify-content: space-between;
   padding: 14px 12px 6px 20px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
@@ -54,7 +54,7 @@ ul.yolo-chat-sidebar-project-list {
   position: relative;
   display: flex;
   align-items: center;
-  height: 32px;
+  height: var(--yolo-chat-sidebar-row-height);
   border-radius: var(--radius-m);
   color: var(--text-muted);
 }
@@ -86,7 +86,7 @@ button.yolo-chat-sidebar-project-main {
   height: 100%;
   padding: 0 0 0 8px;
   color: inherit;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
   text-align: start;
 }
 
@@ -185,7 +185,7 @@ button.yolo-chat-sidebar-project-conversation {
   justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  height: 30px;
+  height: var(--yolo-chat-sidebar-row-height);
   margin: 0;
   padding: 0 10px;
   border: 0;
@@ -193,7 +193,7 @@ button.yolo-chat-sidebar-project-conversation {
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
   text-align: start;
   cursor: pointer;
 }
@@ -217,9 +217,9 @@ button.yolo-chat-sidebar-project-conversation.is-active {
 }
 
 button.yolo-chat-sidebar-project-view-all {
-  height: 28px;
+  height: 30px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-chat-sidebar-project-conversations-empty {
@@ -234,7 +234,7 @@ button.yolo-chat-sidebar-project-empty {
   justify-content: flex-start;
   gap: 10px;
   width: 100%;
-  height: 32px;
+  height: var(--yolo-chat-sidebar-row-height);
   margin: 0;
   padding: 0 10px;
   border: 0;
@@ -242,7 +242,7 @@ button.yolo-chat-sidebar-project-empty {
   background: transparent;
   box-shadow: none;
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
   cursor: pointer;
 }
 

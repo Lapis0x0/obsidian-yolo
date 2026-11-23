@@ -1,4 +1,5 @@
 @import './tokens/motion.css';
+@import './tokens/typography.css';
 
 @import './settings/base.css';
 @import './settings/mode-segmented-control.css';

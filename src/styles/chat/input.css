@@ -2761,6 +2761,35 @@ button.yolo-update-toast-tab.is-active {
   pointer-events: none;
 }
 
+/* 对话里的用户消息和回复正文同一套阅读排版 */
+.yolo-chat-messages .yolo-user-message-card .yolo-chat-user-input-container {
+  font-size: var(--yolo-font-reading);
+}
+
+.yolo-chat-messages .yolo-user-message-card .yolo-chat-user-input-editor,
+.yolo-chat-messages
+  .yolo-user-message-card
+  .yolo-lexical-content-editable-paragraph {
+  line-height: var(--yolo-leading-reading);
+}
+
+/* 主输入框用「需要读的界面文字」：比正文小一点，仍像一个输入控件。
+ * 占位符和输入的文字同字号同行高，并去掉为旧行高微调的下移，两者才重合 */
+.yolo-chat-input-wrapper .yolo-chat-user-input-container,
+.yolo-chat-input-wrapper .yolo-obsidian-textarea,
+.yolo-chat-input-wrapper .yolo-chat-user-input-placeholder {
+  font-size: var(--yolo-font-ui-emphasis);
+}
+
+.yolo-chat-input-wrapper .yolo-obsidian-textarea,
+.yolo-chat-input-wrapper .yolo-chat-user-input-placeholder {
+  line-height: var(--yolo-leading-ui-multiline);
+}
+
+.yolo-chat-input-wrapper .yolo-chat-user-input-placeholder {
+  top: var(--size-2-1);
+}
+
 .yolo-user-message-card__content {
   display: flex;
   flex-direction: column;

@@ -2402,6 +2402,8 @@ button.yolo-mermaid-modal-control:disabled {
     .yolo-assistant-message-metadata-content .yolo-markdown-rendered
   ) {
   font-family: var(--yolo-chat-response-font-family);
+  /* 回复正文按阅读排版；字号由 .yolo-markdown-rendered 的 base 档给出 */
+  line-height: var(--yolo-leading-reading);
 }
 
 /* ---------------------------------------------------------------------------

@@ -1,0 +1,28 @@
+/*
+ * 全局排版 token：按用途命名，组件只挑用途，不自己挑字号。
+ *
+ * 两个来源，各管一类文字：
+ * - 阅读正文（对话里的用户消息、AI 回复、Markdown 渲染）跟随 Obsidian
+ *   「外观 → 字体大小」（--font-text-size），乘 0.9 落在长时间阅读的舒适点
+ *   （默认 14.4px）。用户调大笔记字号，对话正文一起变大。
+ * - 界面文字（按钮、菜单、列表行、辅助信息）跟随 Obsidian 的界面字号
+ *   （--font-ui-*），和宿主控件保持同一套尺度。
+ *
+ * 定义在 body 上而不是 :root：Obsidian 的 --font-text-size / --font-ui-*
+ * 定义在 body，:root 上引用会拿不到用户设置。
+ */
+body {
+  /* 用户消息、AI 回复正文 */
+  --yolo-font-reading: calc(var(--font-text-size) * 0.9);
+  /* 需要读的界面文字：侧边栏行、输入框、标题栏面包屑 */
+  --yolo-font-ui-emphasis: calc(var(--font-ui-small) + 1px);
+  /* 普通界面文字：按钮、菜单、分组标题 */
+  --yolo-font-ui: var(--font-ui-small);
+  /* 辅助信息：时间、token 数、次要说明 */
+  --yolo-font-meta: var(--font-ui-smaller);
+
+  /* 多行界面文字：输入框、卡片里的说明 */
+  --yolo-leading-ui-multiline: 1.5;
+  /* 阅读正文 */
+  --yolo-leading-reading: 1.7;
+}

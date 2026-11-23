@@ -29,3 +29,10 @@ dropdown、滚动条共享样式（因为 Smart Space 是这些样式最早的�
 
 `styles.css` 是 PostCSS 从 `index.css` 编译产物，**不要直接编辑**。
 改完源文件运行 `npm run styles:build`（或 `npm run styles:watch`）。
+
+## 5. 排版
+
+字号和行高按用途取 [`tokens/typography.css`](./tokens/typography.css) 里的 token：
+阅读正文（对话消息、Markdown 渲染）跟随 Obsidian 字体大小，界面文字跟随
+Obsidian 界面字号。新样式不要写死像素字号或自选行高；token 不够用时先补
+token，再在组件里引用。存量写死的值逐步迁移。

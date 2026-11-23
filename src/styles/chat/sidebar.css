@@ -15,6 +15,7 @@
 
 .yolo-chat-shell {
   --yolo-chat-sidebar-background: var(--background-secondary);
+  --yolo-chat-sidebar-row-height: 34px;
   /* Obsidian 给 .view-content 的内边距，侧边栏要贴边就得逐边抵掉 */
   --yolo-chat-shell-pad-block-start: var(--size-4-3);
   --yolo-chat-shell-pad-inline-start: var(--size-4-3);
@@ -193,7 +194,7 @@ button.yolo-chat-sidebar-new-chat-main {
   min-width: 0;
   gap: 9px;
   padding: 0 12px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
   font-weight: var(--font-medium);
 }
 

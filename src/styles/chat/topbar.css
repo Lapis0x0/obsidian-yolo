@@ -116,7 +116,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
 }
 
 button.yolo-chat-topbar-project,
@@ -223,7 +223,7 @@ button.yolo-chat-topbar-agent {
   background: transparent;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: var(--cursor);
 }
 
@@ -319,7 +319,7 @@ button.yolo-context-usage-ring {
   background: transparent;
   box-shadow: none;
   color: var(--yolo-context-usage-ring-color);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-variant-numeric: tabular-nums;
   cursor: var(--cursor);
   appearance: none;

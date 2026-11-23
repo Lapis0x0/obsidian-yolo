@@ -324,12 +324,12 @@ button.yolo-chat-list-origin-filter:focus-visible {
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  min-height: 30px;
+  min-height: var(--yolo-chat-sidebar-row-height, 30px);
   padding: 0 10px;
   border-radius: var(--radius-m) !important;
   margin: 0 10px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui-emphasis);
   width: auto;
   box-sizing: border-box;
   background: transparent !important;
@@ -907,9 +907,9 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 .yolo-chat-history li.yolo-chat-history-group {
   /* 左缘与行内文字、「项目」标题对齐：外边距 10 + 内边距 10 */
   min-height: 0;
-  padding: 14px 10px 4px;
+  padding: 18px 10px 6px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: default;
   transition: transform var(--yolo-chat-list-reorder-duration)

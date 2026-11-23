@@ -222,7 +222,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             <TransitioningMarkdown
               content={block.content}
               contentSource={contentSource}
-              scale="sm"
+              scale="base"
               generationState={generationState}
               citationSources={sources}
             />

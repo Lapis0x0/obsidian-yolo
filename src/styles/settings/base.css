@@ -910,15 +910,18 @@ select.yolo-module-settings-select {
 .yolo-markdown-rendered {
   &.markdown-rendered {
     --render-scale: 1;
-    font-size: calc(var(--render-scale) * 1rem);
-    line-height: 1.5;
+    /* 基准是阅读正文 token（跟随 Obsidian 字体大小，见 tokens/typography.css）：
+     * base 是对话回复正文，sm / xs 是工具输出、引用块、思考过程这类次要内容 */
+    --yolo-render-base: var(--yolo-font-reading, 1rem);
+    font-size: calc(var(--render-scale) * var(--yolo-render-base));
+    line-height: var(--yolo-leading-ui-multiline);
 
     &.yolo-scale-xs {
-      --render-scale: 0.8;
+      --render-scale: 0.85;
     }
 
     &.yolo-scale-sm {
-      --render-scale: 0.85;
+      --render-scale: 0.9;
     }
 
     &.yolo-scale-base {
@@ -926,9 +929,9 @@ select.yolo-module-settings-select {
     }
 
     /* override default variables */
-    --p-spacing: calc(var(--render-scale) * 1rem);
+    --p-spacing: calc(var(--render-scale) * var(--yolo-render-base));
     --heading-spacing: calc(var(--p-spacing) * 1.75);
-    --checkbox-size: calc(var(--render-scale) * 1rem);
+    --checkbox-size: calc(var(--render-scale) * var(--yolo-render-base));
     --checkbox-radius: calc(var(--render-scale) * var(--radius-s));
     --icon-size: calc(var(--render-scale) * var(--icon-m));
 
@@ -936,12 +939,14 @@ select.yolo-module-settings-select {
     --list-indent: 1.5em;
 
     blockquote {
-      padding-inline-start: calc(var(--render-scale) * 1.5rem);
+      padding-inline-start: calc(
+        var(--render-scale) * 1.5 * var(--yolo-render-base)
+      );
     }
 
     pre {
-      padding: calc(var(--render-scale) * 0.75rem)
-        calc(var(--render-scale) * 1rem);
+      padding: calc(var(--render-scale) * 0.75 * var(--yolo-render-base))
+        calc(var(--render-scale) * var(--yolo-render-base));
     }
 
     :not(pre) > code {
@@ -949,25 +954,26 @@ select.yolo-module-settings-select {
     }
 
     hr {
-      margin: calc(var(--render-scale) * 2rem) 0;
+      margin: calc(var(--render-scale) * 2 * var(--yolo-render-base)) 0;
     }
 
     th,
     td {
-      font-size: calc(var(--render-scale) * 1rem);
-      padding: calc(var(--render-scale) * 0.25rem)
-        calc(var(--render-scale) * 0.5rem);
+      font-size: calc(var(--render-scale) * var(--yolo-render-base));
+      padding: calc(var(--render-scale) * 0.25 * var(--yolo-render-base))
+        calc(var(--render-scale) * 0.5 * var(--yolo-render-base));
     }
 
     .callout {
-      padding: calc(var(--render-scale) * 0.75rem)
-        calc(var(--render-scale) * 0.75rem) calc(var(--render-scale) * 0.75rem)
-        calc(var(--render-scale) * 1.5rem);
+      padding: calc(var(--render-scale) * 0.75 * var(--yolo-render-base))
+        calc(var(--render-scale) * 0.75 * var(--yolo-render-base))
+        calc(var(--render-scale) * 0.75 * var(--yolo-render-base))
+        calc(var(--render-scale) * 1.5 * var(--yolo-render-base));
     }
 
     .callout-icon {
-      height: calc(var(--render-scale) * 1rem);
-      width: calc(var(--render-scale) * 1rem);
+      height: calc(var(--render-scale) * var(--yolo-render-base));
+      width: calc(var(--render-scale) * var(--yolo-render-base));
     }
 
     .math {
