@@ -123,7 +123,7 @@ button.yolo-chat-sidebar-project-main {
   min-width: 28px;
   padding-inline-end: 10px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -225,7 +225,7 @@ button.yolo-chat-sidebar-project-view-all {
 .yolo-chat-sidebar-project-conversations-empty {
   padding: 6px 10px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 button.yolo-chat-sidebar-project-empty {
@@ -338,9 +338,10 @@ button.yolo-chat-sidebar-project-empty:hover {
 h1.yolo-project-home-title {
   margin: 0;
   color: var(--text-normal);
+  /* 展示型大字：一次性的视觉尺寸，不属于文字层级（见 tokens/typography.css） */
   font-size: 28px;
   font-weight: var(--font-semibold);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   letter-spacing: -0.02em;
 }
 
@@ -350,7 +351,7 @@ h1.yolo-project-home-title {
   gap: 0;
   padding-top: 2px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-home-facts-separator {
@@ -374,7 +375,7 @@ button.yolo-project-home-button {
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   cursor: pointer;
 }
 
@@ -416,14 +417,14 @@ button.yolo-project-home-button:hover {
 .yolo-project-home-section-title h2 {
   margin: 0;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
 .yolo-project-home-section-title span,
 .yolo-project-home-empty {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-home-empty {
@@ -464,7 +465,7 @@ button.yolo-project-home-conversation:hover {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
 }
 
 .yolo-project-home-conversation-title > span:first-child {
@@ -477,7 +478,7 @@ button.yolo-project-home-conversation:hover {
   flex-shrink: 0;
   min-width: 64px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-align: end;
 }
 
@@ -516,7 +517,7 @@ button.yolo-project-home-conversation:hover {
   align-items: center;
   justify-content: space-between;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
@@ -529,7 +530,7 @@ button.yolo-project-home-card-link {
   background: transparent;
   box-shadow: none;
   color: var(--text-accent);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
   cursor: pointer;
 }
@@ -547,7 +548,7 @@ button.yolo-project-home-card-link {
 
 .yolo-project-home-card-count {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
 }
 
@@ -563,7 +564,7 @@ button.yolo-project-home-card-link {
   gap: 8px;
   min-width: 0;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-project-home-card-item > span {
@@ -587,14 +588,14 @@ button.yolo-project-home-card-link {
 
 .yolo-project-home-card-note {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.5;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-project-home-card-path {
   color: var(--text-faint);
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-home-card-preview {
@@ -604,8 +605,8 @@ button.yolo-project-home-card-link {
   border-radius: 10px;
   background: var(--background-primary);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.75;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-reading);
   -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent);
   mask-image: linear-gradient(180deg, #000 75%, transparent);
 }
@@ -618,8 +619,8 @@ button.yolo-project-home-card-link {
 
 .yolo-project-home-card-entry {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.6;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 /* 新建 / 编辑项目弹窗 ------------------------------------------------------ */
@@ -673,7 +674,7 @@ input[type='text'].yolo-project-form-name {
   height: 44px;
   padding: 0 12px;
   border-radius: 11px;
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
 }
 
@@ -698,14 +699,14 @@ input[type='text'].yolo-project-form-name {
 
 .yolo-project-form-label {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
 }
 
 .yolo-project-form-hint {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.55;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 button.yolo-project-icon-option,
@@ -768,7 +769,7 @@ button.yolo-project-color-option.is-selected {
   gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--background-modifier-border);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-project-card > .yolo-project-card-row:last-child,
@@ -801,12 +802,12 @@ button.yolo-project-color-option.is-selected {
 
 .yolo-project-card-path {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-card-row-meta {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-card-footer {
@@ -815,7 +816,7 @@ button.yolo-project-color-option.is-selected {
   gap: 10px;
   padding: 6px 6px 6px 12px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-card-footer > span {
@@ -828,7 +829,7 @@ button.yolo-project-card-button {
   margin: 0;
   padding: 0 10px;
   border-radius: var(--radius-m);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* 默认 Agent：整行选择器 */
@@ -872,7 +873,7 @@ button.yolo-project-agent-trigger:hover {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -880,7 +881,7 @@ button.yolo-project-agent-trigger:hover {
 
 .yolo-project-agent-source {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-project-agent-chevron {
@@ -896,7 +897,7 @@ button.yolo-project-form-link {
   background: transparent;
   box-shadow: none;
   color: var(--text-accent);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 

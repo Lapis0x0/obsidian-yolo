@@ -257,7 +257,7 @@
   width: 100%;
   text-align: left;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-selection-menu-item:hover,

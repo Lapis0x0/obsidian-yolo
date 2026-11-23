@@ -101,7 +101,7 @@
   appearance: none;
   -webkit-appearance: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-chat-list-search input.yolo-chat-list-search-input {
@@ -120,7 +120,7 @@
 .yolo-chat-list-section-count {
   flex-shrink: 0;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-normal);
 }
@@ -152,7 +152,7 @@ button.yolo-chat-list-origin-filter {
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   line-height: 1;
   cursor: pointer;
   appearance: none;
@@ -213,8 +213,8 @@ button.yolo-chat-list-origin-filter:focus-visible {
   align-items: center;
   gap: 4px;
   color: var(--text-faint);
-  font-size: 10px;
-  line-height: 1.4;
+  font-size: var(--yolo-font-badge);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-chat-list-legend-key {
@@ -230,7 +230,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: var(--background-modifier-hover);
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   line-height: 1;
 }
 
@@ -395,7 +395,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   left: 0;
   top: 50%;
   width: min(72%, 220px);
-  height: calc(var(--font-ui-small) * 0.82);
+  height: calc(var(--yolo-font-ui) * 0.82);
   border-radius: var(--radius-s);
   transform: translateY(-50%);
   opacity: 0;
@@ -472,7 +472,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
 
 input[type='text'].yolo-chat-list-dropdown-item-title-input {
   width: 100%;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-chat-history li.yolo-chat-list-dropdown-item:hover {
@@ -537,7 +537,7 @@ button.yolo-chat-list-dropdown-archive-toggle {
   appearance: none;
   -webkit-appearance: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-align: center;
   padding: 0 10px;
   cursor: pointer;
@@ -857,8 +857,8 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   border: 0 !important;
   box-shadow: none !important;
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   font-weight: var(--font-normal);
   padding: 7px 9px;
   border-radius: var(--radius-s);
@@ -945,7 +945,7 @@ button.yolo-chat-history-back {
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 

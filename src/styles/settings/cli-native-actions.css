@@ -11,7 +11,7 @@
   min-height: var(--size-4-16);
   padding: var(--size-4-4);
   color: var(--text-muted);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   text-align: center;
 }
 
@@ -43,7 +43,7 @@
   background: transparent !important;
   background-color: transparent !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   padding: 6px 12px;
   cursor: pointer;
@@ -66,7 +66,7 @@
 
 .yolo-claude-plugins-tab-count {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-claude-plugins-browse {
@@ -116,7 +116,7 @@
   flex-wrap: wrap;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
@@ -126,7 +126,7 @@
   border-radius: var(--radius-s);
   background: var(--background-secondary-alt);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: normal;
   padding: 1px 6px;
 }
@@ -135,7 +135,7 @@
   color: var(--text-success);
   border: 1px solid color-mix(in srgb, var(--text-success) 30%, transparent);
   border-radius: var(--radius-s);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: normal;
   padding: 1px 6px;
 }
@@ -143,7 +143,7 @@
 .yolo-claude-plugins-row-desc {
   margin-top: 4px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -153,13 +153,13 @@
 .yolo-claude-plugins-row-meta {
   margin-top: 4px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-claude-plugins-row-error {
   margin-top: 4px;
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-claude-plugins-row-actions {
@@ -183,7 +183,7 @@
 
 .yolo-claude-plugins-empty-hint {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 @media (max-width: 720px) {
@@ -217,7 +217,7 @@
   flex: 1;
   min-width: 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-mcp-status-list {
@@ -257,14 +257,14 @@
   flex-wrap: wrap;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
 .yolo-mcp-status-badge {
   border-radius: 9999px;
   padding: var(--size-2-1) var(--size-4-2);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: normal;
   line-height: 1;
   background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
@@ -298,7 +298,7 @@
   border-radius: var(--radius-s);
   background: var(--background-secondary-alt);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: normal;
   padding: 1px 6px;
 }
@@ -306,7 +306,7 @@
 .yolo-mcp-status-row-error {
   margin-top: 4px;
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-mcp-status-row-actions {

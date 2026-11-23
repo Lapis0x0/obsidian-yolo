@@ -81,8 +81,8 @@
   border-radius: var(--radius-m);
   text-align: left;
   font-family: inherit;
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   appearance: none;
   cursor: pointer;
   transition: background-color 0.15s ease;
@@ -285,7 +285,7 @@ button.yolo-assistant-selector-item-main {
 }
 
 .yolo-assistant-selector-content--palette .yolo-assistant-selector-item-name {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   color: var(--text-normal);
   overflow: hidden;
@@ -303,7 +303,7 @@ button.yolo-assistant-selector-item-main {
   align-items: center;
   gap: 8px;
   margin-top: 3px;
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   font-family: var(--font-monospace);
   min-width: 0;
@@ -391,7 +391,7 @@ button.yolo-assistant-selector-footer-btn {
   box-sizing: border-box !important;
   padding: 5px 8px !important;
   border-radius: var(--radius-s) !important;
-  font-size: var(--font-ui-smaller) !important;
+  font-size: var(--yolo-font-meta) !important;
   color: var(--text-normal) !important;
   cursor: pointer !important;
   background: transparent !important;
@@ -497,7 +497,7 @@ button.yolo-assistant-selector-footer-btn:hover {
 
 .yolo-icon-picker-content h2 {
   margin: 0 0 var(--size-4-4) 0;
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: 600;
   color: var(--text-normal);
 }
@@ -515,7 +515,7 @@ button.yolo-assistant-selector-footer-btn:hover {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -589,7 +589,7 @@ button.yolo-assistant-selector-footer-btn:hover {
   border-radius: var(--radius-s);
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
 }
 
 .yolo-icon-picker-emoji-input:focus {
@@ -627,21 +627,26 @@ button.yolo-assistant-selector-footer-btn:hover {
   align-items: center;
   justify-content: center;
   line-height: 1;
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 16px;
 }
 
 .yolo-icon-emoji[data-size='14'] {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 14px;
 }
 
 .yolo-icon-emoji[data-size='20'] {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 20px;
 }
 
 .yolo-icon-emoji[data-size='16'] {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 16px;
 }
 
 .yolo-icon-emoji[data-size='24'] {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 24px;
 }

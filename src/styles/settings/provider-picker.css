@@ -130,8 +130,8 @@ body.theme-dark .yolo-provider-picker {
   min-width: 0;
   padding: 7px 0;
   font-family: inherit;
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   color: var(--pp-ink);
   cursor: text;
 }
@@ -143,7 +143,7 @@ body.theme-dark .yolo-provider-picker {
 
 .yolo-provider-picker__count {
   font-family: var(--font-monospace);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   color: var(--pp-mute2);
   white-space: nowrap;
 }
@@ -170,7 +170,7 @@ body.theme-dark .yolo-provider-picker {
   border: 1px solid var(--pp-line);
   background: var(--pp-surface);
   color: var(--pp-ink2);
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   font-weight: 500;
   border-radius: 100px;
   cursor: pointer;
@@ -210,7 +210,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
 
 .yolo-provider-picker__chip-count {
   font-family: var(--font-monospace);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   color: var(--pp-mute2);
 }
 
@@ -297,7 +297,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: var(--yolo-font-meta);
   letter-spacing: -0.3px;
   /* Hairline ring grounds the icon on the card (design pattern). */
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
@@ -319,7 +319,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
 }
 
 .yolo-provider-picker__tile-icon--cjk {
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   letter-spacing: 0;
 }
 
@@ -327,6 +327,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
   background: var(--pp-surface);
   color: var(--pp-mute);
   font-family: var(--font-monospace);
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 16px;
   border: 1px dashed var(--pp-line);
   box-shadow: none;
@@ -416,7 +417,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
 }
 
 .yolo-provider-picker__tile-name {
-  font-size: 13.5px;
+  font-size: var(--yolo-font-ui);
   font-weight: 600;
   color: var(--pp-ink);
   letter-spacing: -0.1px;
@@ -440,7 +441,7 @@ body.theme-dark .yolo-provider-picker .yolo-provider-picker__chip--on:active {
   padding: 2px 6px;
   border-radius: 4px;
   font-family: var(--font-monospace);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: 500;
   letter-spacing: 0.2px;
   white-space: nowrap;

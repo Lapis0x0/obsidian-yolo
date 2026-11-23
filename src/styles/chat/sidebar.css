@@ -142,7 +142,7 @@ button.yolo-chat-sidebar-rail-button--primary {
   flex: 1;
   min-width: 0;
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
 }
 
@@ -288,7 +288,7 @@ button.yolo-chat-sidebar-pinned-agent:hover {
 .yolo-chat-sidebar-pinned-agent-name {
   max-width: 46px;
   overflow: hidden;
-  font-size: 10.5px;
+  font-size: var(--yolo-font-badge);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

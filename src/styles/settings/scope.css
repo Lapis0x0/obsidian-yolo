@@ -16,7 +16,7 @@
   height: 20px;
   padding: 0 7px;
   border-radius: 999px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   white-space: nowrap;
   flex: 0 0 auto;
@@ -37,9 +37,9 @@
 }
 
 .yolo-scope-status {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-scope-status-main {
@@ -87,7 +87,7 @@ button.yolo-scope-status-reset {
   box-shadow: none;
   border: none;
   color: var(--interactive-accent);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: pointer;
   white-space: nowrap;
@@ -159,7 +159,7 @@ button.yolo-scope-status-reset:hover {
 }
 
 .yolo-scope-summary-title {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
 }
@@ -186,7 +186,7 @@ button.yolo-scope-edit-button {
   gap: 10px;
   min-height: 40px;
   padding: 0 8px 0 14px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -223,7 +223,7 @@ button.yolo-scope-edit-button {
 
 .yolo-scope-rule-count {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex: 0 0 auto;
@@ -259,7 +259,7 @@ button.yolo-scope-rule-remove:disabled {
   padding: 18px;
   text-align: center;
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -270,7 +270,7 @@ button.yolo-scope-rule-remove:disabled {
   min-height: 40px;
   padding: 0 10px;
   background: var(--background-secondary);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -284,7 +284,7 @@ button.yolo-scope-rules-clear {
   box-shadow: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   border-radius: var(--radius-s);
   cursor: pointer;
 }
@@ -330,13 +330,13 @@ button.yolo-scope-rules-clear:disabled {
 }
 
 .yolo-scope-editor-title {
-  font-size: var(--font-ui-large);
+  font-size: var(--yolo-font-heading);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
 }
 
 .yolo-scope-editor-subtitle {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -374,7 +374,7 @@ button.yolo-scope-rules-clear:disabled {
   box-shadow: none;
   background: transparent;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-scope-search input:focus,
@@ -396,7 +396,7 @@ button.yolo-scope-filter {
   background: transparent;
   border-radius: var(--radius-s);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 
@@ -433,7 +433,7 @@ button.yolo-scope-filter.is-active {
   padding: 16px;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-scope-row {
@@ -444,7 +444,7 @@ button.yolo-scope-filter.is-active {
   height: 34px;
   padding: 0 6px 0 4px;
   border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-scope-row::before {
@@ -532,13 +532,13 @@ button.yolo-scope-row-toggle.is-blank {
 
 .yolo-scope-row-count {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
 
 .yolo-scope-row-follows {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
   white-space: nowrap;
   flex: 0 0 auto;
@@ -581,7 +581,7 @@ button.yolo-scope-mark {
   box-shadow: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 
@@ -626,7 +626,7 @@ button.yolo-scope-mark:disabled {
   gap: 8px;
   flex: 1;
   min-width: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -645,7 +645,7 @@ button.yolo-scope-mark:disabled {
 
 body.is-mobile .yolo-scope-row {
   height: 44px;
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   cursor: pointer;
 }
 

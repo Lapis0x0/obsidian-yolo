@@ -47,7 +47,7 @@ button.yolo-pdf-annotation-marker {
   background: transparent;
   color: var(--interactive-accent);
   box-shadow: none;
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-semibold);
   line-height: 1;
   transform: translate(-12%, -70%);
@@ -105,9 +105,9 @@ button.yolo-pdf-annotation-marker {
   background: var(--background-secondary);
   color: var(--text-normal);
   box-shadow: var(--shadow-s);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-normal);
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   text-align: start;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -189,7 +189,7 @@ button.yolo-pdf-annotation-marker:focus-visible {
   background: transparent;
   color: var(--text-normal);
   font: inherit;
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   box-shadow: none;
 }
 

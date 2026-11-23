@@ -182,7 +182,7 @@ button.yolo-quick-ask-continue-menu-item {
   background: transparent;
   border: none;
   box-shadow: none;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-normal);
   cursor: pointer;
   transition: background 0.15s ease;
@@ -228,7 +228,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   appearance: none;
   -webkit-appearance: none;
   outline: none;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   color: var(--text-muted) !important;
   cursor: pointer;
@@ -288,7 +288,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   transition: all 0.15s ease;
 }
 
@@ -422,7 +422,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   transition: all 0.15s ease;
 }
@@ -508,15 +508,15 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-mode-select-item__label {
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   font-weight: 500;
   color: var(--text-normal);
 }
 
 .yolo-mode-select-item__desc {
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   color: var(--text-muted);
-  line-height: 1.3;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-mode-select-item[data-state='checked'] .yolo-mode-select-item__icon,
@@ -537,7 +537,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 
 .yolo-quick-ask-assistant-menu-title {
   padding: 6px 12px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: 600;
   color: var(--text-muted);
   user-select: none;
@@ -592,13 +592,13 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-quick-ask-assistant-item-name {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 500;
   color: var(--text-normal);
 }
 
 .yolo-quick-ask-assistant-item-description {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -616,7 +616,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 
 .yolo-quick-ask-assistant-menu-hint {
   padding: 6px 12px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
   border-top: 1px solid var(--background-modifier-border);
   margin-top: 4px;
@@ -657,8 +657,8 @@ button.yolo-quick-ask-continue-menu-item:focus {
   padding: 8px 6px 1px 6px !important;
   background: transparent;
   border: none;
-  font-size: var(--font-ui-small);
-  line-height: 1.6 !important;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline) !important;
   outline: none;
   overflow-y: auto;
   scrollbar-gutter: stable; /* keep gutter on the right */
@@ -666,7 +666,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-quick-ask-content-editable .yolo-lexical-content-editable-paragraph {
-  line-height: 1.6 !important;
+  line-height: var(--yolo-leading-ui-multiline) !important;
   padding-top: 0 !important;
 }
 
@@ -687,7 +687,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   transform: none;
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-quick-ask-header-actions {
@@ -857,8 +857,8 @@ button.yolo-quick-ask-continue-menu-item:focus {
   background: transparent;
   color: inherit;
   border-radius: 0;
-  font-size: var(--font-ui-small);
-  line-height: 1.5;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -905,7 +905,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   max-height: 120px;
   height: auto;
   padding: 0;
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
   overflow-y: auto;
 }
 
@@ -915,7 +915,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 
 .yolo-quick-ask-user-message--editing .yolo-lexical-content-editable-paragraph {
   margin: 0;
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-quick-ask-user-message--editing
@@ -979,7 +979,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 
 .yolo-quick-ask-chat-area--shared .yolo-code-block,
 .yolo-quick-ask-chat-area--shared .yolo-toolcall {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-quick-ask-assistant-message {
@@ -988,8 +988,8 @@ button.yolo-quick-ask-continue-menu-item:focus {
   padding: 0 0 var(--size-2-2);
   background: transparent;
   border-radius: 0;
-  font-size: var(--font-ui-small);
-  line-height: 1.5;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   user-select: text;
   pointer-events: auto;
 }
@@ -1002,7 +1002,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-quick-ask-assistant-message .markdown-rendered {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   user-select: text;
 }
 
@@ -1033,7 +1033,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-quick-ask-assistant-message .markdown-rendered code {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* Drag handle */

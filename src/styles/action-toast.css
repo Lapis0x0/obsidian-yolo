@@ -108,15 +108,15 @@
 
 .yolo-action-toast-copy strong {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-action-toast-copy span {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.45;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-action-toast-close,
@@ -158,7 +158,7 @@
   min-height: 28px;
   padding: 5px 11px;
   border-radius: var(--radius-s);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
 }
 

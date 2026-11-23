@@ -121,7 +121,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-s);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -255,7 +255,7 @@
 
   .yolo-settings-tab-button {
     padding: 6px 8px;
-    font-size: var(--font-ui-smaller);
+    font-size: var(--yolo-font-meta);
   }
 
   .yolo-settings-tabs-content {

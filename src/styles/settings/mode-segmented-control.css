@@ -48,7 +48,7 @@
   color: var(--text-muted);
   background: transparent !important;
   box-shadow: none !important;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: pointer;
   transition: color 0.2s ease;

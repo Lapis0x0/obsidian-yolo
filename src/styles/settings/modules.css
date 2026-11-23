@@ -42,7 +42,7 @@ button.yolo-module-shelf-nav {
   box-shadow: none;
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   text-align: left;
   cursor: pointer;
 }
@@ -132,8 +132,8 @@ button.yolo-module-shelf-action:focus-visible,
   max-width: 60ch;
   margin: 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-module-shelf-groups {
@@ -145,7 +145,7 @@ button.yolo-module-shelf-action:focus-visible,
   margin: 0;
   padding: 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
 }
 
@@ -183,9 +183,9 @@ button.yolo-module-shelf-action:focus-visible,
 
 .yolo-module-shelf-row-heading strong {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   overflow-wrap: anywhere;
 }
 
@@ -195,8 +195,8 @@ button.yolo-module-shelf-action:focus-visible,
   margin: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -204,7 +204,7 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-version {
   flex: 0 0 auto;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
   font-variant-numeric: tabular-nums;
 }
@@ -225,8 +225,8 @@ button.yolo-module-shelf-action:focus-visible,
   border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: color-mix(in srgb, var(--text-error) 7%, transparent);
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   overflow-wrap: anywhere;
 }
 
@@ -239,8 +239,8 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-hint {
   margin-top: var(--size-4-1);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   overflow-wrap: anywhere;
 }
 
@@ -266,7 +266,7 @@ button.yolo-module-shelf-action {
   box-shadow: none;
   color: var(--text-normal);
   font: inherit;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -308,7 +308,7 @@ button.yolo-module-shelf-uninstall:hover {
   margin: 0;
   padding: var(--size-4-2) 0 0;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-modules-state {
@@ -359,7 +359,7 @@ button.yolo-module-shelf-uninstall:hover {
 .yolo-module-settings-error {
   margin-top: var(--size-4-2);
   color: var(--text-error);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .is-spinning {

@@ -104,7 +104,7 @@
   color: var(--text-error);
   font-weight: var(--font-medium);
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   user-select: text;
 }
 
@@ -118,7 +118,7 @@
 }
 
 .yolo-mcp-server-status-badge-label {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-mcp-server-status-badge--connected {
@@ -155,12 +155,12 @@
 
 .yolo-mcp-tool-name {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-mcp-tool-description {
   position: relative;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -226,7 +226,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 .yolo-mcp-tool-toggle-label {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -248,7 +248,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   color: var(--text-normal);
   font-size: var(--h3-size, 1.3em);
   font-weight: var(--font-bold, 700);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-mcp-server-modal-form .setting-item:not(.yolo-settings-kv-entry) {
@@ -273,14 +273,14 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 .yolo-mcp-field-label {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
 .yolo-mcp-field-desc {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.4;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-mcp-form-textarea {
@@ -341,14 +341,14 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 .yolo-mcp-oauth-title {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
 .yolo-mcp-oauth-desc {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.45;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-mcp-oauth-actions {
@@ -360,7 +360,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-mcp-oauth-status-dot {
@@ -384,8 +384,8 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 .yolo-mcp-oauth-error {
-  font-size: var(--font-ui-smaller);
-  line-height: 1.4;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 @keyframes yolo-mcp-oauth-spin {
@@ -465,15 +465,15 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 .yolo-mcp-parameters-tooltip-title {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   color: var(--text-normal);
   margin-bottom: var(--size-2-1);
 }
 
 .yolo-mcp-parameters-tooltip-line {
-  font-size: var(--font-ui-smaller);
-  line-height: 1.5;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-normal);
   word-wrap: break-word;
 }
@@ -485,8 +485,8 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 .yolo-mcp-parameters-tooltip-tip {
-  font-size: var(--font-ui-smaller);
-  line-height: 1.5;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-muted);
   margin-top: var(--size-2-2);
   padding-top: var(--size-2-2);
@@ -502,7 +502,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 .yolo-mcp-server-modal-validation {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   padding: var(--size-4-1) 0;
   white-space: pre-wrap;
 

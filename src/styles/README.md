@@ -32,7 +32,12 @@ dropdown、滚动条共享样式（因为 Smart Space 是这些样式最早的�
 
 ## 5. 排版
 
-字号和行高按用途取 [`tokens/typography.css`](./tokens/typography.css) 里的 token：
-阅读正文（对话消息、Markdown 渲染）跟随 Obsidian 字体大小，界面文字跟随
-Obsidian 界面字号。新样式不要写死像素字号或自选行高；token 不够用时先补
-token，再在组件里引用。存量写死的值逐步迁移。
+字号和行高一律按用途取 [`tokens/typography.css`](./tokens/typography.css) 里的
+token，不直接写像素值，也不直接引用 Obsidian 的 `--font-ui-*`、
+`--line-height-*`：阅读正文跟随 Obsidian 字体大小，界面文字和行高跟随
+Obsidian 界面字号与主题行高，都由 token 统一换算。token 不够用时先补 token，
+再在组件里引用。
+
+例外只有两类，写死时在旁边用注释注明：画在固定尺寸盒子里的字形（emoji
+图标、⋯、环里的问号），以及一次性的展示型大字。行高 `1` / `0` / `normal`
+这类用于排布图标或单行盒子的取值不算文字层级，可以直接写。

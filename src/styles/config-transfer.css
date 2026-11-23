@@ -9,7 +9,7 @@
 
 .yolo-config-transfer-desc {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 /* 来源选择按钮 */
@@ -43,14 +43,14 @@
 }
 
 .yolo-config-transfer-source-btn strong {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   line-height: normal;
 }
 
 .yolo-config-transfer-source-btn span {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   line-height: normal;
 }
@@ -69,7 +69,7 @@
 }
 
 .yolo-config-transfer-toolbar-actions button {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-accent);
   background: none;
   border: none;
@@ -119,18 +119,18 @@
   gap: var(--size-4-2);
   flex: 1;
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-normal);
 }
 
 .yolo-config-transfer-item-key {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
   font-family: var(--font-monospace);
 }
 
 .yolo-config-transfer-sensitive {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-warning);
   white-space: nowrap;
   flex-shrink: 0;
@@ -145,7 +145,7 @@
   padding: var(--size-4-2) var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   cursor: pointer;
 }
 
@@ -175,7 +175,7 @@
   padding: var(--size-4-2) var(--size-4-3);
   cursor: pointer;
   margin: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-normal);
 }
 

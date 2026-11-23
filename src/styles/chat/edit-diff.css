@@ -62,14 +62,14 @@ button.yolo-edit-diff-file-toggle:hover .yolo-edit-diff-path {
   overflow: hidden;
   color: var(--text-muted);
   font-family: var(--font-monospace);
-  font-size: var(--font-small);
+  font-size: var(--yolo-font-ui-emphasis);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .yolo-edit-diff-notice {
   color: var(--text-faint);
-  font-size: var(--font-smaller);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-edit-diff-body {
@@ -81,8 +81,8 @@ button.yolo-edit-diff-file-toggle:hover .yolo-edit-diff-path {
   border-radius: var(--radius-s);
   background-color: var(--background-primary-alt);
   font-family: var(--font-monospace);
-  font-size: var(--font-small);
-  line-height: 1.5;
+  font-size: var(--yolo-font-ui-emphasis);
+  line-height: var(--yolo-leading-code);
 }
 
 .yolo-edit-diff-row {
@@ -143,5 +143,5 @@ button.yolo-edit-diff-file-toggle:hover .yolo-edit-diff-path {
 
 .yolo-edit-diff-footer {
   color: var(--text-faint);
-  font-size: var(--font-smaller);
+  font-size: var(--yolo-font-ui);
 }

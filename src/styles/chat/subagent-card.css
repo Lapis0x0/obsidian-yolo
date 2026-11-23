@@ -140,7 +140,7 @@ button.yolo-subagent-card__main:focus-visible {
 
 .yolo-subagent-card__title {
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-normal);
   color: var(--text-normal);
   overflow: hidden;
@@ -150,14 +150,14 @@ button.yolo-subagent-card__main:focus-visible {
 
 .yolo-subagent-card__model {
   flex-shrink: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
 .yolo-subagent-card__summary {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,10 +271,10 @@ button.yolo-subagent-card__abort-btn:focus-visible {
 }
 
 .yolo-subagent-detail-title {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-subagent-detail-meta {
@@ -283,7 +283,7 @@ button.yolo-subagent-card__abort-btn:focus-visible {
   align-items: center;
   gap: var(--size-4-2);
   margin-top: var(--size-2-2);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -313,8 +313,8 @@ button.yolo-subagent-card__abort-btn:focus-visible {
   border-radius: var(--radius-s);
   background: var(--background-secondary);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.5;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -327,14 +327,14 @@ button.yolo-subagent-card__abort-btn:focus-visible {
 
 .yolo-subagent-detail-activity-row {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-normal);
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
   word-break: break-word;
 }
 
 .yolo-subagent-detail-empty {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -378,14 +378,14 @@ button.yolo-subagent-card__abort-btn:focus-visible {
 
 .yolo-subagent-approval__item-label {
   flex-shrink: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-family: var(--font-monospace);
   color: var(--text-normal);
 }
 
 .yolo-subagent-approval__item-detail {
   min-width: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -410,7 +410,7 @@ button.yolo-subagent-approval__bulk-btn {
   height: 24px;
   padding: 0 var(--size-2-3);
   border-radius: var(--radius-s);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
   cursor: pointer;
 }

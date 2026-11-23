@@ -19,7 +19,7 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background-color: var(--background-secondary);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-ask-user-question::before {
@@ -100,7 +100,7 @@
   box-shadow: none !important;
   background-color: transparent;
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: start;
@@ -146,8 +146,8 @@
   background-color: var(--background-primary);
   color: var(--text-normal);
   font-family: var(--font-text);
-  font-size: var(--font-ui-small);
-  line-height: 1.45;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   resize: vertical;
 }
 
@@ -165,7 +165,7 @@
 
 .yolo-ask-user-question-footer-hint {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-ask-user-question-footer-actions {
@@ -222,14 +222,14 @@
 
 .yolo-ask-user-question-item--answered .yolo-ask-user-question-answer {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding-left: calc(var(--size-4-1) + 14px);
 }
 
 .yolo-ask-user-question-footer-meta {
   align-self: flex-end;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* "Other" escape hatch — distinguished from preset options with a dashed border. */
@@ -254,6 +254,6 @@
 .yolo-ask-user-question-optional-hint {
   margin-left: auto;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
 }

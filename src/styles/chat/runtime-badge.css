@@ -11,9 +11,9 @@
   padding: 1px 5px;
   border-radius: 4px;
   font-family: var(--font-monospace);
-  font-size: 9.5px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-semibold);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   white-space: nowrap;
 }
 

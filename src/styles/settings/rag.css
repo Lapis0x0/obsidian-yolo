@@ -91,7 +91,7 @@
   flex-wrap: wrap;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
@@ -99,7 +99,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -114,7 +114,7 @@
   gap: 5px;
   padding: 1.5px 9px;
   border-radius: 999px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   white-space: nowrap;
 }
@@ -159,7 +159,7 @@
   align-items: center;
   gap: var(--size-2-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
 }
 
@@ -204,7 +204,7 @@
   padding: 5px 9px;
   border-radius: 5px;
   gap: 9px;
-  font-size: 12.5px;
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
 }
 
@@ -231,7 +231,7 @@
   gap: var(--size-4-2);
   margin: var(--size-4-5) 0 var(--size-4-2);
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -257,7 +257,7 @@
 
 .yolo-kb-divider-label-faint {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal, normal);
   text-transform: none;
   letter-spacing: normal;
@@ -346,9 +346,9 @@
   flex-wrap: wrap;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-kb-card-desc {
@@ -358,8 +358,8 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-kb-card-meta {
@@ -370,7 +370,7 @@
   padding-top: var(--size-2-3);
   border-top: 1px solid var(--background-modifier-border);
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-card-meta-item {
@@ -418,14 +418,14 @@
 
 .yolo-kb-card-num b {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-kb-card-num span {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* ================= knowledge base config modal ================= */
@@ -450,7 +450,7 @@
 .yolo-kb-modal-name-error {
   margin: calc(var(--size-2-2) * -1) 0 var(--size-2-2);
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-modal-scope-section {
@@ -461,15 +461,15 @@
 
 .yolo-kb-modal-scope-title {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
 }
 
 .yolo-kb-modal-scope-desc {
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-kb-modal-scope-section .yolo-scope-summary {
@@ -539,13 +539,13 @@
   gap: 7px;
   color: var(--text-normal);
   font-family: var(--font-monospace);
-  font-size: 12.5px;
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-bold);
 }
 
 .yolo-kb-ml-name.is-plain {
   font-family: inherit;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
@@ -564,7 +564,7 @@
   min-width: 0;
   max-width: 100%;
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-hf {
@@ -585,7 +585,7 @@
   background: var(--background-modifier-border);
   color: var(--text-muted);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
 }
 
@@ -601,7 +601,7 @@
   gap: 9px;
   margin-top: 3px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-error {
@@ -653,7 +653,7 @@
   padding: var(--size-2-2) var(--size-2-3);
   border-radius: var(--radius-s);
   background: var(--background-primary);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-source dt {
@@ -698,7 +698,7 @@
 .yolo-kb-ml-side button {
   height: 26px;
   padding: 0 10px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-current {
@@ -709,7 +709,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--text-accent);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   white-space: nowrap;
 }
@@ -762,7 +762,7 @@
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-primary-alt);
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-group b {
@@ -794,7 +794,7 @@
   color: var(--text-muted);
   background: transparent !important;
   box-shadow: none !important;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: pointer;
 }
@@ -828,7 +828,7 @@
   border-top: 1px solid var(--background-modifier-border);
   background: var(--background-primary-alt);
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-foot > div {
@@ -842,7 +842,7 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-kb-ml-endpoint-custom {
@@ -853,7 +853,7 @@
 
 .yolo-kb-ml-endpoint-error {
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* ================= advanced settings section ================= */
@@ -898,12 +898,14 @@
 }
 
 .yolo-index-ring-pct {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 10px;
   letter-spacing: -0.02em;
 }
 
 .yolo-index-ring-sym {
   margin-left: 1px;
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 7px;
   color: var(--text-muted);
 }

@@ -102,9 +102,9 @@ button.yolo-rail-menu-rail-item {
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   text-align: left;
   cursor: pointer;
 }
@@ -125,7 +125,7 @@ button.yolo-rail-menu-rail-item {
 .yolo-rail-menu-rail-item-count {
   flex-shrink: 0;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-variant-numeric: tabular-nums;
 }
 
@@ -245,7 +245,7 @@ button.yolo-rail-menu-row {
   box-shadow: none;
   color: var(--text-normal);
   font-weight: var(--font-normal);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   text-align: left;
   cursor: pointer;
 }
@@ -281,16 +281,16 @@ button.yolo-rail-menu-row {
 
 .yolo-rail-menu-row-name {
   font-weight: 550;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .yolo-rail-menu-row-desc {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -332,7 +332,7 @@ button.yolo-rail-menu-row {
 
 .yolo-rail-menu-empty {
   padding: 10px 12px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
 }
 
@@ -349,7 +349,7 @@ button.yolo-rail-menu-row {
 body.is-tablet
   .yolo-continuation-model-select
   button.yolo-chat-input-model-select {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 5px 9px 5px 10px;
   height: auto;
   min-height: 26px;
@@ -402,13 +402,13 @@ body.is-tablet
 }
 
 .yolo-continuation-model-select .yolo-chat-input-model-select__model-name {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 160px;
-  line-height: 1.3;
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-continuation-model-select .yolo-chat-input-model-select__icon {
@@ -500,7 +500,7 @@ body.is-tablet
   display: block;
   margin: 0;
   padding: 8px 12px 6px 12px;
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-bold);
   color: color-mix(in srgb, var(--text-muted) 85%, transparent);
   text-transform: uppercase;
@@ -529,7 +529,7 @@ body.is-tablet
   padding: 8px 12px;
   margin: 0;
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-normal);
   cursor: pointer;
   border-radius: 8px;
@@ -537,7 +537,7 @@ body.is-tablet
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   outline: none;
 }
 
@@ -674,7 +674,7 @@ body.is-tablet
   padding: 0 6px;
   height: 20px;
   line-height: 20px;
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 .yolo-folder-selection-picker {
@@ -705,16 +705,16 @@ body.is-tablet
 }
 .yolo-folder-selection-chip-handle {
   opacity: 0.5;
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
 }
 .yolo-folder-selection-chip-path {
   font-family: var(--font-monospace);
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
 }
 .yolo-folder-selection-chip-remove {
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   line-height: 1;
   user-select: none;
 }
@@ -755,9 +755,9 @@ body.is-tablet
 
 .yolo-vault-source-snippet {
   margin-top: var(--size-4-1);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui-multiline);
   word-break: break-word;
 }
 
@@ -847,7 +847,7 @@ body.is-tablet
 
 /* Group Header */
 .yolo-quick-actions-group-header {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   color: var(--text-muted);
   padding: var(--size-2-3) var(--size-4-1);
@@ -971,7 +971,7 @@ body.is-tablet
 }
 
 .yolo-quick-action-label {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   color: var(--text-normal);
   flex: 1;
@@ -984,7 +984,7 @@ body.is-tablet
 .yolo-quick-action-fixed-hint {
   display: inline-block;
   margin-left: 8px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 1px 6px;
   border-radius: var(--radius-s);
   background: var(--background-modifier-border);
@@ -1005,7 +1005,7 @@ body.is-tablet
 
 .yolo-quick-action-category {
   display: inline-block;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 2px 8px;
   border-radius: var(--radius-s);
   background: var(--background-modifier-border);
@@ -1035,7 +1035,7 @@ body.is-tablet
 
 .yolo-quick-action-disabled-badge {
   display: inline-block;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 2px 6px;
   border-radius: var(--radius-s);
   background: var(--background-modifier-error);
@@ -1044,9 +1044,9 @@ body.is-tablet
 }
 
 .yolo-quick-action-instruction {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -1156,8 +1156,8 @@ body.is-tablet
   border-radius: var(--radius-s);
   color: var(--text-normal);
   font-family: inherit;
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   transition: border-color 0.15s ease;
 }
 
@@ -1193,7 +1193,7 @@ body.is-tablet
 .yolo-searchable-dropdown__item {
   padding: var(--size-2-2) var(--size-4-2);
   cursor: pointer;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-normal);
   transition: background-color 0.1s ease;
   text-align: left;
@@ -1216,5 +1216,5 @@ body.is-tablet
   padding: var(--size-4-2);
   text-align: center;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }

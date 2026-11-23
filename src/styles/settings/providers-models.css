@@ -319,7 +319,7 @@
   color: var(--text-muted);
   min-width: 100px;
   max-width: 260px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -331,8 +331,8 @@
   flex: 0 1 auto;
   min-width: 0;
   max-inline-size: min(260px, 40%);
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-compact);
   margin: 0;
   padding: 0;
   border: 0;
@@ -381,7 +381,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--background-secondary) 82%, white 18%);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
 }
 
@@ -452,15 +452,15 @@
 
 .yolo-provider-delete-confirm-title {
   color: var(--text-error);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-provider-delete-confirm-meta {
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: var(--yolo-font-micro);
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: normal;
 }
 
@@ -476,8 +476,8 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   padding: 4px 10px;
-  font-size: var(--font-ui-smaller);
-  line-height: 1.2;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-compact);
   white-space: nowrap;
 }
 
@@ -559,7 +559,7 @@
 }
 
 .yolo-add-model-btn {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: var(--size-2-1) var(--size-4-2);
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
@@ -614,7 +614,7 @@
   align-items: center;
   gap: var(--size-4-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-oauth-device-code-row code {
@@ -622,7 +622,7 @@
   border-radius: var(--radius-s);
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   letter-spacing: 0.08em;
   user-select: all;
@@ -630,8 +630,8 @@
 
 .yolo-oauth-device-help {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-oauth-device-actions {
@@ -641,7 +641,7 @@
 .yolo-models-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-models-table .yolo-drag-handle {
@@ -777,15 +777,15 @@
 }
 
 .yolo-modality-field-label {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
 }
 
 .yolo-modality-field-desc {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-modality-chips {
@@ -812,7 +812,7 @@
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   cursor: pointer;
   position: relative;
   transition:
@@ -838,9 +838,9 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   color: var(--text-normal);
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-normal);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: normal;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -865,7 +865,7 @@
 
 .yolo-modality-chip-sub {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
 }
 
@@ -901,7 +901,7 @@
    so the label keeps reading as the row's heading. */
 .yolo-provider-field-header-link {
   margin-left: auto;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-accent);
   text-decoration: none;
 }
@@ -922,8 +922,8 @@
 
 .yolo-provider-field-help {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-provider-api-url-preview {
@@ -933,8 +933,8 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-provider-api-url-preview-label {

@@ -8,8 +8,8 @@
 
 .yolo-ws-intro {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.55;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   padding: 2px 2px 2px 12px;
   border-left: 2px solid
     color-mix(in srgb, var(--interactive-accent) 40%, transparent);
@@ -34,7 +34,7 @@
 
 .yolo-ws-section-label {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
 }
 
@@ -43,7 +43,7 @@
   align-items: center;
   gap: 6px;
   padding: 5px 10px !important;
-  font-size: var(--font-ui-smaller) !important;
+  font-size: var(--yolo-font-meta) !important;
   font-weight: 500;
   background: var(--background-primary) !important;
   background-color: var(--background-primary) !important;
@@ -152,7 +152,7 @@
   display: inline-grid;
   place-items: center;
   font-family: var(--font-monospace);
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -195,7 +195,7 @@
 
 .yolo-ws-provider-name {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -208,7 +208,7 @@
   gap: 4px;
   padding: 2px 7px;
   border-radius: 4px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: 500;
   white-space: nowrap;
   border: 1px solid transparent;
@@ -261,7 +261,7 @@
   padding: 20px 16px;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* Common settings field rows */
@@ -280,15 +280,15 @@
 
 .yolo-ws-field-label {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 500;
 }
 
 .yolo-ws-field-hint {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.5;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-ws-number {
@@ -301,7 +301,7 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   padding: 7px 44px 7px 10px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-family: var(--font-monospace);
   color: var(--text-normal);
   text-align: right;
@@ -329,7 +329,7 @@
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
   font-family: var(--font-monospace);
   pointer-events: none;
@@ -345,9 +345,9 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.55;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-ws-info-icon {
@@ -362,7 +362,7 @@
   border-top: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
   color: var(--text-faint);
-  font-size: 11.5px;
+  font-size: var(--yolo-font-micro);
 }
 
 /* Provider edit/new modal — label centered (no description rows here) */

@@ -401,6 +401,7 @@ svg.yolo-context-usage-ring__svg {
   align-items: center;
   justify-content: center;
   color: var(--text-faint);
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 8px;
   font-weight: var(--font-semibold);
   line-height: 1;
@@ -432,7 +433,7 @@ svg.yolo-context-usage-ring__svg {
 
 .yolo-view-header-title-slot .yolo-chat-topbar-crumb {
   gap: 2px;
-  font-size: var(--file-header-font-size, var(--font-ui-small));
+  font-size: var(--file-header-font-size, var(--yolo-font-ui));
 }
 
 .yolo-view-header-title-slot .yolo-chat-topbar-title {

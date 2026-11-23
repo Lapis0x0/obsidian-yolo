@@ -21,97 +21,6 @@
   box-shadow: none;
 }
 
-.yolo-markdown {
-  line-height: var(--line-height-normal);
-  font-size: var(--font-ui-small);
-
-  h1 {
-    font-size: var(--font-ui-large);
-  }
-
-  h2 {
-    font-size: var(--font-ui-medium);
-  }
-
-  h3 {
-    font-size: var(--font-ui-small);
-  }
-
-  h4 {
-    font-size: var(--font-ui-smaller);
-  }
-
-  h5 {
-    font-size: var(--font-ui-smallest);
-  }
-
-  h6 {
-    font-size: var(--font-ui-smallest);
-  }
-
-  p {
-    font-size: var(--font-ui-small);
-  }
-
-  ul {
-    font-size: var(--font-ui-small);
-    padding-left: var(--size-4-4);
-  }
-
-  ol {
-    font-size: var(--font-ui-small);
-    padding-left: var(--size-4-4);
-  }
-
-  li {
-    font-size: var(--font-ui-small);
-  }
-
-  blockquote {
-    font-size: var(--font-ui-small);
-    font-style: var(--blockquote-style);
-    background-color: var(--blockquote-background-color);
-    margin: 0;
-    padding-left: var(--size-4-2);
-    border-left: var(--blockquote-border-thickness) solid
-      var(--blockquote-border-color);
-  }
-
-  code {
-    font-size: var(--font-ui-small);
-    border-radius: var(--code-radius);
-    padding: 0.1em 0.25em;
-    color: var(--code-normal);
-    font-size: var(--code-size);
-    background-color: var(--code-background);
-    vertical-align: baseline;
-  }
-
-  table {
-    font-size: var(--font-ui-small);
-  }
-
-  thead {
-    font-size: var(--font-ui-small);
-  }
-
-  tbody {
-    font-size: var(--font-ui-small);
-  }
-
-  tr {
-    font-size: var(--font-ui-small);
-  }
-
-  td {
-    font-size: var(--font-ui-small);
-  }
-
-  th {
-    font-size: var(--font-ui-small);
-  }
-}
-
 .yolo-chat-container {
   display: flex;
   position: relative;
@@ -188,9 +97,10 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 .yolo-chat-container--centered.yolo-chat-container--empty-state
   .yolo-chat-empty-state-title {
   margin: 0;
+  /* 展示型大字：一次性的视觉尺寸，不属于文字层级（见 tokens/typography.css） */
   font-size: clamp(22px, 2.4vw, 32px);
   font-weight: var(--font-normal);
-  line-height: 1.25;
+  line-height: var(--yolo-leading-compact);
   color: var(--text-normal);
 }
 
@@ -254,7 +164,7 @@ body.is-tablet button.yolo-chat-quick-access-entry {
   min-width: 0;
   max-width: 100%;
   padding: var(--size-2-2) var(--size-4-3);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   line-height: 1;
   cursor: grab;
   white-space: nowrap;
@@ -341,7 +251,7 @@ button.yolo-chat-quick-access-add:focus-visible {
   background: transparent;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-chat-quick-access-picker-search input:focus {
@@ -365,7 +275,7 @@ button.yolo-chat-quick-access-add:focus-visible {
 .yolo-chat-quick-access-picker-section__title {
   padding: var(--size-2-2) var(--size-4-2);
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
 }
 
@@ -412,7 +322,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 .yolo-chat-quick-access-picker-row__label {
   overflow: hidden;
   color: inherit;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -421,7 +331,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 .yolo-chat-quick-access-picker-row__description {
   overflow: hidden;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -437,7 +347,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 .yolo-chat-quick-access-picker-empty {
   padding: var(--size-4-4) var(--size-4-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   text-align: center;
 }
 
@@ -565,7 +475,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   text-align: left;
   cursor: pointer;
@@ -654,7 +564,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   padding: 6px 8px;
   border-radius: var(--radius-s);
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
   outline: none;
 }
@@ -664,7 +574,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   margin: 0;
   padding: 8px 8px 6px 8px;
   color: color-mix(in srgb, var(--text-muted) 85%, transparent);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -716,7 +626,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-simple-select__item-desc {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -982,9 +892,9 @@ button.yolo-chat-quick-access-picker-row > svg {
 
 .yolo-message-navigator__preview-user {
   overflow: hidden;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui-multiline);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -994,8 +904,8 @@ button.yolo-chat-quick-access-picker-row > svg {
   margin-top: 4px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.45;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
@@ -1053,15 +963,15 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-compaction-pending__loader .yolo-thinking-text {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-chat-compaction-pending__description {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
   text-align: center;
 }
 
@@ -1077,10 +987,10 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-compaction-divider__title {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   color: var(--text-normal);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui);
   margin-bottom: 8px;
   text-align: center;
 }
@@ -1102,10 +1012,10 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-compaction-divider__description {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   margin-top: 4px;
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 @keyframes yolo-chat-compaction-divider-enter {
@@ -1218,7 +1128,7 @@ button.yolo-assistant-annotation-marker {
   background: transparent;
   color: var(--interactive-accent);
   box-shadow: none;
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-semibold);
   line-height: 1;
   transform: translate(-12%, -70%);
@@ -1276,9 +1186,9 @@ button.yolo-assistant-annotation-marker {
   background: var(--background-secondary);
   color: var(--text-normal);
   box-shadow: var(--shadow-s);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-normal);
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   text-align: start;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1357,7 +1267,7 @@ button.yolo-assistant-annotation-marker.is-active {
   background: transparent;
   color: var(--text-normal);
   font: inherit;
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
   box-shadow: none;
   resize: none;
 }
@@ -1380,7 +1290,7 @@ button.yolo-assistant-annotation-marker.is-active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   padding: 6px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 999px;
@@ -1555,7 +1465,7 @@ button.yolo-assistant-annotation-marker.is-active {
    (e.g. English/Italian) fully readable while short ones stay on one line. */
 .yolo-update-toast-title {
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
 }
@@ -1567,7 +1477,7 @@ button.yolo-assistant-annotation-marker.is-active {
   background: var(--background-modifier-hover);
   color: var(--text-muted);
   font-family: var(--font-monospace);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-semibold);
   letter-spacing: 0.2px;
   white-space: nowrap;
@@ -1575,8 +1485,8 @@ button.yolo-assistant-annotation-marker.is-active {
 
 .yolo-update-toast-subtitle {
   margin-top: 2px;
-  font-size: var(--font-ui-smaller);
-  line-height: 1.4;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1606,7 +1516,7 @@ button.yolo-assistant-annotation-marker.is-active {
   box-shadow: none !important;
   border-radius: 5px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-semibold);
   cursor: var(--cursor);
 }
@@ -1699,7 +1609,7 @@ button.yolo-update-toast-tab {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   cursor: var(--cursor);
 }
@@ -1716,7 +1626,7 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-toast-tab-version {
   font-family: var(--font-monospace);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   color: var(--text-faint);
 }
 
@@ -1769,7 +1679,7 @@ button.yolo-update-toast-tab.is-active {
   align-items: center;
   gap: 7px;
   margin-bottom: 7px;
-  font-size: 11.5px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-semibold);
   letter-spacing: 0.1px;
   color: var(--text-normal);
@@ -1817,15 +1727,15 @@ button.yolo-update-toast-tab.is-active {
   display: flex;
   gap: 8px;
   margin-bottom: 7px;
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-muted);
 }
 
 .yolo-update-toast-bullet {
   flex-shrink: 0;
   margin-top: 1px;
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   color: var(--text-faint);
 }
 
@@ -1846,7 +1756,7 @@ button.yolo-update-toast-tab.is-active {
 .yolo-update-toast-item-ref {
   margin-left: 5px;
   font-family: var(--font-monospace);
-  font-size: 0.84em;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-medium);
   color: var(--interactive-accent);
 }
@@ -1857,7 +1767,7 @@ button.yolo-update-toast-tab.is-active {
   background: var(--background-modifier-hover);
   color: var(--interactive-accent);
   font-family: var(--font-monospace);
-  font-size: 0.86em;
+  font-size: var(--yolo-font-micro);
   white-space: nowrap;
 }
 
@@ -1899,7 +1809,7 @@ button.yolo-update-toast-tab.is-active {
   box-shadow: none !important;
   background: transparent !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
@@ -1921,9 +1831,9 @@ button.yolo-update-toast-tab.is-active {
   box-shadow: none !important;
   background: transparent !important;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: var(--font-medium);
-  line-height: 1.3;
+  line-height: var(--yolo-leading-ui);
   white-space: normal;
   text-align: right;
   cursor: var(--cursor);
@@ -1948,7 +1858,7 @@ button.yolo-update-toast-tab.is-active {
      that only fills on hover. */
   background: var(--interactive-accent) !important;
   color: var(--text-on-accent) !important;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition: background var(--yolo-anim-duration-feedback) ease;
@@ -1974,7 +1884,7 @@ button.yolo-update-toast-tab.is-active {
   box-shadow: none !important;
   background: transparent !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
@@ -1997,7 +1907,7 @@ button.yolo-update-toast-tab.is-active {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   text-align: center;
   text-decoration: underline;
   cursor: var(--cursor);
@@ -2046,7 +1956,7 @@ button.yolo-update-toast-tab.is-active {
 .yolo-update-history {
   /* Between Obsidian --font-ui-small (13px) and --font-ui-medium (15px). */
   --yolo-update-history-body-size: calc(
-    (var(--font-ui-small) + var(--font-ui-medium)) / 2
+    (var(--yolo-font-ui) + var(--yolo-font-title)) / 2
   );
   display: flex;
   flex-direction: column;
@@ -2067,7 +1977,7 @@ button.yolo-update-toast-tab.is-active {
   margin: 0;
   font-size: var(--h3-size, 1.3em);
   font-weight: var(--font-bold, 700);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   color: var(--text-normal);
 }
 
@@ -2075,7 +1985,7 @@ button.yolo-update-toast-tab.is-active {
   padding: 24px 0;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
 }
 
 .yolo-update-history-list {
@@ -2121,7 +2031,7 @@ button.yolo-update-toast-tab.is-active {
   background: var(--background-modifier-hover);
   color: var(--text-muted);
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   letter-spacing: 0.2px;
   white-space: nowrap;
@@ -2138,8 +2048,8 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-history-entry-current-badge {
   flex-shrink: 0;
-  font-size: var(--font-ui-smaller);
-  line-height: 1.2;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-compact);
   padding: 4px 8px;
   border-radius: var(--radius-s);
   color: var(--color-green);
@@ -2150,9 +2060,9 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-history-entry-subtitle {
   min-width: 0;
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-normal);
   white-space: nowrap;
   overflow: hidden;
@@ -2172,16 +2082,16 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-history .yolo-update-toast-item {
   font-size: var(--yolo-update-history-body-size);
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
   margin-bottom: 8px;
 }
 
 .yolo-update-history .yolo-update-toast-bullet {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-update-history-modal .yolo-update-toast-lang-option {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 4px 10px;
 }
 
@@ -2219,7 +2129,7 @@ button.yolo-update-toast-tab.is-active {
 
 .yolo-update-history-page-label {
   flex-shrink: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -2234,7 +2144,7 @@ button.yolo-update-toast-tab.is-active {
   box-shadow: none !important;
   background: transparent !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
@@ -2294,22 +2204,22 @@ button.yolo-update-toast-tab.is-active {
 }
 
 .yolo-installation-incomplete-banner-title {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   margin-bottom: var(--size-2-1);
 }
 
 .yolo-installation-incomplete-banner-meta {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   margin-bottom: var(--size-2-2);
 }
 
 .yolo-installation-incomplete-banner-notes {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: var(--yolo-leading-ui-multiline);
   word-break: break-word;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -2426,14 +2336,15 @@ button.yolo-update-toast-tab.is-active {
 }
 
 .yolo-chat-empty-state-title {
-  font-size: var(--font-ui-large);
+  /* 展示型大字：一次性的视觉尺寸，不属于文字层级（见 tokens/typography.css） */
+  font-size: var(--yolo-font-heading);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   margin-bottom: var(--size-2-2);
 }
 
 .yolo-chat-empty-state-description {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   color: var(--text-muted);
   margin-bottom: var(--size-4-2);
 }
@@ -2444,12 +2355,12 @@ button.yolo-update-toast-tab.is-active {
   color: var(--text-normal);
   font-family: inherit;
   padding: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   outline: none;
   min-height: 80px;
   max-height: 200px;
   overflow-y: auto;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   padding: var(--size-2-1);
 }
 
@@ -2472,7 +2383,7 @@ button.yolo-update-toast-tab.is-active {
   color: var(--text-faint);
 } */
 .yolo-obsidian-textarea {
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-chat-user-input-container {
@@ -2485,7 +2396,7 @@ button.yolo-update-toast-tab.is-active {
   color: var(--text-normal);
   font-family: inherit;
   padding: calc(var(--size-2-3) + 1px);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   border-radius: var(--radius-s);
   outline: none;
   --yolo-mention-max-width: 240px;
@@ -2567,7 +2478,7 @@ button.yolo-update-toast-tab.is-active {
   background: transparent;
   color: var(--interactive-accent);
   box-shadow: none;
-  font-size: var(--font-ui-large);
+  font-size: var(--yolo-font-heading);
   font-weight: var(--font-semibold);
   line-height: 1;
   pointer-events: none;
@@ -2681,7 +2592,7 @@ button.yolo-update-toast-tab.is-active {
 }
 
 .yolo-chat-user-input-wrapper--compact .yolo-chat-user-input-editor {
-  line-height: var(--line-height-normal);
+  line-height: var(--yolo-leading-ui-multiline);
   pointer-events: none;
   min-height: unset;
 }
@@ -2699,13 +2610,13 @@ button.yolo-update-toast-tab.is-active {
 .yolo-chat-user-input-wrapper--compact
   .yolo-lexical-content-editable-paragraph {
   margin: 0;
-  line-height: var(--line-height-normal);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-chat-user-input-wrapper--compact .yolo-chat-user-input-placeholder {
   color: var(--text-muted);
   opacity: 0.7;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   position: static;
   padding: 0;
 }
@@ -2795,7 +2706,7 @@ button.yolo-update-toast-tab.is-active {
   flex-direction: column;
   gap: 2px;
   font-size: inherit;
-  line-height: var(--line-height-normal);
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -2834,7 +2745,7 @@ button.yolo-update-toast-tab.is-active {
   top: calc(var(--size-2-1) + 1.4px);
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 
   .yolo-placeholder-trigger {
     pointer-events: auto;
@@ -2989,7 +2900,7 @@ button.yolo-update-toast-tab.is-active {
   align-items: center;
   gap: var(--size-4-1);
   min-width: 0;
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-micro);
   color: var(--text-muted);
   background: transparent;
   border: none;
@@ -3163,12 +3074,12 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
   border-radius: var(--radius-s);
   background: var(--background-secondary);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.4;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-chat-queued-messages__hint {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
 }
 
@@ -3282,16 +3193,16 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
 }
 
 .yolo-chat-mode-select-item__label {
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   font-weight: 500;
   line-height: 18px;
   color: var(--text-normal);
 }
 
 .yolo-chat-mode-select-item__desc {
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   color: var(--text-muted);
-  line-height: 1.3;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-chat-mode-select-item[data-state='checked']
@@ -3395,7 +3306,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--yolo-font-micro);
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
@@ -3526,18 +3437,18 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 }
 
 .yolo-reasoning-popover__header-title {
-  font-size: 14px;
+  font-size: var(--yolo-font-ui-emphasis);
   font-weight: 400;
   color: color-mix(in srgb, var(--text-muted) 76%, transparent);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-reasoning-popover__header-current {
   display: inline-block;
-  font-size: 14px;
+  font-size: var(--yolo-font-ui-emphasis);
   font-weight: 500;
   color: color-mix(in srgb, var(--text-normal) 88%, transparent);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   transition:
     color var(--yolo-anim-duration-feedback) ease,
     text-shadow var(--yolo-anim-duration-feedback) ease;
@@ -3616,9 +3527,9 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 6px;
-  font-size: 12.5px;
+  font-size: var(--yolo-font-meta);
   font-weight: 400;
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   color: color-mix(in srgb, var(--text-muted) 76%, transparent);
 }
 
@@ -3823,7 +3734,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
   border-radius: var(--radius-s);
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   padding: var(--size-2-1) var(--size-4-1);
   gap: var(--size-2-1);
   overflow: hidden;

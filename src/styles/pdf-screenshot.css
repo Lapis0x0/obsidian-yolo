@@ -19,7 +19,7 @@
   border: 1px solid var(--background-modifier-border, #ccc);
   border-radius: 6px;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);

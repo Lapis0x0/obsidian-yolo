@@ -69,7 +69,7 @@
   margin-left: 0.55em;
   color: var(--text-faint);
   font-family: var(--font-interface);
-  font-size: 0.78em;
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
   opacity: 0.72;
 }

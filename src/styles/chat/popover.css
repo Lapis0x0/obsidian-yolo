@@ -143,7 +143,7 @@
 
 .yolo-lexical-content-editable-paragraph {
   margin: 0;
-  line-height: 1.6;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-popover-surface ul {
@@ -210,7 +210,7 @@
   background: transparent;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-model-select-search > input[type='text']:focus {
@@ -221,7 +221,7 @@
 .yolo-model-select-empty {
   padding: 10px 12px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
@@ -232,7 +232,7 @@
   margin: 0;
   padding: 10px 14px 6px 12px;
   color: color-mix(in srgb, var(--text-muted) 75%, transparent);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -283,8 +283,8 @@
   margin: 0;
   border-radius: var(--radius-s);
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   cursor: pointer;
   outline: none;
 }
@@ -387,9 +387,9 @@
  */
 .yolo-model-select-default-badge {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-normal);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   padding: 2px 6px;
   border-radius: var(--radius-s);
   color: var(--text-accent);
@@ -407,9 +407,9 @@ button.yolo-model-select-default-action {
   box-shadow: none;
   background: var(--background-modifier-hover);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--yolo-font-badge);
   font-weight: var(--font-normal);
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   cursor: pointer;
 }
 
@@ -433,7 +433,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-popover-surface ul li {
   margin: 0;
   min-width: 180px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   outline: none;
   cursor: pointer;
   border-radius: 0;
@@ -455,8 +455,8 @@ button.yolo-model-select-default-action:hover {
   padding: var(--size-2-3) var(--size-4-2);
   color: var(--text-normal);
   cursor: pointer;
-  line-height: var(--line-height-tight);
-  font-size: var(--font-ui-smaller);
+  line-height: var(--yolo-leading-ui);
+  font-size: var(--yolo-font-meta);
   display: flex;
   align-content: center;
   flex-direction: row;
@@ -584,7 +584,7 @@ button.yolo-model-select-default-action:hover {
 }
 
 .yolo-background-activity-status-panel-header {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -597,7 +597,7 @@ button.yolo-model-select-default-action:hover {
 }
 
 .yolo-background-activity-status-panel-empty {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -647,7 +647,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-background-activity-status-panel-item-title {
   flex: 0 1 auto;
   min-width: 0;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: 400;
   color: var(--text-normal);
   white-space: nowrap;
@@ -657,7 +657,7 @@ button.yolo-model-select-default-action:hover {
 
 .yolo-background-activity-status-panel-item-detail {
   min-width: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -714,7 +714,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-code-block-header {
   justify-content: space-between;
   align-items: center;
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   display: flex;
   border-bottom: 1px solid var(--background-modifier-border);
   background-color: var(--background-primary);
@@ -735,7 +735,7 @@ button.yolo-model-select-default-action:hover {
   height: 100%;
   display: inline-flex;
   align-items: center;
-  font-size: var(--font-medium);
+  font-size: var(--yolo-font-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -759,7 +759,7 @@ button.yolo-model-select-default-action:hover {
     padding: 0 var(--size-4-2);
     display: flex;
     gap: var(--size-4-1);
-    font-size: var(--font-small);
+    font-size: var(--yolo-font-ui-emphasis);
   }
 
   /* Override clickable-icon color */
@@ -775,7 +775,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-code-block-actions {
   display: flex;
   justify-content: flex-end;
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   margin-top: var(--size-4-3);
   margin-right: calc(-1 * var(--size-4-2));
   margin-bottom: calc(-1 * var(--size-4-2));
@@ -785,7 +785,7 @@ button.yolo-model-select-default-action:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--size-4-1);
-  font-size: var(--font-small);
+  font-size: var(--yolo-font-ui-emphasis);
   color: var(--text-color) !important;
 }
 
@@ -855,9 +855,9 @@ button.yolo-model-select-default-action:hover {
   gap: 6px;
   min-width: 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
-  line-height: 1.35;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-plan-streaming-preview-status-dot {
@@ -1027,7 +1027,7 @@ button.yolo-model-select-default-action:hover {
 
 .yolo-inline-review-line {
   white-space: pre-wrap;
-  line-height: var(--line-height-normal);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-inline-review-widget .yolo-inline-diff {
@@ -1094,6 +1094,7 @@ button.yolo-model-select-default-action:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 15px;
   line-height: 1;
   font-weight: 600;
@@ -1182,7 +1183,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-inline-review-toolbar .yolo-apply-progress {
   min-width: 52px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -1198,7 +1199,7 @@ button.yolo-model-select-default-action:hover {
 .yolo-inline-review-toolbar .yolo-toolbar-btn {
   padding: 6px var(--size-4-3);
   border-radius: 999px;
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-inline-review-toolbar .yolo-toolbar-icon-btn {
@@ -1267,8 +1268,8 @@ body.is-tablet button.yolo-chat-input-model-select {
   box-shadow: none;
   border: 0;
   padding: 0;
-  font-size: var(--font-smallest);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   font-weight: var(--font-medium);
   color: var(--text-muted);
   cursor: pointer;
@@ -1294,12 +1295,12 @@ body.is-tablet button.yolo-chat-input-model-select {
 }
 
 .yolo-query-progress {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
 .yolo-query-progress-detail {
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   color: var(--text-faint);
 }
 
@@ -1338,7 +1339,7 @@ body.is-tablet button.yolo-chat-input-model-select {
 }
 
 .yolo-context-breakdown__title {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   flex-shrink: 0;
@@ -1347,7 +1348,7 @@ body.is-tablet button.yolo-chat-input-model-select {
 /* Estimation disclaimer — sits on the title row, right-aligned, muted. Pulled
  * up from a dedicated footer to avoid trailing whitespace below the list. */
 .yolo-context-breakdown__caption {
-  font-size: var(--font-smallest);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   opacity: 0.85;
   text-align: right;
@@ -1362,7 +1363,7 @@ body.is-tablet button.yolo-chat-input-model-select {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -1385,7 +1386,7 @@ body.is-tablet button.yolo-chat-input-model-select {
 
 .yolo-context-breakdown__totals {
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -1517,7 +1518,7 @@ body.is-tablet button.yolo-chat-input-model-select {
   min-width: 0;
   padding: 0 2px;
   margin: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-normal);
   background: transparent;
   background-color: transparent;
@@ -1587,7 +1588,7 @@ body.is-tablet button.yolo-chat-input-model-select {
 }
 
 .yolo-context-breakdown__error {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-error);
   padding: 4px 2px;
 }
@@ -1595,8 +1596,8 @@ body.is-tablet button.yolo-chat-input-model-select {
 .yolo-context-breakdown__unknown-max-hint {
   margin: -4px 0 0;
   padding: 0 2px;
-  font-size: var(--font-smallest);
-  line-height: 1.35;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-muted);
   opacity: 0.85;
 }

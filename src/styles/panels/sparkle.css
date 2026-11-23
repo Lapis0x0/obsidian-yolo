@@ -118,7 +118,7 @@ button.yolo-sparkle-section-toggle:focus-visible {
 }
 
 .yolo-sparkle-section-title {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   white-space: nowrap;
 }
@@ -128,7 +128,7 @@ button.yolo-sparkle-section-toggle:focus-visible {
   padding: 1px var(--size-2-2);
   border-radius: var(--radius-l);
   background-color: var(--background-modifier-border);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -163,7 +163,7 @@ button.yolo-sparkle-section-toggle:focus-visible {
   min-width: 0;
   padding: var(--size-2-3) var(--size-4-3);
   border-bottom: 1px dashed var(--background-modifier-border);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -182,7 +182,7 @@ button.yolo-sparkle-scope-trigger {
   background-color: transparent;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-semibold);
   cursor: pointer;
 }
@@ -223,8 +223,8 @@ button.yolo-sparkle-scope-chip {
   background-color: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.6;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -262,7 +262,7 @@ button.yolo-sparkle-scope-manage {
   background-color: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-align: left;
   cursor: pointer;
 }
@@ -278,7 +278,7 @@ button.yolo-sparkle-scope-manage:focus-visible {
 
 .yolo-sparkle-source-row {
   padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -348,7 +348,7 @@ button.yolo-similar-note-card-title {
   border-radius: 0;
   box-shadow: none;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-semibold);
   text-align: left;
   cursor: pointer;
@@ -383,7 +383,7 @@ button.yolo-similar-note-card-title:focus-visible {
 
 .yolo-similar-note-card-path,
 .yolo-similar-note-card-preview {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -398,7 +398,7 @@ button.yolo-similar-note-card-title:focus-visible {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 /* 命中片段 ------------------------------------------------------------ */
@@ -443,9 +443,9 @@ button.yolo-similar-note-card-title:focus-visible {
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-width: 0;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -463,13 +463,13 @@ button.yolo-similar-note-card-title:focus-visible {
 }
 
 .yolo-sparkle-empty-title {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   color: var(--text-normal);
 }
 
 .yolo-sparkle-empty-body {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
 }
 
@@ -483,7 +483,7 @@ button.yolo-sparkle-empty-secondary {
   border-radius: 0;
   box-shadow: none;
   color: var(--text-accent);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
 }
 

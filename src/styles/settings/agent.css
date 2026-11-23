@@ -28,7 +28,7 @@
 }
 
 .yolo-agent-sub-card-head {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   margin-bottom: var(--size-4-2);
@@ -59,8 +59,8 @@
   background: var(--background-secondary);
   color: var(--text-muted);
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-code);
   white-space: pre;
 }
 
@@ -109,7 +109,7 @@ button.yolo-agent-mcp-config-copy {
   align-items: center;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
@@ -129,7 +129,7 @@ button.yolo-agent-mcp-config-copy {
 .yolo-agent-cap-count {
   margin-top: var(--size-2-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-cap-status {
@@ -181,7 +181,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tool-name {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-agent-tool-name--mono {
@@ -190,7 +190,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tool-source {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-tool-toggle {
@@ -247,7 +247,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-skill-tokens {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: normal;
   margin-left: var(--size-4-2);
 }
@@ -331,13 +331,14 @@ button.yolo-agent-mcp-config-copy {
 }
 
 .yolo-import-skill-dropzone-icon {
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 2em;
   line-height: 1;
 }
 
 .yolo-import-skill-dropzone-text {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   text-align: center;
 }
 
@@ -352,7 +353,7 @@ button.yolo-agent-mcp-config-copy {
   border-radius: var(--radius-s);
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 4px 12px;
   cursor: pointer;
   box-shadow: none;
@@ -375,7 +376,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-import-skill-file-list-title {
   padding: var(--size-4-2) var(--size-4-3);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -400,7 +401,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-import-skill-file-name {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -409,12 +410,12 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-import-skill-file-meta {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-import-skill-file-desc {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -429,7 +430,7 @@ button.yolo-agent-mcp-config-copy {
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -460,7 +461,7 @@ button.yolo-agent-mcp-config-copy {
   border-radius: var(--radius-s);
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-family: inherit;
   outline: none;
   transition: border-color 140ms ease;
@@ -497,7 +498,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tools-empty {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-tools-panel {
@@ -545,7 +546,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tools-panel-title {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
@@ -558,7 +559,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tools-panel-estimate {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   white-space: nowrap;
 }
 
@@ -569,7 +570,7 @@ button.yolo-agent-mcp-config-copy {
 
 .yolo-agent-tools-panel-count {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   border: 1px solid var(--background-modifier-border);
   border-radius: 999px;
   padding: 2px 10px;
@@ -588,7 +589,7 @@ button.yolo-agent-mcp-config-copy {
   justify-content: space-between;
   gap: var(--size-2-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   letter-spacing: 0.01em;
 }
 
@@ -654,7 +655,7 @@ button.yolo-agent-tool-group-name--toggle:hover {
 
 .yolo-agent-tool-group-tokens {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 button.yolo-agent-tool-group-disclosure {
@@ -664,13 +665,13 @@ button.yolo-agent-tool-group-disclosure {
   margin-left: var(--size-2-2);
   padding: 1px 4px;
   height: auto;
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   border: none;
   border-radius: var(--radius-s);
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-decoration: none;
   cursor: pointer;
 }
@@ -698,18 +699,18 @@ button.yolo-agent-tool-group-approval-trigger {
 
 .yolo-agent-tool-group-count {
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 button.yolo-agent-tool-group-bulk-toggle {
   padding: 0;
   height: auto;
-  line-height: 1.4;
+  line-height: var(--yolo-leading-ui);
   border: none;
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   text-decoration: underline;
   text-decoration-color: var(--background-modifier-border);
   text-underline-offset: 2px;
@@ -813,7 +814,7 @@ button.yolo-agent-tool-group-bulk-toggle:hover {
   border-radius: var(--radius-s);
   padding: 2px 6px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   background: var(--background-secondary-alt);
   overflow: hidden;
   white-space: nowrap;
@@ -855,16 +856,16 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-model-setting-title {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-agent-model-setting-desc {
   margin-top: 4px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-agent-model-select-wrap {
@@ -935,7 +936,7 @@ button.yolo-agent-chip--more:hover {
   align-items: center;
   gap: var(--size-2-2);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
@@ -950,14 +951,14 @@ button.yolo-agent-chip--more:hover {
   border-radius: 999px;
   color: var(--text-muted);
   background: var(--background-secondary);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   line-height: 1;
 }
 
 .yolo-agent-model-request-parameters-desc {
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-model-request-parameters-chevron {
@@ -993,7 +994,7 @@ button.yolo-agent-chip--more:hover {
   background: var(--background-primary);
   color: var(--text-muted);
   padding: 4px 10px;
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -1054,14 +1055,14 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-model-control-label {
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
 }
 
 .yolo-agent-model-control-desc {
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-model-number {
@@ -1206,7 +1207,7 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-create-card-text {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
 }
 
@@ -1266,8 +1267,8 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-name {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-  line-height: 1.18;
+  font-size: var(--yolo-font-title);
+  line-height: var(--yolo-leading-compact);
   font-weight: var(--font-semibold);
 }
 
@@ -1276,15 +1277,15 @@ button.yolo-agent-chip--more:hover {
     color-mix(in srgb, var(--interactive-accent) 60%, transparent);
   border-radius: var(--radius-s);
   color: var(--interactive-accent);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   padding: 1px 6px;
 }
 
 .yolo-agent-desc {
   margin-top: var(--size-2-2);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  line-height: var(--line-height-normal);
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-agent-meta-row {
@@ -1301,7 +1302,7 @@ button.yolo-agent-chip--more:hover {
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-agent-card-menu-trigger {
@@ -1342,6 +1343,7 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-card-menu-trigger-dots {
   display: inline-block;
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 16px !important;
   font-weight: 700;
   line-height: 0.9;
@@ -1401,8 +1403,8 @@ button.yolo-agent-chip--more:hover {
   align-items: center;
   gap: 12px;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  line-height: 1.1;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-compact);
   cursor: pointer;
   transition: background-color 120ms ease;
 }
@@ -1641,7 +1643,7 @@ button.yolo-agent-chip--more:hover {
   background: transparent !important;
   background-color: transparent !important;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   font-weight: var(--font-medium);
   padding: 6px 12px;
   cursor: pointer;
@@ -1751,7 +1753,7 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-system-prompt-overlay-title {
-  font-size: var(--font-ui-large);
+  font-size: var(--yolo-font-heading);
   font-weight: var(--font-medium);
   color: var(--text-normal);
 }
@@ -1774,9 +1776,9 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-system-prompt-overlay-desc {
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-agent-system-prompt-overlay-textarea {
@@ -1785,8 +1787,8 @@ button.yolo-agent-chip--more:hover {
   min-height: 0;
   padding: 12px;
   font-family: var(--font-text);
-  font-size: var(--font-ui-medium);
-  line-height: 1.6;
+  font-size: var(--yolo-font-title);
+  line-height: var(--yolo-leading-ui-multiline);
   color: var(--text-normal);
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -1824,22 +1826,22 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-workspace-toggle-title {
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
   color: var(--text-normal);
 }
 
 .yolo-agent-workspace-toggle-desc {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
   margin-top: 2px;
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-agent-workspace-footnote {
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--yolo-leading-ui-multiline);
   padding: 0 2px;
 }
 
@@ -1849,8 +1851,9 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-js-exec-modal .modal-title {
+  /* 展示型大字：一次性的视觉尺寸，不属于文字层级（见 tokens/typography.css） */
   font-size: 24px;
-  line-height: 1.25;
+  line-height: var(--yolo-leading-compact);
 }
 
 .yolo-js-exec-modal .modal-content {
@@ -1879,8 +1882,8 @@ button.yolo-agent-chip--more:hover {
 .yolo-js-exec-section-head h3 {
   margin: 0;
   color: var(--text-normal);
-  font-size: var(--font-ui-large);
-  line-height: 1.3;
+  font-size: var(--yolo-font-heading);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-js-exec-setting.setting-item,
@@ -1992,8 +1995,8 @@ button.yolo-agent-chip--more:hover {
   );
   border: 1px solid
     color-mix(in srgb, var(--color-red, var(--text-error)) 30%, transparent);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.45;
+  font-size: var(--yolo-font-meta);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-js-exec-cap-risk > svg {
@@ -2008,7 +2011,7 @@ button.yolo-agent-chip--more:hover {
 .yolo-js-exec-cap-setting .setting-item-name,
 .yolo-js-exec-timeout .setting-item-name {
   color: var(--text-normal);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
   font-weight: var(--font-medium);
 }
 
@@ -2016,8 +2019,8 @@ button.yolo-agent-chip--more:hover {
 .yolo-js-exec-timeout .setting-item-description {
   max-width: 560px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.45;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
 }
 
 .yolo-js-exec-nested {
@@ -2132,15 +2135,15 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-terminal-command-section-head h3 {
   margin: 0 0 var(--size-4-1);
-  font-size: var(--font-ui-medium);
+  font-size: var(--yolo-font-title);
 }
 
 .yolo-terminal-command-section-head p,
 .yolo-terminal-command-rule {
   margin: 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-tight);
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-terminal-command-reset {
@@ -2200,8 +2203,8 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-subagent-intro {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.55;
+  font-size: var(--yolo-font-ui);
+  line-height: var(--yolo-leading-ui-multiline);
   padding: 2px 2px 2px 12px;
   border-left: 2px solid
     color-mix(in srgb, var(--interactive-accent) 40%, transparent);
@@ -2263,7 +2266,7 @@ button.yolo-agent-chip--more:hover {
 .yolo-subagent-provider-heading {
   padding: 7px 12px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: var(--font-medium);
   background-color: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
@@ -2295,7 +2298,7 @@ button.yolo-agent-chip--more:hover {
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  line-height: var(--line-height-tight);
+  line-height: var(--yolo-leading-ui);
 }
 
 .yolo-subagent-model-row-text > span {
@@ -2311,7 +2314,7 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-subagent-model-row-text > span:last-child {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-family: var(--font-monospace);
 }
 
@@ -2327,7 +2330,7 @@ button.yolo-agent-chip--more:hover {
   min-width: 92px;
   justify-content: center;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
 }
 
 .yolo-subagent-default-btn.is-active {
@@ -2385,7 +2388,7 @@ button.yolo-agent-chip--more:hover {
   background: var(--background-modifier-form-field);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
+  font-size: var(--yolo-font-ui);
 }
 
 .yolo-string-list-chip-label {

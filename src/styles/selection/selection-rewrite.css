@@ -203,9 +203,9 @@
   background: color-mix(in srgb, var(--background-primary) 94%, transparent);
   box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--yolo-font-meta);
   font-weight: 550;
-  line-height: 1.2;
+  line-height: var(--yolo-leading-compact);
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
@@ -299,6 +299,7 @@ button.yolo-selection-rewrite-length-handle:focus-visible {
   background: color-mix(in srgb, var(--background-primary) 92%, transparent);
   box-shadow: none;
   color: var(--text-normal);
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 15px;
   font-weight: 600;
   line-height: 1;
@@ -327,6 +328,7 @@ button.yolo-selection-rewrite-length-handle:focus-visible {
 
 .yolo-selection-rewrite-action.is-stop {
   color: var(--text-normal);
+  /* 字形尺寸：画在固定尺寸盒子里，不属于文字层级（见 tokens/typography.css） */
   font-size: 10px;
 }
 
