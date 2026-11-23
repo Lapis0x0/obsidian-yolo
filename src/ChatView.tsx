@@ -39,6 +39,12 @@ import { YOLO_ICON_ID } from './yoloIcon'
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
   private nativeHeaderSlots: NativeHeaderSlots | undefined
+  // 标题栏的后退 / 前进在对话之间走（见 recordConversationHistory）：
+  // shownConversation 是此刻显示着的已落盘对话；historyTargetConversationId
+  // 是外部（后退 / 前进、工作区恢复）经 setState 要求打开的对话，到达它时
+  // 不再往历史里记，因为 Obsidian 已经自己挪过历史了。
+  private shownConversation: { id: string; title?: string } | null = null
+  private historyTargetConversationId: string | undefined
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private restoredConversationId?: string
@@ -128,6 +134,9 @@ export class ChatView extends ItemView {
     }
 
     if (!this.isApplyingPersistedViewState && this.restoredConversationId) {
+      if (this.restoredConversationId !== this.shownConversation?.id) {
+        this.historyTargetConversationId = this.restoredConversationId
+      }
       this.scheduleRestoredConversationLoad()
     }
   }
@@ -351,6 +360,7 @@ export class ChatView extends ItemView {
                                 const manager =
                                   this.plugin.getChatLeafSessionManager()
                                 manager.updateLeafSummary(this.leaf, context)
+                                this.recordConversationHistory(context)
                                 this.updateRestoredConversationFromContext(
                                   context,
                                 )
@@ -609,6 +619,80 @@ export class ChatView extends ItemView {
     }
 
     return undefined
+  }
+
+  /**
+   * 让标题栏的后退 / 前进在对话之间走。离开一个已落盘的对话时，把它作为一条
+   * 历史记进标签页，形状和 Obsidian 自己记的一样，后退时 Obsidian 会带着它
+   * 调 setState，由 setState 加载那个对话。
+   *
+   * 不用 Obsidian 的 `navigation = true` 来自动记：那会让聊天标签页变成普通
+   * 的可导航标签页，在它处于活动状态时从文件列表点开笔记，笔记会直接顶掉
+   * 对话。历史对象不是公开 API，拿不到就不记。
+   *
+   * 新对话还没落盘时不进历史：从它后退回到上一个对话，而落盘之后它就是一个
+   * 普通对话，下次离开时照常记。
+   */
+  private recordConversationHistory(context: {
+    currentConversationId?: string
+    currentConversationPersisted?: boolean
+    currentConversationTitle?: string
+  }): void {
+    const conversationId = context.currentConversationId
+    const shown = this.shownConversation
+    const arrivedViaHistory =
+      conversationId !== undefined &&
+      conversationId === this.historyTargetConversationId
+    if (arrivedViaHistory) {
+      this.historyTargetConversationId = undefined
+    }
+
+    if (shown && conversationId !== shown.id && !arrivedViaHistory) {
+      this.pushConversationHistory(shown)
+    }
+
+    if (context.currentConversationPersisted && conversationId) {
+      this.shownConversation = {
+        id: conversationId,
+        title: context.currentConversationTitle,
+      }
+    } else if (conversationId !== shown?.id) {
+      this.shownConversation = null
+    }
+  }
+
+  private pushConversationHistory(conversation: {
+    id: string
+    title?: string
+  }): void {
+    const history = (
+      this.leaf as WorkspaceLeaf & {
+        history?: { pushState?: (entry: unknown) => void }
+      }
+    ).history
+    if (typeof history?.pushState !== 'function') return
+
+    const viewState = this.leaf.getViewState()
+    const { currentConversationTitle: _currentTitle, ...restState } =
+      viewState.state ?? {}
+    history.pushState({
+      title: getConversationDisplayTitle(
+        conversation.title,
+        this.plugin.t('chat.untitledConversation', 'New chat'),
+      ),
+      icon: this.getIcon(),
+      state: {
+        ...viewState,
+        state: {
+          ...restState,
+          currentConversationId: conversation.id,
+          ...(conversation.title
+            ? { currentConversationTitle: conversation.title }
+            : {}),
+        },
+      },
+      eState: {},
+    })
   }
 
   private updateRestoredConversationFromContext(context: {
