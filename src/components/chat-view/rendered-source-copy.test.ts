@@ -1,4 +1,7 @@
-import { extractLatexSources } from './latex-copy'
+import {
+  extractLatexSources,
+  extractMermaidSources,
+} from './rendered-source-copy'
 
 describe('extractLatexSources', () => {
   it('extracts inline and block latex in document order', () => {
@@ -82,5 +85,49 @@ describe('extractLatexSources', () => {
     expect(extractLatexSources(markdown)).toEqual([
       ['   $$', '   real', '   $$'].join('\n'),
     ])
+  })
+})
+
+describe('extractMermaidSources', () => {
+  it('extracts whole mermaid fences in document order', () => {
+    const markdown = [
+      'Flow:',
+      '',
+      '```mermaid',
+      'graph TD',
+      'A-->B',
+      '```',
+      '',
+      '```ts',
+      'const notADiagram = 1',
+      '```',
+      '',
+      '~~~mermaid',
+      'sequenceDiagram',
+      '~~~',
+    ].join('\n')
+
+    expect(extractMermaidSources(markdown)).toEqual([
+      '```mermaid\ngraph TD\nA-->B\n```',
+      '~~~mermaid\nsequenceDiagram\n~~~',
+    ])
+  })
+
+  it('keeps list indentation and does not count diagrams as latex', () => {
+    const markdown = [
+      '1. Step',
+      '',
+      '   ```mermaid',
+      '   graph LR',
+      '   X["$cost$"]-->Y',
+      '   ```',
+    ].join('\n')
+
+    expect(extractMermaidSources(markdown)).toEqual([
+      ['   ```mermaid', '   graph LR', '   X["$cost$"]-->Y', '   ```'].join(
+        '\n',
+      ),
+    ])
+    expect(extractLatexSources(markdown)).toEqual([])
   })
 })

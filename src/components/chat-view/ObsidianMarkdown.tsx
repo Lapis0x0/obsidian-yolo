@@ -14,12 +14,11 @@ import { useLanguage } from '../../contexts/language-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
 
-import {
-  annotateRenderedLatex,
-  copySelectedLatex,
-  syncRenderedLatexSelection,
-} from './latex-copy'
 import { setupMermaidViewers } from './MermaidViewer'
+import {
+  annotateRenderedSources,
+  copySelectedRenderedSource,
+} from './rendered-source-copy'
 
 type ObsidianMarkdownProps = {
   content: string
@@ -123,6 +122,9 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
   const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const renderTokenRef = useRef(0)
+  // The Markdown the container currently shows, which can trail `content`
+  // while a newer render is still in flight.
+  const renderedMarkdownRef = useRef('')
   const citationSourcesRef = useRef(citationSources)
   citationSourcesRef.current = citationSources
   const hasInitialFallback = initialFallback !== undefined
@@ -154,6 +156,7 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
       // Atomic swap: scrollHeight transitions oldHeight → newHeight in one frame
       // with no zero-height window, so the scroll position is preserved.
       liveContainer.replaceChildren(...Array.from(staging.childNodes))
+      renderedMarkdownRef.current = renderContent
       setupMarkdownLinks(
         app,
         liveContainer,
@@ -162,8 +165,7 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
         citationSourcesRef.current,
       )
       if (includeLatexAnnotations) {
-        annotateRenderedLatex(liveContainer, renderContent)
-        syncRenderedLatexSelection(liveContainer)
+        annotateRenderedSources(liveContainer, renderContent)
       }
     }
 
@@ -277,7 +279,11 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     }
 
     const handleCopy = (event: ClipboardEvent) => {
-      copySelectedLatex(event, containerEl)
+      copySelectedRenderedSource(
+        event,
+        containerEl,
+        renderedMarkdownRef.current,
+      )
     }
 
     containerEl.addEventListener('copy', handleCopy)

@@ -73,7 +73,7 @@ import type {
   ConversationTimelineRendererContract,
 } from './conversation-surface-contract'
 import { ConversationSurface } from './ConversationSurface'
-import { syncRenderedLatexSelection } from './latex-copy'
+import { syncRenderedLatexSelection } from './rendered-source-copy'
 import { LiveEdgeFollowProvider } from './live-edge-follow-context'
 import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'

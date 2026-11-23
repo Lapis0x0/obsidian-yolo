@@ -1,11 +1,22 @@
+// 渲染内容的源码还原复制。
+//
+// 公式（MathJax）和 mermaid 图渲染之后，页面上已经没有它们的 Markdown 源码，
+// 浏览器默认复制只能拿到渲染结果里的零散文字。这里把每个渲染元素按出现顺序
+// 对应回 Markdown 里的源码并标在元素上；选区碰到这类元素时，整段选区转成
+// Markdown，这些元素换回原始源码。
+
 import { htmlToMarkdown } from 'obsidian'
 
-const LATEX_SOURCE_ATTR = 'data-yolo-latex-source'
+import { MERMAID_VIEWER_CLASS } from './MermaidViewer'
+
+const SOURCE_ATTR = 'data-yolo-markdown-source'
 const LATEX_SELECTED_CLASS = 'yolo-latex-selected'
 
-type LatexSourceToken = {
+type SourceTokenKind = 'inline-math' | 'block-math' | 'mermaid'
+
+type SourceToken = {
   source: string
-  display: boolean
+  kind: SourceTokenKind
 }
 
 const BLOCK_TAG_NAMES = new Set([
@@ -232,9 +243,9 @@ function serializeSelectedNode(node: Node, range: Range): string {
   }
 
   const element = node as HTMLElement
-  const latexSource = element.getAttribute(LATEX_SOURCE_ATTR)
-  if (latexSource) {
-    return latexSource
+  const source = element.getAttribute(SOURCE_ATTR)
+  if (source) {
+    return isBlockSourceElement(element) ? `${source}\n` : source
   }
 
   if (element.tagName === 'BR') {
@@ -265,27 +276,48 @@ function serializeSelectionRange(
     .join('')
 }
 
-function getLatexReplacementTargets(containerEl: ParentNode): HTMLElement[] {
+function getSourceReplacementTargets(containerEl: ParentNode): HTMLElement[] {
   return Array.from(
-    containerEl.querySelectorAll<HTMLElement>(`[${LATEX_SOURCE_ATTR}]`),
-  ).filter(
-    (element) => !element.parentElement?.closest(`[${LATEX_SOURCE_ATTR}]`),
+    containerEl.querySelectorAll<HTMLElement>(`[${SOURCE_ATTR}]`),
+  ).filter((element) => !element.parentElement?.closest(`[${SOURCE_ATTR}]`))
+}
+
+// Inline math sits inside a line of text; everything else (block math, a
+// mermaid diagram) is a block of its own.
+function isBlockSourceElement(element: HTMLElement): boolean {
+  return !(
+    element.classList.contains('math') &&
+    !element.classList.contains('math-block')
   )
 }
 
-function replaceLatexSourcesForMarkdown(containerEl: HTMLElement): void {
-  getLatexReplacementTargets(containerEl).forEach((element) => {
-    const latexSource = element.getAttribute(LATEX_SOURCE_ATTR)
-    if (!latexSource) {
+function sourcePlaceholder(index: number): string {
+  // Letters and digits only, so htmlToMarkdown has nothing to escape in it.
+  return `YOLOSOURCEPLACEHOLDER${index}END`
+}
+
+/**
+ * Swap each source-annotated element for a placeholder and return the sources
+ * in placeholder order. The sources are put back only after htmlToMarkdown,
+ * which would otherwise escape their backslashes, backticks and `$`.
+ */
+function replaceSourcesWithPlaceholders(containerEl: HTMLElement): string[] {
+  const sources: string[] = []
+  getSourceReplacementTargets(containerEl).forEach((element) => {
+    const source = element.getAttribute(SOURCE_ATTR)
+    if (!source) {
       return
     }
 
-    const replacementNode = element.classList.contains('math-block')
-      ? document.createElement('p')
-      : document.createElement('span')
-    replacementNode.textContent = latexSource
+    const ownerDocument = element.ownerDocument
+    const replacementNode = isBlockSourceElement(element)
+      ? ownerDocument.createElement('p')
+      : ownerDocument.createElement('span')
+    replacementNode.textContent = sourcePlaceholder(sources.length)
+    sources.push(source)
     element.replaceWith(replacementNode)
   })
+  return sources
 }
 
 function serializeSelectionAsMarkdown(range: Range): string {
@@ -293,9 +325,15 @@ function serializeSelectionAsMarkdown(range: Range): string {
   const container = document.createElement('div')
   container.append(fragment)
 
-  replaceLatexSourcesForMarkdown(container)
+  const sources = replaceSourcesWithPlaceholders(container)
+  const markdown = sources.reduce(
+    // A replacer function, not a string: `$$` in LaTeX is a replacement pattern.
+    (text, source, index) =>
+      text.replace(sourcePlaceholder(index), () => source),
+    htmlToMarkdown(container.innerHTML),
+  )
 
-  return normalizeSerializedSelection(htmlToMarkdown(container.innerHTML))
+  return normalizeSerializedSelection(markdown)
 }
 
 function getRenderedMathRoots(containerEl: HTMLElement): HTMLElement[] {
@@ -325,11 +363,25 @@ function rangeIntersectsNode(range: Range, node: Node): boolean {
 }
 
 export function extractLatexSources(markdown: string): string[] {
-  return extractLatexSourceTokens(markdown).map((token) => token.source)
+  return extractSourceTokens(markdown)
+    .filter((token) => token.kind !== 'mermaid')
+    .map((token) => token.source)
 }
 
-function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
-  const tokens: LatexSourceToken[] = []
+export function extractMermaidSources(markdown: string): string[] {
+  return extractSourceTokens(markdown)
+    .filter((token) => token.kind === 'mermaid')
+    .map((token) => token.source)
+}
+
+function isMermaidFence(text: string, markerStart: number): boolean {
+  const lineEnd = text.indexOf('\n', markerStart)
+  const info = text.slice(markerStart + 3, lineEnd === -1 ? undefined : lineEnd)
+  return info.trim().split(/\s+/)[0] === 'mermaid'
+}
+
+function extractSourceTokens(markdown: string): SourceToken[] {
+  const tokens: SourceToken[] = []
   let cursor = 0
 
   while (cursor < markdown.length) {
@@ -338,7 +390,16 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
         markdown.startsWith('~~~', cursor)) &&
       getFenceMarkerStart(markdown, cursor) !== null
     ) {
-      cursor = skipFenceBlock(markdown, cursor)
+      const fenceEnd = skipFenceBlock(markdown, cursor)
+      if (isMermaidFence(markdown, cursor)) {
+        tokens.push({
+          source: markdown
+            .slice(getLineStart(markdown, cursor), fenceEnd)
+            .replace(/\n$/, ''),
+          kind: 'mermaid',
+        })
+      }
+      cursor = fenceEnd
       continue
     }
 
@@ -356,7 +417,7 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
             cursor,
             blockLatex.end,
           ),
-          display: true,
+          kind: 'block-math',
         })
         cursor = blockLatex.end
         continue
@@ -372,7 +433,7 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
             cursor,
             bracketLatex.end,
           ),
-          display: true,
+          kind: 'block-math',
         })
         cursor = bracketLatex.end
         continue
@@ -384,7 +445,7 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
         allowNewlines: false,
       })
       if (parenLatex) {
-        tokens.push({ source: parenLatex.source, display: false })
+        tokens.push({ source: parenLatex.source, kind: 'inline-math' })
         cursor = parenLatex.end
         continue
       }
@@ -397,7 +458,7 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
         allowWhitespaceBeforeClose: false,
       })
       if (inlineLatex) {
-        tokens.push({ source: inlineLatex.source, display: false })
+        tokens.push({ source: inlineLatex.source, kind: 'inline-math' })
         cursor = inlineLatex.end
         continue
       }
@@ -409,27 +470,26 @@ function extractLatexSourceTokens(markdown: string): LatexSourceToken[] {
   return tokens
 }
 
-export function annotateRenderedLatex(
+function sourcesOfKind(tokens: SourceToken[], kind: SourceTokenKind) {
+  return tokens.filter((token) => token.kind === kind).map((t) => t.source)
+}
+
+function annotateRenderedLatex(
   containerEl: HTMLElement,
-  markdown: string,
+  tokens: SourceToken[],
 ): void {
   const mathElements = getRenderedMathRoots(containerEl)
-  const latexTokens = extractLatexSourceTokens(markdown)
-  const inlineSources = latexTokens
-    .filter((token) => !token.display)
-    .map((token) => token.source)
-  const blockSources = latexTokens
-    .filter((token) => token.display)
-    .map((token) => token.source)
+  const inlineSources = sourcesOfKind(tokens, 'inline-math')
+  const blockSources = sourcesOfKind(tokens, 'block-math')
   let inlineIndex = 0
   let blockIndex = 0
 
   mathElements.forEach((element) => {
-    element.removeAttribute(LATEX_SOURCE_ATTR)
+    element.removeAttribute(SOURCE_ATTR)
     element
       .querySelectorAll<HTMLElement>('mjx-container')
       .forEach((mathContainer) => {
-        mathContainer.removeAttribute(LATEX_SOURCE_ATTR)
+        mathContainer.removeAttribute(SOURCE_ATTR)
       })
   })
 
@@ -442,14 +502,57 @@ export function annotateRenderedLatex(
       return
     }
 
-    element.setAttribute(LATEX_SOURCE_ATTR, latexSource)
+    element.setAttribute(SOURCE_ATTR, latexSource)
     element
       .querySelectorAll<HTMLElement>('mjx-container')
       .forEach((mathContainer) => {
-        mathContainer.setAttribute(LATEX_SOURCE_ATTR, latexSource)
+        mathContainer.setAttribute(SOURCE_ATTR, latexSource)
       })
   })
+}
 
+// The diagram block as it ends up on the page: the viewer wrapper once
+// MermaidViewer has decorated it, so its open button goes along with it.
+function getRenderedMermaidRoots(containerEl: HTMLElement): HTMLElement[] {
+  return Array.from(containerEl.querySelectorAll<HTMLElement>('.mermaid'))
+    .filter((element) => !element.parentElement?.closest('.mermaid'))
+    .map(
+      (element) =>
+        element.closest<HTMLElement>(`.${MERMAID_VIEWER_CLASS}`) ?? element,
+    )
+}
+
+function annotateRenderedMermaid(
+  containerEl: HTMLElement,
+  tokens: SourceToken[],
+): void {
+  containerEl
+    .querySelectorAll<HTMLElement>(`.mermaid, .${MERMAID_VIEWER_CLASS}`)
+    .forEach((element) => element.removeAttribute(SOURCE_ATTR))
+
+  const roots = getRenderedMermaidRoots(containerEl)
+  const sources = sourcesOfKind(tokens, 'mermaid')
+  // Diagrams are matched to fences by position; if the counts disagree the
+  // match is not trustworthy, and a plain copy beats a wrong diagram.
+  if (roots.length !== sources.length) {
+    return
+  }
+  roots.forEach((element, index) => {
+    element.setAttribute(SOURCE_ATTR, sources[index])
+  })
+}
+
+/**
+ * Mark each rendered formula and mermaid diagram with its Markdown source.
+ * Safe to run again: earlier marks are cleared first.
+ */
+export function annotateRenderedSources(
+  containerEl: HTMLElement,
+  markdown: string,
+): void {
+  const tokens = extractSourceTokens(markdown)
+  annotateRenderedLatex(containerEl, tokens)
+  annotateRenderedMermaid(containerEl, tokens)
   syncRenderedLatexSelection(containerEl)
 }
 
@@ -470,7 +573,7 @@ export function syncRenderedLatexSelection(containerEl: HTMLElement): void {
   }
 
   getRenderedMathRoots(containerEl).forEach((element) => {
-    if (!element.hasAttribute(LATEX_SOURCE_ATTR)) {
+    if (!element.hasAttribute(SOURCE_ATTR)) {
       getRenderedLatexHighlightTargets(element).forEach((target) => {
         target.classList.remove(LATEX_SELECTED_CLASS)
       })
@@ -484,9 +587,17 @@ export function syncRenderedLatexSelection(containerEl: HTMLElement): void {
   })
 }
 
-export function copySelectedLatex(
+/**
+ * Copy a selection that touches a rendered formula or diagram as Markdown,
+ * with those elements restored to their source. `markdown` is the source the
+ * container was rendered from; marks are refreshed from it here because
+ * mermaid finishes rendering (and gets wrapped) after the render pass that
+ * marked the formulas.
+ */
+export function copySelectedRenderedSource(
   event: ClipboardEvent,
   containerEl: HTMLElement,
+  markdown: string,
 ): boolean {
   const selection = (
     containerEl.ownerDocument.defaultView ?? window
@@ -500,12 +611,11 @@ export function copySelectedLatex(
     return false
   }
 
-  const hasLatexSelection = getRenderedMathRoots(containerEl).some(
-    (element) =>
-      element.hasAttribute(LATEX_SOURCE_ATTR) &&
-      rangeIntersectsNode(range, element),
+  annotateRenderedSources(containerEl, markdown)
+  const touchesRenderedSource = getSourceReplacementTargets(containerEl).some(
+    (element) => rangeIntersectsNode(range, element),
   )
-  if (!hasLatexSelection) {
+  if (!touchesRenderedSource) {
     return false
   }
 

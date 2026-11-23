@@ -392,6 +392,8 @@ function openMermaidViewer(app: App, svg: SVGSVGElement): void {
   }).open()
 }
 
+export const MERMAID_VIEWER_CLASS = 'yolo-mermaid-viewer'
+
 export function setupMermaidViewers(
   app: App,
   containerEl: HTMLElement,
@@ -403,9 +405,7 @@ export function setupMermaidViewers(
     containerEl
       .querySelectorAll<HTMLElement>('.mermaid')
       .forEach((mermaidEl) => {
-        if (
-          mermaidEl.parentElement?.classList.contains('yolo-mermaid-viewer')
-        ) {
+        if (mermaidEl.parentElement?.classList.contains(MERMAID_VIEWER_CLASS)) {
           return
         }
 
@@ -413,7 +413,7 @@ export function setupMermaidViewers(
         if (!svg) return
 
         const viewer = ownerDocument.createElement('div')
-        viewer.className = 'yolo-mermaid-viewer'
+        viewer.className = MERMAID_VIEWER_CLASS
         mermaidEl.before(viewer)
         viewer.appendChild(mermaidEl)
 
