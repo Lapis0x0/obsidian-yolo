@@ -1645,12 +1645,8 @@ button.yolo-update-toast-tab.is-active {
      matching padding-right keeps text off the edge and aligned with the header. */
   margin-right: -14px;
   padding-right: 14px;
+  /* 滚动条样式见 scrollbar.css（yolo-scrollbar-autohide） */
   overflow-y: auto;
-  /* Native auto-hide overlay scrollbar — transparent at rest, a faint thumb on
-     hover/focus. Do NOT transition scrollbar-color (Chromium can't interpolate
-     it and flashes the default thumb). Mirrors .yolo-model-select-list. */
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
 }
 
 .yolo-update-toast-success {
@@ -1658,12 +1654,6 @@ button.yolo-update-toast-tab.is-active {
   color: var(--text-success);
   font-weight: 600;
   text-align: center;
-}
-
-.yolo-update-toast-body:hover,
-.yolo-update-toast-body:focus-within {
-  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
-    transparent;
 }
 
 .yolo-update-toast-section {

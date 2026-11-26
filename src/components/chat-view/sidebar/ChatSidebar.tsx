@@ -1,6 +1,6 @@
 import { ChevronDown, PanelLeft, Search, SquarePen } from 'lucide-react'
 import { Scope } from 'obsidian'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
@@ -14,7 +14,10 @@ import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
 
 import { PinnedAgents } from './PinnedAgents'
 import { SidebarProjects } from './SidebarProjects'
-import type { ChatSidebarLayout } from './useChatSidebarLayout'
+import type {
+  ChatSidebarLayout,
+  ChatSidebarResizeHandleProps,
+} from './useChatSidebarLayout'
 
 export type ChatSidebarHandle = {
   /** 让侧边栏可见（展开窄轨 / 打开抽屉）并唤出历史搜索。 */
@@ -26,6 +29,10 @@ type ChatSidebarProps = {
   drawerOpen: boolean
   onCloseDrawer: () => void
   onToggle: () => void
+  /** 侧边栏元素挂上 / 卸下时回调，宽度由布局 hook 直接写在元素上 */
+  registerSidebar: (element: HTMLElement | null) => void
+  /** 常驻列右边缘的拖拽把手，拖动调整宽度 */
+  resizeHandleProps: ChatSidebarResizeHandleProps
   onNewChat: () => void
   /** 新对话菜单、钉住的 Agent：用指定的 Agent 开新对话 */
   onNewChatWithAgent: (ref: AgentRef) => void
@@ -65,6 +72,8 @@ export function ChatSidebar({
   drawerOpen,
   onCloseDrawer,
   onToggle,
+  registerSidebar,
+  resizeHandleProps,
   onNewChat,
   onNewChatWithAgent,
   cliRuntimeScope,
@@ -87,6 +96,13 @@ export function ChatSidebar({
   const { t } = useLanguage()
   const app = useApp()
   const asideRef = useRef<HTMLElement | null>(null)
+  const setAside = useCallback(
+    (element: HTMLElement | null) => {
+      asideRef.current = element
+      registerSidebar(element)
+    },
+    [registerSidebar],
+  )
   const historyHandleRef = useRef<ChatHistoryListHandle | null>(null)
   // 历史列表在显示搜索结果或任务对话时占满滚动区，项目区让开
   const [historyExclusive, setHistoryExclusive] = useState(false)
@@ -148,7 +164,7 @@ export function ChatSidebar({
   if (layout === 'rail') {
     return (
       <aside
-        ref={asideRef}
+        ref={setAside}
         className="yolo-chat-sidebar yolo-chat-sidebar--rail"
       >
         <button
@@ -195,7 +211,7 @@ export function ChatSidebar({
         />
       ) : null}
       <aside
-        ref={asideRef}
+        ref={setAside}
         className={`yolo-chat-sidebar yolo-chat-sidebar--${layout}${
           drawerOpen ? ' is-open' : ''
         }`}
@@ -261,7 +277,7 @@ export function ChatSidebar({
             }}
           />
         </div>
-        <div className="yolo-chat-sidebar-scroll">
+        <div className="yolo-chat-sidebar-scroll yolo-scrollbar-autohide">
           {historyExclusive ? null : (
             <SidebarProjects
               projects={projects ?? []}
@@ -303,6 +319,14 @@ export function ChatSidebar({
             handleRef={historyHandleRef}
           />
         </div>
+        {layout === 'column' ? (
+          <div
+            className="yolo-chat-sidebar-resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            {...resizeHandleProps}
+          />
+        ) : null}
       </aside>
     </>
   )

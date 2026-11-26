@@ -1838,6 +1838,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       drawerOpen={sidebarLayout.drawerOpen}
       onCloseDrawer={sidebarLayout.closeDrawer}
       onToggle={sidebarLayout.toggle}
+      registerSidebar={sidebarLayout.registerSidebar}
+      resizeHandleProps={sidebarLayout.resizeHandleProps}
       onNewChat={startGlobalNewChat}
       onNewChatWithAgent={startGlobalNewChatWithAgent}
       projects={settings.projects}

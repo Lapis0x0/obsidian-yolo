@@ -1,0 +1,20 @@
+/*
+ * 平时不显示、指针移上去才浮出的细滚动条。给滚动容器加上
+ * `yolo-scrollbar-autohide` 即可，容器自己负责 overflow 和高度。
+ *
+ * 用的是 Chromium 原生的覆盖式滚动条：设了 scrollbar-width / scrollbar-color
+ * 之后，Obsidian 给 ::-webkit-scrollbar 定的粗滚动条不再生效。静止时滑块
+ * 透明，悬停或内部有焦点时才着色。不要给 scrollbar-color 加 transition：
+ * Chromium 插值不了这个属性，过渡卡住时会先闪一下系统默认的深色滑块，再跳到
+ * 我们的颜色；交给原生引擎淡入反而干净。
+ */
+.yolo-scrollbar-autohide {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-scrollbar-autohide:hover,
+.yolo-scrollbar-autohide:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}

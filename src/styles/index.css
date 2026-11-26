@@ -21,6 +21,7 @@
 @import './popover/index.css';
 
 @import './button.css';
+@import './scrollbar.css';
 
 @import './action-toast.css';
 @import './acknowledgement-modal.css';

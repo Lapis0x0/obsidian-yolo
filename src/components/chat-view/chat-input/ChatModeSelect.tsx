@@ -605,7 +605,7 @@ export const ChatModeSelect = forwardRef<
           }}
         >
           <div
-            className="yolo-model-select-list yolo-chat-mode-select-list"
+            className="yolo-model-select-list yolo-chat-mode-select-list yolo-scrollbar-autohide"
             role="menu"
             onKeyDown={handleListKeyDown}
           >

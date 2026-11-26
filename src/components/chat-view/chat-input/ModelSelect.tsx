@@ -417,7 +417,7 @@ export const ModelSelect = forwardRef<
             />
           </div>
           <DropdownMenu.RadioGroup
-            className="yolo-model-select-list"
+            className="yolo-model-select-list yolo-scrollbar-autohide"
             value={selectedModelId}
             onKeyDown={(event) => {
               if (event.key === 'ArrowDown') {

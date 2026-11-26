@@ -43,20 +43,7 @@
 .workspace-leaf-content[data-type='yolo-chat-view']:has(
     > .view-header .yolo-view-header-actions-slot:not(:empty)
   ) {
-  --yolo-chat-header-inset: 0px;
   position: relative;
-}
-
-.workspace-leaf-content[data-type='yolo-chat-view']:has(
-    > .view-header .yolo-view-header-actions-slot:not(:empty)
-  ):has(.yolo-chat-sidebar--column) {
-  --yolo-chat-header-inset: var(--yolo-chat-sidebar-width);
-}
-
-.workspace-leaf-content[data-type='yolo-chat-view']:has(
-    > .view-header .yolo-view-header-actions-slot:not(:empty)
-  ):has(.yolo-chat-sidebar--rail) {
-  --yolo-chat-header-inset: var(--yolo-chat-sidebar-rail-width);
 }
 
 .workspace-leaf-content[data-type='yolo-chat-view']:has(
@@ -66,7 +53,22 @@
   position: absolute;
   top: 0;
   right: 0;
-  left: var(--yolo-chat-header-inset);
+  left: 0;
+}
+
+/* 侧边栏宽度是不继承的属性（见 sidebar.css），在标题栏自己身上取值 */
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  ):has(.yolo-chat-sidebar--column)
+  > .view-header {
+  left: var(--yolo-chat-sidebar-width);
+}
+
+.workspace-leaf-content[data-type='yolo-chat-view']:has(
+    > .view-header .yolo-view-header-actions-slot:not(:empty)
+  ):has(.yolo-chat-sidebar--rail)
+  > .view-header {
+  left: var(--yolo-chat-sidebar-rail-width);
 }
 
 .workspace-leaf-content[data-type='yolo-chat-view']:has(

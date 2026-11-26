@@ -429,7 +429,7 @@ function UpdateToast() {
 
       <div className="yolo-update-toast-divider" />
 
-      <div className="yolo-update-toast-body">
+      <div className="yolo-update-toast-body yolo-scrollbar-autohide">
         {selectedOffer?.status === 'success' ? (
           <div className="yolo-update-toast-success">
             {language === 'zh'

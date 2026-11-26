@@ -423,7 +423,7 @@ export function AgentPicker({
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <ul className="yolo-assistant-selector-list yolo-model-select-list">
+        <ul className="yolo-assistant-selector-list yolo-model-select-list yolo-scrollbar-autohide">
           {assistants.length > 0 ? (
             <li className="yolo-agent-picker-group" aria-hidden="true">
               {t('chat.agentPicker.yoloGroup', 'YOLO')}

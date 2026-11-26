@@ -6,10 +6,19 @@
  * 下边缘；对话容器仍然留在原来的内边距里，排版不受影响。
  */
 
-/* 宽度定义在叶子上而不是外壳上：原生标题栏（外壳之外）要按它让出位置，
- * 见 topbar.css */
+/* 常驻列的宽度。用户拖出来的宽度由 useChatSidebarLayout.ts 直接写在用到它的
+ * 两个元素上：侧边栏自己，和要按它让出位置的原生标题栏（见 topbar.css）。
+ * 注册成不继承的属性：普通自定义属性会继承，拖动时每一帧改它，浏览器都要把
+ * 侧边栏里上千个节点的样式重算一遍，拖起来一卡一卡的；不继承就只重算这一个
+ * 元素。默认值在这里给，拖过之后才有行内值覆盖。 */
+@property --yolo-chat-sidebar-width {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 260px;
+}
+
+/* 窄轨宽度定义在叶子上而不是外壳上：原生标题栏（外壳之外）也要按它让出位置 */
 .workspace-leaf-content[data-type='yolo-chat-view'] {
-  --yolo-chat-sidebar-width: 260px;
   --yolo-chat-sidebar-rail-width: 52px;
 }
 
@@ -46,8 +55,42 @@
 }
 
 .yolo-chat-sidebar--column {
+  position: relative;
   width: var(--yolo-chat-sidebar-width);
   margin-inline-end: var(--size-4-3);
+}
+
+/* 拖拽把手：骑在右边框上，比边框宽出一截好抓。悬停浮出一道淡淡的强调色线，
+ * 拖动时稍微加深。 */
+.yolo-chat-sidebar-resize-handle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: -5px;
+  z-index: 1;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.yolo-chat-sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(50% - var(--divider-width-hover) / 2);
+  width: var(--divider-width-hover);
+  background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
+}
+
+.yolo-chat-sidebar-resize-handle:hover::after,
+.yolo-chat-sidebar-resize-handle.is-dragging::after {
+  opacity: 1;
+  transition: opacity var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-resize-handle.is-dragging::after {
+  background: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 }
 
 /* 窄轨 ------------------------------------------------------------------ */
