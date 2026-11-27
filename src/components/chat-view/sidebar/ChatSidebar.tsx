@@ -119,12 +119,29 @@ export function ChatSidebar({
   const [historyExclusive, setHistoryExclusive] = useState(false)
   // 对话的拖动排序挂在滚动区上，行和放下目标都在里面
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
+  const [expandedProjectIds, setExpandedProjectIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set(currentProjectId ? [currentProjectId] : []))
+  const setProjectExpanded = useCallback(
+    (projectId: string, expanded: boolean) => {
+      setExpandedProjectIds((current) => {
+        if (current.has(projectId) === expanded) return current
+        const next = new Set(current)
+        if (expanded) next.add(projectId)
+        else next.delete(projectId)
+        return next
+      })
+    },
+    [],
+  )
   useSidebarConversationSort({
     app,
     scrollElement,
     chatList,
     projects: projects ?? [],
     onPlace: onPlaceConversation,
+    onExpandProject: (projectId) => setProjectExpanded(projectId, true),
+    pinSlotLabel: t('sidebar.chatList.dropToPin', 'Drop here to pin'),
   })
   // 窄轨上点搜索要先展开、等历史列表挂载后再唤出搜索
   const pendingSearchRef = useRef(false)
@@ -307,6 +324,8 @@ export function ChatSidebar({
               chatList={chatList}
               currentConversationId={currentConversationId}
               currentProjectId={currentProjectId}
+              expandedIds={expandedProjectIds}
+              onSetExpanded={setProjectExpanded}
               runSummariesByConversationId={runSummariesByConversationId}
               onOpenProject={(project) => {
                 onOpenProject(project)

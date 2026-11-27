@@ -98,6 +98,7 @@ export type TranslationKeys = {
       retryTitle?: string
       archived?: string
       hideArchived?: string
+      dropToPin?: string
       exportConversation?: string
       exportShort?: string
       moreActions?: string
@@ -1582,7 +1583,8 @@ export type TranslationKeys = {
       memory?: string
       running?: string
       waiting?: string
-      viewAll?: string
+      showMore?: string
+      showLess?: string
       excluded?: string
       accessibleFiles?: string
       chooseIcon?: string

@@ -70,7 +70,10 @@ import {
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { showMoveToProjectMenu } from './projects/moveToProjectMenu'
-import { sortableRowAttributes } from './sidebar/useSidebarConversationSort'
+import {
+  SORT_CAPPED_ATTRIBUTE,
+  sortableRowAttributes,
+} from './sidebar/useSidebarConversationSort'
 
 function useLatestRef<T>(value: T) {
   const ref = useRef(value)
@@ -2299,6 +2302,11 @@ export function ChatHistoryList({
             {shouldUseArchive && archivedChatList.length > 0 && (
               <li
                 className="yolo-chat-list-dropdown-archive-row"
+                // 折叠着更早的对话时这个列表是满的：拖进来的对话会把最后一个
+                // 挤进折叠里（见 useSidebarConversationSort）
+                {...(showArchived
+                  ? undefined
+                  : { [SORT_CAPPED_ATTRIBUTE]: 'conversations' })}
                 onMouseEnter={() => {
                   setIsHoveringArchiveRow(true)
                 }}
@@ -2309,6 +2317,7 @@ export function ChatHistoryList({
                 <button
                   type="button"
                   className="yolo-chat-list-dropdown-archive-toggle"
+                  aria-expanded={showArchived}
                   onClick={() => {
                     setShowArchived((prev) => !prev)
                   }}

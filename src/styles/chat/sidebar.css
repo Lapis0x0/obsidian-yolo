@@ -366,7 +366,45 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   color: var(--text-normal);
 }
 
-/* 要放进或移出项目时缩小，从左边缩，让出指针下高亮的目标 */
-.yolo-chat-sidebar-scroll [data-sort-state='moving-out'] {
-  transform-origin: 0 50%;
+/* 还没有置顶时，拖动期间盖在「对话」分组标题上的「拖到这里置顶」（见
+ * useSidebarConversationSort）。位置和高度由脚本按标题写入 */
+[data-drop-history] {
+  position: relative;
+}
+
+.yolo-chat-sidebar-pin-slot {
+  position: absolute;
+  right: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--background-modifier-border-hover);
+  border-radius: var(--radius-m);
+  background: var(--yolo-chat-sidebar-background);
+  color: var(--text-faint);
+  font-size: var(--yolo-font-ui);
+  pointer-events: none;
+  animation: yolo-chat-sidebar-pin-slot-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-pin-slot[data-drop-active] {
+  border-color: var(--interactive-accent);
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 8%,
+    var(--yolo-chat-sidebar-background)
+  );
+  color: var(--text-normal);
+}
+
+@keyframes yolo-chat-sidebar-pin-slot-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

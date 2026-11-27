@@ -256,7 +256,7 @@ button.yolo-chat-sidebar-project-conversation.is-active {
   color: var(--text-normal);
 }
 
-button.yolo-chat-sidebar-project-view-all {
+button.yolo-chat-sidebar-project-more {
   height: 30px;
   color: var(--text-faint);
   font-size: var(--yolo-font-ui);

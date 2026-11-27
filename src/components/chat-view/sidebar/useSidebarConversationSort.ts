@@ -62,25 +62,37 @@ export const sortableRowAttributes = (
  */
 export const DROP_PROJECT_ATTRIBUTE = 'data-drop-project'
 export const DROP_HISTORY_ATTRIBUTE = 'data-drop-history'
+/**
+ * 列表的「更多」那一行上（值是列表的组）：还有没列出的对话，这个列表是满的。
+ * 拖进来一条，最后一条就被挤进「更多」里，而不是列表变长。
+ */
+export const SORT_CAPPED_ATTRIBUTE = 'data-sort-capped'
 
 const DRAG_DISTANCE_PX = 5
 /** 指针离滚动区上下边缘这么近时自动滚动，越近越快 */
 const AUTO_SCROLL_EDGE_PX = 40
 const AUTO_SCROLL_MAX_SPEED_PX = 16
-/** 拖到折叠的项目上时，被拖的行缩小并往下让一点，露出高亮的项目 */
-const MOVING_OUT_OFFSET = { x: 14, y: 18 }
-const MOVING_OUT_SCALE = 0.9
+/** 「拖到这里置顶」比它盖住的分组标题上下各收进一点 */
+const PIN_SLOT_INSET_PX = 3
+/** 项目卡片和对话列表：落位时整块移动，里面的元素只补自己相对它的位移 */
+const FLIP_BLOCK_SELECTOR = `[${DROP_PROJECT_ATTRIBUTE}], [${DROP_HISTORY_ATTRIBUTE}]`
 /**
- * 落位时参与 FLIP 的元素：对话行，以及布局变化时会跟着移动的项目行、分组
- * 标题、「查看全部」等。项目卡片的底色跟着布局直接变，不做动画。
+ * 列表之后、列表变长时要跟着往下让的单行元素：「更多」「收起」、分组标题、
+ * 折叠的更早对话、任务对话入口、空项目的占位。
  */
-const FLIP_SELECTOR = [
-  '[data-sort-id]',
-  '.yolo-chat-sidebar-project',
-  '.yolo-chat-sidebar-project-view-all',
+const FOLLOWER_SELECTOR = [
+  '.yolo-chat-sidebar-project-more-row',
   '.yolo-chat-sidebar-project-conversations-empty',
   '.yolo-chat-history-group',
   '.yolo-chat-list-dropdown-archive-row',
+  '.yolo-chat-history-task-entry',
+].join(', ')
+/** 落位时参与 FLIP 的元素：对话行、项目行、上面那些单行元素，以及整块 */
+const FLIP_SELECTOR = [
+  FLIP_BLOCK_SELECTOR,
+  '[data-sort-id]',
+  '.yolo-chat-sidebar-project',
+  FOLLOWER_SELECTOR,
 ].join(', ')
 
 /** 滚动区里的范围：左右是视口坐标，上下是滚动内容坐标（滚动不改变它） */
@@ -99,6 +111,19 @@ type SortList = {
   fromIndex: number
   /** 当前落点；指针不在这个列表上为 null */
   index: number | null
+  /** 列表是满的（见 SORT_CAPPED_ATTRIBUTE） */
+  capped: boolean
+  /** 列表里行的左边缘和宽度：被拖的行进来时对齐到这里 */
+  rowLeft: number
+  rowWidth: number
+  /** 列表变长时跟着往下让的元素（单行元素和后面的整块） */
+  followers: HTMLElement[]
+  /** 列表变长时整体往下让的其他列表（置顶下面的对话） */
+  listsBelow: SortList[]
+  /** 因为上面的列表变长而整体下移的距离 */
+  base: number
+  /** 上一次写下位移时的落点和下移距离，没变就不重写 */
+  applied: string
 }
 
 /** 折叠的项目：整行是放下目标 */
@@ -112,8 +137,12 @@ type DragSession = {
   collapsed: CollapsedProject[]
   containerTop: number
   containerBottom: number
-  /** 被拖的行原来的中心线 */
+  /** 被拖的行原来的中心线、左边缘和宽度 */
   rowCenter: number
+  rowLeft: number
+  rowWidth: number
+  /** 此刻正在变长的列表：指针在它上面，它不是被拖行原来的列表，也不是满的 */
+  growing: SortList | null
   startContentY: number
   pointerX: number
   pointerY: number
@@ -122,6 +151,8 @@ type DragSession = {
   over: CollapsedProject | null
   frame: number | null
   scope: Scope
+  /** 还没有置顶时临时出现的「拖到这里置顶」，和它对应的置顶列表 */
+  pinSlot: { element: HTMLElement; list: SortList } | null
 }
 
 const groupProjectId = (group: ConversationSortGroup) =>
@@ -188,6 +219,8 @@ export function useSidebarConversationSort({
   chatList,
   projects,
   onPlace,
+  onExpandProject,
+  pinSlotLabel,
 }: {
   app: App
   /** 侧边栏的滚动区：行和列表都在里面 */
@@ -195,10 +228,26 @@ export function useSidebarConversationSort({
   chatList: readonly ChatConversationMetadata[]
   projects: readonly ChatProject[]
   onPlace: (conversationId: string, placement: ConversationPlacement) => unknown
+  /** 对话放进折叠的项目后展开它，让人看到对话去了哪 */
+  onExpandProject: (projectId: string) => void
+  /** 「拖到这里置顶」的文字 */
+  pinSlotLabel: string
 }) {
   // 拖动跨越多次渲染，读的都是松手那一刻的数据
-  const latestRef = useRef({ chatList, projects, onPlace })
-  latestRef.current = { chatList, projects, onPlace }
+  const latestRef = useRef({
+    chatList,
+    projects,
+    onPlace,
+    onExpandProject,
+    pinSlotLabel,
+  })
+  latestRef.current = {
+    chatList,
+    projects,
+    onPlace,
+    onExpandProject,
+    pinSlotLabel,
+  }
 
   useEffect(() => {
     const container = scrollElement
@@ -211,7 +260,8 @@ export function useSidebarConversationSort({
       win.matchMedia('(prefers-reduced-motion: reduce)').matches
         ? 0
         : MOTION_DURATION_ENTER_S * 1000
-    const transition = () => `transform ${duration()}ms ${MOTION_EASE_OUT_CSS}`
+    const transition = () =>
+      `transform ${duration()}ms ${MOTION_EASE_OUT_CSS}, opacity ${duration()}ms ${MOTION_EASE_OUT_CSS}`
 
     let pending: {
       pointerId: number
@@ -244,19 +294,43 @@ export function useSidebarConversationSort({
     }
 
     /**
-     * 列表里各行的位移。o 是行原来的位置（源列表里被拖行之后的行原本靠后
-     * 一位），p 是现在该在的位置（落点之后的行让出一位），差几位挪几个 slot。
+     * 列表里各行的位移。original 是行原来的位置（源列表里被拖行之后的行原本
+     * 靠后一位），current 是现在该在的位置（落点之后的行让出一位），差几位
+     * 挪几个 slot，再加上因为上面的列表变长而整体下移的 base。满的列表多进
+     * 一条时，最后一条会被挤进「更多」里：它原地淡出，不往下压到「更多」上。
      */
     const applyShifts = (list: SortList, index: number | null) => {
-      if (list.index === index) return
+      const applied = `${index}|${list.base}`
+      if (list.applied === applied) return
+      list.applied = applied
       list.index = index
+      const gains = index !== null && list.fromIndex === -1
       list.rows.forEach((row, i) => {
         const original =
           list.fromIndex !== -1 && i >= list.fromIndex ? i + 1 : i
         const current = index !== null && i >= index ? i + 1 : i
-        const shift = (current - original) * list.slot
-        row.setCssProps({ transform: shift ? `translate(0, ${shift}px)` : '' })
+        const fade = gains && list.capped && i === list.rows.length - 1
+        const shift = (fade ? 0 : (current - original) * list.slot) + list.base
+        row.setCssProps({
+          transform: shift ? `translate(0, ${shift}px)` : '',
+          opacity: fade ? '0' : '',
+        })
       })
+    }
+
+    /** 变长的列表换了：之前那个的后续元素回原位，新的往下让一行 */
+    const setGrowing = (s: DragSession, growing: SortList | null) => {
+      if (s.growing === growing) return
+      const shift = (list: SortList | null, by: number) => {
+        if (!list) return
+        for (const element of list.followers) {
+          element.setCssProps({ transform: by ? `translate(0, ${by}px)` : '' })
+        }
+        for (const below of list.listsBelow) below.base = by
+      }
+      shift(s.growing, 0)
+      shift(growing, growing?.slot ?? 0)
+      s.growing = growing
     }
 
     const update = () => {
@@ -269,12 +343,29 @@ export function useSidebarConversationSort({
       const dy = contentY - s.startContentY
 
       // 指针在哪个列表或折叠的项目上；都不在（比如分组标题、列表之间的
-      // 空隙）时保持上一次的，不来回跳
-      const list = s.lists.find((l) => contains(l.area, s.pointerX, contentY))
+      // 空隙）时保持上一次的，不来回跳。有列表正在变长时，它自己的范围往下
+      // 多出一行，它下面的东西也都往下挪了一行，按挪过之后的位置判断
+      const g = s.growing
+      const seen = (area: Area): Area =>
+        !g
+          ? area
+          : area === g.area
+            ? { ...area, bottom: area.bottom + g.slot }
+            : area.top >= g.area.bottom - 0.5
+              ? {
+                  ...area,
+                  top: area.top + g.slot,
+                  bottom: area.bottom + g.slot,
+                }
+              : area
+      const list = s.lists.find((l) =>
+        contains(seen(l.area), s.pointerX, contentY),
+      )
       const collapsed = list
         ? null
-        : (s.collapsed.find((c) => contains(c.area, s.pointerX, contentY)) ??
-          null)
+        : (s.collapsed.find((c) =>
+            contains(seen(c.area), s.pointerX, contentY),
+          ) ?? null)
       if (list) {
         s.active = list
         s.over = null
@@ -287,13 +378,36 @@ export function useSidebarConversationSort({
         if (c === s.over) c.element.setAttribute('data-drop-active', '')
         else c.element.removeAttribute('data-drop-active')
       }
-      s.row.setAttribute('data-sort-state', s.over ? 'moving-out' : 'lifted')
+      if (s.pinSlot) {
+        if (s.active === s.pinSlot.list) {
+          s.pinSlot.element.setAttribute('data-drop-active', '')
+        } else {
+          s.pinSlot.element.removeAttribute('data-drop-active')
+        }
+      }
+      setGrowing(
+        s,
+        s.active && s.active.fromIndex === -1 && !s.active.capped
+          ? s.active
+          : null,
+      )
+      // 被拖的行所在的整块（比如对话列表）可能正因为上面的列表变长而整体
+      // 下移，这段位移会带到它身上，要扣掉，它才停在指针处
+      const carried =
+        s.growing && s.growing.followers.some((f) => f.contains(s.row))
+          ? s.growing.slot
+          : 0
+      // 进了别的列表就对齐到那个列表的行：项目里的行比对话列表的缩进多。
+      // 悬在折叠的项目上时不属于任何列表，保持原样跟着指针
+      const target = s.over === null ? s.active : null
+      const dx = target ? target.rowLeft - s.rowLeft : 0
+      const width =
+        target && Math.abs(target.rowWidth - s.rowWidth) > 0.5
+          ? `${target.rowWidth}px`
+          : ''
       s.row.setCssProps({
-        transform: s.over
-          ? `translate(${MOVING_OUT_OFFSET.x}px, ${
-              dy + MOVING_OUT_OFFSET.y
-            }px) scale(${MOVING_OUT_SCALE})`
-          : `translate(0, ${dy}px)`,
+        width,
+        transform: `translate(${dx}px, ${dy - carried}px)`,
       })
 
       const center = s.rowCenter + dy
@@ -357,6 +471,7 @@ export function useSidebarConversationSort({
         group: ConversationSortGroup,
         allRows: HTMLElement[],
         area: Area,
+        scope: HTMLElement,
       ): SortList => {
         const fromIndex = allRows.indexOf(p.row)
         const rows = allRows.filter((row) => row !== p.row)
@@ -370,7 +485,53 @@ export function useSidebarConversationSort({
         })
         const slot =
           allCenters.length > 1 ? allCenters[1] - allCenters[0] : rowRect.height
-        return { group, rows, centers, slot, area, fromIndex, index: null }
+        // 行的左边缘和宽度：取列表里的一行；空的项目取列表内容区
+        const sample = allRows[0]?.getBoundingClientRect()
+        let rowLeft = sample?.left ?? rowRect.left
+        let rowWidth = sample?.width ?? rowRect.width
+        const ul = scope.querySelector<HTMLElement>(
+          '.yolo-chat-sidebar-project-conversations',
+        )
+        if (!sample && ul) {
+          const rect = ul.getBoundingClientRect()
+          const style = win.getComputedStyle(ul)
+          rowLeft = rect.left + parseFloat(style.paddingLeft)
+          rowWidth =
+            rect.width -
+            parseFloat(style.paddingLeft) -
+            parseFloat(style.paddingRight)
+        }
+        // 列表之后的单行元素：最后一行（空列表为列表内容区的开头）之下的
+        const last = allRows.at(-1)?.getBoundingClientRect()
+        const end = last
+          ? contentY(last.bottom)
+          : ul
+            ? contentY(ul.getBoundingClientRect().top)
+            : area.top
+        const followers = Array.from(
+          scope.querySelectorAll<HTMLElement>(FOLLOWER_SELECTOR),
+        ).filter(
+          (element) =>
+            contentY(element.getBoundingClientRect().top) >= end - 0.5,
+        )
+        return {
+          group,
+          rows,
+          centers,
+          slot,
+          area,
+          fromIndex,
+          index: null,
+          capped:
+            scope.querySelector(`[${SORT_CAPPED_ATTRIBUTE}="${group}"]`) !==
+            null,
+          rowLeft,
+          rowWidth,
+          followers,
+          listsBelow: [],
+          base: 0,
+          applied: '',
+        }
       }
       const rowsOf = (scope: Element, group: ConversationSortGroup) =>
         Array.from(
@@ -379,9 +540,12 @@ export function useSidebarConversationSort({
 
       const lists: SortList[] = []
       const collapsed: CollapsedProject[] = []
+      let pinSlot: DragSession['pinSlot'] = null
 
       // 对话列表：有置顶时按置顶和其余对话的分界切成两个列表
-      const history = container.querySelector(`[${DROP_HISTORY_ATTRIBUTE}]`)
+      const history = container.querySelector<HTMLElement>(
+        `[${DROP_HISTORY_ATTRIBUTE}]`,
+      )
       if (history) {
         const zone = areaOf(history)
         const pinned = rowsOf(history, 'pinned')
@@ -396,13 +560,60 @@ export function useSidebarConversationSort({
             : lastPinned
               ? zone.bottom
               : zone.top
-        if (pinned.length > 0) {
-          lists.push(makeList('pinned', pinned, { ...zone, bottom: boundary }))
+        const pinnedList =
+          pinned.length > 0
+            ? makeList('pinned', pinned, { ...zone, bottom: boundary }, history)
+            : null
+        const restList =
+          rest.length > 0
+            ? makeList(
+                'conversations',
+                rest,
+                { ...zone, top: boundary },
+                history,
+              )
+            : null
+        if (pinnedList) {
+          // 置顶变长时，下面的对话整体往下让；对话的行不算置顶的单行后续
+          if (restList) {
+            pinnedList.listsBelow.push(restList)
+            pinnedList.followers = pinnedList.followers.filter(
+              (element) => !element.hasAttribute('data-sort-id'),
+            )
+          }
+          lists.push(pinnedList)
         }
-        if (rest.length > 0) {
-          lists.push(
-            makeList('conversations', rest, { ...zone, top: boundary }),
-          )
+        if (restList) lists.push(restList)
+
+        // 还没有置顶时没有置顶列表可拖进去：把「对话」分组标题那块临时盖成
+        // 「拖到这里置顶」。盖在上面而不是插入一行，下面的列表不会被推开、
+        // 拖动一开始画面就跳一下
+        const header = history.querySelector<HTMLElement>(
+          '.yolo-chat-history-group',
+        )
+        if (!pinnedList && restList && header) {
+          const headerRect = header.getBoundingClientRect()
+          const historyRect = history.getBoundingClientRect()
+          const element = doc.createElement('div')
+          element.className = 'yolo-chat-sidebar-pin-slot'
+          element.textContent = latestRef.current.pinSlotLabel
+          element.setCssProps({
+            top: `${headerRect.top - historyRect.top + PIN_SLOT_INSET_PX}px`,
+            height: `${headerRect.height - 2 * PIN_SLOT_INSET_PX}px`,
+          })
+          history.appendChild(element)
+          const area = areaOf(header)
+          // 空的置顶列表，不变长：落点就是框本身，下面的对话不用让位
+          const list: SortList = {
+            ...makeList('pinned', [], area, history),
+            capped: true,
+            rowLeft: restList.rowLeft,
+            rowWidth: restList.rowWidth,
+            followers: [],
+          }
+          restList.area = { ...restList.area, top: area.bottom }
+          lists.push(list)
+          pinSlot = { element, list }
         }
       }
       // 项目：展开的是列表，折叠的是整行目标
@@ -415,7 +626,20 @@ export function useSidebarConversationSort({
           if (
             element.querySelector('.yolo-chat-sidebar-project-conversations')
           ) {
-            lists.push(makeList(group, rowsOf(element, group), areaOf(element)))
+            const list = makeList(
+              group,
+              rowsOf(element, group),
+              areaOf(element),
+              element,
+            )
+            // 项目列表变长时，后面的项目卡片和整个对话列表都往下让
+            let next = element.nextElementSibling
+            while (next instanceof HTMLElement) {
+              list.followers.push(next)
+              next = next.nextElementSibling
+            }
+            if (history) list.followers.push(history)
+            lists.push(list)
           } else {
             collapsed.push({ projectId, element, area: areaOf(element) })
           }
@@ -440,6 +664,10 @@ export function useSidebarConversationSort({
         containerTop: box.top,
         containerBottom: box.bottom,
         rowCenter,
+        rowLeft: rowRect.left,
+        rowWidth: rowRect.width,
+        growing: null,
+        pinSlot,
         startContentY: contentY(p.y),
         pointerX: p.x,
         pointerY: p.y,
@@ -458,8 +686,9 @@ export function useSidebarConversationSort({
       p.row.setAttribute('data-sort-state', 'lifted')
       p.row.setCssProps({ transition: 'none' })
       for (const list of lists) {
-        for (const row of list.rows)
-          row.setCssProps({ transition: transition() })
+        for (const element of [...list.rows, ...list.followers]) {
+          element.setCssProps({ transition: transition() })
+        }
       }
       schedule()
     }
@@ -492,13 +721,31 @@ export function useSidebarConversationSort({
 
       if (commit) flushSync(commit)
 
-      // 撤掉拖动状态
-      const dragged = [s.row, ...s.lists.flatMap((list) => list.rows)]
-      for (const row of dragged) {
-        row.setCssProps({ transition: 'none', transform: '' })
-        row.removeAttribute('data-sort-state')
+      // 撤掉拖动状态。淡出的行如果被挤进了「更多」（已经不在，或在播退场
+      // 动画），保持看不见
+      const dragged = [
+        s.row,
+        ...s.lists.flatMap((list) => [...list.rows, ...list.followers]),
+      ]
+      for (const element of dragged) {
+        const faded = element.style.opacity === '0'
+        element.setCssProps({
+          transition: 'none',
+          transform: '',
+          opacity: '',
+          width: '',
+        })
+        element.removeAttribute('data-sort-state')
+        if (
+          faded &&
+          element.isConnected &&
+          element.style.position === 'absolute'
+        ) {
+          element.setCssProps({ visibility: 'hidden' })
+        }
       }
       s.over?.element.removeAttribute('data-drop-active')
+      s.pinSlot?.element.remove()
       container.removeAttribute('data-sorting')
       if (container.hasPointerCapture(s.pointerId)) {
         container.releasePointerCapture(s.pointerId)
@@ -524,6 +771,10 @@ export function useSidebarConversationSort({
       if (ms > 0) {
         // 先全部量完再统一写：边量边写的话，每写一次位移，下一次测量都要
         // 重新算一遍布局
+        //
+        // 项目卡片和对话列表整块移动；块里的元素已经跟着块走，只补自己相对
+        // 块的那部分位移，不然会移动两遍
+        const deltas = new Map<HTMLElement, [number, number]>()
         const offsets: [HTMLElement, number, number][] = []
         container
           .querySelectorAll<HTMLElement>(FLIP_SELECTOR)
@@ -532,8 +783,16 @@ export function useSidebarConversationSort({
             const from = before.get(keyOf(element))
             if (!from) return
             const to = element.getBoundingClientRect()
-            const dx = from.left - to.left
-            const dy = from.top - to.top
+            const delta: [number, number] = [
+              from.left - to.left,
+              from.top - to.top,
+            ]
+            deltas.set(element, delta)
+            const block =
+              element.parentElement?.closest<HTMLElement>(FLIP_BLOCK_SELECTOR)
+            const outer = block ? deltas.get(block) : undefined
+            const dx = delta[0] - (outer?.[0] ?? 0)
+            const dy = delta[1] - (outer?.[1] ?? 0)
             if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return
             offsets.push([element, dx, dy])
           })
@@ -549,8 +808,8 @@ export function useSidebarConversationSort({
       const settling = landed && moved.includes(landed) ? landed : null
       settling?.setAttribute('data-sort-state', 'landing')
       void container.offsetHeight
-      for (const row of dragged) {
-        if (!moved.includes(row)) row.setCssProps({ transition: '' })
+      for (const element of dragged) {
+        if (!moved.includes(element)) element.setCssProps({ transition: '' })
       }
       for (const element of moved) {
         element.setCssProps({ transition: transition(), transform: '' })
@@ -567,12 +826,23 @@ export function useSidebarConversationSort({
       const s = session
       if (!s) return
       swallowNextClick()
-      const { onPlace, chatList, projects } = latestRef.current
+      const { onPlace, onExpandProject, chatList, projects } = latestRef.current
       const id = s.conversationId
       if (s.over) {
-        // 折叠的项目：放进去，位置不变
-        const placement = { projectId: s.over.projectId, isPinned: false }
-        land(() => void onPlace(id, placement))
+        // 折叠的项目：放到最前面并展开项目，落位动画直接落到它在项目里的那一行
+        const { projectId } = s.over
+        const placement = getPlacement(
+          chatList,
+          projects,
+          id,
+          projectSortGroup(projectId),
+          null,
+          null,
+        )
+        land(() => {
+          void onPlace(id, placement)
+          onExpandProject(projectId)
+        })
         return
       }
       const list = s.active

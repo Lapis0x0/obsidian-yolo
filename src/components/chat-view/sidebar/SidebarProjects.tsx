@@ -14,12 +14,19 @@ import { PROJECT_ICONS, projectColorStyle } from '../projects/projectAppearance'
 
 import {
   DROP_PROJECT_ATTRIBUTE,
+  SORT_CAPPED_ATTRIBUTE,
   projectSortGroup,
   sortableRowAttributes,
 } from './useSidebarConversationSort'
 
-/** 展开一个项目时列出的最近对话数，更多的从项目主页看 */
-const EXPANDED_CONVERSATION_LIMIT = 3
+/**
+ * 展开一个项目时先列出的对话数，其余的由最后一行「再显示 N 个」就地展开，
+ * 每点一次最多再列出 EXPANDED_CONVERSATION_STEP 个，免得对话很多的项目
+ * 一下子铺满侧边栏。侧边栏承担排序，看得到才拖得动，所以展开在侧边栏里
+ * 而不是跳到项目主页。
+ */
+const EXPANDED_CONVERSATION_LIMIT = 5
+const EXPANDED_CONVERSATION_STEP = 10
 
 type RunState = 'running' | 'waiting' | null
 
@@ -49,6 +56,9 @@ type SidebarProjectsProps = {
   chatList: readonly ChatConversationMetadata[]
   currentConversationId: string
   currentProjectId: string | undefined
+  /** 展开的项目。由侧边栏持有：把对话拖进折叠的项目时也要展开它 */
+  expandedIds: ReadonlySet<string>
+  onSetExpanded: (projectId: string, expanded: boolean) => void
   runSummariesByConversationId: Map<string, AgentConversationRunSummary>
   onOpenProject: (project: ChatProject) => void
   /** 新建项目 */
@@ -70,6 +80,8 @@ export function SidebarProjects({
   chatList,
   currentConversationId,
   currentProjectId,
+  expandedIds,
+  onSetExpanded,
   runSummariesByConversationId,
   onOpenProject,
   onCreateProject,
@@ -77,9 +89,19 @@ export function SidebarProjects({
   onMoveToProject,
 }: SidebarProjectsProps) {
   const { t } = useLanguage()
-  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
-    () => new Set(currentProjectId ? [currentProjectId] : []),
+  /** 点过「再显示」的项目此刻列出的对话数；没有的按 EXPANDED_CONVERSATION_LIMIT */
+  const [shownCounts, setShownCounts] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
   )
+  const setShownCount = (projectId: string, count: number | null) => {
+    setShownCounts((current) => {
+      if (current.get(projectId) === (count ?? undefined)) return current
+      const next = new Map(current)
+      if (count === null) next.delete(projectId)
+      else next.set(projectId, count)
+      return next
+    })
+  }
 
   const conversationsByProject = useMemo(
     () =>
@@ -96,16 +118,6 @@ export function SidebarProjects({
   const isOnProjectHome = !chatList.some(
     (chat) => chat.id === currentConversationId,
   )
-
-  const setExpanded = (projectId: string, expanded: boolean) => {
-    setExpandedIds((current) => {
-      if (current.has(projectId) === expanded) return current
-      const next = new Set(current)
-      if (expanded) next.add(projectId)
-      else next.delete(projectId)
-      return next
-    })
-  }
 
   return (
     <section className="yolo-chat-sidebar-projects">
@@ -140,10 +152,18 @@ export function SidebarProjects({
             projects={projects}
             conversations={conversationsByProject.get(project.id) ?? []}
             expanded={expandedIds.has(project.id)}
+            shownCount={
+              shownCounts.get(project.id) ?? EXPANDED_CONVERSATION_LIMIT
+            }
+            onSetShownCount={(count) => setShownCount(project.id, count)}
             active={project.id === currentProjectId && isOnProjectHome}
             currentConversationId={currentConversationId}
             runSummariesByConversationId={runSummariesByConversationId}
-            onSetExpanded={(expanded) => setExpanded(project.id, expanded)}
+            onSetExpanded={(expanded) => {
+              // 收起项目时「再显示」也一并收起，下次展开从头来
+              if (!expanded) setShownCount(project.id, null)
+              onSetExpanded(project.id, expanded)
+            }}
             onOpenProject={onOpenProject}
             onSelectConversation={onSelectConversation}
             onMoveToProject={onMoveToProject}
@@ -159,6 +179,8 @@ function SidebarProjectItem({
   projects,
   conversations,
   expanded,
+  shownCount,
+  onSetShownCount,
   active,
   currentConversationId,
   runSummariesByConversationId,
@@ -172,6 +194,10 @@ function SidebarProjectItem({
   /** 这个项目的全部对话，按顺序 */
   conversations: readonly ChatConversationMetadata[]
   expanded: boolean
+  /** 列出前几个对话 */
+  shownCount: number
+  /** null 表示收回到默认的前几个 */
+  onSetShownCount: (count: number | null) => void
   active: boolean
   currentConversationId: string
   runSummariesByConversationId: Map<string, AgentConversationRunSummary>
@@ -181,7 +207,10 @@ function SidebarProjectItem({
   onMoveToProject: (conversationId: string, projectId: string | null) => unknown
 }) {
   const { t } = useLanguage()
-  const shown = conversations.slice(0, EXPANDED_CONVERSATION_LIMIT)
+  const hasMore = conversations.length > EXPANDED_CONVERSATION_LIMIT
+  const shown = conversations.slice(0, shownCount)
+  /** 还没列出的对话数；不大于 0 时最后一行是「收起」 */
+  const hidden = conversations.length - shownCount
   const runStates = conversations.map((chat) =>
     getRunState(runSummariesByConversationId.get(chat.id)),
   )
@@ -259,17 +288,30 @@ function SidebarProjectItem({
               onMoveToProject={onMoveToProject}
             />
           ))}
-          {conversations.length > EXPANDED_CONVERSATION_LIMIT ? (
-            <li>
+          {hasMore ? (
+            // 还有没列出的对话时，这个列表是满的：拖进来的对话会把最后一个
+            // 挤到「更多」里（见 useSidebarConversationSort）
+            <li
+              className="yolo-chat-sidebar-project-more-row"
+              {...(hidden > 0
+                ? { [SORT_CAPPED_ATTRIBUTE]: projectSortGroup(project.id) }
+                : undefined)}
+            >
               <button
                 type="button"
-                className="yolo-chat-sidebar-project-conversation yolo-chat-sidebar-project-view-all"
-                onClick={() => onOpenProject(project)}
+                className="yolo-chat-sidebar-project-conversation yolo-chat-sidebar-project-more"
+                onClick={() =>
+                  onSetShownCount(
+                    hidden > 0 ? shownCount + EXPANDED_CONVERSATION_STEP : null,
+                  )
+                }
               >
-                {t(
-                  'chat.projects.viewAll',
-                  'View all {count} conversations',
-                ).replace('{count}', String(conversations.length))}
+                {hidden > 0
+                  ? t('chat.projects.showMore', 'Show {count} more').replace(
+                      '{count}',
+                      String(Math.min(hidden, EXPANDED_CONVERSATION_STEP)),
+                    )
+                  : t('chat.projects.showLess', 'Show less')}
               </button>
             </li>
           ) : null}
