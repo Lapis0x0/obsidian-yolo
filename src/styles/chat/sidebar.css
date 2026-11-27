@@ -332,6 +332,9 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   max-width: 46px;
   overflow: hidden;
   font-size: var(--yolo-font-badge);
+  /* 行高要写死：交给字体（normal）时，含中文的名字会回退到行高更大的中文
+   * 字体，这一行比纯英文名高出几像素，整条钉住栏跟着长高 */
+  line-height: var(--yolo-leading-compact);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

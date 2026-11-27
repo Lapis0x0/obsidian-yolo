@@ -90,7 +90,7 @@ img.yolo-agent-picker-logo {
   padding-inline-start: var(--size-4-4);
 }
 
-/* 钉住按钮：和编辑按钮同一套小方块。已钉住的行常显，方便一眼看出钉了谁。 */
+/* 钉住按钮：和编辑按钮同一套小方块，悬停这一行时出现。已钉住的行例外，见下面 */
 button.yolo-agent-picker-pin {
   all: unset;
   width: 24px !important;
@@ -110,7 +110,7 @@ button.yolo-agent-picker-pin:hover {
 }
 
 button.yolo-agent-picker-pin.is-pinned {
-  color: var(--interactive-accent);
+  color: var(--text-muted);
 }
 
 button.yolo-agent-picker-pin.is-disabled {
@@ -118,10 +118,34 @@ button.yolo-agent-picker-pin.is-disabled {
   cursor: not-allowed;
 }
 
+/* 已钉住的行常显一个淡色图钉，一眼看出钉了谁；它只是状态标记，不带按钮的
+ * 外框。悬停这一行（或键盘焦点在行内）时才换成带框的「取消钉住」，和其他
+ * 行的操作按钮一致。同在操作区的编辑按钮仍然只在悬停时出现 */
 .yolo-assistant-selector-item:has(.yolo-agent-picker-pin.is-pinned)
   .yolo-assistant-selector-item-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 不占位：编辑按钮排在图钉左边，悬停时才出现，图钉始终贴右不动 */
+.yolo-assistant-selector-item:not(:hover):not(:focus-within)
+  .yolo-assistant-selector-item-actions
+  > :not(.is-pinned) {
+  display: none !important;
+}
+
+.yolo-assistant-selector-item:not(:hover):not(:focus-within)
+  button.yolo-agent-picker-pin.is-pinned {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-faint);
+}
+
+.yolo-assistant-selector-item:hover .yolo-agent-picker-pin-state,
+.yolo-assistant-selector-item:focus-within .yolo-agent-picker-pin-state,
+.yolo-assistant-selector-item:not(:hover):not(:focus-within)
+  .yolo-agent-picker-pin-action {
+  display: none;
 }
 
 .yolo-agent-picker-expand {

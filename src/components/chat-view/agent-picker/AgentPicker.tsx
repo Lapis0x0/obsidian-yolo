@@ -193,7 +193,15 @@ export function AgentPicker({
           togglePin(ref)
         }}
       >
-        {pinnedNow ? <PinOff size={13} /> : <Pin size={13} />}
+        {pinnedNow ? (
+          <>
+            {/* 平时是「已钉住」的标记，悬停这一行时换成「取消钉住」的动作 */}
+            <Pin size={13} className="yolo-agent-picker-pin-state" />
+            <PinOff size={13} className="yolo-agent-picker-pin-action" />
+          </>
+        ) : (
+          <Pin size={13} />
+        )}
       </button>
     )
   }
@@ -277,8 +285,10 @@ export function AgentPicker({
             </div>
           </button>
           <div className="yolo-assistant-selector-item-actions">
-            {ref ? renderPinButton(ref, name) : null}
+            {/* 钉住按钮放在最右：它在已钉住的行上常显，悬停时出现的编辑按钮
+                排在它左边，图钉的位置就不会随悬停跳动 */}
             {trailing}
+            {ref ? renderPinButton(ref, name) : null}
           </div>
         </div>
       </li>
