@@ -1,25 +1,15 @@
 import * as Popover from '@radix-ui/react-popover'
 import {
-  BookOpen,
   Bot,
   Check,
   ChevronRight,
-  Cpu,
   Pencil,
   Pin,
   PinOff,
   Search,
   Settings,
-  Wrench,
 } from 'lucide-react'
-import {
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
@@ -27,18 +17,13 @@ import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-model'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
-import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
   CLI_RUNTIME_DESCRIPTORS,
   type CliRuntimeScope,
   type HermesProfile,
   getCliRuntimeDescriptor,
 } from '../../../core/cli-runtime'
-import { toModuleToolSetEnablement } from '../../../core/modules/moduleToolSetRegistry'
-import { countEnabledAssistantSkills } from '../../../core/skills/skillPolicy'
-import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import type { Assistant } from '../../../types/assistant.types'
-import type { McpTool } from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { openPluginSettingsTab } from '../../../utils/openPluginSettingsTab'
 import { YoloPopoverContent } from '../../common/popover'
@@ -102,63 +87,7 @@ export function AgentPicker({
   const [hermesProfiles, setHermesProfiles] = useState<
     readonly HermesProfile[]
   >([])
-  const [availableTools, setAvailableTools] = useState<McpTool[]>([])
-  const skillEntries = useLiteSkillEntries(app, { settings })
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-
-  // Module tool sets: same registry `useSyncExternalStore` pattern as
-  // `Chat.tsx`'s module chat mode subscription, reduced to what
-  // `countEnabledVisibleAssistantTools` needs so the per-agent tool count
-  // matches what the agent editor and chat runtime resolve.
-  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
-  const moduleToolSetSnapshot = useSyncExternalStore(
-    moduleToolSetRegistry.subscribe,
-    moduleToolSetRegistry.getSnapshot,
-  )
-  const moduleToolSetEnablement = useMemo(
-    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
-    [moduleToolSetSnapshot],
-  )
-
-  useEffect(() => {
-    if (!open) return
-    let mounted = true
-    let requestId = 0
-    let unsubscribe: (() => void) | undefined
-
-    void plugin
-      .getMcpManager()
-      .then((manager) => {
-        if (!mounted) return
-        const refreshAvailableTools = () => {
-          const currentRequestId = ++requestId
-          void manager
-            .listAvailableTools()
-            .then((tools) => {
-              if (mounted && currentRequestId === requestId) {
-                setAvailableTools(tools)
-              }
-            })
-            .catch((error: unknown) => {
-              console.error(
-                'Failed to load available tools for agent picker',
-                error,
-              )
-            })
-        }
-        unsubscribe = manager.subscribeServersChange(refreshAvailableTools)
-        refreshAvailableTools()
-      })
-      .catch((error: unknown) => {
-        console.error('Failed to initialize agent picker tools', error)
-      })
-
-    return () => {
-      mounted = false
-      requestId += 1
-      unsubscribe?.()
-    }
-  }, [open, plugin])
 
   // Hermes profile 是本机发现的，每次打开重新列一次
   useEffect(() => {
@@ -269,6 +198,15 @@ export function AgentPicker({
     )
   }
 
+  // 第二行只放一样东西：YOLO Agent 用的模型、Hermes 的 profile 数或某个
+  // profile 的模型。选 Agent 时要看的是「谁、用什么模型」，工具数、技能数这类
+  // 配置细节留给 Agent 设置
+  const renderMeta = (text: string) => (
+    <div className="yolo-assistant-selector-item-meta yolo-agent-picker-meta">
+      {text}
+    </div>
+  )
+
   const renderAssistantMeta = (assistant: Assistant) => {
     const followDefaultLabel = t(
       'settings.agent.followDefaultModel',
@@ -280,44 +218,7 @@ export function AgentPicker({
     )
     const modelLabel =
       rawModelId === followDefaultLabel ? rawModelId : toModelLabel(rawModelId)
-    const toolCount = countEnabledVisibleAssistantTools(
-      assistant,
-      availableTools,
-      moduleToolSetEnablement,
-    )
-    const skillCount = countEnabledAssistantSkills({
-      assistant,
-      skills: skillEntries,
-      disabledSkillNames: settings.skills?.disabledSkillIds,
-    })
-    return (
-      <div className="yolo-assistant-selector-item-meta">
-        {modelLabel && (
-          <span className="yolo-assistant-selector-meta-chip">
-            <Cpu size={10} />
-            <span>{modelLabel}</span>
-          </span>
-        )}
-        <span className="yolo-assistant-selector-meta-chip">
-          <Wrench size={10} />
-          <span>
-            {t('settings.agent.toolsCount', '{count} tools').replace(
-              '{count}',
-              String(toolCount),
-            )}
-          </span>
-        </span>
-        <span className="yolo-assistant-selector-meta-chip">
-          <BookOpen size={10} />
-          <span>
-            {t('settings.agent.skillsCount', '{count} skills').replace(
-              '{count}',
-              String(skillCount),
-            )}
-          </span>
-        </span>
-      </div>
-    )
+    return modelLabel ? renderMeta(modelLabel) : undefined
   }
 
   const renderRow = ({
@@ -353,7 +254,13 @@ export function AgentPicker({
             className="yolo-assistant-selector-item-main"
             onClick={onSelect}
           >
-            <div className="yolo-assistant-selector-item-icon">{icon}</div>
+            <div
+              className={`yolo-assistant-selector-item-icon ${
+                ref?.kind === 'assistant' ? 'is-yolo' : 'is-cli'
+              }`}
+            >
+              {icon}
+            </div>
             <div className="yolo-assistant-selector-item-content">
               <div className="yolo-assistant-selector-item-name-row">
                 <span className="yolo-assistant-selector-item-name">
@@ -505,18 +412,11 @@ export function AgentPicker({
                 ref: null,
                 name,
                 icon: logo,
-                meta: (
-                  <div className="yolo-assistant-selector-item-meta">
-                    <span className="yolo-assistant-selector-meta-chip">
-                      <Bot size={10} />
-                      <span>
-                        {t(
-                          'chat.agentPicker.profileCount',
-                          '{count} profiles',
-                        ).replace('{count}', String(hermesProfiles.length))}
-                      </span>
-                    </span>
-                  </div>
+                meta: renderMeta(
+                  t(
+                    'chat.agentPicker.profileCount',
+                    '{count} profiles',
+                  ).replace('{count}', String(hermesProfiles.length)),
                 ),
                 onSelect: () => setHermesExpanded((value) => !value),
                 trailing: (
@@ -544,14 +444,9 @@ export function AgentPicker({
                   ref,
                   name: `${hermesLabel} · ${profile.displayName}`,
                   icon: <Bot size={14} />,
-                  meta: profile.model ? (
-                    <div className="yolo-assistant-selector-item-meta">
-                      <span className="yolo-assistant-selector-meta-chip">
-                        <Cpu size={10} />
-                        <span>{toModelLabel(profile.model)}</span>
-                      </span>
-                    </div>
-                  ) : undefined,
+                  meta: profile.model
+                    ? renderMeta(toModelLabel(profile.model))
+                    : undefined,
                   onSelect: () => pick(ref),
                   nested: true,
                 })

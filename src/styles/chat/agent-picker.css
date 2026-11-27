@@ -46,9 +46,43 @@
   background: transparent !important;
 }
 
-img.yolo-agent-picker-logo {
+/* 图标和侧边栏钉住的 Agent 同一套：浅底细边框，YOLO 自己的 Agent 圆形，
+ * CLI 圆角方块，品牌图标保留原色。设置里的助手列表仍是 assistants.css 的
+ * 强调色渐变方块，这里只改选择器里的 */
+.yolo-agent-picker .yolo-assistant-selector-item-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  background: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.yolo-agent-picker .yolo-assistant-selector-item-icon.is-yolo {
+  border-radius: 50%;
+}
+
+.yolo-agent-picker .yolo-assistant-selector-item-icon.is-cli {
+  border-radius: 7px;
+}
+
+.yolo-agent-picker .yolo-assistant-selector-item-icon svg {
   width: 14px;
   height: 14px;
+}
+
+/* 第二行只有一样东西，独占整行；用界面字体而不是等宽字体，模型名放得下 */
+.yolo-agent-picker-meta.yolo-assistant-selector-item-meta {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-interface);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+img.yolo-agent-picker-logo {
+  width: 16px;
+  height: 16px;
   object-fit: contain;
 }
 
