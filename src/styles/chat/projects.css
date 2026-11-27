@@ -56,9 +56,31 @@ ul.yolo-chat-sidebar-project-list {
   border-radius: var(--radius-m);
 }
 
+/* 卡片的底色画在伪元素上：拖着对话进出这个项目时，底边按
+ * --yolo-sort-card-extend 伸缩，卡片本身的高度到放下时才变（见
+ * useSidebarConversationSort.ts） */
 .yolo-chat-sidebar-project-item.is-expanded {
+  position: relative;
   margin-block: 2px;
+}
+
+/* 不设 z-index：卡片里的项目行和对话列表都是定位元素，按文档顺序画在它
+ * 上面；卡片也不成为层叠上下文，被拖的对话拖出卡片时仍压在别的东西上面 */
+.yolo-chat-sidebar-project-item.is-expanded::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 calc(-1 * var(--yolo-sort-card-extend, 0px));
+  border-radius: inherit;
   background: color-mix(in srgb, var(--yolo-project-color) 8%, transparent);
+  pointer-events: none;
+}
+
+/* 动画豁免：伸缩的是绝对定位的伪元素的底边，只重排它自己，不影响别的元素；
+ * 时长和缓动与让位的行一致 */
+.yolo-chat-sidebar-project-item[data-sort-card]::before,
+.yolo-chat-sidebar-project-item[data-sort-card]
+  ul.yolo-chat-sidebar-project-conversations::before {
+  transition: bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 /* 卡片的项目行就是卡片的标题，悬停、选中都不再单独加一层底色 */
@@ -213,7 +235,7 @@ ul.yolo-chat-sidebar-project-conversations {
 ul.yolo-chat-sidebar-project-conversations::before {
   content: '';
   position: absolute;
-  inset-block: 4px;
+  inset-block: 4px calc(4px - var(--yolo-sort-card-extend, 0px));
   inset-inline-start: 18px;
   width: 1px;
   background: var(--background-modifier-border);

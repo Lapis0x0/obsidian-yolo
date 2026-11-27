@@ -72,6 +72,13 @@ const DRAG_DISTANCE_PX = 5
 /** 指针离滚动区上下边缘这么近时自动滚动，越近越快 */
 const AUTO_SCROLL_EDGE_PX = 40
 const AUTO_SCROLL_MAX_SPEED_PX = 16
+/**
+ * 项目卡片底边伸缩的距离，写在卡片上：卡片的底色和左侧细线画在伪元素上，
+ * 拖动时按它伸长或缩短（见 projects.css），落位后 React 重排出真实的高度
+ */
+const CARD_EXTEND_PROPERTY = '--yolo-sort-card-extend'
+/** 卡片上有它时，底边伸缩带过渡 */
+const CARD_SORTING_ATTRIBUTE = 'data-sort-card'
 /** 「拖到这里置顶」比它盖住的分组标题上下各收进一点 */
 const PIN_SLOT_INSET_PX = 3
 /** 项目卡片和对话列表：落位时整块移动，里面的元素只补自己相对它的位移 */
@@ -116,12 +123,14 @@ type SortList = {
   /** 列表里行的左边缘和宽度：被拖的行进来时对齐到这里 */
   rowLeft: number
   rowWidth: number
-  /** 列表变长时跟着往下让的元素（单行元素和后面的整块） */
+  /** 列表变长或变短时跟着上下让的元素（单行元素和后面的整块） */
   followers: HTMLElement[]
-  /** 列表变长时整体往下让的其他列表（置顶下面的对话） */
+  /** 列表变长或变短时整体跟着让的其他列表（置顶下面的对话） */
   listsBelow: SortList[]
-  /** 因为上面的列表变长而整体下移的距离 */
+  /** 因为上面的列表变长或变短而整体移动的距离 */
   base: number
+  /** 项目卡片：列表变长变短时卡片的底色和左侧细线跟着伸缩（见 CARD_EXTEND_PROPERTY） */
+  card: HTMLElement | null
   /** 上一次写下位移时的落点和下移距离，没变就不重写 */
   applied: string
 }
@@ -141,8 +150,12 @@ type DragSession = {
   rowCenter: number
   rowLeft: number
   rowWidth: number
-  /** 此刻正在变长的列表：指针在它上面，它不是被拖行原来的列表，也不是满的 */
-  growing: SortList | null
+  /** 被拖的行原来的列表 */
+  source: SortList
+  /** 此刻长度变了的列表和变化量（像素）：见 getLengthChanges */
+  changes: Map<SortList, number>
+  /** 所有列表的后续元素，去重 */
+  followers: HTMLElement[]
   startContentY: number
   pointerX: number
   pointerY: number
@@ -318,19 +331,57 @@ export function useSidebarConversationSort({
       })
     }
 
-    /** 变长的列表换了：之前那个的后续元素回原位，新的往下让一行 */
-    const setGrowing = (s: DragSession, growing: SortList | null) => {
-      if (s.growing === growing) return
-      const shift = (list: SortList | null, by: number) => {
-        if (!list) return
-        for (const element of list.followers) {
-          element.setCssProps({ transform: by ? `translate(0, ${by}px)` : '' })
-        }
-        for (const below of list.listsBelow) below.base = by
+    /**
+     * 此刻哪些列表的长度变了：指针所在的别的列表（没满）多出一行；被拖的行
+     * 离开了原来的列表（没满）时，原来的列表少一行。满的列表长度不变：拖进来
+     * 时最后一条挤进「更多」，拖出去时「更多」里的下一条补上来。
+     */
+    const getLengthChanges = (s: DragSession) => {
+      const changes = new Map<SortList, number>()
+      const active = s.active
+      if (active && active.fromIndex === -1 && !active.capped) {
+        changes.set(active, active.slot)
       }
-      shift(s.growing, 0)
-      shift(growing, growing?.slot ?? 0)
-      s.growing = growing
+      if (s.source !== active && !s.source.capped) {
+        changes.set(s.source, -s.source.slot)
+      }
+      return changes
+    }
+
+    /**
+     * 按长度的变化挪开后续元素：每个变了的列表后面的东西跟着上下让，一个
+     * 元素同时在几个列表后面就加起来；项目卡片的底边跟着伸缩。
+     */
+    const applyLengthChanges = (
+      s: DragSession,
+      changes: Map<SortList, number>,
+    ) => {
+      const same =
+        changes.size === s.changes.size &&
+        [...changes].every(([list, by]) => s.changes.get(list) === by)
+      if (same) return
+      s.changes = changes
+      const offsets = new Map<HTMLElement, number>()
+      for (const [list, by] of changes) {
+        for (const element of list.followers) {
+          offsets.set(element, (offsets.get(element) ?? 0) + by)
+        }
+      }
+      for (const element of s.followers) {
+        const by = offsets.get(element) ?? 0
+        element.setCssProps({ transform: by ? `translate(0, ${by}px)` : '' })
+      }
+      for (const list of s.lists) {
+        list.base = 0
+        for (const [above, by] of changes) {
+          if (above.listsBelow.includes(list)) list.base += by
+        }
+        list.card?.setCssProps({
+          [CARD_EXTEND_PROPERTY]: changes.has(list)
+            ? `${changes.get(list)}px`
+            : '',
+        })
+      }
     }
 
     const update = () => {
@@ -343,21 +394,20 @@ export function useSidebarConversationSort({
       const dy = contentY - s.startContentY
 
       // 指针在哪个列表或折叠的项目上；都不在（比如分组标题、列表之间的
-      // 空隙）时保持上一次的，不来回跳。有列表正在变长时，它自己的范围往下
-      // 多出一行，它下面的东西也都往下挪了一行，按挪过之后的位置判断
-      const g = s.growing
-      const seen = (area: Area): Area =>
-        !g
-          ? area
-          : area === g.area
-            ? { ...area, bottom: area.bottom + g.slot }
-            : area.top >= g.area.bottom - 0.5
-              ? {
-                  ...area,
-                  top: area.top + g.slot,
-                  bottom: area.bottom + g.slot,
-                }
-              : area
+      // 空隙）时保持上一次的，不来回跳。有列表变长或变短时，它自己的底边
+      // 和它下面的东西都挪了，按挪过之后的位置判断
+      const shiftAt = (y: number) => {
+        let by = 0
+        for (const [list, change] of s.changes) {
+          if (y >= list.area.bottom - 0.5) by += change
+        }
+        return by
+      }
+      const seen = (area: Area): Area => ({
+        ...area,
+        top: area.top + shiftAt(area.top),
+        bottom: area.bottom + shiftAt(area.bottom),
+      })
       const list = s.lists.find((l) =>
         contains(seen(l.area), s.pointerX, contentY),
       )
@@ -385,18 +435,13 @@ export function useSidebarConversationSort({
           s.pinSlot.element.removeAttribute('data-drop-active')
         }
       }
-      setGrowing(
-        s,
-        s.active && s.active.fromIndex === -1 && !s.active.capped
-          ? s.active
-          : null,
-      )
-      // 被拖的行所在的整块（比如对话列表）可能正因为上面的列表变长而整体
-      // 下移，这段位移会带到它身上，要扣掉，它才停在指针处
-      const carried =
-        s.growing && s.growing.followers.some((f) => f.contains(s.row))
-          ? s.growing.slot
-          : 0
+      applyLengthChanges(s, getLengthChanges(s))
+      // 被拖的行所在的整块（比如对话列表）可能正因为上面的列表变长变短而
+      // 整体移动，这段位移会带到它身上，要扣掉，它才停在指针处
+      let carried = 0
+      for (const [list, by] of s.changes) {
+        if (list.followers.some((f) => f.contains(s.row))) carried += by
+      }
       // 进了别的列表就对齐到那个列表的行：项目里的行比对话列表的缩进多。
       // 悬在折叠的项目上时不属于任何列表，保持原样跟着指针
       const target = s.over === null ? s.active : null
@@ -417,7 +462,7 @@ export function useSidebarConversationSort({
           continue
         }
         let index = 0
-        for (const c of l.centers) if (c < center) index += 1
+        for (const c of l.centers) if (c + shiftAt(c) < center) index += 1
         applyShifts(l, index)
       }
 
@@ -530,6 +575,7 @@ export function useSidebarConversationSort({
           followers,
           listsBelow: [],
           base: 0,
+          card: null,
           applied: '',
         }
       }
@@ -626,12 +672,15 @@ export function useSidebarConversationSort({
           if (
             element.querySelector('.yolo-chat-sidebar-project-conversations')
           ) {
-            const list = makeList(
-              group,
-              rowsOf(element, group),
-              areaOf(element),
-              element,
-            )
+            const list: SortList = {
+              ...makeList(
+                group,
+                rowsOf(element, group),
+                areaOf(element),
+                element,
+              ),
+              card: element,
+            }
             // 项目列表变长时，后面的项目卡片和整个对话列表都往下让
             let next = element.nextElementSibling
             while (next instanceof HTMLElement) {
@@ -666,7 +715,9 @@ export function useSidebarConversationSort({
         rowCenter,
         rowLeft: rowRect.left,
         rowWidth: rowRect.width,
-        growing: null,
+        source,
+        changes: new Map(),
+        followers: [...new Set(lists.flatMap((list) => list.followers))],
         pinSlot,
         startContentY: contentY(p.y),
         pointerX: p.x,
@@ -689,6 +740,7 @@ export function useSidebarConversationSort({
         for (const element of [...list.rows, ...list.followers]) {
           element.setCssProps({ transition: transition() })
         }
+        list.card?.setAttribute(CARD_SORTING_ATTRIBUTE, '')
       }
       schedule()
     }
@@ -742,6 +794,20 @@ export function useSidebarConversationSort({
           element.style.position === 'absolute'
         ) {
           element.setCssProps({ visibility: 'hidden' })
+        }
+      }
+      // 卡片的底边：放下时 React 已经排出真实的高度，和拖动时伸缩到的一样，
+      // 直接撤掉、不过渡；取消时卡片原样，过渡回去
+      for (const list of s.lists) {
+        const card = list.card
+        if (!card) continue
+        card.setCssProps({ [CARD_EXTEND_PROPERTY]: '' })
+        if (commit) {
+          card.removeAttribute(CARD_SORTING_ATTRIBUTE)
+        } else {
+          win.setTimeout(() => {
+            if (!session) card.removeAttribute(CARD_SORTING_ATTRIBUTE)
+          }, duration())
         }
       }
       s.over?.element.removeAttribute('data-drop-active')
