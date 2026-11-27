@@ -2274,10 +2274,14 @@ export function ChatHistoryList({
                   />
                 )
                 if (!group) return [row]
-                // 分组标题跟着它下面那一行一起位移，补位时不会被行盖住
+                // 分组标题跟着它下面那一行一起位移，补位时不会被行盖住。
+                // 按分组而不是按首行对话取 key：首行换了人（拖到顶上、删掉
+                // 首行、置顶）时标题还是同一个元素；按首行取 key 的话，
+                // AnimatePresence 会把旧标题当作退场留在布局里，退场期间同时
+                // 有两个标题，结束时下面的行整体跳一下
                 return [
                   <li
-                    key={`group-${chat.id}`}
+                    key={`group-${group}`}
                     className="yolo-chat-history-group"
                     style={
                       shiftY

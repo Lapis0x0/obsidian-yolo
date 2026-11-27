@@ -370,20 +370,3 @@ button.yolo-chat-sidebar-pinned-agent:hover {
 .yolo-chat-sidebar-scroll [data-sort-state='moving-out'] {
   transform-origin: 0 50%;
 }
-
-/* 项目里的对话拖到对话列表上：松手移出项目。高亮盖在列表上面，不动列表自己
- * 的底色（操作区遮罩要和侧边栏底色一致，见 history.css） */
-.yolo-chat-history-drop-zone {
-  position: relative;
-}
-
-.yolo-chat-history-drop-zone[data-drop-active]::after {
-  content: '';
-  position: absolute;
-  inset: 0 10px;
-  border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
-  box-shadow: inset 0 0 0 1.5px
-    color-mix(in srgb, var(--interactive-accent) 50%, transparent);
-  pointer-events: none;
-}

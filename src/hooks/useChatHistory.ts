@@ -46,6 +46,16 @@ const CHAT_HISTORY_UPDATED_EVENT = 'yolo:chat-history-updated'
 
 export { getConversationDisplayTitle, isUntitledConversationTitle }
 
+/**
+ * 对话在侧边栏里放到哪：哪个项目（null 为不在项目里）、是否置顶、排在哪
+ * （见 ChatConversation.sortKey）。不给 sortKey 时保留原来的位置。
+ */
+export type ConversationPlacement = {
+  projectId: string | null
+  isPinned: boolean
+  sortKey?: number
+}
+
 type UseChatHistory = {
   createOrUpdateConversation: (
     id: string,
@@ -114,10 +124,13 @@ type UseChatHistory = {
   /** 删除项目时调用：清掉所有属于它的对话的 projectId，对话回到「最近」。 */
   clearConversationsProject: (projectId: string) => Promise<void>
   /**
-   * 在侧边栏里拖动排序后，写下对话的新位置（见 `ChatConversation.sortKey`）。
-   * 同样不动 updatedAt。
+   * 侧边栏里把对话拖到某个列表的某个位置：所属项目、是否置顶、位置在一次
+   * 写入里改完（见 ConversationPlacement）。同样不动 updatedAt。
    */
-  setConversationSortKey: (id: string, sortKey: number) => Promise<void>
+  placeConversation: (
+    id: string,
+    placement: ConversationPlacement,
+  ) => Promise<void>
   generateConversationTitle: (
     id: string,
     messages: ChatMessage[],
@@ -135,6 +148,8 @@ export function useChatHistory(): UseChatHistory {
   const { language } = useLanguage()
   const chatManager = useChatManager()
   const [chatList, setChatList] = useState<ChatConversationMetadata[]>([])
+  const chatListRef = useRef(chatList)
+  chatListRef.current = chatList
   const titleGenerationInFlightRef = useRef<Set<string>>(new Set())
   const titleGenerationCooldownUntilRef = useRef<Map<string, number>>(new Map())
   const settingsRef = useRef(settings)
@@ -594,13 +609,30 @@ export function useChatHistory(): UseChatHistory {
     [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
-  const setConversationSortKey = useCallback(
-    async (id: string, sortKey: number): Promise<void> => {
+  const placeConversation = useCallback(
+    async (id: string, placement: ConversationPlacement): Promise<void> => {
+      const current = chatListRef.current.find((chat) => chat.id === id)
+      const pinnedAt =
+        placement.isPinned === Boolean(current?.isPinned)
+          ? current?.pinnedAt
+          : placement.isPinned
+            ? Date.now()
+            : undefined
+      const updates = {
+        projectId: placement.projectId ?? undefined,
+        isPinned: placement.isPinned,
+        pinnedAt,
+        ...(placement.sortKey === undefined
+          ? {}
+          : { sortKey: placement.sortKey }),
+      }
+      // 先改列表，并且在第一个 await 之前：侧边栏松手时在同一帧提交
+      // （flushSync），对话要在那一帧就出现在新位置
       setChatList((prev) =>
-        prev.map((chat) => (chat.id === id ? { ...chat, sortKey } : chat)),
+        prev.map((chat) => (chat.id === id ? { ...chat, ...updates } : chat)),
       )
       try {
-        await chatManager.updateChat(id, { sortKey }, { touchUpdatedAt: false })
+        await chatManager.updateChat(id, updates, { touchUpdatedAt: false })
       } finally {
         emitChatHistoryUpdated()
         await fetchChatList()
@@ -777,7 +809,7 @@ export function useChatHistory(): UseChatHistory {
     toggleConversationPinned,
     setConversationProject,
     clearConversationsProject,
-    setConversationSortKey,
+    placeConversation,
     generateConversationTitle,
     chatList,
   }

@@ -374,7 +374,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     generateConversationTitle,
     setConversationProject,
     clearConversationsProject,
-    setConversationSortKey,
+    placeConversation,
     chatList,
   } = useChatHistory()
   const chatManager = useChatManager()
@@ -1857,7 +1857,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       onOpenProject={openProject}
       onOpenProjectSettings={openProjectSettings}
       onMoveToProject={setConversationProject}
-      onReorderConversation={setConversationSortKey}
+      onPlaceConversation={placeConversation}
       cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       chatList={chatList}
       currentConversationId={activeHistoryConversationId}

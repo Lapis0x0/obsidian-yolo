@@ -82,24 +82,37 @@ export function sortUserChatList<T extends ChatConversationMetadata>(
 }
 
 /**
- * 把 `list` 里的一项从 `fromIndex` 拖到 `toIndex` 之后，它的新 sortKey：取落位后
- * 上下两个邻居的中间值，只改被拖的这一项。`list` 是它所在那一组的完整列表
- * （没折叠、没截断），按显示顺序排好，即 sortKey 从大到小。
+ * 一个对话插进 `list` 的第 `index` 位时它的 sortKey：取上下两个邻居的中间值，
+ * 只改这一项。`list` 是目标那一组的完整列表（没折叠、没截断），按显示顺序
+ * 排好（sortKey 从大到小），不含要插进来的这一项。
+ */
+export function getSortKeyForInsert(
+  list: readonly ChatConversationMetadata[],
+  index: number,
+): number {
+  const above = list[index - 1]
+  const below = list[index]
+  if (above && below) {
+    return (getChatSortKey(above) + getChatSortKey(below)) / 2
+  }
+  if (above) return getChatSortKey(above) - 1
+  if (below) return getChatSortKey(below) + 1
+  return Date.now()
+}
+
+/**
+ * 同一组里把第 `fromIndex` 项拖到第 `toIndex` 位（arrayMove 的语义）时它的
+ * 新 sortKey。
  */
 export function getSortKeyAfterMove(
   list: readonly ChatConversationMetadata[],
   fromIndex: number,
   toIndex: number,
 ): number {
-  const rest = list.filter((_, index) => index !== fromIndex)
-  const above = rest[toIndex - 1]
-  const below = rest[toIndex]
-  if (above && below) {
-    return (getChatSortKey(above) + getChatSortKey(below)) / 2
-  }
-  if (above) return getChatSortKey(above) - 1
-  if (below) return getChatSortKey(below) + 1
-  return getChatSortKey(list[fromIndex])
+  return getSortKeyForInsert(
+    list.filter((_, index) => index !== fromIndex),
+    toIndex,
+  )
 }
 
 export function partitionChatHistory({

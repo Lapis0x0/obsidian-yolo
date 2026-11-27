@@ -7,6 +7,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../../core/agent/service'
 import type { CliRuntimeScope } from '../../../core/cli-runtime'
 import type { ChatConversationMetadata } from '../../../database/json/chat/types'
+import type { ConversationPlacement } from '../../../hooks/useChatHistory'
 import type { ChatProject } from '../../../types/project.types'
 import { AgentPicker } from '../agent-picker/AgentPicker'
 import type { AgentRef } from '../agent-picker/agentRef'
@@ -61,8 +62,11 @@ type ChatSidebarProps = {
   /** 不传项目表示新建 */
   onOpenProjectSettings: (project?: ChatProject) => void
   onMoveToProject: (conversationId: string, projectId: string | null) => unknown
-  /** 拖动排序后写下对话的新位置 */
-  onReorderConversation: (conversationId: string, sortKey: number) => unknown
+  /** 拖动对话后写下它的新位置（所属项目、是否置顶、排序） */
+  onPlaceConversation: (
+    conversationId: string,
+    placement: ConversationPlacement,
+  ) => unknown
   handleRef: React.MutableRefObject<ChatSidebarHandle | null>
 }
 
@@ -97,7 +101,7 @@ export function ChatSidebar({
   onOpenProject,
   onOpenProjectSettings,
   onMoveToProject,
-  onReorderConversation,
+  onPlaceConversation,
   handleRef,
 }: ChatSidebarProps) {
   const { t } = useLanguage()
@@ -120,8 +124,7 @@ export function ChatSidebar({
     scrollElement,
     chatList,
     projects: projects ?? [],
-    onMoveToProject,
-    onReorder: onReorderConversation,
+    onPlace: onPlaceConversation,
   })
   // 窄轨上点搜索要先展开、等历史列表挂载后再唤出搜索
   const pendingSearchRef = useRef(false)
@@ -318,11 +321,8 @@ export function ChatSidebar({
               }}
             />
           )}
-          {/* 项目里的对话拖到这里移出项目 */}
-          <div
-            className="yolo-chat-history-drop-zone"
-            {...{ [DROP_HISTORY_ATTRIBUTE]: '' }}
-          >
+          {/* 置顶和其余对话两个列表的范围，见 useSidebarConversationSort */}
+          <div {...{ [DROP_HISTORY_ATTRIBUTE]: '' }}>
             <ChatHistoryList
               chatList={chatList}
               projects={projects}

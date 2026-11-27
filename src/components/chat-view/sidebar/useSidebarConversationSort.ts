@@ -6,32 +6,36 @@ import {
   type ChatConversationMetadata,
   getChatConversationOrigin,
 } from '../../../database/json/chat/types'
+import type { ConversationPlacement } from '../../../hooks/useChatHistory'
 import {
   MOTION_DURATION_ENTER_S,
   MOTION_EASE_OUT_CSS,
 } from '../../../styles/tokens/motion'
 import type { ChatProject } from '../../../types/project.types'
 import {
-  getSortKeyAfterMove,
+  getSortKeyForInsert,
   selectProjectConversations,
   sortUserChatList,
 } from '../chat-history-list'
 
 /**
- * 侧边栏里拖动对话：在所在的那一组里拖动排序（置顶、其余对话、某个项目里的
- * 对话各是一组，组与组之间不混排），拖到项目上放进项目，把项目里的对话拖到
- * 下面的对话列表上移出项目。
+ * 侧边栏里拖动对话。看得见的每一个对话列表——置顶、其余对话、每个展开的
+ * 项目——都是同一种列表：被拖的行经过哪个列表，哪个列表就让出空位，离开的
+ * 那个列表把空位合上；松手就进到那个列表、落在那个空位上，所属项目、是否
+ * 置顶、位置一次写完。折叠的项目看不到里面的对话，拖到上面整行高亮，松手
+ * 放进去，位置不变。
  *
- * 拖动过程完全不经过 React：按下时量好这一组每一行的位置和各个放下目标的
- * 范围，之后指针每移动一次只算出落点（同组的行按位置排好，比一比中心线），
- * 落点变了才给需要让位的几行写 transform；被拖的行自己用 transform 跟着指针
- * 走。松手时才通知 React 一次（写 sortKey，或移进、移出项目），并在同一帧里
- * 撤掉所有 transform，画面不跳。用 dnd-kit 的话，指针每移动一次都会让所有
- * 可排序的行重渲染一遍，快速拖动时一直掉帧。
+ * 拖动过程完全不经过 React：按下时量好各列表每一行的位置和各列表的范围，
+ * 之后指针每移动一次只算出落在哪个列表的第几位，落点变了才给需要让位的几行
+ * 写 transform；被拖的行自己用 transform 跟着指针上下走。松手时才通知 React
+ * 一次（flushSync），然后用 FLIP 落位：提交前记下每一行在屏幕上的位置，提交
+ * 后量新位置，从旧位置滑过去——跨列表移动会真的改变布局（项目卡片变矮，下面
+ * 的列表整体上移），拖动时写的 transform 盖不住这些变化。用 dnd-kit 的话，
+ * 指针每移动一次都会让所有可排序的行重渲染一遍，快速拖动时一直掉帧。
  *
- * 行和目标都用 data 属性标出（见下面的常量），React 不管这些属性，拖动中
- * 列表因为别的原因重渲染（比如流式回复刷新运行状态）也不会把它们冲掉。
- * 触屏上长按已经留给对话的操作菜单，不开拖动。
+ * 行和目标都用 data 属性标出，React 不管这些属性，拖动中列表因为别的原因
+ * 重渲染（比如流式回复刷新运行状态）也不会把它们冲掉。触屏上长按已经留给
+ * 对话的操作菜单，不开拖动。
  */
 
 /** 对话所在的那一组：置顶、其余对话，或某个项目里的对话 */
@@ -52,7 +56,10 @@ export const sortableRowAttributes = (
   'data-sort-group': group,
 })
 
-/** 放下目标：项目（项目条目上，值是项目 id）、对话列表（移出项目） */
+/**
+ * 项目条目（值是项目 id）：展开时是一个列表的范围，折叠时是整行的放下目标。
+ * 对话列表：置顶和其余对话两个列表的范围。
+ */
 export const DROP_PROJECT_ATTRIBUTE = 'data-drop-project'
 export const DROP_HISTORY_ATTRIBUTE = 'data-drop-history'
 
@@ -60,42 +67,59 @@ const DRAG_DISTANCE_PX = 5
 /** 指针离滚动区上下边缘这么近时自动滚动，越近越快 */
 const AUTO_SCROLL_EDGE_PX = 40
 const AUTO_SCROLL_MAX_SPEED_PX = 16
-/** 拖到项目或对话列表上时，被拖的行缩小并往下让一点，露出高亮的目标 */
+/** 拖到折叠的项目上时，被拖的行缩小并往下让一点，露出高亮的项目 */
 const MOVING_OUT_OFFSET = { x: 14, y: 18 }
 const MOVING_OUT_SCALE = 0.9
+/**
+ * 落位时参与 FLIP 的元素：对话行，以及布局变化时会跟着移动的项目行、分组
+ * 标题、「查看全部」等。项目卡片的底色跟着布局直接变，不做动画。
+ */
+const FLIP_SELECTOR = [
+  '[data-sort-id]',
+  '.yolo-chat-sidebar-project',
+  '.yolo-chat-sidebar-project-view-all',
+  '.yolo-chat-sidebar-project-conversations-empty',
+  '.yolo-chat-history-group',
+  '.yolo-chat-list-dropdown-archive-row',
+].join(', ')
 
-type DropTarget = {
-  /** 项目 id；移出项目为 null */
-  projectId: string | null
-  element: HTMLElement
-  left: number
-  right: number
-  /** 滚动内容坐标 */
-  top: number
-  bottom: number
+/** 滚动区里的范围：左右是视口坐标，上下是滚动内容坐标（滚动不改变它） */
+type Area = { left: number; right: number; top: number; bottom: number }
+
+type SortList = {
+  group: ConversationSortGroup
+  /** 列表里的行（不含被拖的那一行），按显示顺序 */
+  rows: HTMLElement[]
+  /** 各行中心线 */
+  centers: number[]
+  /** 相邻两行的间距，让位时移动这么多 */
+  slot: number
+  area: Area
+  /** 被拖的行原本在这个列表里的位置；不是它原来的列表为 -1 */
+  fromIndex: number
+  /** 当前落点；指针不在这个列表上为 null */
+  index: number | null
 }
+
+/** 折叠的项目：整行是放下目标 */
+type CollapsedProject = { projectId: string; element: HTMLElement; area: Area }
 
 type DragSession = {
   pointerId: number
   row: HTMLElement
   conversationId: string
-  group: ConversationSortGroup
-  /** 同组的行，按显示顺序 */
-  rows: HTMLElement[]
-  /** 各行中心线，滚动内容坐标 */
-  centers: number[]
-  fromIndex: number
-  /** 相邻两行的间距，让位时移动这么多 */
-  slot: number
-  targets: DropTarget[]
+  lists: SortList[]
+  collapsed: CollapsedProject[]
   containerTop: number
   containerBottom: number
+  /** 被拖的行原来的中心线 */
+  rowCenter: number
   startContentY: number
   pointerX: number
   pointerY: number
-  /** 当前落点（在除去被拖行之后的列表里的位置） */
-  index: number
-  over: DropTarget | null
+  /** 指针此刻落在的列表；在折叠的项目上为 null */
+  active: SortList | null
+  over: CollapsedProject | null
   frame: number | null
   scope: Scope
 }
@@ -125,46 +149,56 @@ function getGroupList(
 }
 
 /**
- * 被拖的对话放在 above 和 below 两行之间（这两行是页面上看得到的邻居，
- * 可能都不存在）时的新 sortKey。页面上一组可能只显示了一部分（项目只列前
- * 几个，列表折叠了更早的），所以在完整列表里找邻居。
+ * 被拖的对话落在列表 `group` 里 above、below 两行之间（页面上看得到的邻居，
+ * 可能都不存在）时的位置。页面上一个列表可能只显示了一部分（项目只列前几个，
+ * 对话列表折叠了更早的），所以在完整列表里找邻居。
  */
-function getDroppedSortKey(
-  list: readonly ChatConversationMetadata[],
+function getPlacement(
+  chatList: readonly ChatConversationMetadata[],
+  projects: readonly ChatProject[],
   conversationId: string,
+  group: ConversationSortGroup,
   aboveId: string | null,
   belowId: string | null,
-): number | null {
-  const fromIndex = list.findIndex((chat) => chat.id === conversationId)
-  if (fromIndex === -1) return null
-  const rest = list.filter((chat) => chat.id !== conversationId)
-  const toIndex = aboveId
-    ? rest.findIndex((chat) => chat.id === aboveId) + 1
-    : belowId
-      ? rest.findIndex((chat) => chat.id === belowId)
-      : 0
-  return getSortKeyAfterMove(list, fromIndex, Math.max(0, toIndex))
+): ConversationPlacement {
+  const list = getGroupList(chatList, projects, group).filter(
+    (chat) => chat.id !== conversationId,
+  )
+  const aboveIndex = aboveId
+    ? list.findIndex((chat) => chat.id === aboveId)
+    : -1
+  const belowIndex = belowId
+    ? list.findIndex((chat) => chat.id === belowId)
+    : -1
+  const index =
+    aboveIndex !== -1 ? aboveIndex + 1 : belowIndex !== -1 ? belowIndex : 0
+  return {
+    projectId: groupProjectId(group),
+    isPinned: group === 'pinned',
+    sortKey: getSortKeyForInsert(list, index),
+  }
 }
+
+const contains = (area: Area, x: number, y: number) =>
+  x >= area.left && x <= area.right && y >= area.top && y <= area.bottom
 
 export function useSidebarConversationSort({
   app,
   scrollElement,
   chatList,
   projects,
-  onMoveToProject,
-  onReorder,
+  onPlace,
 }: {
   app: App
-  /** 侧边栏的滚动区：行和放下目标都在里面 */
+  /** 侧边栏的滚动区：行和列表都在里面 */
   scrollElement: HTMLElement | null
   chatList: readonly ChatConversationMetadata[]
   projects: readonly ChatProject[]
-  onMoveToProject: (conversationId: string, projectId: string | null) => unknown
-  onReorder: (conversationId: string, sortKey: number) => unknown
+  onPlace: (conversationId: string, placement: ConversationPlacement) => unknown
 }) {
   // 拖动跨越多次渲染，读的都是松手那一刻的数据
-  const latestRef = useRef({ chatList, projects, onMoveToProject, onReorder })
-  latestRef.current = { chatList, projects, onMoveToProject, onReorder }
+  const latestRef = useRef({ chatList, projects, onPlace })
+  latestRef.current = { chatList, projects, onPlace }
 
   useEffect(() => {
     const container = scrollElement
@@ -186,10 +220,8 @@ export function useSidebarConversationSort({
       y: number
     } | null = null
     let session: DragSession | null = null
-    let settleTimer: number | null = null
-
-    const toContentY = (clientY: number, s: DragSession) =>
-      clientY - s.containerTop + container.scrollTop
+    /** 落位动画进行中，期间不接新的拖动 */
+    let landingTimer: number | null = null
 
     const stopListening = () => {
       doc.removeEventListener('pointermove', handlePointerMove, true)
@@ -211,26 +243,18 @@ export function useSidebarConversationSort({
       )
     }
 
-    const setOver = (s: DragSession, over: DropTarget | null) => {
-      if (s.over === over) return
-      s.over?.element.removeAttribute('data-drop-active')
-      over?.element.setAttribute('data-drop-active', '')
-      s.row.setAttribute('data-sort-state', over ? 'moving-out' : 'lifted')
-      s.over = over
-    }
-
-    /** 让同组的行给落点 index 让出位置 */
-    const shiftRows = (s: DragSession, index: number) => {
-      if (s.index === index) return
-      s.index = index
-      s.rows.forEach((row, i) => {
-        if (i === s.fromIndex) return
-        const shift =
-          i < s.fromIndex && i >= index
-            ? s.slot
-            : i > s.fromIndex && i <= index
-              ? -s.slot
-              : 0
+    /**
+     * 列表里各行的位移。o 是行原来的位置（源列表里被拖行之后的行原本靠后
+     * 一位），p 是现在该在的位置（落点之后的行让出一位），差几位挪几个 slot。
+     */
+    const applyShifts = (list: SortList, index: number | null) => {
+      if (list.index === index) return
+      list.index = index
+      list.rows.forEach((row, i) => {
+        const original =
+          list.fromIndex !== -1 && i >= list.fromIndex ? i + 1 : i
+        const current = index !== null && i >= index ? i + 1 : i
+        const shift = (current - original) * list.slot
         row.setCssProps({ transform: shift ? `translate(0, ${shift}px)` : '' })
       })
     }
@@ -239,37 +263,48 @@ export function useSidebarConversationSort({
       const s = session
       if (!s) return
       s.frame = null
-      const contentY = toContentY(s.pointerY, s)
-      // 只跟着指针上下走：项目和对话都在同一列里，左右移动没有用处，还会
-      // 让这一行超出滚动区被裁掉
+      const contentY = s.pointerY - s.containerTop + container.scrollTop
+      // 只跟着指针上下走：所有列表都在同一列里，左右移动没有用处，还会让
+      // 这一行超出滚动区被裁掉
       const dy = contentY - s.startContentY
 
-      const over =
-        s.targets.find(
-          (target) =>
-            s.pointerX >= target.left &&
-            s.pointerX <= target.right &&
-            contentY >= target.top &&
-            contentY <= target.bottom,
-        ) ?? null
-      setOver(s, over)
+      // 指针在哪个列表或折叠的项目上；都不在（比如分组标题、列表之间的
+      // 空隙）时保持上一次的，不来回跳
+      const list = s.lists.find((l) => contains(l.area, s.pointerX, contentY))
+      const collapsed = list
+        ? null
+        : (s.collapsed.find((c) => contains(c.area, s.pointerX, contentY)) ??
+          null)
+      if (list) {
+        s.active = list
+        s.over = null
+      } else if (collapsed) {
+        s.active = null
+        s.over = collapsed
+      }
 
-      if (over) {
-        s.row.setCssProps({
-          transform: `translate(${MOVING_OUT_OFFSET.x}px, ${
-            dy + MOVING_OUT_OFFSET.y
-          }px) scale(${MOVING_OUT_SCALE})`,
-        })
-        // 放进或移出项目时，原来那一组恢复原样
-        shiftRows(s, s.fromIndex)
-      } else {
-        s.row.setCssProps({ transform: `translate(0, ${dy}px)` })
-        const center = s.centers[s.fromIndex] + dy
+      for (const c of s.collapsed) {
+        if (c === s.over) c.element.setAttribute('data-drop-active', '')
+        else c.element.removeAttribute('data-drop-active')
+      }
+      s.row.setAttribute('data-sort-state', s.over ? 'moving-out' : 'lifted')
+      s.row.setCssProps({
+        transform: s.over
+          ? `translate(${MOVING_OUT_OFFSET.x}px, ${
+              dy + MOVING_OUT_OFFSET.y
+            }px) scale(${MOVING_OUT_SCALE})`
+          : `translate(0, ${dy}px)`,
+      })
+
+      const center = s.rowCenter + dy
+      for (const l of s.lists) {
+        if (l !== s.active) {
+          applyShifts(l, null)
+          continue
+        }
         let index = 0
-        s.centers.forEach((c, i) => {
-          if (i !== s.fromIndex && c < center) index += 1
-        })
-        shiftRows(s, index)
+        for (const c of l.centers) if (c < center) index += 1
+        applyShifts(l, index)
       }
 
       // 指针贴近滚动区上下边缘时自动滚动；滚动改变了内容坐标，下一帧接着算
@@ -303,57 +338,95 @@ export function useSidebarConversationSort({
     }
 
     const start = (p: NonNullable<typeof pending>) => {
-      const group = p.row.dataset.sortGroup as ConversationSortGroup
-      const rows = Array.from(
-        container.querySelectorAll<HTMLElement>('[data-sort-group]'),
-      ).filter((row) => row.dataset.sortGroup === group)
-      const fromIndex = rows.indexOf(p.row)
-      if (fromIndex === -1) return
       const box = container.getBoundingClientRect()
       const contentY = (clientY: number) =>
         clientY - box.top + container.scrollTop
-      const centers = rows.map((row) => {
-        const rect = row.getBoundingClientRect()
-        return contentY(rect.top + rect.height / 2)
-      })
-      const slot =
-        rows.length > 1
-          ? fromIndex < rows.length - 1
-            ? centers[fromIndex + 1] - centers[fromIndex]
-            : centers[fromIndex] - centers[fromIndex - 1]
-          : p.row.getBoundingClientRect().height
-
-      const sourceProjectId = groupProjectId(group)
-      const targets: DropTarget[] = []
-      const addTarget = (element: HTMLElement, projectId: string | null) => {
+      const areaOf = (element: Element): Area => {
         const rect = element.getBoundingClientRect()
-        targets.push({
-          projectId,
-          element,
+        return {
           left: rect.left,
           right: rect.right,
           top: contentY(rect.top),
           bottom: contentY(rect.bottom),
-        })
+        }
       }
+      const rowRect = p.row.getBoundingClientRect()
+      const rowCenter = contentY(rowRect.top + rowRect.height / 2)
+
+      const makeList = (
+        group: ConversationSortGroup,
+        allRows: HTMLElement[],
+        area: Area,
+      ): SortList => {
+        const fromIndex = allRows.indexOf(p.row)
+        const rows = allRows.filter((row) => row !== p.row)
+        const centers = rows.map((row) => {
+          const rect = row.getBoundingClientRect()
+          return contentY(rect.top + rect.height / 2)
+        })
+        const allCenters = allRows.map((row) => {
+          const rect = row.getBoundingClientRect()
+          return contentY(rect.top + rect.height / 2)
+        })
+        const slot =
+          allCenters.length > 1 ? allCenters[1] - allCenters[0] : rowRect.height
+        return { group, rows, centers, slot, area, fromIndex, index: null }
+      }
+      const rowsOf = (scope: Element, group: ConversationSortGroup) =>
+        Array.from(
+          scope.querySelectorAll<HTMLElement>('[data-sort-group]'),
+        ).filter((row) => row.dataset.sortGroup === group)
+
+      const lists: SortList[] = []
+      const collapsed: CollapsedProject[] = []
+
+      // 对话列表：有置顶时按置顶和其余对话的分界切成两个列表
+      const history = container.querySelector(`[${DROP_HISTORY_ATTRIBUTE}]`)
+      if (history) {
+        const zone = areaOf(history)
+        const pinned = rowsOf(history, 'pinned')
+        const rest = rowsOf(history, 'conversations')
+        const lastPinned = pinned.at(-1)
+        const firstRest = rest[0]
+        const boundary =
+          lastPinned && firstRest
+            ? (contentY(lastPinned.getBoundingClientRect().bottom) +
+                contentY(firstRest.getBoundingClientRect().top)) /
+              2
+            : lastPinned
+              ? zone.bottom
+              : zone.top
+        if (pinned.length > 0) {
+          lists.push(makeList('pinned', pinned, { ...zone, bottom: boundary }))
+        }
+        if (rest.length > 0) {
+          lists.push(
+            makeList('conversations', rest, { ...zone, top: boundary }),
+          )
+        }
+      }
+      // 项目：展开的是列表，折叠的是整行目标
       container
         .querySelectorAll<HTMLElement>(`[${DROP_PROJECT_ATTRIBUTE}]`)
         .forEach((element) => {
           const projectId = element.getAttribute(DROP_PROJECT_ATTRIBUTE)
-          if (projectId && projectId !== sourceProjectId) {
-            addTarget(element, projectId)
+          if (!projectId) return
+          const group = projectSortGroup(projectId)
+          if (
+            element.querySelector('.yolo-chat-sidebar-project-conversations')
+          ) {
+            lists.push(makeList(group, rowsOf(element, group), areaOf(element)))
+          } else {
+            collapsed.push({ projectId, element, area: areaOf(element) })
           }
         })
-      if (sourceProjectId !== null) {
-        const history = container.querySelector<HTMLElement>(
-          `[${DROP_HISTORY_ATTRIBUTE}]`,
-        )
-        if (history) addTarget(history, null)
-      }
+
+      const source = lists.find((list) => list.fromIndex !== -1)
+      if (!source) return
 
       const scope = new Scope(app.keymap.scope)
       scope.register([], 'Escape', () => {
-        cancel()
+        land(null)
         return false
       })
       app.keymap.pushScope(scope)
@@ -362,22 +435,20 @@ export function useSidebarConversationSort({
         pointerId: p.pointerId,
         row: p.row,
         conversationId: p.row.dataset.sortId ?? '',
-        group,
-        rows,
-        centers,
-        fromIndex,
-        slot,
-        targets,
+        lists,
+        collapsed,
         containerTop: box.top,
         containerBottom: box.bottom,
+        rowCenter,
         startContentY: contentY(p.y),
         pointerX: p.x,
         pointerY: p.y,
-        index: fromIndex,
+        active: source,
         over: null,
         frame: null,
         scope,
       }
+      source.index = source.fromIndex
       win.getSelection()?.removeAllRanges()
       // 指针捕获在滚动区上：拖动期间指针事件都落在滚动区，下面的行收不到
       // 悬停和移入移出（行的悬停会改列表的焦点行，每掠过一行就让整个列表
@@ -385,98 +456,139 @@ export function useSidebarConversationSort({
       container.setPointerCapture(p.pointerId)
       container.setAttribute('data-sorting', '')
       p.row.setAttribute('data-sort-state', 'lifted')
-      rows.forEach((row) => {
-        row.setCssProps({ transition: row === p.row ? 'none' : transition() })
-      })
+      p.row.setCssProps({ transition: 'none' })
+      for (const list of lists) {
+        for (const row of list.rows)
+          row.setCssProps({ transition: transition() })
+      }
       schedule()
     }
 
     /**
-     * 收尾：在同一个任务里先让 React 提交（flushSync），再撤掉所有
-     * transform。新顺序和撤掉位移在同一帧画出来，行不会闪回原位再跳过去。
-     * 撤的时候不能带过渡，否则会从让位的位置再滑一次。
+     * 收尾并落位：commit 为 null 时是取消，所有行回到原位。
+     *
+     * FLIP：提交前记下每个元素此刻在屏幕上的位置（含拖动时的位移），在同一个
+     * 任务里让 React 提交（flushSync）、撤掉拖动时的位移，再量新位置，把每个
+     * 元素摁回旧位置后放开，由过渡滑到新位置。整个过程在一帧里完成，画面
+     * 不跳。被拖的对话换了列表时，它在新列表里是另一个元素，从被拖行的位置
+     * 滑过去；旧元素可能还在播退场动画，藏起来。
      */
-    const finish = (commit?: () => void) => {
+    const land = (commit: (() => void) | null) => {
       const s = session
       if (!s) return
       session = null
       if (s.frame !== null) win.cancelAnimationFrame(s.frame)
       app.keymap.popScope(s.scope)
       stopListening()
+
+      const keyOf = (element: HTMLElement): string | HTMLElement =>
+        element.dataset.sortId ?? element
+      const before = new Map<string | HTMLElement, DOMRect>()
+      container
+        .querySelectorAll<HTMLElement>(FLIP_SELECTOR)
+        .forEach((element) => {
+          before.set(keyOf(element), element.getBoundingClientRect())
+        })
+
       if (commit) flushSync(commit)
-      s.over?.element.removeAttribute('data-drop-active')
-      for (const row of s.rows) {
-        row.setCssProps({ transition: 'none' })
-        row.setCssProps({ transform: '' })
+
+      // 撤掉拖动状态
+      const dragged = [s.row, ...s.lists.flatMap((list) => list.rows)]
+      for (const row of dragged) {
+        row.setCssProps({ transition: 'none', transform: '' })
         row.removeAttribute('data-sort-state')
       }
-      void container.offsetHeight
-      for (const row of s.rows) row.setCssProps({ transition: '' })
+      s.over?.element.removeAttribute('data-drop-active')
       container.removeAttribute('data-sorting')
       if (container.hasPointerCapture(s.pointerId)) {
         container.releasePointerCapture(s.pointerId)
       }
-    }
 
-    /** 被拖的行滑到 offset 落定后再收尾 */
-    const settle = (s: DragSession, offset: number, commit?: () => void) => {
-      if (s.frame !== null) {
-        win.cancelAnimationFrame(s.frame)
-        s.frame = null
+      // 被拖的对话现在是哪个元素：换了列表时是新列表里的另一个元素，旧元素
+      // 或者已经不在了，或者还在播退场动画（对话列表的行退场时切成绝对定位），
+      // 藏起来免得在原处淡出
+      const copies = Array.from(
+        container.querySelectorAll<HTMLElement>('[data-sort-id]'),
+      ).filter((element) => element.dataset.sortId === s.conversationId)
+      const landed =
+        copies.find((element) => element !== s.row) ??
+        (s.row.isConnected && s.row.style.position !== 'absolute'
+          ? s.row
+          : null)
+      if (landed !== s.row && s.row.isConnected) {
+        s.row.setCssProps({ visibility: 'hidden' })
       }
-      stopListening()
+
       const ms = duration()
-      if (ms === 0) {
-        finish(commit)
-        return
+      const moved: HTMLElement[] = []
+      if (ms > 0) {
+        // 先全部量完再统一写：边量边写的话，每写一次位移，下一次测量都要
+        // 重新算一遍布局
+        const offsets: [HTMLElement, number, number][] = []
+        container
+          .querySelectorAll<HTMLElement>(FLIP_SELECTOR)
+          .forEach((element) => {
+            if (element === s.row && landed !== s.row) return
+            const from = before.get(keyOf(element))
+            if (!from) return
+            const to = element.getBoundingClientRect()
+            const dx = from.left - to.left
+            const dy = from.top - to.top
+            if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return
+            offsets.push([element, dx, dy])
+          })
+        for (const [element, dx, dy] of offsets) {
+          element.setCssProps({
+            transition: 'none',
+            transform: `translate(${dx}px, ${dy}px)`,
+          })
+          moved.push(element)
+        }
       }
-      s.row.setCssProps({ transition: transition() })
-      s.row.setCssProps({ transform: `translate(0, ${offset}px)` })
-      settleTimer = win.setTimeout(() => {
-        settleTimer = null
-        finish(commit)
+      // 被拖的行落位途中保持被拖的样子
+      const settling = landed && moved.includes(landed) ? landed : null
+      settling?.setAttribute('data-sort-state', 'landing')
+      void container.offsetHeight
+      for (const row of dragged) {
+        if (!moved.includes(row)) row.setCssProps({ transition: '' })
+      }
+      for (const element of moved) {
+        element.setCssProps({ transition: transition(), transform: '' })
+      }
+      if (moved.length === 0) return
+      landingTimer = win.setTimeout(() => {
+        landingTimer = null
+        for (const element of moved) element.setCssProps({ transition: '' })
+        settling?.removeAttribute('data-sort-state')
       }, ms)
-    }
-
-    const cancel = () => {
-      const s = session
-      if (!s) return
-      setOver(s, null)
-      shiftRows(s, s.fromIndex)
-      settle(s, 0)
     }
 
     const drop = () => {
       const s = session
       if (!s) return
       swallowNextClick()
-      const { onMoveToProject, onReorder, chatList, projects } =
-        latestRef.current
+      const { onPlace, chatList, projects } = latestRef.current
+      const id = s.conversationId
       if (s.over) {
-        const projectId = s.over.projectId
-        stopListening()
-        finish(() => void onMoveToProject(s.conversationId, projectId))
+        // 折叠的项目：放进去，位置不变
+        const placement = { projectId: s.over.projectId, isPinned: false }
+        land(() => void onPlace(id, placement))
         return
       }
-      if (s.index === s.fromIndex) {
-        settle(s, 0)
+      const list = s.active
+      if (!list || list.index === null || list.index === list.fromIndex) {
+        land(null)
         return
       }
-      const rest = s.rows.filter((_, i) => i !== s.fromIndex)
-      const sortKey = getDroppedSortKey(
-        getGroupList(chatList, projects, s.group),
-        s.conversationId,
-        rest[s.index - 1]?.dataset.sortId ?? null,
-        rest[s.index]?.dataset.sortId ?? null,
+      const placement = getPlacement(
+        chatList,
+        projects,
+        id,
+        list.group,
+        list.rows[list.index - 1]?.dataset.sortId ?? null,
+        list.rows[list.index]?.dataset.sortId ?? null,
       )
-      const offset = (s.index - s.fromIndex) * s.slot
-      settle(
-        s,
-        offset,
-        sortKey === null
-          ? undefined
-          : () => void onReorder(s.conversationId, sortKey),
-      )
+      land(() => void onPlace(id, placement))
     }
 
     function handlePointerMove(event: PointerEvent) {
@@ -496,9 +608,10 @@ export function useSidebarConversationSort({
       }
       pending = null
       start(p)
-      if (session) {
-        ;(session as DragSession).pointerX = event.clientX
-        ;(session as DragSession).pointerY = event.clientY
+      const s = session as DragSession | null
+      if (s) {
+        s.pointerX = event.clientX
+        s.pointerY = event.clientY
       } else {
         stopListening()
       }
@@ -515,13 +628,13 @@ export function useSidebarConversationSort({
 
     function handlePointerCancel() {
       pending = null
-      if (session) cancel()
+      if (session) land(null)
       else stopListening()
     }
 
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || event.pointerType === 'touch') return
-      if (session || settleTimer !== null) return
+      if (session || landingTimer !== null) return
       const target = event.target
       if (!(target instanceof Element)) return
       const row = target.closest<HTMLElement>('[data-sort-group]')
@@ -544,9 +657,9 @@ export function useSidebarConversationSort({
     container.addEventListener('pointerdown', handlePointerDown)
     return () => {
       container.removeEventListener('pointerdown', handlePointerDown)
-      if (settleTimer !== null) win.clearTimeout(settleTimer)
+      if (landingTimer !== null) win.clearTimeout(landingTimer)
       pending = null
-      finish()
+      land(null)
       stopListening()
     }
   }, [app, scrollElement])
