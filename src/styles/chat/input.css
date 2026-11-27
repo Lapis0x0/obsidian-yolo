@@ -664,18 +664,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   pointer-events: none;
 }
 
-/* 切换对话或主页时，旧内容立刻撤下，新内容淡入（会话面板按对话 id 重新挂载，
- * 动画随挂载播放）。只动透明度：面板里有滚动容器和虚拟化测量，位移会干扰它们
- * 读到的几何。输入框不在面板里，它的位移见 ComposerDock。 */
-@keyframes yolo-chat-surface-enter {
-  from {
-    opacity: 0;
-  }
-}
-
+/* 切换对话或主页时的淡入由 useContentEnterFade.ts 按内容是否变化触发，
+ * 不随挂载播放 */
 .yolo-chat-conversation-surface {
-  animation: yolo-chat-surface-enter var(--yolo-anim-duration-enter)
-    var(--yolo-anim-ease-out);
   position: relative;
   display: flex;
   flex: 1 1 auto;

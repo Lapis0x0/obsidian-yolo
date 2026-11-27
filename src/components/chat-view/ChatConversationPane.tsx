@@ -17,6 +17,7 @@ import {
   MOTION_EASE_OUT,
 } from '../../styles/tokens/motion'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 import type {
   ChatTimelineRenderVersion,
@@ -53,8 +54,29 @@ type ComposerDockProps = {
 class ComposerDock extends Component<ComposerDockProps> {
   private readonly ref = createRef<HTMLDivElement>()
 
+  /**
+   * 挂载后还没画出来过。新挂载的底栏（比如在主页上换 Agent，YOLO 和 CLI 的
+   * 会话面板整个换掉）可能在同一帧里紧接着又提交一次、挪到别处（新对话的
+   * 项目归属晚一次提交才判定）。那时量到的起点是一个从没画出来的位置，从
+   * 那里滑过去只会凭空多出一段位移，所以画出来之前不做。
+   */
+  private unpainted = true
+
+  componentDidMount() {
+    const el = this.ref.current
+    if (!el) return
+    el.addEventListener('transitionend', this.handleEnd)
+    getNodeWindow(el).requestAnimationFrame(() => {
+      this.unpainted = false
+    })
+  }
+
   getSnapshotBeforeUpdate(previous: ComposerDockProps): number | null {
-    if (previous.flipKey === this.props.flipKey || this.props.reduceMotion) {
+    if (
+      previous.flipKey === this.props.flipKey ||
+      this.props.reduceMotion ||
+      this.unpainted
+    ) {
       return null
     }
     return this.ref.current?.getBoundingClientRect().top ?? null
@@ -81,10 +103,6 @@ class ComposerDock extends Component<ComposerDockProps> {
 
   componentWillUnmount() {
     this.ref.current?.removeEventListener('transitionend', this.handleEnd)
-  }
-
-  componentDidMount() {
-    this.ref.current?.addEventListener('transitionend', this.handleEnd)
   }
 
   private readonly handleEnd = (event: TransitionEvent) => {

@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view'
+import { useReducedMotion } from 'framer-motion'
 import { Pencil, Trash2 } from 'lucide-react'
 import { MarkdownView, Notice, TFile, TFolder } from 'obsidian'
 import {
@@ -143,6 +144,7 @@ import { useChatRuntimeSnapshot } from './useChatRuntimeSnapshot'
 import { useChatStreamManager } from './useChatStreamManager'
 import { useChatTimelineReadModel } from './useChatTimelineReadModel'
 import { useCliRuntimeOrchestration } from './useCliRuntimeOrchestration'
+import { useContentEnterFade } from './useContentEnterFade'
 import { useYoloChatSession } from './useYoloChatSession'
 import { YoloChatSurface } from './YoloChatSurface'
 
@@ -550,6 +552,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const requestContextBuilderRef = useLatestRef(requestContextBuilder)
 
   const { file: activeFile, viewState: activeViewState } = useActiveViewState()
+  const reduceMotion = useReducedMotion()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerElement, setContainerElement] =
     useState<HTMLDivElement | null>(null)
@@ -2059,6 +2062,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 主页整页在输入框上方滚动，选择器留在顶部栏）
   const isWideProjectHome =
     conversationProject !== null && activeSurfaceEmpty && !isSidebarPlacement
+  useContentEnterFade(
+    containerElement,
+    {
+      empty: activeSurfaceEmpty,
+      projectId: conversationProject?.id ?? null,
+      conversationId: activeHistoryConversationId,
+    },
+    reduceMotion ?? false,
+  )
 
   // 顶部栏 Agent 胶囊里跟在名字后面的模型：YOLO 用对话当前模型，CLI 用会话
   // 配置里实际生效的模型（和输入框模型选择器同一口径）
@@ -2475,7 +2487,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             </SubagentDetailRequestContext.Provider>
           )}
           {projectHomeBody && isWideProjectHome ? (
-            // 按对话挂载：换到另一个项目主页时重新淡入
+            // 按对话挂载：换到另一个项目主页时滚动位置从头开始
             <div
               key={activeHistoryConversationId}
               className="yolo-project-home-below"
