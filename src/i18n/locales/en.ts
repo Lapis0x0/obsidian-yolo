@@ -1833,8 +1833,6 @@ export const en: TranslationKeys = {
       followCurrentAgent: 'Current agent',
       clearDefaultAgent: 'Use the current agent',
       instructions: 'Project instructions',
-      instructionsHint:
-        'Every conversation in this project reads these files — the same AGENTS.md that Claude Code and Codex read.',
       deleteTitle: 'Delete project',
       deleteMessage: 'Its conversations are kept and move back to Recent.',
       create: 'Create project',
@@ -1866,6 +1864,11 @@ export const en: TranslationKeys = {
       noDefaultAgent: 'Not set',
       instructionsExists:
         'Exists · every conversation in this project reads it',
+      instructionsEmpty: 'No project instructions yet',
+      instructionsCreateAt: 'Creates {path}',
+      instructionsCreate: 'Create',
+      instructionsNeedFolder:
+        'The workspace is the whole vault — pick a folder first to create one there',
       open: 'Open',
       justNow: 'just now',
       conversationCount: '{count} conversations',

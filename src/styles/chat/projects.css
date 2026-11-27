@@ -816,12 +816,6 @@ input[type='text'].yolo-project-form-name {
   font-weight: var(--font-medium);
 }
 
-.yolo-project-form-hint {
-  color: var(--text-faint);
-  font-size: var(--yolo-font-meta);
-  line-height: var(--yolo-leading-ui-multiline);
-}
-
 button.yolo-project-icon-option,
 button.yolo-project-color-option {
   display: grid;
@@ -916,13 +910,13 @@ label.yolo-project-color-custom:not(.is-selected) {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
   font-size: var(--yolo-font-ui);
 }
 
-.yolo-project-card > .yolo-project-card-row:last-child,
-.yolo-project-card.yolo-project-card-row {
-  border-bottom: 0;
+/* 卡片里多行之间的分隔线。整张卡片只有一行时（项目指令）卡片本身就是这一行，
+ * 它的下边框是卡片的边框，不能去掉 */
+.yolo-project-card > .yolo-project-card-row:not(:last-child) {
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .yolo-project-card.yolo-project-card-row {

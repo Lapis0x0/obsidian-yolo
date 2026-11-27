@@ -255,6 +255,20 @@ export async function getProjectInstructionsSection(
 }
 
 /**
+ * Where a project's own AGENTS.md belongs: in the workspace root of its first
+ * usable include entry. Null when the scope has no such folder (whole vault):
+ * a vault-root AGENTS.md would be the global baseline every project reads, not
+ * this project's instructions.
+ */
+export function resolveProjectInstructionTarget(
+  app: App,
+  workspaceScope: AssistantWorkspaceScope,
+): string | null {
+  const folder = deriveFolderChains(app, workspaceScope)[1]?.at(-1)
+  return folder ? `${folder.path}/${PROJECT_INSTRUCTION_FILES[0]}` : null
+}
+
+/**
  * Candidate AGENTS.md / CLAUDE.md paths for the same folder chains used when
  * building the project-instructions section. Used to watch for external edits
  * without scanning the entire vault.

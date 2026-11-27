@@ -1690,8 +1690,6 @@ export const it: DeepPartial<TranslationKeys> = {
       followCurrentAgent: 'Agente corrente',
       clearDefaultAgent: "Usa l'agente corrente",
       instructions: 'Istruzioni del progetto',
-      instructionsHint:
-        'Ogni conversazione del progetto legge questi file, lo stesso AGENTS.md letto da Claude Code e Codex.',
       deleteTitle: 'Elimina progetto',
       deleteMessage:
         'Le sue conversazioni vengono mantenute e tornano in Recenti.',
@@ -1723,6 +1721,11 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       noDefaultAgent: 'Non impostato',
       instructionsExists: 'Esiste · ogni conversazione del progetto lo legge',
+      instructionsEmpty: 'Nessuna istruzione del progetto',
+      instructionsCreateAt: 'Crea {path}',
+      instructionsCreate: 'Crea',
+      instructionsNeedFolder:
+        "L'area di lavoro è l'intero vault: scegli prima una cartella per crearlo lì",
       open: 'Apri',
       justNow: 'proprio ora',
       conversationCount: '{count} conversazioni',

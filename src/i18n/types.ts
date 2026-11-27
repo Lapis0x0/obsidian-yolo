@@ -1569,7 +1569,6 @@ export type TranslationKeys = {
       followCurrentAgent?: string
       clearDefaultAgent?: string
       instructions?: string
-      instructionsHint?: string
       deleteTitle?: string
       deleteMessage?: string
       create?: string
@@ -1600,6 +1599,10 @@ export type TranslationKeys = {
       }
       noDefaultAgent?: string
       instructionsExists?: string
+      instructionsEmpty?: string
+      instructionsCreateAt?: string
+      instructionsCreate?: string
+      instructionsNeedFolder?: string
       open?: string
       justNow?: string
       conversationCount?: string

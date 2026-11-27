@@ -15,7 +15,10 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import type { CliRuntimeScope } from '../../../core/cli-runtime'
-import { resolveProjectInstructionFilePaths } from '../../../core/project-instructions'
+import {
+  resolveProjectInstructionFilePaths,
+  resolveProjectInstructionTarget,
+} from '../../../core/project-instructions'
 import type YoloPlugin from '../../../main'
 import type { ChatProject } from '../../../types/project.types'
 import { ObsidianIcon } from '../../common/ObsidianIcon'
@@ -48,7 +51,10 @@ type ProjectFormProps = {
   onClose: () => void
 }
 
-/** 工作区里实际存在的 AGENTS.md / CLAUDE.md：有才显示，YOLO 不替用户创建。 */
+/**
+ * 工作区里实际存在的 AGENTS.md / CLAUDE.md。YOLO 不会自己去建，只在用户点
+ * 「新建」时建（见 InstructionsField）。
+ */
 export function useExistingInstructionFiles(
   app: App,
   scope: ChatProject['workspaceScope'],
@@ -59,6 +65,96 @@ export function useExistingInstructionFiles(
         (path) => app.vault.getFileByPath(path) !== null,
       ),
     [app, scope],
+  )
+}
+
+/**
+ * 项目指令：工作区里已有的 AGENTS.md / CLAUDE.md，没有时给出新建的入口，让
+ * 用户知道项目可以有指令。新建的位置见 resolveProjectInstructionTarget；
+ * 工作区是整个库时没有项目自己的文件夹，库根目录的 AGENTS.md 是所有项目
+ * 共用的，不在这里建。
+ */
+function InstructionsField({
+  workspaceScope,
+  canCreate,
+  onCreate,
+  onOpened,
+}: {
+  workspaceScope: ChatProject['workspaceScope']
+  /** 表单能保存时才能新建：新建先保存项目 */
+  canCreate: boolean
+  onCreate: (path: string) => void
+  onOpened: () => void
+}) {
+  const { t } = useLanguage()
+  const app = useApp()
+  const files = useExistingInstructionFiles(app, workspaceScope)
+  const target = resolveProjectInstructionTarget(app, workspaceScope)
+
+  return (
+    <div className="yolo-project-form-field">
+      <span className="yolo-project-form-label">
+        {t('chat.projects.instructions', 'Project instructions')}
+      </span>
+      {files.map((path) => (
+        <div key={path} className="yolo-project-card yolo-project-card-row">
+          <FileText size={15} className="yolo-project-card-row-icon" />
+          <span className="yolo-project-card-row-main is-stacked">
+            <span className="yolo-project-card-path">{path}</span>
+            <span className="yolo-project-card-row-meta">
+              {t(
+                'chat.projects.instructionsExists',
+                'Exists · every conversation in this project reads it',
+              )}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="yolo-project-card-button"
+            onClick={() => {
+              void app.workspace.openLinkText(path, '', 'tab')
+              onOpened()
+            }}
+          >
+            {t('chat.projects.open', 'Open')}
+          </button>
+        </div>
+      ))}
+      {files.length === 0 ? (
+        <div className="yolo-project-card yolo-project-card-row">
+          <FileText size={15} className="yolo-project-card-row-icon" />
+          <span className="yolo-project-card-row-main is-stacked">
+            <span>
+              {t(
+                'chat.projects.instructionsEmpty',
+                'No project instructions yet',
+              )}
+            </span>
+            <span className="yolo-project-card-row-meta">
+              {target
+                ? t(
+                    'chat.projects.instructionsCreateAt',
+                    'Creates {path}',
+                  ).replace('{path}', target)
+                : t(
+                    'chat.projects.instructionsNeedFolder',
+                    'Pick a folder for the workspace first — project instructions live in its AGENTS.md',
+                  )}
+            </span>
+          </span>
+          {target ? (
+            <button
+              type="button"
+              className="yolo-project-card-button"
+              disabled={!canCreate}
+              onClick={() => onCreate(target)}
+            >
+              {t('chat.projects.instructionsCreate', 'Create')}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -219,11 +315,11 @@ function ProjectForm({
     ChatProject['workspaceScope']
   >(project?.workspaceScope ?? { enabled: true, include: [], exclude: [] })
   const [defaultAgent, setDefaultAgent] = useState(project?.defaultAgent)
-  const instructionFiles = useExistingInstructionFiles(app, workspaceScope)
   const trimmedName = name.trim()
 
-  const save = () => {
-    if (!trimmedName) return
+  /** 保存并关闭弹窗；返回是否保存成功 */
+  const save = async (): Promise<boolean> => {
+    if (!trimmedName) return false
     const now = Date.now()
     const next: ChatProject = {
       id: project?.id ?? uuidv4(),
@@ -236,19 +332,34 @@ function ProjectForm({
       updatedAt: now,
     }
     const projects = settings.projects ?? []
-    void setSettings({
-      ...settings,
-      projects: project
-        ? projects.map((item) => (item.id === project.id ? next : item))
-        : [...projects, next],
-    })
-      .then(() => {
-        onSaved(next)
-        onClose()
+    try {
+      await setSettings({
+        ...settings,
+        projects: project
+          ? projects.map((item) => (item.id === project.id ? next : item))
+          : [...projects, next],
       })
-      .catch((error: unknown) => {
-        console.error('Failed to save project', error)
-      })
+    } catch (error: unknown) {
+      console.error('Failed to save project', error)
+      return false
+    }
+    onSaved(next)
+    onClose()
+    return true
+  }
+
+  /**
+   * 新建项目指令：等于先点了「保存」，再建一个空的 AGENTS.md 在新标签页
+   * 打开。先保存，文件建在的工作区和项目里存下的一致
+   */
+  const createInstructions = async (path: string) => {
+    if (!(await save())) return
+    try {
+      if (!app.vault.getFileByPath(path)) await app.vault.create(path, '')
+      await app.workspace.openLinkText(path, '', 'tab')
+    } catch (error: unknown) {
+      console.error('Failed to create project instructions', error)
+    }
   }
 
   return (
@@ -273,7 +384,7 @@ function ProjectForm({
             placeholder={t('chat.projects.namePlaceholder', 'e.g. Thesis')}
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') save()
+              if (event.key === 'Enter') void save()
             }}
           />
         </div>
@@ -358,43 +469,12 @@ function ProjectForm({
         />
       </div>
 
-      {instructionFiles.length > 0 ? (
-        <div className="yolo-project-form-field">
-          <span className="yolo-project-form-label">
-            {t('chat.projects.instructions', 'Project instructions')}
-          </span>
-          {instructionFiles.map((path) => (
-            <div key={path} className="yolo-project-card yolo-project-card-row">
-              <FileText size={15} className="yolo-project-card-row-icon" />
-              <span className="yolo-project-card-row-main is-stacked">
-                <span className="yolo-project-card-path">{path}</span>
-                <span className="yolo-project-card-row-meta">
-                  {t(
-                    'chat.projects.instructionsExists',
-                    'Exists · every conversation in this project reads it',
-                  )}
-                </span>
-              </span>
-              <button
-                type="button"
-                className="yolo-project-card-button"
-                onClick={() => {
-                  void app.workspace.openLinkText(path, '', 'tab')
-                  onClose()
-                }}
-              >
-                {t('chat.projects.open', 'Open')}
-              </button>
-            </div>
-          ))}
-          <span className="yolo-project-form-hint">
-            {t(
-              'chat.projects.instructionsHint',
-              'Every conversation in this project reads these files — the same AGENTS.md that Claude Code and Codex read.',
-            )}
-          </span>
-        </div>
-      ) : null}
+      <InstructionsField
+        workspaceScope={workspaceScope}
+        canCreate={trimmedName !== ''}
+        onCreate={(path) => void createInstructions(path)}
+        onOpened={onClose}
+      />
 
       <div className="yolo-project-form-actions">
         {project && onDelete ? (
@@ -427,7 +507,7 @@ function ProjectForm({
           type="button"
           className="mod-cta"
           disabled={!trimmedName}
-          onClick={save}
+          onClick={() => void save()}
         >
           {project
             ? t('common.save', 'Save')
