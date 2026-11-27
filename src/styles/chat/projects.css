@@ -266,6 +266,19 @@ button.yolo-chat-sidebar-project-empty:hover {
   pointer-events: auto;
 }
 
+/* 宽屏时和输入框同宽，「项目设定」和输入框右上角的 Agent 选择器落在输入框的
+ * 右边线上。普通空状态的宽度规则（input.css）选择器更具体，这里要压过它 */
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state.yolo-chat-empty-state--custom {
+  width: var(--yolo-chat-content-max-width);
+}
+
+/* Agent 选择器贴着输入框：空状态浮层底部原本留给大标题的间距在这里收窄 */
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-overlay:has(.yolo-project-home-agent-row) {
+  padding-bottom: var(--size-2-3);
+}
+
 .yolo-chat-container--sidebar
   .yolo-chat-empty-state.yolo-chat-empty-state--custom {
   display: flex;
@@ -364,6 +377,39 @@ h1.yolo-project-home-title {
 .yolo-project-home-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 页头最后一行，整行靠右，落在输入框右上角 */
+.yolo-project-home-agent-row {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  min-width: 0;
+  margin-top: var(--size-4-4);
+}
+
+button.yolo-project-home-agent {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 60%;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--yolo-font-ui);
+  cursor: var(--cursor);
+}
+
+button.yolo-project-home-agent:hover,
+button.yolo-project-home-agent[data-state='open'] {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 button.yolo-project-home-button {

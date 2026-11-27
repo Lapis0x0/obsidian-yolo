@@ -1,6 +1,6 @@
 import { Ban, Brain, Ellipsis, Folder, Globe, Settings2 } from 'lucide-react'
 import { type App, Menu, TFile } from 'obsidian'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
@@ -128,14 +128,18 @@ const parseMemoryEntries = (index: string): string[] =>
 
 /**
  * 项目主页的页头：项目图标、名称、对话概况，以及项目设定入口。作为项目里新
- * 对话的空状态，位于输入框上方。
+ * 对话的空状态，位于输入框上方。`agentSwitcher` 放在页头最后一行的右端，正好
+ * 落在输入框右上角：在这里选这次和谁对话。
  */
 export function ProjectHomeHeader({
   project,
   conversations,
   runSummariesByConversationId,
   onOpenSettings,
-}: Omit<ProjectHomeData, 'onSelectConversation'>) {
+  agentSwitcher,
+}: Omit<ProjectHomeData, 'onSelectConversation'> & {
+  agentSwitcher?: ReactNode
+}) {
   const { t } = useLanguage()
   const formatRelativeTime = useRelativeTime()
   const runningCount = conversations.filter(
@@ -208,6 +212,9 @@ export function ProjectHomeHeader({
           <Ellipsis size={14} />
         </button>
       </div>
+      {agentSwitcher ? (
+        <div className="yolo-project-home-agent-row">{agentSwitcher}</div>
+      ) : null}
     </div>
   )
 }

@@ -101,7 +101,7 @@ import MentionableBadge, {
 } from './chat-input/MentionableBadge'
 import type { SlashCommand } from './chat-input/plugins/mention/SkillSlashPlugin'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
-import { ChatHeader, type NativeHeaderSlots } from './ChatHeader'
+import { AgentSwitcher, ChatHeader, type NativeHeaderSlots } from './ChatHeader'
 import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
@@ -2004,6 +2004,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversations={projectConversations}
       runSummariesByConversationId={runSummariesByConversationId}
       onOpenSettings={() => openProjectSettings(conversationProject)}
+      agentSwitcher={
+        isSidebarPlacement ? undefined : (
+          <AgentSwitcher
+            currentAgent={currentAgent}
+            onSwitchAgent={switchAgent}
+            cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
+            className="yolo-project-home-agent"
+            align="end"
+          />
+        )
+      }
     />
   ) : null
   const projectHomeBody = conversationProject ? (
@@ -2040,6 +2051,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
       : undefined
   const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
+  const activeSurfaceEmpty = isCliRuntimeActive
+    ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
+      !isCliRunActive
+    : showEmptyState
+  // 宽屏的项目主页：主体在输入框下方，Agent 选择器在输入框右上角（窄屏时项目
+  // 主页整页在输入框上方滚动，选择器留在顶部栏）
+  const isWideProjectHome =
+    conversationProject !== null && activeSurfaceEmpty && !isSidebarPlacement
 
   // 顶部栏 Agent 胶囊里跟在名字后面的模型：YOLO 用对话当前模型，CLI 用会话
   // 配置里实际生效的模型（和输入框模型选择器同一口径）
@@ -2059,6 +2078,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       onSwitchAgent={switchAgent}
       cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       modelLabel={headerModelLabel}
+      showAgentSwitcher={!isWideProjectHome}
       title={currentConversationTitle}
       canRename={currentConversationPersisted}
       renaming={isRenamingTitle}
@@ -2082,10 +2102,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // Main-input display/config differences are looked up from the static
   // capability table rather than branched inline; only "which data source" ternaries stay here.
   const mainInputCapabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
-  const activeSurfaceEmpty = isCliRuntimeActive
-    ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
-      !isCliRunActive
-    : showEmptyState
   const mainInputFooter = (
     <div className="yolo-chat-input-wrapper">
       <div ref={setInputOverlayElement} className="yolo-chat-input-overlay">
@@ -2458,7 +2474,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               />
             </SubagentDetailRequestContext.Provider>
           )}
-          {projectHomeBody && activeSurfaceEmpty && !isSidebarPlacement ? (
+          {projectHomeBody && isWideProjectHome ? (
             // 按对话挂载：换到另一个项目主页时重新淡入
             <div
               key={activeHistoryConversationId}

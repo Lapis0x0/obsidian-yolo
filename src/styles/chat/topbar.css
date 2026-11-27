@@ -234,58 +234,6 @@ button.yolo-chat-topbar-agent[data-state='open'] {
   background: var(--background-modifier-hover);
 }
 
-.yolo-chat-topbar-agent-avatar {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  overflow: hidden;
-}
-
-.yolo-chat-topbar-agent-avatar.is-yolo {
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
-  color: var(--interactive-accent);
-}
-
-.yolo-chat-topbar-agent-avatar.is-cli {
-  border-radius: 6px;
-}
-
-.yolo-chat-topbar-agent-avatar svg {
-  width: 12px;
-  height: 12px;
-}
-
-.yolo-chat-topbar-agent-avatar img {
-  width: 16px;
-  height: 16px;
-}
-
-.yolo-chat-topbar-agent-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 来源和模型比名字先让位 */
-.yolo-chat-topbar-agent-meta {
-  flex: 0 100 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-faint);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.yolo-chat-topbar-agent-chevron {
-  flex-shrink: 0;
-  color: var(--text-faint);
-}
-
 /* 图标按钮 -------------------------------------------------------------- */
 
 .yolo-chat-topbar-icon.clickable-icon {
@@ -422,7 +370,7 @@ svg.yolo-context-usage-ring__svg {
 }
 
 .yolo-chat-topbar--compact .yolo-chat-topbar-project-name,
-.yolo-chat-topbar--compact .yolo-chat-topbar-agent-meta,
+.yolo-chat-topbar--compact .yolo-agent-switcher-meta,
 .yolo-chat-topbar--compact .yolo-context-usage-ring__value {
   display: none;
 }
@@ -461,7 +409,7 @@ svg.yolo-context-usage-ring__svg {
   border-radius: var(--radius-s);
 }
 
-.yolo-view-header-actions-slot .yolo-chat-topbar-agent-avatar {
+.yolo-view-header-actions-slot .yolo-agent-switcher-avatar {
   width: 18px;
   height: 18px;
 }
@@ -474,6 +422,6 @@ svg.yolo-context-usage-ring__svg {
 .workspace-leaf-content[data-type='yolo-chat-view']:has(
     .yolo-chat-shell--drawer
   )
-  .yolo-chat-topbar-agent-meta {
+  .yolo-agent-switcher-meta {
   display: none;
 }

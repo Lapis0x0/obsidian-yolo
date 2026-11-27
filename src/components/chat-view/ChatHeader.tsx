@@ -63,6 +63,8 @@ export type ChatHeaderProps = {
   cliRuntimeScope: CliRuntimeScope | undefined
   /** 当前对话实际使用的模型名，跟在 Agent 名后面；未知时不显示 */
   modelLabel: string | null
+  /** 项目主页把 Agent 选择器放在输入框右上角，顶部栏就不再放 */
+  showAgentSwitcher: boolean
   /** 对话标题；还没落盘的新对话是「新对话」 */
   title: string
   /** 已落盘的对话才能改名：点标题进入原地编辑 */
@@ -98,6 +100,7 @@ export function ChatHeader({
   onSwitchAgent,
   cliRuntimeScope,
   modelLabel,
+  showAgentSwitcher,
   title,
   canRename,
   renaming,
@@ -111,9 +114,6 @@ export function ChatHeader({
   onOpenSidebar,
 }: ChatHeaderProps) {
   const { t } = useLanguage()
-  const agentDisplay = useAgentDisplay(currentAgent, cliRuntimeScope)
-  const isYoloAgent = currentAgent.kind === 'assistant'
-
   const nativeShown = useNativeHeaderShown(nativeHeader)
 
   const crumb = (
@@ -182,31 +182,15 @@ export function ChatHeader({
 
   const actions = (
     <>
-      <AgentPicker
-        current={currentAgent}
-        onPick={onSwitchAgent}
-        cliRuntimeScope={cliRuntimeScope}
-        triggerClassName="yolo-chat-topbar-agent"
-        triggerContent={
-          <>
-            <span
-              className={`yolo-chat-topbar-agent-avatar ${
-                isYoloAgent ? 'is-yolo' : 'is-cli'
-              }`}
-            >
-              {agentDisplay.icon}
-            </span>
-            <span className="yolo-chat-topbar-agent-name">
-              {agentDisplay.name}
-            </span>
-            <span className="yolo-chat-topbar-agent-meta">
-              {` · ${isYoloAgent ? 'YOLO' : 'CLI'}`}
-              {modelLabel ? ` · ${modelLabel}` : ''}
-            </span>
-            <ChevronDown size={12} className="yolo-chat-topbar-agent-chevron" />
-          </>
-        }
-      />
+      {showAgentSwitcher ? (
+        <AgentSwitcher
+          currentAgent={currentAgent}
+          onSwitchAgent={onSwitchAgent}
+          cliRuntimeScope={cliRuntimeScope}
+          modelLabel={modelLabel}
+          className="yolo-chat-topbar-agent"
+        />
+      ) : null}
       {contextUsage ? (
         <ContextUsagePopover
           promptTokens={contextUsage.promptTokens}
@@ -256,6 +240,59 @@ export function ChatHeader({
         </button>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * 当前对话的 Agent，点开换一个（换的是当前对话的 Agent，不开新对话）。按钮里是
+ * 头像、名字，给了模型时再跟上「· YOLO / CLI · 模型」。外形由 className 决定：
+ * 顶部栏是带边框的胶囊，项目主页输入框右上角是无边框的一行字。
+ */
+export function AgentSwitcher({
+  currentAgent,
+  onSwitchAgent,
+  cliRuntimeScope,
+  modelLabel,
+  className,
+  align,
+}: {
+  currentAgent: AgentRef
+  onSwitchAgent: (ref: AgentRef) => void
+  cliRuntimeScope: CliRuntimeScope | undefined
+  /** 不传就只显示名字 */
+  modelLabel?: string | null
+  className: string
+  align?: 'start' | 'end'
+}) {
+  const agentDisplay = useAgentDisplay(currentAgent, cliRuntimeScope)
+  const isYoloAgent = currentAgent.kind === 'assistant'
+  return (
+    <AgentPicker
+      current={currentAgent}
+      onPick={onSwitchAgent}
+      cliRuntimeScope={cliRuntimeScope}
+      triggerClassName={className}
+      align={align}
+      triggerContent={
+        <>
+          <span
+            className={`yolo-agent-switcher-avatar ${
+              isYoloAgent ? 'is-yolo' : 'is-cli'
+            }`}
+          >
+            {agentDisplay.icon}
+          </span>
+          <span className="yolo-agent-switcher-name">{agentDisplay.name}</span>
+          {modelLabel !== undefined ? (
+            <span className="yolo-agent-switcher-meta">
+              {` · ${isYoloAgent ? 'YOLO' : 'CLI'}`}
+              {modelLabel ? ` · ${modelLabel}` : ''}
+            </span>
+          ) : null}
+          <ChevronDown size={12} className="yolo-agent-switcher-chevron" />
+        </>
+      }
+    />
   )
 }
 

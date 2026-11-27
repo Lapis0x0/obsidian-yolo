@@ -18,7 +18,9 @@
 .yolo-agent-picker-search input[type='search'] {
   flex: 1;
   min-width: 0;
-  height: auto;
+  /* 输入框会裁掉超出自身的内容：高度只按文字行高给（约 15px）时，光标比它
+   * 高，上下被切掉一截。留出光标的高度，文字在框里自动竖直居中 */
+  height: 20px;
   padding: 0;
   border: 0 !important;
   background: transparent !important;
@@ -114,4 +116,59 @@ button.yolo-agent-picker-pin.is-disabled {
 
 .yolo-agent-picker-footer button.yolo-assistant-selector-footer-btn {
   width: auto !important;
+}
+
+/* 选择器的触发按钮里显示当前 Agent：头像、名字、来源与模型、箭头。对话页顶部栏
+ * 和项目主页（输入框右上角）共用，按钮本身的外形各自定义 */
+
+.yolo-agent-switcher-avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+}
+
+.yolo-agent-switcher-avatar.is-yolo {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  color: var(--interactive-accent);
+}
+
+.yolo-agent-switcher-avatar.is-cli {
+  border-radius: 6px;
+}
+
+.yolo-agent-switcher-avatar svg {
+  width: 12px;
+  height: 12px;
+}
+
+.yolo-agent-switcher-avatar img {
+  width: 16px;
+  height: 16px;
+}
+
+.yolo-agent-switcher-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 来源和模型比名字先让位 */
+.yolo-agent-switcher-meta {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-agent-switcher-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
 }
