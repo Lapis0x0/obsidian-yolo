@@ -1675,7 +1675,6 @@ export const it: DeepPartial<TranslationKeys> = {
       unpinShort: 'Rimuovi dai fissati',
       pinLimit: 'Al massimo {count} agenti fissati: rimuovine uno prima',
       profileCount: '{count} profili',
-      pinnedCount: '{count} / {max} fissati',
       newChatWith: 'Nuova chat con {name}',
       newChatWithAgent: 'Nuova chat con un agente',
     },

@@ -1728,7 +1728,6 @@ export const zh: TranslationKeys = {
       unpinShort: '取消钉住',
       pinLimit: '最多钉 {count} 个，先取消一个',
       profileCount: '{count} 个 profile',
-      pinnedCount: '已钉 {count} / {max}',
       newChatWith: '用 {name} 开新对话',
       newChatWithAgent: '选择 Agent 新建对话',
     },

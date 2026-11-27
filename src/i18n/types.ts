@@ -1554,7 +1554,6 @@ export type TranslationKeys = {
       unpinShort?: string
       pinLimit?: string
       profileCount?: string
-      pinnedCount?: string
       newChatWith?: string
       newChatWithAgent?: string
     }

@@ -1818,7 +1818,6 @@ export const en: TranslationKeys = {
       unpinShort: 'Unpin',
       pinLimit: 'Up to {count} pinned agents — unpin one first',
       profileCount: '{count} profiles',
-      pinnedCount: '{count} / {max} pinned',
       newChatWith: 'New chat with {name}',
       newChatWithAgent: 'New chat with an agent',
     },

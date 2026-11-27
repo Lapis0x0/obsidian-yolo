@@ -474,11 +474,6 @@ export function AgentPicker({
         </ul>
 
         <div className="yolo-assistant-selector-footer yolo-agent-picker-footer">
-          <span className="yolo-agent-picker-pin-count">
-            {t('chat.agentPicker.pinnedCount', '{count} / {max} pinned')
-              .replace('{count}', String(pinned.length))
-              .replace('{max}', String(MAX_PINNED_AGENTS))}
-          </span>
           <button
             type="button"
             className="yolo-assistant-selector-footer-btn"

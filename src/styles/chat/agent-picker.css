@@ -174,15 +174,7 @@ button.yolo-agent-picker-pin.is-disabled {
 .yolo-agent-picker-footer {
   display: flex;
   align-items: center;
-  gap: var(--size-2-3);
-}
-
-.yolo-agent-picker-pin-count {
-  flex: 1;
-  padding-inline-start: var(--size-2-3);
-  color: var(--text-faint);
-  font-size: var(--yolo-font-meta);
-  white-space: nowrap;
+  justify-content: flex-end;
 }
 
 .yolo-agent-picker-footer button.yolo-assistant-selector-footer-btn {
