@@ -79,7 +79,7 @@ const AUTO_SCROLL_MAX_SPEED_PX = 16
 const CARD_EXTEND_PROPERTY = '--yolo-sort-card-extend'
 /** 卡片上有它时，底边伸缩带过渡 */
 const CARD_SORTING_ATTRIBUTE = 'data-sort-card'
-/** 「拖到这里置顶」比它盖住的分组标题上下各收进一点 */
+/** 「拖到这里置顶」比它占的那一行上下各收进一点 */
 const PIN_SLOT_INSET_PX = 3
 /** 项目卡片和对话列表：落位时整块移动，里面的元素只补自己相对它的位移 */
 const FLIP_BLOCK_SELECTOR = `[${DROP_PROJECT_ATTRIBUTE}], [${DROP_HISTORY_ATTRIBUTE}]`
@@ -164,8 +164,17 @@ type DragSession = {
   over: CollapsedProject | null
   frame: number | null
   scope: Scope
-  /** 还没有置顶时临时出现的「拖到这里置顶」，和它对应的置顶列表 */
-  pinSlot: { element: HTMLElement; list: SortList } | null
+  /**
+   * 还没有置顶时临时出现的「拖到这里置顶」：对应的空置顶列表；指针进了
+   * trigger（「对话」分组标题）才打开，打开后到松手都留着
+   */
+  pinSlot: {
+    list: SortList
+    trigger: Area
+    /** 打开后插进对话列表那块的元素 */
+    element: HTMLElement | null
+    create: () => HTMLElement
+  } | null
 }
 
 const groupProjectId = (group: ConversationSortGroup) =>
@@ -345,6 +354,8 @@ export function useSidebarConversationSort({
       if (s.source !== active && !s.source.capped) {
         changes.set(s.source, -s.source.slot)
       }
+      // 「拖到这里置顶」打开后一直占着一行
+      if (s.pinSlot?.element) changes.set(s.pinSlot.list, s.pinSlot.list.slot)
       return changes
     }
 
@@ -395,21 +406,38 @@ export function useSidebarConversationSort({
 
       // 指针在哪个列表或折叠的项目上；都不在（比如分组标题、列表之间的
       // 空隙）时保持上一次的，不来回跳。有列表变长或变短时，它自己的底边
-      // 和它下面的东西都挪了，按挪过之后的位置判断
-      const shiftAt = (y: number) => {
+      // 和它下面的东西都挪了，按挪过之后的位置判断。owner 是这块范围所属
+      // 的列表：它自己变长变短只挪它的底边，不挪顶边（「拖到这里置顶」那
+      // 一行原本高度为 0，顶边和底边在同一处，不排除就会整块被挪走）
+      const shiftAt = (y: number, owner?: SortList) => {
         let by = 0
         for (const [list, change] of s.changes) {
-          if (y >= list.area.bottom - 0.5) by += change
+          if (list !== owner && y >= list.area.bottom - 0.5) by += change
         }
         return by
       }
-      const seen = (area: Area): Area => ({
-        ...area,
-        top: area.top + shiftAt(area.top),
-        bottom: area.bottom + shiftAt(area.bottom),
-      })
+      const seen = (area: Area, owner?: SortList): Area => {
+        const own = owner ? (s.changes.get(owner) ?? 0) : 0
+        return {
+          ...area,
+          top: area.top + shiftAt(area.top, owner),
+          bottom: area.bottom + shiftAt(area.bottom, owner) + own,
+        }
+      }
+      // 指针第一次到「对话」分组标题时打开「拖到这里置顶」。一开始就打开的
+      // 话，对话列表会在指针下整体往下让一行，刚拿起的行上面那一行就跳到它
+      // 下面去了；在标题上打开时，指针正好落在新出现的这一行里
+      const slot = s.pinSlot
+      if (
+        slot &&
+        !slot.element &&
+        contains(seen(slot.trigger), s.pointerX, contentY)
+      ) {
+        slot.element = slot.create()
+        applyLengthChanges(s, getLengthChanges(s))
+      }
       const list = s.lists.find((l) =>
-        contains(seen(l.area), s.pointerX, contentY),
+        contains(seen(l.area, l), s.pointerX, contentY),
       )
       const collapsed = list
         ? null
@@ -428,7 +456,7 @@ export function useSidebarConversationSort({
         if (c === s.over) c.element.setAttribute('data-drop-active', '')
         else c.element.removeAttribute('data-drop-active')
       }
-      if (s.pinSlot) {
+      if (s.pinSlot?.element) {
         if (s.active === s.pinSlot.list) {
           s.pinSlot.element.setAttribute('data-drop-active', '')
         } else {
@@ -631,35 +659,42 @@ export function useSidebarConversationSort({
         }
         if (restList) lists.push(restList)
 
-        // 还没有置顶时没有置顶列表可拖进去：把「对话」分组标题那块临时盖成
-        // 「拖到这里置顶」。盖在上面而不是插入一行，下面的列表不会被推开、
-        // 拖动一开始画面就跳一下
+        // 还没有置顶时没有置顶列表可拖进去：拖到「对话」分组标题上时，标题
+        // 上面多出一行「拖到这里置顶」，标题和对话列表一起往下让一行（见
+        // getLengthChanges）。这一行打开前高度为 0，让位按列表变长处理
         const header = history.querySelector<HTMLElement>(
           '.yolo-chat-history-group',
         )
         if (!pinnedList && restList && header) {
           const headerRect = header.getBoundingClientRect()
           const historyRect = history.getBoundingClientRect()
-          const element = doc.createElement('div')
-          element.className = 'yolo-chat-sidebar-pin-slot'
-          element.textContent = latestRef.current.pinSlotLabel
-          element.setCssProps({
-            top: `${headerRect.top - historyRect.top + PIN_SLOT_INSET_PX}px`,
-            height: `${headerRect.height - 2 * PIN_SLOT_INSET_PX}px`,
-          })
-          history.appendChild(element)
-          const area = areaOf(header)
-          // 空的置顶列表，不变长：落点就是框本身，下面的对话不用让位
+          const height = restList.slot
+          const create = () => {
+            const element = doc.createElement('div')
+            element.className = 'yolo-chat-sidebar-pin-slot'
+            element.textContent = latestRef.current.pinSlotLabel
+            element.setCssProps({
+              top: `${headerRect.top - historyRect.top + PIN_SLOT_INSET_PX}px`,
+              height: `${height - 2 * PIN_SLOT_INSET_PX}px`,
+            })
+            history.appendChild(element)
+            return element
+          }
+          const top = contentY(headerRect.top)
+          const area = { ...areaOf(header), top, bottom: top }
+          // 空的置顶列表：落点就是这一行本身。后面的分组标题等跟着往下让，
+          // 对话列表整体往下让
           const list: SortList = {
             ...makeList('pinned', [], area, history),
             capped: true,
+            slot: height,
             rowLeft: restList.rowLeft,
             rowWidth: restList.rowWidth,
-            followers: [],
           }
-          restList.area = { ...restList.area, top: area.bottom }
+          list.listsBelow.push(restList)
+          restList.area = { ...restList.area, top }
           lists.push(list)
-          pinSlot = { element, list }
+          pinSlot = { list, trigger: areaOf(header), element: null, create }
         }
       }
       // 项目：展开的是列表，折叠的是整行目标
@@ -811,7 +846,7 @@ export function useSidebarConversationSort({
         }
       }
       s.over?.element.removeAttribute('data-drop-active')
-      s.pinSlot?.element.remove()
+      s.pinSlot?.element?.remove()
       container.removeAttribute('data-sorting')
       if (container.hasPointerCapture(s.pointerId)) {
         container.releasePointerCapture(s.pointerId)

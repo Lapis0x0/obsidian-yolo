@@ -366,8 +366,9 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   color: var(--text-normal);
 }
 
-/* 还没有置顶时，拖动期间盖在「对话」分组标题上的「拖到这里置顶」（见
- * useSidebarConversationSort）。位置和高度由脚本按标题写入 */
+/* 还没有置顶时，拖动期间出现在「对话」分组标题上面的「拖到这里置顶」（见
+ * useSidebarConversationSort），标题和对话列表往下让出这一行。位置和高度由
+ * 脚本写入 */
 [data-drop-history] {
   position: relative;
 }
