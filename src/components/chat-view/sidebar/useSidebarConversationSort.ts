@@ -67,6 +67,12 @@ export const DROP_HISTORY_ATTRIBUTE = 'data-drop-history'
  * 拖进来一条，最后一条就被挤进「更多」里，而不是列表变长。
  */
 export const SORT_CAPPED_ATTRIBUTE = 'data-sort-capped'
+/**
+ * 满的项目列表里还没列出的下一条，叠在「再显示」那一行下面藏着：「再显示」
+ * 像个口袋，拖出一条时下一条从口袋里滑上来补位，拖进一条时最后一条滑进
+ * 口袋。拖动时口袋才有实色底、下一条才可见（见 projects.css）
+ */
+export const PROJECT_PEEK_CLASS = 'yolo-chat-sidebar-project-peek'
 
 const DRAG_DISTANCE_PX = 5
 /** 指针离滚动区上下边缘这么近时自动滚动，越近越快 */
@@ -120,6 +126,8 @@ type SortList = {
   index: number | null
   /** 列表是满的（见 SORT_CAPPED_ATTRIBUTE） */
   capped: boolean
+  /** 满的项目列表里藏在「再显示」下面的下一条（见 PROJECT_PEEK_CLASS） */
+  peek: HTMLElement | null
   /** 列表里行的左边缘和宽度：被拖的行进来时对齐到这里 */
   rowLeft: number
   rowWidth: number
@@ -319,7 +327,9 @@ export function useSidebarConversationSort({
      * 列表里各行的位移。original 是行原来的位置（源列表里被拖行之后的行原本
      * 靠后一位），current 是现在该在的位置（落点之后的行让出一位），差几位
      * 挪几个 slot，再加上因为上面的列表变长而整体下移的 base。满的列表多进
-     * 一条时，最后一条会被挤进「更多」里：它原地淡出，不往下压到「更多」上。
+     * 一条时，最后一条会被挤进「更多」里，淡出：项目列表的「再显示」是口袋，
+     * 最后一条照常往下让、边淡出边滑到它后面；对话列表的「已归档」没有口袋，
+     * 最后一条原地淡出，不往下压到它上面。
      */
     const applyShifts = (list: SortList, index: number | null) => {
       const applied = `${index}|${list.base}`
@@ -332,7 +342,8 @@ export function useSidebarConversationSort({
           list.fromIndex !== -1 && i >= list.fromIndex ? i + 1 : i
         const current = index !== null && i >= index ? i + 1 : i
         const fade = gains && list.capped && i === list.rows.length - 1
-        const shift = (fade ? 0 : (current - original) * list.slot) + list.base
+        const stay = fade && !list.peek
+        const shift = (stay ? 0 : (current - original) * list.slot) + list.base
         row.setCssProps({
           transform: shift ? `translate(0, ${shift}px)` : '',
           opacity: fade ? '0' : '',
@@ -493,6 +504,16 @@ export function useSidebarConversationSort({
         for (const c of l.centers) if (c + shiftAt(c) < center) index += 1
         applyShifts(l, index)
       }
+      // 被拖的行离开了满的项目列表：口袋里的下一条边淡入边往上滑一行，
+      // 补上空位
+      const peek = s.source.peek
+      if (peek) {
+        const out = s.active !== s.source
+        peek.setCssProps({
+          transform: out ? `translate(0, ${-s.source.slot}px)` : '',
+          opacity: out ? '1' : '',
+        })
+      }
 
       // 指针贴近滚动区上下边缘时自动滚动；滚动改变了内容坐标，下一帧接着算
       const speed =
@@ -598,6 +619,7 @@ export function useSidebarConversationSort({
           capped:
             scope.querySelector(`[${SORT_CAPPED_ATTRIBUTE}="${group}"]`) !==
             null,
+          peek: scope.querySelector<HTMLElement>(`.${PROJECT_PEEK_CLASS}`),
           rowLeft,
           rowWidth,
           followers,
@@ -735,6 +757,12 @@ export function useSidebarConversationSort({
       const scope = new Scope(app.keymap.scope)
       scope.register([], 'Escape', () => {
         land(null)
+        // 取消后手还按着，之后松开时浏览器照样会在行上派发 click，把这条
+        // 对话打开；等松开那一下再吞掉它
+        doc.addEventListener('pointerup', swallowNextClick, {
+          capture: true,
+          once: true,
+        })
         return false
       })
       app.keymap.pushScope(scope)
@@ -772,7 +800,11 @@ export function useSidebarConversationSort({
       p.row.setAttribute('data-sort-state', 'lifted')
       p.row.setCssProps({ transition: 'none' })
       for (const list of lists) {
-        for (const element of [...list.rows, ...list.followers]) {
+        for (const element of [
+          ...list.rows,
+          ...list.followers,
+          ...(list.peek ? [list.peek] : []),
+        ]) {
           element.setCssProps({ transition: transition() })
         }
         list.card?.setAttribute(CARD_SORTING_ATTRIBUTE, '')
@@ -812,7 +844,11 @@ export function useSidebarConversationSort({
       // 动画），保持看不见
       const dragged = [
         s.row,
-        ...s.lists.flatMap((list) => [...list.rows, ...list.followers]),
+        ...s.lists.flatMap((list) => [
+          ...list.rows,
+          ...list.followers,
+          ...(list.peek ? [list.peek] : []),
+        ]),
       ]
       for (const element of dragged) {
         const faded = element.style.opacity === '0'

@@ -16,15 +16,15 @@ const ROW_FADE_OUT_EASING = 'cubic-bezier(0.4, 0, 1, 1)'
 
 const CONVERSATIONS_SELECTOR =
   ':scope > .yolo-chat-sidebar-project-conversations'
+/** 列出的对话行：不含「再显示」那一行、空项目的占位和口袋里藏着的下一条 */
 const ROW_SELECTOR =
-  ':scope > li:not(.yolo-chat-sidebar-project-more-row, .yolo-chat-sidebar-project-conversations-empty)'
+  ':scope > li:not(.yolo-chat-sidebar-project-more-row, .yolo-chat-sidebar-project-conversations-empty, .yolo-chat-sidebar-project-peek)'
 
 /**
- * 「再显示 / 收起」那一行贴着卡片底边走时的底色：卡片底色（projects.css 里
- * 展开卡片的 ::before，8% 项目色）叠在侧边栏底色上的实色，盖住它滑过的行
+ * 「再显示 / 收起」那一行贴着卡片底边走时的底色：卡片底色的实色版（见
+ * projects.css 的 --yolo-project-card-solid），盖住它滑过的行
  */
-const MORE_ROW_RIDING_BACKGROUND =
-  'color-mix(in srgb, var(--yolo-project-color) 8%, var(--yolo-chat-sidebar-background))'
+const MORE_ROW_RIDING_BACKGROUND = 'var(--yolo-project-card-solid)'
 
 const moreRowOf = (card: HTMLElement): HTMLElement | null =>
   card.querySelector<HTMLElement>(

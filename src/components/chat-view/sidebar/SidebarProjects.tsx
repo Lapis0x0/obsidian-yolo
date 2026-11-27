@@ -15,6 +15,7 @@ import { PROJECT_ICONS, projectColorStyle } from '../projects/projectAppearance'
 import { useProjectCardDisclosure } from './useProjectCardDisclosure'
 import {
   DROP_PROJECT_ATTRIBUTE,
+  PROJECT_PEEK_CLASS,
   SORT_CAPPED_ATTRIBUTE,
   projectSortGroup,
   sortableRowAttributes,
@@ -216,7 +217,10 @@ function SidebarProjectItem({
     count: shownCount,
   })
   const hasMore = conversations.length > EXPANDED_CONVERSATION_LIMIT
-  const shown = conversations.slice(0, display.count)
+  // 列出的对话，再加一条「下一条」：叠在「再显示」那一行下面藏着，拖出一条
+  // 时由它补上来（见 useSidebarConversationSort）。和转正后是同一个 key，
+  // 放下时 React 沿用同一个元素，不用再动
+  const shown = conversations.slice(0, display.count + 1)
   /**
    * 点过之后还没列出的对话数；不大于 0 时最后一行是「收起」。按点过之后的
    * shownCount 算，不等动画：这一行贴着底边走，文字点下去就换
@@ -289,10 +293,11 @@ function SidebarProjectItem({
               {t('chat.projects.noConversations', 'No conversations yet')}
             </li>
           ) : null}
-          {shown.map((chat) => (
+          {shown.map((chat, index) => (
             <ProjectConversationRow
               key={chat.id}
               chat={chat}
+              peek={index === display.count}
               projectId={project.id}
               projects={projects}
               active={chat.id === currentConversationId}
@@ -336,6 +341,7 @@ function SidebarProjectItem({
 
 function ProjectConversationRow({
   chat,
+  peek,
   projectId,
   projects,
   active,
@@ -344,6 +350,8 @@ function ProjectConversationRow({
   onMoveToProject,
 }: {
   chat: ChatConversationMetadata
+  /** 还没列出的下一条：藏在「再显示」那一行下面，不能点、不参与拖动 */
+  peek: boolean
   projectId: string
   projects: readonly ChatProject[]
   active: boolean
@@ -357,14 +365,20 @@ function ProjectConversationRow({
     t('chat.untitledConversation', 'New chat'),
   )
   return (
-    <li>
+    <li
+      className={peek ? PROJECT_PEEK_CLASS : undefined}
+      aria-hidden={peek || undefined}
+    >
       {/* 拖动排序见 useSidebarConversationSort，拖动的是这个按钮 */}
       <button
         type="button"
         className={`yolo-chat-sidebar-project-conversation${
           active ? ' is-active' : ''
         }`}
-        {...sortableRowAttributes(chat.id, projectSortGroup(projectId))}
+        tabIndex={peek ? -1 : undefined}
+        {...(peek
+          ? undefined
+          : sortableRowAttributes(chat.id, projectSortGroup(projectId)))}
         onClick={() => onSelect(chat.id)}
         onContextMenu={(event) => {
           event.preventDefault()

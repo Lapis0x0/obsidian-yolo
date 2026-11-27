@@ -53,6 +53,18 @@ ul.yolo-chat-sidebar-project-list {
 /* 展开的项目：项目行连同它的对话合成一张项目色的淡色卡片，一眼看出哪些
  * 对话属于这个项目。折叠的项目只有图标带颜色，项目多了也不会花 */
 .yolo-chat-sidebar-project-item {
+  /* 卡片底色；实色版是它叠在侧边栏底色上的颜色，给要盖住下面东西的「再显示」
+   * 那一行用 */
+  --yolo-project-card-tint: color-mix(
+    in srgb,
+    var(--yolo-project-color) 8%,
+    transparent
+  );
+  --yolo-project-card-solid: color-mix(
+    in srgb,
+    var(--yolo-project-color) 8%,
+    var(--yolo-chat-sidebar-background)
+  );
   position: relative;
   border-radius: var(--radius-m);
 }
@@ -85,7 +97,7 @@ ul.yolo-chat-sidebar-project-list {
 }
 
 .yolo-chat-sidebar-project-item.is-open::before {
-  background: color-mix(in srgb, var(--yolo-project-color) 8%, transparent);
+  background: var(--yolo-project-card-tint);
 }
 
 /* 展开、收起的动画期间，颜色和形状一起过渡；平时悬停照常立即变色 */
@@ -295,6 +307,32 @@ button.yolo-chat-sidebar-project-more {
   height: 30px;
   color: var(--text-faint);
   font-size: var(--yolo-font-ui);
+}
+
+/* 口袋里藏着的下一条：不占位置，叠在「再显示」那一行下面（负的下外边距
+ * 抵掉它自己的行高和行间距，下一行从它的顶上开始）。平时看不见；拖动时
+ * 「再显示」那一行有实色底、压在它上面，拖出一条时它从下面滑上来补位，
+ * 拖进一条时最后一条滑进去藏起来（见 useSidebarConversationSort）。实色底
+ * 往下多盖 4px：下一条比「再显示」那一行高，多出的部分落在列表底部留白里 */
+li.yolo-chat-sidebar-project-peek {
+  margin-bottom: calc(-1 * var(--yolo-chat-sidebar-row-height) - 1px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 拖动时在口袋里待命：滑出来时由脚本淡入（opacity 写在行内） */
+.yolo-chat-sidebar-scroll[data-sorting] li.yolo-chat-sidebar-project-peek {
+  visibility: visible;
+  opacity: 0;
+}
+
+.yolo-chat-sidebar-scroll[data-sorting] li.yolo-chat-sidebar-project-more-row {
+  position: relative;
+  z-index: 1;
+  /* 右下角贴着卡片的圆角，往下多盖的那 4px 不探出卡片 */
+  border-end-end-radius: var(--radius-m);
+  background: var(--yolo-project-card-solid);
+  box-shadow: 0 4px 0 var(--yolo-project-card-solid);
 }
 
 .yolo-chat-sidebar-project-conversations-empty {
