@@ -118,6 +118,9 @@ const isGrowth = (
  *
  * 返回此刻该渲染的状态：变大时立即换成目标状态，渲染后再从旧的样子动画过去；
  * 变小时先保持旧的样子播完动画，再换成目标状态，对话行才有东西可以收。
+ * 这里只管形状；底色跟着 target.expanded 立即换，由 CSS 过渡（见
+ * projects.css 里项目条目的 ::before）。disclosing 是展开、收起动画进行中的
+ * 方向，卡片据此打开底色的过渡，平时悬停仍然立即变色。
  *
  * 动画规则的两处例外：后面内容的位移用和底边同一条曲线而不是 spring，否则
  * 会和底边分开；对话行用 clip-path 裁，它只重画这张卡片、不重排。拖动放下时
@@ -127,8 +130,19 @@ const isGrowth = (
 export function useProjectCardDisclosure(
   cardRef: RefObject<HTMLElement | null>,
   target: ProjectCardDisclosure,
-): ProjectCardDisclosure {
+): {
+  display: ProjectCardDisclosure
+  disclosing: 'open' | 'close' | null
+} {
   const [display, setDisplay] = useState(target)
+  // 展开与否一变，同一次渲染里就带上过渡的方向：底色在这次提交里换，过渡
+  // 得在换之前就生效
+  const [openedTo, setOpenedTo] = useState(target.expanded)
+  const [disclosing, setDisclosing] = useState<'open' | 'close' | null>(null)
+  if (openedTo !== target.expanded) {
+    setOpenedTo(target.expanded)
+    setDisclosing(target.expanded ? 'open' : 'close')
+  }
   const running = useRef<Animation[]>([])
   /** 刚换成更大的状态，渲染后从它动画过来 */
   const growFrom = useRef<ProjectCardDisclosure | null>(null)
@@ -156,6 +170,7 @@ export function useProjectCardDisclosure(
     if (still || isGrowth(display, target)) {
       growFrom.current = still ? null : display
       setDisplay(target)
+      if (still) setDisclosing(null)
       return
     }
 
@@ -218,18 +233,13 @@ export function useProjectCardDisclosure(
     for (const element of leaving) {
       if (element) animations.push(element.animate({ opacity: [1, 0] }, fade))
     }
-    if (!target.expanded) {
-      animations.push(
-        card.animate(
-          { opacity: [1, 0] },
-          { ...timing, pseudoElement: '::before' },
-        ),
-      )
-    }
     running.current = animations
     edge.onfinish = () => {
       if (running.current !== animations) return
-      flushSync(() => setDisplay(target))
+      flushSync(() => {
+        setDisplay(target)
+        setDisclosing(null)
+      })
       stop()
     }
   }, [target.expanded, target.count, display, cardRef])
@@ -294,18 +304,13 @@ export function useProjectCardDisclosure(
     for (const element of entering) {
       if (element) animations.push(element.animate({ opacity: [0, 1] }, timing))
     }
-    if (!from.expanded) {
-      animations.push(
-        card.animate(
-          { opacity: [0, 1] },
-          { ...timing, pseudoElement: '::before' },
-        ),
-      )
-    }
     running.current = animations
+    animations[0].onfinish = () => {
+      if (running.current === animations) setDisclosing(null)
+    }
   }, [display, cardRef])
 
   useLayoutEffect(() => stop, [])
 
-  return display
+  return { display, disclosing }
 }

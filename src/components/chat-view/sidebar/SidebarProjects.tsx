@@ -210,8 +210,8 @@ function SidebarProjectItem({
   const { t } = useLanguage()
   const cardRef = useRef<HTMLLIElement>(null)
   // 卡片此刻显示的样子：收起、少列几个时要等动画播完才真的变（见
-  // useProjectCardDisclosure）。箭头跟着 expanded 立即转
-  const display = useProjectCardDisclosure(cardRef, {
+  // useProjectCardDisclosure）。箭头和底色（is-open）跟着 expanded 立即变
+  const { display, disclosing } = useProjectCardDisclosure(cardRef, {
     expanded,
     count: shownCount,
   })
@@ -237,8 +237,9 @@ function SidebarProjectItem({
     <li
       ref={cardRef}
       className={`yolo-chat-sidebar-project-item${
-        display.expanded ? ' is-expanded' : ''
-      }`}
+        expanded ? ' is-open' : ''
+      }${display.expanded ? ' is-expanded' : ''}`}
+      data-disclosing={disclosing ?? undefined}
       style={projectColorStyle(project.color)}
       {...{ [DROP_PROJECT_ATTRIBUTE]: project.id }}
     >

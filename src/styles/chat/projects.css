@@ -53,26 +53,50 @@ ul.yolo-chat-sidebar-project-list {
 /* 展开的项目：项目行连同它的对话合成一张项目色的淡色卡片，一眼看出哪些
  * 对话属于这个项目。折叠的项目只有图标带颜色，项目多了也不会花 */
 .yolo-chat-sidebar-project-item {
+  position: relative;
   border-radius: var(--radius-m);
 }
 
-/* 卡片的底色画在伪元素上：拖着对话进出这个项目时，底边按
- * --yolo-sort-card-extend 伸缩，卡片本身的高度到放下时才变（见
- * useSidebarConversationSort.ts） */
 .yolo-chat-sidebar-project-item.is-expanded {
-  position: relative;
   margin-block: 2px;
 }
 
-/* 不设 z-index：卡片里的项目行和对话列表都是定位元素，按文档顺序画在它
- * 上面；卡片也不成为层叠上下文，被拖的对话拖出卡片时仍压在别的东西上面 */
-.yolo-chat-sidebar-project-item.is-expanded::before {
+/* 项目的底色只有这一块面，画在伪元素上：展开时是卡片的项目色，收起时是
+ * 这一行悬停或选中的灰色。项目行自己不画底色，展开、收起时这块面一边
+ * 变形状（useProjectCardDisclosure）一边变颜色，没有两块底色交接。
+ * 颜色看 is-open（点下去就变），形状看 is-expanded（动画播完才变）。
+ *
+ * 拖着对话进出这个项目时，底边按 --yolo-sort-card-extend 伸缩（见
+ * useSidebarConversationSort.ts）。不设 z-index：项目行和对话列表都是定位
+ * 元素，按文档顺序画在它上面；卡片也不成为层叠上下文，被拖的对话拖出
+ * 卡片时仍压在别的东西上面 */
+.yolo-chat-sidebar-project-item::before {
   content: '';
   position: absolute;
   inset: 0 0 calc(-1 * var(--yolo-sort-card-extend, 0px));
   border-radius: inherit;
-  background: color-mix(in srgb, var(--yolo-project-color) 8%, transparent);
   pointer-events: none;
+}
+
+.yolo-chat-sidebar-project-item:not(.is-open):has(
+    > .yolo-chat-sidebar-project:is(:hover, .is-active)
+  )::before {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-chat-sidebar-project-item.is-open::before {
+  background: color-mix(in srgb, var(--yolo-project-color) 8%, transparent);
+}
+
+/* 展开、收起的动画期间，颜色和形状一起过渡；平时悬停照常立即变色 */
+.yolo-chat-sidebar-project-item[data-disclosing='open']::before {
+  transition: background-color var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-project-item[data-disclosing='close']::before {
+  transition: background-color var(--yolo-anim-duration-exit)
+    var(--yolo-anim-ease-out);
 }
 
 /* 动画豁免：伸缩的是绝对定位的伪元素的底边，只重排它自己，不影响别的元素；
@@ -81,12 +105,6 @@ ul.yolo-chat-sidebar-project-list {
 .yolo-chat-sidebar-project-item[data-sort-card]
   ul.yolo-chat-sidebar-project-conversations::before {
   transition: bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
-}
-
-/* 卡片的项目行就是卡片的标题，悬停、选中都不再单独加一层底色 */
-.yolo-chat-sidebar-project-item.is-expanded
-  .yolo-chat-sidebar-project:is(:hover, .is-active) {
-  background: transparent;
 }
 
 .yolo-chat-sidebar-project-item.is-expanded
@@ -121,13 +139,8 @@ ul.yolo-chat-sidebar-project-list {
   color: var(--text-muted);
 }
 
-.yolo-chat-sidebar-project:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
-
-.yolo-chat-sidebar-project.is-active {
-  background: var(--background-modifier-hover);
+/* 悬停、选中的底色画在项目条目的伪元素上（见上） */
+.yolo-chat-sidebar-project:is(:hover, .is-active) {
   color: var(--text-normal);
 }
 
