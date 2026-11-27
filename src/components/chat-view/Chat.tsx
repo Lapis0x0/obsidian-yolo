@@ -1734,6 +1734,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 存在或此刻用不了时，就用当前 Agent。
   const openProject = useCallback(
     (project: ChatProject) => {
+      // 已经停在这个项目的主页上（项目里还没落盘的新对话），不再重开一个：
+      // 重开会换掉对话、清掉输入框里的草稿，并把 Agent 重置回项目默认
+      if (
+        !currentConversationPersisted &&
+        conversationProjectRef.current?.id === project.id
+      ) {
+        return
+      }
       enterProject(project.id)
       const ref = project.defaultAgent
         ? parseAgentRef(project.defaultAgent)
@@ -1753,6 +1761,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       canUseCliRuntime,
+      currentConversationPersisted,
       enterProject,
       handleNewChat,
       settings.assistants,

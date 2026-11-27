@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import type { ChatConversationMetadata } from '../../../database/json/chat/types'
 import { type ChatProject, findChatProject } from '../../../types/project.types'
@@ -49,7 +56,9 @@ export function useConversationProject({
     persisted?.projectId ??
     (conversationId ? unsaved[conversationId] : undefined)
 
-  useEffect(() => {
+  // 用 layout effect：新对话第一次渲染时还没判定归属，要在绘制前补上，否则
+  // 进入项目时会先闪一帧不属于任何项目的空白页，再变成项目主页
+  useLayoutEffect(() => {
     if (!conversationId) return
     if (isPersisted) {
       // 正在进入某个项目：途中经过的已落盘对话（运行时切换会短暂切到那个
