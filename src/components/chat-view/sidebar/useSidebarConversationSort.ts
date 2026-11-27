@@ -85,6 +85,21 @@ const AUTO_SCROLL_MAX_SPEED_PX = 16
 const CARD_EXTEND_PROPERTY = '--yolo-sort-card-extend'
 /** 卡片上有它时，底边伸缩带过渡 */
 const CARD_SORTING_ATTRIBUTE = 'data-sort-card'
+/**
+ * 被拖的行在某个项目里（展开的列表里，或悬在折叠的项目上）时带上这个属性，
+ * 那个项目的颜色写在 HOST_COLOR_PROPERTY 上，行染成项目色（见 sidebar.css）
+ */
+const HOST_ATTRIBUTE = 'data-sort-host'
+const HOST_COLOR_PROPERTY = '--yolo-sort-host-color'
+/** 项目条目内联的项目色（见 projectAppearance 的 projectColorStyle） */
+const PROJECT_COLOR_PROPERTY = '--yolo-project-color'
+
+/** 把行染成 color 那个项目的颜色；color 为空时撤掉，回到中性的灰 */
+const paintHost = (row: HTMLElement, color: string) => {
+  if (color) row.setAttribute(HOST_ATTRIBUTE, '')
+  else row.removeAttribute(HOST_ATTRIBUTE)
+  row.setCssProps({ [HOST_COLOR_PROPERTY]: color })
+}
 /** 「拖到这里置顶」比它占的那一行上下各收进一点 */
 const PIN_SLOT_INSET_PX = 3
 /** 项目卡片和对话列表：落位时整块移动，里面的元素只补自己相对它的位移 */
@@ -341,7 +356,13 @@ export function useSidebarConversationSort({
         const original =
           list.fromIndex !== -1 && i >= list.fromIndex ? i + 1 : i
         const current = index !== null && i >= index ? i + 1 : i
-        const fade = gains && list.capped && i === list.rows.length - 1
+        // 满的列表：被拖的行越过最后一条时它才挤进「更多」；还停在它下面
+        // （「更多」那一行附近）时列表不动
+        const fade =
+          gains &&
+          list.capped &&
+          index < list.rows.length &&
+          i === list.rows.length - 1
         const stay = fade && !list.peek
         const shift = (stay ? 0 : (current - original) * list.slot) + list.base
         row.setCssProps({
@@ -467,6 +488,11 @@ export function useSidebarConversationSort({
         if (c === s.over) c.element.setAttribute('data-drop-active', '')
         else c.element.removeAttribute('data-drop-active')
       }
+      const host = s.over?.element ?? s.active?.card ?? null
+      paintHost(
+        s.row,
+        host?.style.getPropertyValue(PROJECT_COLOR_PROPERTY).trim() ?? '',
+      )
       if (s.pinSlot?.element) {
         if (s.active === s.pinSlot.list) {
           s.pinSlot.element.setAttribute('data-drop-active', '')
@@ -797,6 +823,12 @@ export function useSidebarConversationSort({
       // 重渲染）。滚轮不受捕获影响，拖动时照样能滚
       container.setPointerCapture(p.pointerId)
       container.setAttribute('data-sorting', '')
+      // 拿起时就是所在项目的颜色，不从灰色过渡过去
+      paintHost(
+        p.row,
+        source.card?.style.getPropertyValue(PROJECT_COLOR_PROPERTY).trim() ??
+          '',
+      )
       p.row.setAttribute('data-sort-state', 'lifted')
       p.row.setCssProps({ transition: 'none' })
       for (const list of lists) {
@@ -821,7 +853,10 @@ export function useSidebarConversationSort({
      * 不跳。被拖的对话换了列表时，它在新列表里是另一个元素，从被拖行的位置
      * 滑过去；旧元素可能还在播退场动画，藏起来。
      */
-    const land = (commit: (() => void) | null) => {
+    const land = (
+      commit: (() => void) | null,
+      vacating: HTMLElement | null = null,
+    ) => {
       const s = session
       if (!s) return
       session = null
@@ -837,6 +872,9 @@ export function useSidebarConversationSort({
         .forEach((element) => {
           before.set(keyOf(element), element.getBoundingClientRect())
         })
+
+      // 松手时才让出位置的行（见 drop）：提交后它成了口袋里的那一条，看不见
+      const vacatingFrom = vacating ? before.get(keyOf(vacating)) : undefined
 
       if (commit) flushSync(commit)
 
@@ -859,6 +897,7 @@ export function useSidebarConversationSort({
           width: '',
         })
         element.removeAttribute('data-sort-state')
+        paintHost(element, '')
         if (
           faded &&
           element.isConnected &&
@@ -933,6 +972,16 @@ export function useSidebarConversationSort({
             if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return
             offsets.push([element, dx, dy])
           })
+        // 让出位置的行留在原处淡出，被拖的行滑过来盖住它
+        let vacate: number | null = null
+        if (vacating?.isConnected && vacatingFrom) {
+          const block =
+            vacating.parentElement?.closest<HTMLElement>(FLIP_BLOCK_SELECTOR)
+          vacate =
+            vacatingFrom.top -
+            vacating.getBoundingClientRect().top -
+            ((block && deltas.get(block)?.[1]) ?? 0)
+        }
         for (const [element, dx, dy] of offsets) {
           element.setCssProps({
             transition: 'none',
@@ -940,10 +989,30 @@ export function useSidebarConversationSort({
           })
           moved.push(element)
         }
+        if (vacating && vacate !== null) {
+          const stay = `translate(0, ${vacate}px)`
+          vacating.animate(
+            [
+              { transform: stay, opacity: 1, visibility: 'visible' },
+              { transform: stay, opacity: 0, visibility: 'visible' },
+            ],
+            { duration: ms, easing: MOTION_EASE_OUT_CSS },
+          )
+        }
       }
-      // 被拖的行落位途中保持被拖的样子
+      // 被拖的行落位途中，拿起来的那层跟着滑动淡出（见 sidebar.css），颜色是
+      // 它落进的地方的：项目里是那个项目的颜色
       const settling = landed && moved.includes(landed) ? landed : null
-      settling?.setAttribute('data-sort-state', 'landing')
+      if (settling) {
+        settling.setAttribute('data-sort-state', 'landing')
+        paintHost(
+          settling,
+          settling
+            .closest<HTMLElement>(`[${DROP_PROJECT_ATTRIBUTE}]`)
+            ?.style.getPropertyValue(PROJECT_COLOR_PROPERTY)
+            .trim() ?? '',
+        )
+      }
       void container.offsetHeight
       for (const element of dragged) {
         if (!moved.includes(element)) element.setCssProps({ transition: '' })
@@ -955,7 +1024,10 @@ export function useSidebarConversationSort({
       landingTimer = win.setTimeout(() => {
         landingTimer = null
         for (const element of moved) element.setCssProps({ transition: '' })
-        settling?.removeAttribute('data-sort-state')
+        if (settling) {
+          settling.removeAttribute('data-sort-state')
+          paintHost(settling, '')
+        }
       }, ms)
     }
 
@@ -987,15 +1059,22 @@ export function useSidebarConversationSort({
         land(null)
         return
       }
+      // 满的列表里还没越过最后一条就松手：占最后一条的位置，它这时才挤进
+      // 「更多」，放在它后面就看不见了
+      const vacating =
+        list.capped && list.fromIndex === -1 && list.index === list.rows.length
+          ? (list.rows[list.rows.length - 1] ?? null)
+          : null
+      const index = vacating ? list.index - 1 : list.index
       const placement = getPlacement(
         chatList,
         projects,
         id,
         list.group,
-        list.rows[list.index - 1]?.dataset.sortId ?? null,
-        list.rows[list.index]?.dataset.sortId ?? null,
+        list.rows[index - 1]?.dataset.sortId ?? null,
+        list.rows[index]?.dataset.sortId ?? null,
       )
-      land(() => void onPlace(id, placement))
+      land(() => void onPlace(id, placement), vacating)
     }
 
     function handlePointerMove(event: PointerEvent) {

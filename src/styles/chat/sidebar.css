@@ -349,21 +349,76 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   user-select: none;
 }
 
-/* 被拖的行：和悬停时同样的浅灰底，加一层很淡的阴影，读起来是「正被拖着」
- * 而不是「被选中」。底色要不透明，压过它经过的行，所以把悬停色叠在侧边栏
- * 底色上（悬停色本身半透明）。历史列表的行基础规则用 !important 压住了宿主
- * 的 li 样式（见 history.css），这里只能同样写 */
+/* 被拖的行：拿起来的样子画在行自己底下的两层伪元素上，行本身不变。
+ * ::before 是侧边栏底色加一层很淡的阴影，不透明，压过它经过的行；::after
+ * 是叠在上面的颜色：在对话列表里是悬停的浅灰，进了项目（展开的列表里，或
+ * 悬在折叠的项目上）换成那个项目的颜色，像是那张卡片里被拿起的一行。
+ * 项目色由脚本写在 --yolo-sort-host-color 上（见 useSidebarConversationSort）。
+ *
+ * 拿起时两层淡入；落位时跟着滑动用同一时长、同一曲线淡出，滑到位时行已经
+ * 是它本来的样子（和设置里提供商列表的拿起放下同一个做法）。z-index: -1 让
+ * 两层画在行的内容下面、行自己的底色上面：落位途中行的悬停、当前对话底色
+ * 已经恢复（见 history.css），两层淡出时它从下面露出来 */
 .yolo-chat-sidebar-scroll [data-sort-state] {
   position: relative;
   z-index: 3;
   border-radius: var(--radius-m);
-  background: linear-gradient(
-      var(--background-modifier-hover),
-      var(--background-modifier-hover)
-    ),
-    var(--yolo-chat-sidebar-background) !important;
-  box-shadow: var(--shadow-s) !important;
   color: var(--text-normal);
+}
+
+.yolo-chat-sidebar-scroll [data-sort-state]::before,
+.yolo-chat-sidebar-scroll [data-sort-state]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: yolo-chat-sidebar-sort-lift var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
+}
+
+.yolo-chat-sidebar-scroll [data-sort-state]::before {
+  background: var(--yolo-chat-sidebar-background);
+  box-shadow: var(--shadow-s);
+}
+
+/* 动画豁免：换列表时颜色过渡，只重画这一行 */
+.yolo-chat-sidebar-scroll [data-sort-state]::after {
+  background-color: var(--background-modifier-hover);
+  transition: background-color var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-sidebar-scroll [data-sort-state][data-sort-host]::after {
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-sort-host-color) 16%,
+    transparent
+  );
+}
+
+.yolo-chat-sidebar-scroll [data-sort-state='landing']::before,
+.yolo-chat-sidebar-scroll [data-sort-state='landing']::after {
+  animation-name: yolo-chat-sidebar-sort-drop;
+}
+
+@keyframes yolo-chat-sidebar-sort-lift {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes yolo-chat-sidebar-sort-drop {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /* 还没有置顶时，拖动期间出现在「对话」分组标题上面的「拖到这里置顶」（见
