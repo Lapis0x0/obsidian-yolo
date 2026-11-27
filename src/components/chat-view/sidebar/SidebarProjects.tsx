@@ -1,5 +1,5 @@
 import { ChevronRight, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../../core/agent/service'
@@ -12,6 +12,7 @@ import { ChatRuntimeBadge } from '../ChatHistoryList'
 import { showMoveToProjectMenu } from '../projects/moveToProjectMenu'
 import { PROJECT_ICONS, projectColorStyle } from '../projects/projectAppearance'
 
+import { useProjectCardDisclosure } from './useProjectCardDisclosure'
 import {
   DROP_PROJECT_ATTRIBUTE,
   SORT_CAPPED_ATTRIBUTE,
@@ -207,9 +208,19 @@ function SidebarProjectItem({
   onMoveToProject: (conversationId: string, projectId: string | null) => unknown
 }) {
   const { t } = useLanguage()
+  const cardRef = useRef<HTMLLIElement>(null)
+  // 卡片此刻显示的样子：收起、少列几个时要等动画播完才真的变（见
+  // useProjectCardDisclosure）。箭头跟着 expanded 立即转
+  const display = useProjectCardDisclosure(cardRef, {
+    expanded,
+    count: shownCount,
+  })
   const hasMore = conversations.length > EXPANDED_CONVERSATION_LIMIT
-  const shown = conversations.slice(0, shownCount)
-  /** 还没列出的对话数；不大于 0 时最后一行是「收起」 */
+  const shown = conversations.slice(0, display.count)
+  /**
+   * 点过之后还没列出的对话数；不大于 0 时最后一行是「收起」。按点过之后的
+   * shownCount 算，不等动画：这一行贴着底边走，文字点下去就换
+   */
   const hidden = conversations.length - shownCount
   const runStates = conversations.map((chat) =>
     getRunState(runSummariesByConversationId.get(chat.id)),
@@ -224,8 +235,9 @@ function SidebarProjectItem({
     // 展开的项目连同它的对话是一张项目色的淡色卡片；拖着别处的对话悬停时
     // 整个项目（展开时是整张卡片）高亮，松手就放进这个项目
     <li
+      ref={cardRef}
       className={`yolo-chat-sidebar-project-item${
-        expanded ? ' is-expanded' : ''
+        display.expanded ? ' is-expanded' : ''
       }`}
       style={projectColorStyle(project.color)}
       {...{ [DROP_PROJECT_ATTRIBUTE]: project.id }}
@@ -269,7 +281,7 @@ function SidebarProjectItem({
           <ChevronRight size={14} />
         </button>
       </div>
-      {expanded ? (
+      {display.expanded ? (
         <ul className="yolo-chat-sidebar-project-conversations">
           {conversations.length === 0 ? (
             <li className="yolo-chat-sidebar-project-conversations-empty">
