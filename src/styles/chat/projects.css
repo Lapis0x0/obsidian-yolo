@@ -356,11 +356,13 @@ button.yolo-chat-sidebar-project-empty:hover {
   padding: 28px 0 32px;
 }
 
+/* 不留行距：折到下一行的只有输入框右上角的 Agent 选择器，它属于输入框，
+ * 不该和标题隔出一段（见 .yolo-project-home-agent-row） */
 .yolo-project-home-header {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 18px;
+  gap: 0 18px;
 }
 
 .yolo-project-home-icon {
@@ -417,13 +419,15 @@ h1.yolo-project-home-title {
   gap: 8px;
 }
 
-/* 页头最后一行，整行靠右，落在输入框右上角 */
+/* 页头最后一行，整行靠右，落在输入框右上角。往上伸进标题区的高度（那一段
+ * 右侧是空的），标题区到输入框仍是选择器挪来之前的 28px：选择器本身 28px
+ * 高，加上它和输入框之间的 6px，正好多出这 6px */
 .yolo-project-home-agent-row {
   display: flex;
   flex-basis: 100%;
   justify-content: flex-end;
   min-width: 0;
-  margin-top: var(--size-4-4);
+  margin-top: calc(-1 * var(--size-2-3));
 }
 
 button.yolo-project-home-agent {
