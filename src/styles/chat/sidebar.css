@@ -338,3 +338,102 @@ button.yolo-chat-sidebar-pinned-agent:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 拖对话 ------------------------------------------------------------------
+ * 见 SidebarConversationDnd.tsx。被拖的那一行留在原处当空位，跟着指针走的
+ * 是它的一份拷贝（挂在 body 上，不在侧边栏里，样式不能依赖侧边栏的祖先）。 */
+.yolo-chat-sidebar-sort-slot {
+  border-radius: var(--radius-m);
+  background: var(--background-modifier-hover);
+}
+
+.yolo-chat-sidebar-sort-slot > * {
+  opacity: 0;
+}
+
+/* 历史列表的行底色走自己的状态色图层（history.css），空位也用它 */
+.yolo-chat-history li.yolo-chat-sidebar-sort-slot {
+  --yolo-chat-list-row-tint: var(--background-modifier-hover);
+}
+
+.yolo-chat-sidebar-drag-overlay {
+  position: relative;
+  transform-origin: 0 0;
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--yolo-font-ui-emphasis);
+  cursor: grabbing;
+}
+
+.yolo-chat-sidebar-drag-overlay.is-moving-out {
+  transform: translate(16px, 22px) scale(0.88);
+}
+
+/* 阴影单独一层淡入淡出，落位时和拷贝一起收回 */
+.yolo-chat-sidebar-drag-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 1px var(--background-modifier-border),
+    var(--shadow-l, 0 10px 30px rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+  opacity: 0;
+  animation: yolo-chat-sidebar-lift-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+.is-dropping .yolo-chat-sidebar-drag-overlay::after {
+  animation: yolo-chat-sidebar-lift-out var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+@keyframes yolo-chat-sidebar-lift-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes yolo-chat-sidebar-lift-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.yolo-chat-sidebar-drag-overlay-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 拖着项目里的对话悬停在对话列表上：松手移出项目。高亮盖在列表上面，不动
+ * 列表自己的底色（操作区遮罩要和侧边栏底色一致，见 history.css） */
+.yolo-chat-history-drop-zone {
+  position: relative;
+}
+
+.yolo-chat-history-drop-zone.is-drop-target::after {
+  content: '';
+  position: absolute;
+  inset: 0 10px;
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+  pointer-events: none;
+}

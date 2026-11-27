@@ -86,6 +86,7 @@ import { ObsidianIcon } from '../common/ObsidianIcon'
 import { type AgentRef, parseAgentRef } from './agent-picker/agentRef'
 import { useAgentSwitching } from './agent-picker/useAgentSwitching'
 import { AssistantRenderStreamProvider } from './assistant-render-stream-context'
+import { selectProjectConversations } from './chat-history-list'
 import {
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
@@ -121,11 +122,7 @@ import {
 } from './hooks/useMobileViewport'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
-import {
-  ProjectHomeBody,
-  ProjectHomeHeader,
-  selectProjectConversations,
-} from './projects/ProjectHome'
+import { ProjectHomeBody, ProjectHomeHeader } from './projects/ProjectHome'
 import { ProjectSettingsModal } from './projects/ProjectSettingsModal'
 import { useConversationProject } from './projects/useConversationProject'
 import type { QueryProgressState } from './QueryProgress'
@@ -377,6 +374,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     generateConversationTitle,
     setConversationProject,
     clearConversationsProject,
+    setConversationSortKey,
     chatList,
   } = useChatHistory()
   const chatManager = useChatManager()
@@ -1859,6 +1857,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       onOpenProject={openProject}
       onOpenProjectSettings={openProjectSettings}
       onMoveToProject={setConversationProject}
+      onReorderConversation={setConversationSortKey}
       cliRuntimeScope={canUseCliRuntime ? cliRuntimeScope : undefined}
       chatList={chatList}
       currentConversationId={activeHistoryConversationId}

@@ -5,9 +5,9 @@ import type {
 } from 'react'
 
 /**
- * Sensors for settings surfaces where the item itself is the drag source
- * rather than a dedicated handle — the agent and knowledge base cards, and the
- * provider rows.
+ * Sensors for lists where the item itself is the drag source rather than a
+ * dedicated handle — the agent and knowledge base cards and the provider rows
+ * in settings, and the conversations in the chat sidebar.
  *
  * Mouse and touch are deliberately separate. A pointer only has to travel a
  * few pixels to be reading as a drag, but on a touch screen that is the same
@@ -20,13 +20,13 @@ const TOUCH_LONG_PRESS_MS = 250
 const TOUCH_TOLERANCE_PX = 5
 
 // A drag starting on a control nested in the item (a menu trigger, a link)
-// belongs to that control, not to the item.
-const startsOnNestedControl = (event: Event) => {
+// belongs to that control, not to the item. The item itself may be a control
+// (a sidebar conversation is a button), which doesn't count.
+const startsOnNestedControl = (event: ReactMouseEvent | ReactTouchEvent) => {
   const target = event.target as Element | null
-  return (
-    typeof target?.closest === 'function' &&
-    target.closest('button, a, input, textarea, select') !== null
-  )
+  if (typeof target?.closest !== 'function') return false
+  const control = target.closest('button, a, input, textarea, select')
+  return control !== null && control !== event.currentTarget
 }
 
 class ItemMouseSensor extends MouseSensor {
@@ -37,7 +37,7 @@ class ItemMouseSensor extends MouseSensor {
         event: ReactMouseEvent,
         options: Parameters<(typeof MouseSensor.activators)[0]['handler']>[1],
       ) =>
-        !startsOnNestedControl(event.nativeEvent) &&
+        !startsOnNestedControl(event) &&
         MouseSensor.activators[0].handler(event, options),
     },
   ]
@@ -51,7 +51,7 @@ class ItemTouchSensor extends TouchSensor {
         event: ReactTouchEvent,
         options: Parameters<(typeof TouchSensor.activators)[0]['handler']>[1],
       ) =>
-        !startsOnNestedControl(event.nativeEvent) &&
+        !startsOnNestedControl(event) &&
         TouchSensor.activators[0].handler(event, options),
     },
   ]

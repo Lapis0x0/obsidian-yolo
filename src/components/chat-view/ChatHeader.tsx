@@ -1,6 +1,6 @@
 import { ChevronDown, MoreHorizontal, PanelLeft, Plus } from 'lucide-react'
 import { Platform } from 'obsidian'
-import type { CSSProperties, KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -15,7 +15,7 @@ import type { AgentRef } from './agent-picker/agentRef'
 import ContextUsagePopover, {
   type ChatContextUsage,
 } from './ContextUsagePopover'
-import { PROJECT_COLORS, PROJECT_ICONS } from './projects/projectAppearance'
+import { PROJECT_ICONS, projectColorStyle } from './projects/projectAppearance'
 
 /**
  * ChatView 在 Obsidian 原生视图标题栏里留出的两个挂载点：标题区（放面包屑）
@@ -134,11 +134,7 @@ export function ChatHeader({
             <button
               type="button"
               className="yolo-chat-topbar-project"
-              style={
-                {
-                  '--yolo-project-color': project.color ?? PROJECT_COLORS[0],
-                } as CSSProperties
-              }
+              style={projectColorStyle(project.color)}
               onClick={() => onOpenProject(project)}
             >
               <span className="yolo-chat-topbar-project-icon">

@@ -43,6 +43,14 @@ export type ChatConversation = {
    * means "not in a project"; a dangling id (project deleted) reads the same.
    */
   projectId?: string
+  /**
+   * Position in the sidebar's conversation list: larger sorts higher, within
+   * the pinned and the unpinned group separately. The user orders the list by
+   * dragging, so this is set at creation and when dragged, never by activity.
+   * Conversations older than the field get one frozen into the index (see
+   * `ChatManager.listChats`).
+   */
+  sortKey?: number
   // Optional per-conversation overrides (temperature, top_p, stream)
   overrides?: ConversationOverrideSettings | null
   conversationModelId?: string
@@ -78,6 +86,18 @@ export type ChatConversationMetadata = {
   isPinned?: boolean
   pinnedAt?: number
   projectId?: string
+  /** See `ChatConversation.sortKey`; always present once listed. */
+  sortKey?: number
   origin?: ChatConversationOrigin
   cliSession?: ChatConversationCliSession
 }
+
+/**
+ * The sort key a conversation without one is given: its current place in the
+ * list from before the list was user-ordered, when pinned conversations sat by
+ * pin time and the rest by last activity.
+ */
+export const getLegacyChatSortKey = (
+  chat: Pick<ChatConversationMetadata, 'isPinned' | 'pinnedAt' | 'updatedAt'>,
+): number =>
+  chat.isPinned ? (chat.pinnedAt ?? chat.updatedAt) : chat.updatedAt

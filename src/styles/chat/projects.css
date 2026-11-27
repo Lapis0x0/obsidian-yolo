@@ -50,6 +50,46 @@ ul.yolo-chat-sidebar-project-list {
   padding: 0 10px;
 }
 
+/* 展开的项目：项目行连同它的对话合成一张项目色的淡色卡片，一眼看出哪些
+ * 对话属于这个项目。折叠的项目只有图标带颜色，项目多了也不会花 */
+.yolo-chat-sidebar-project-item {
+  border-radius: var(--radius-m);
+}
+
+.yolo-chat-sidebar-project-item.is-expanded {
+  margin-block: 2px;
+  background: color-mix(in srgb, var(--yolo-project-color) 8%, transparent);
+}
+
+/* 卡片的项目行就是卡片的标题，悬停、选中都不再单独加一层底色 */
+.yolo-chat-sidebar-project-item.is-expanded
+  .yolo-chat-sidebar-project:is(:hover, .is-active) {
+  background: transparent;
+}
+
+.yolo-chat-sidebar-project-item.is-expanded
+  button.yolo-chat-sidebar-project-conversation:is(:hover, .is-active) {
+  background: color-mix(in srgb, var(--yolo-project-color) 14%, transparent);
+}
+
+.yolo-chat-sidebar-project-item.is-expanded
+  ul.yolo-chat-sidebar-project-conversations {
+  padding-bottom: 4px;
+}
+
+.yolo-chat-sidebar-project-item.is-expanded
+  ul.yolo-chat-sidebar-project-conversations::before {
+  background: color-mix(in srgb, var(--yolo-project-color) 35%, transparent);
+}
+
+/* 拖着对话悬停：整个项目（展开时是整张卡片）用项目色铺底加描边，松手就
+ * 放进这个项目。见 SidebarConversationDnd.tsx */
+.yolo-chat-sidebar-project-item.is-drop-target {
+  background: color-mix(in srgb, var(--yolo-project-color) 16%, transparent);
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--yolo-project-color) 70%, transparent);
+}
+
 .yolo-chat-sidebar-project {
   position: relative;
   display: flex;

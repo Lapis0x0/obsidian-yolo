@@ -13,6 +13,10 @@ import type { AgentRef } from '../agent-picker/agentRef'
 import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
 
 import { PinnedAgents } from './PinnedAgents'
+import {
+  HistoryDropZone,
+  SidebarConversationDnd,
+} from './SidebarConversationDnd'
 import { SidebarProjects } from './SidebarProjects'
 import type {
   ChatSidebarLayout,
@@ -57,6 +61,8 @@ type ChatSidebarProps = {
   /** 不传项目表示新建 */
   onOpenProjectSettings: (project?: ChatProject) => void
   onMoveToProject: (conversationId: string, projectId: string | null) => unknown
+  /** 拖动排序后写下对话的新位置 */
+  onReorderConversation: (conversationId: string, sortKey: number) => unknown
   handleRef: React.MutableRefObject<ChatSidebarHandle | null>
 }
 
@@ -91,14 +97,17 @@ export function ChatSidebar({
   onOpenProject,
   onOpenProjectSettings,
   onMoveToProject,
+  onReorderConversation,
   handleRef,
 }: ChatSidebarProps) {
   const { t } = useLanguage()
   const app = useApp()
   const asideRef = useRef<HTMLElement | null>(null)
+  const [ownerDocument, setOwnerDocument] = useState<Document | null>(null)
   const setAside = useCallback(
     (element: HTMLElement | null) => {
       asideRef.current = element
+      setOwnerDocument(element?.ownerDocument ?? null)
       registerSidebar(element)
     },
     [registerSidebar],
@@ -278,46 +287,57 @@ export function ChatSidebar({
           />
         </div>
         <div className="yolo-chat-sidebar-scroll yolo-scrollbar-autohide">
-          {historyExclusive ? null : (
-            <SidebarProjects
-              projects={projects ?? []}
-              chatList={chatList}
-              currentConversationId={currentConversationId}
-              currentProjectId={currentProjectId}
-              runSummariesByConversationId={runSummariesByConversationId}
-              onOpenProject={(project) => {
-                onOpenProject(project)
-                closeIfDrawer()
-              }}
-              onCreateProject={() => onOpenProjectSettings()}
-              onMoveToProject={onMoveToProject}
-              onSelectConversation={(conversationId) => {
-                closeIfDrawer()
-                if (conversationId === currentConversationId) return
-                void onSelectConversation(conversationId)
-              }}
-            />
-          )}
-          <ChatHistoryList
+          <SidebarConversationDnd
             chatList={chatList}
-            projects={projects}
+            projects={projects ?? []}
+            ownerDocument={ownerDocument}
             onMoveToProject={onMoveToProject}
-            onExclusiveViewChange={setHistoryExclusive}
-            currentConversationId={currentConversationId}
-            runSummariesByConversationId={runSummariesByConversationId}
-            onSelect={(conversationId) => {
-              closeIfDrawer()
-              if (conversationId === currentConversationId) return
-              return onSelectConversation(conversationId)
-            }}
-            onDelete={onDeleteConversation}
-            onUpdateTitle={onUpdateTitle}
-            onTogglePinned={onTogglePinned}
-            onRetryTitle={onRetryTitle}
-            onExportConversation={onExportConversation}
-            onIdleEscape={isDrawer ? onCloseDrawer : undefined}
-            handleRef={historyHandleRef}
-          />
+            onReorder={onReorderConversation}
+          >
+            {historyExclusive ? null : (
+              <SidebarProjects
+                projects={projects ?? []}
+                chatList={chatList}
+                currentConversationId={currentConversationId}
+                currentProjectId={currentProjectId}
+                runSummariesByConversationId={runSummariesByConversationId}
+                onOpenProject={(project) => {
+                  onOpenProject(project)
+                  closeIfDrawer()
+                }}
+                onCreateProject={() => onOpenProjectSettings()}
+                onMoveToProject={onMoveToProject}
+                onSelectConversation={(conversationId) => {
+                  closeIfDrawer()
+                  if (conversationId === currentConversationId) return
+                  void onSelectConversation(conversationId)
+                }}
+              />
+            )}
+            <HistoryDropZone>
+              <ChatHistoryList
+                chatList={chatList}
+                projects={projects}
+                onMoveToProject={onMoveToProject}
+                sortable
+                onExclusiveViewChange={setHistoryExclusive}
+                currentConversationId={currentConversationId}
+                runSummariesByConversationId={runSummariesByConversationId}
+                onSelect={(conversationId) => {
+                  closeIfDrawer()
+                  if (conversationId === currentConversationId) return
+                  return onSelectConversation(conversationId)
+                }}
+                onDelete={onDeleteConversation}
+                onUpdateTitle={onUpdateTitle}
+                onTogglePinned={onTogglePinned}
+                onRetryTitle={onRetryTitle}
+                onExportConversation={onExportConversation}
+                onIdleEscape={isDrawer ? onCloseDrawer : undefined}
+                handleRef={historyHandleRef}
+              />
+            </HistoryDropZone>
+          </SidebarConversationDnd>
         </div>
         {layout === 'column' ? (
           <div

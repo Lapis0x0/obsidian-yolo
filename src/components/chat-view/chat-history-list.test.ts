@@ -5,6 +5,7 @@ import type {
 
 import {
   captureChatListOrder,
+  getSortKeyAfterMove,
   groupChatHistoryByTime,
   partitionChatHistory,
   sortChatListForDisplay,
@@ -105,7 +106,7 @@ describe('chat list display order', () => {
     ...extra,
   })
 
-  it('keeps the sampled order while conversations keep updating', () => {
+  it('keeps the sampled order of task conversations while they keep updating', () => {
     const initial = [withUpdatedAt('a', 20), withUpdatedAt('b', 10)]
     const snapshot = captureChatListOrder(initial, null)
 
@@ -114,7 +115,7 @@ describe('chat list display order', () => {
     expect(
       sortChatListForDisplay({
         chatList: running,
-        section: 'user',
+        section: 'task',
         orderSnapshot: snapshot,
       }).map((chat) => chat.id),
     ).toEqual(['a', 'b'])
@@ -122,10 +123,41 @@ describe('chat list display order', () => {
     expect(
       sortChatListForDisplay({
         chatList: running,
+        section: 'task',
+        orderSnapshot: null,
+      }).map((chat) => chat.id),
+    ).toEqual(['b', 'a'])
+  })
+
+  it('orders user conversations by sort key, not by activity', () => {
+    const chats = [
+      withUpdatedAt('a', 99, { sortKey: 1 }),
+      withUpdatedAt('b', 10, { sortKey: 2 }),
+    ]
+    expect(
+      sortChatListForDisplay({
+        chatList: chats,
         section: 'user',
         orderSnapshot: null,
       }).map((chat) => chat.id),
     ).toEqual(['b', 'a'])
+  })
+
+  it('places a conversation without a sort key where it sat before', () => {
+    // 没有 sortKey 的旧对话：置顶的按置顶时间，其余按最后活动时间
+    const chats = [
+      withUpdatedAt('old', 15),
+      withUpdatedAt('new', 10, { sortKey: 20 }),
+      withUpdatedAt('pin-old', 5, { isPinned: true, pinnedAt: 30 }),
+      withUpdatedAt('pin-new', 5, { isPinned: true, sortKey: 40 }),
+    ]
+    expect(
+      sortChatListForDisplay({
+        chatList: chats,
+        section: 'user',
+        orderSnapshot: null,
+      }).map((chat) => chat.id),
+    ).toEqual(['pin-new', 'pin-old', 'new', 'old'])
   })
 
   it('samples newly seen conversations once and leaves the rest untouched', () => {
@@ -142,21 +174,51 @@ describe('chat list display order', () => {
     )
   })
 
-  it('still reorders immediately when the user pins a conversation', () => {
-    const chats = [withUpdatedAt('a', 20), withUpdatedAt('b', 10)]
-    const snapshot = captureChatListOrder(chats, null)
-    const pinned = [
-      withUpdatedAt('a', 20),
-      withUpdatedAt('b', 10, { isPinned: true, pinnedAt: 50 }),
+  it('puts pinned conversations first', () => {
+    const chats = [
+      withUpdatedAt('a', 20, { sortKey: 20 }),
+      withUpdatedAt('b', 10, { isPinned: true, sortKey: 10 }),
     ]
-
     expect(
       sortChatListForDisplay({
-        chatList: pinned,
+        chatList: chats,
         section: 'user',
-        orderSnapshot: snapshot,
+        orderSnapshot: null,
       }).map((chat) => chat.id),
     ).toEqual(['b', 'a'])
+  })
+})
+
+describe('getSortKeyAfterMove', () => {
+  const keyed = (id: string, sortKey: number): ChatConversationMetadata => ({
+    id,
+    title: id,
+    updatedAt: 0,
+    schemaVersion: 1,
+    sortKey,
+  })
+  // 显示顺序：sortKey 从大到小
+  const list = [keyed('a', 40), keyed('b', 30), keyed('c', 20), keyed('d', 10)]
+  const reorder = (fromIndex: number, toIndex: number) => {
+    const sortKey = getSortKeyAfterMove(list, fromIndex, toIndex)
+    const moved = list.map((chat, index) =>
+      index === fromIndex ? { ...chat, sortKey } : chat,
+    )
+    return sortChatListForDisplay({
+      chatList: moved,
+      section: 'user',
+      orderSnapshot: null,
+    }).map((chat) => chat.id)
+  }
+
+  it('lands where it was dropped, like arrayMove', () => {
+    expect(reorder(3, 1)).toEqual(['a', 'd', 'b', 'c'])
+    expect(reorder(0, 2)).toEqual(['b', 'c', 'a', 'd'])
+  })
+
+  it('moves to either end', () => {
+    expect(reorder(2, 0)).toEqual(['c', 'a', 'b', 'd'])
+    expect(reorder(1, 3)).toEqual(['a', 'c', 'd', 'b'])
   })
 })
 
@@ -177,15 +239,11 @@ describe('groupChatHistoryByTime', () => {
     isPinned,
   })
 
-  it('marks only the first conversation of each calendar group', () => {
+  it('splits user conversations only into pinned and the rest', () => {
     const starts = groupChatHistoryByTime({
       chatList: [
         item('pinned', at(2026, 1, 1), true),
-        item('today-1', at(2026, 11, 22, 9)),
-        item('today-2', at(2026, 11, 22, 0)),
-        item('yesterday', at(2026, 11, 21, 23)),
-        item('week', at(2026, 11, 16)),
-        item('month', at(2026, 11, 1)),
+        item('today', at(2026, 11, 22, 9)),
         item('older', at(2026, 9, 1)),
       ],
       section: 'user',
@@ -194,6 +252,36 @@ describe('groupChatHistoryByTime', () => {
     })
     expect([...starts.entries()]).toEqual([
       ['pinned', 'pinned'],
+      ['today', 'conversations'],
+    ])
+  })
+
+  it('titles user conversations even when none is pinned', () => {
+    // 不标题的话，对话列表直接接在侧边栏的项目下面，看着像项目的一部分
+    const starts = groupChatHistoryByTime({
+      chatList: [item('today', at(2026, 11, 22, 9))],
+      section: 'user',
+      orderSnapshot: null,
+      now,
+    })
+    expect([...starts.entries()]).toEqual([['today', 'conversations']])
+  })
+
+  it('marks only the first task conversation of each calendar group', () => {
+    const starts = groupChatHistoryByTime({
+      chatList: [
+        item('today-1', at(2026, 11, 22, 9)),
+        item('today-2', at(2026, 11, 22, 0)),
+        item('yesterday', at(2026, 11, 21, 23)),
+        item('week', at(2026, 11, 16)),
+        item('month', at(2026, 11, 1)),
+        item('older', at(2026, 9, 1)),
+      ],
+      section: 'task',
+      orderSnapshot: null,
+      now,
+    })
+    expect([...starts.entries()]).toEqual([
       ['today-1', 'today'],
       ['yesterday', 'yesterday'],
       ['week', 'week'],
@@ -215,7 +303,7 @@ describe('groupChatHistoryByTime', () => {
   it('groups by the frozen order time while the list is being browsed', () => {
     const starts = groupChatHistoryByTime({
       chatList: [item('ran-just-now', at(2026, 11, 22))],
-      section: 'user',
+      section: 'task',
       orderSnapshot: new Map([['ran-just-now', at(2026, 11, 20)]]),
       now,
     })

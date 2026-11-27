@@ -7,10 +7,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import type { AgentConversationRunSummary } from '../../../core/agent/service'
 import { resolveMemoryIndexPaths } from '../../../core/memory/memoryStore'
-import {
-  type ChatConversationMetadata,
-  getChatConversationOrigin,
-} from '../../../database/json/chat/types'
+import type { ChatConversationMetadata } from '../../../database/json/chat/types'
 import type { ChatProject } from '../../../types/project.types'
 import { getConversationDisplayTitle } from '../../../utils/chat/conversationTitle'
 import { ObsidianIcon } from '../../common/ObsidianIcon'
@@ -23,7 +20,7 @@ import {
 import { collectScopeCandidateFiles } from '../../settings/scope/scopeVault'
 import { ChatRuntimeBadge } from '../ChatHistoryList'
 
-import { PROJECT_COLORS, PROJECT_ICONS } from './projectAppearance'
+import { PROJECT_ICONS, projectColorStyle } from './projectAppearance'
 import { useExistingInstructionFiles } from './ProjectSettingsModal'
 
 /** 项目指令预览只取开头几行，右栏卡片里放不下更多 */
@@ -31,31 +28,14 @@ const INSTRUCTION_PREVIEW_LINES = 8
 /** 项目记忆卡片列出的条目数 */
 const MEMORY_PREVIEW_ENTRIES = 3
 
-const projectColorStyle = (project: ChatProject) =>
-  ({
-    '--yolo-project-color': project.color ?? PROJECT_COLORS[0],
-  }) as React.CSSProperties
-
 type ProjectHomeData = {
   project: ChatProject
-  /** 该项目的对话，按最近活动倒序 */
+  /** 该项目的对话，按用户排的顺序 */
   conversations: readonly ChatConversationMetadata[]
   runSummariesByConversationId: Map<string, AgentConversationRunSummary>
   onSelectConversation: (conversationId: string) => void
   onOpenSettings: () => void
 }
-
-export const selectProjectConversations = (
-  chatList: readonly ChatConversationMetadata[],
-  projectId: string,
-): ChatConversationMetadata[] =>
-  chatList
-    .filter(
-      (chat) =>
-        chat.projectId === projectId &&
-        getChatConversationOrigin(chat) === 'user',
-    )
-    .sort((a, b) => b.updatedAt - a.updatedAt)
 
 function useRelativeTime() {
   const { t, language } = useLanguage()
@@ -167,7 +147,7 @@ export function ProjectHomeHeader({
   return (
     <div
       className="yolo-project-home-header"
-      style={projectColorStyle(project)}
+      style={projectColorStyle(project.color)}
     >
       <span className="yolo-project-home-icon">
         <ObsidianIcon name={project.icon ?? PROJECT_ICONS[0]} />
@@ -481,7 +461,10 @@ export function ProjectHomeBody({
   onSelectConversation,
 }: Omit<ProjectHomeData, 'onOpenSettings'>) {
   return (
-    <div className="yolo-project-home-body" style={projectColorStyle(project)}>
+    <div
+      className="yolo-project-home-body"
+      style={projectColorStyle(project.color)}
+    >
       <ConversationList
         conversations={conversations}
         runSummariesByConversationId={runSummariesByConversationId}

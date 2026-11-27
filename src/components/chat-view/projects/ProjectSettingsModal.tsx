@@ -30,7 +30,13 @@ import { collectScopeCandidateFiles } from '../../settings/scope/scopeVault'
 import { AgentPicker, useAgentDisplay } from '../agent-picker/AgentPicker'
 import { parseAgentRef, serializeAgentRef } from '../agent-picker/agentRef'
 
-import { PROJECT_COLORS, PROJECT_ICONS } from './projectAppearance'
+import {
+  PROJECT_COLORS,
+  PROJECT_COLOR_IDS,
+  PROJECT_ICONS,
+  getProjectColorId,
+  projectColorStyle,
+} from './projectAppearance'
 
 type ProjectFormProps = {
   /** 编辑时传入；新建时不传 */
@@ -205,7 +211,7 @@ function ProjectForm({
   const app = useApp()
   const [name, setName] = useState(project?.name ?? '')
   const [icon, setIcon] = useState(project?.icon ?? PROJECT_ICONS[0])
-  const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0])
+  const [color, setColor] = useState(getProjectColorId(project?.color))
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [workspaceScope, setWorkspaceScope] = useState<
     ChatProject['workspaceScope']
@@ -213,7 +219,6 @@ function ProjectForm({
   const [defaultAgent, setDefaultAgent] = useState(project?.defaultAgent)
   const instructionFiles = useExistingInstructionFiles(app, workspaceScope)
   const trimmedName = name.trim()
-  const colorStyle = { '--yolo-project-color': color } as React.CSSProperties
 
   const save = () => {
     if (!trimmedName) return
@@ -245,7 +250,7 @@ function ProjectForm({
   }
 
   return (
-    <div className="yolo-project-form" style={colorStyle}>
+    <div className="yolo-project-form" style={projectColorStyle(color)}>
       <div className="yolo-project-form-identity">
         <div className="yolo-project-form-name-row">
           <button
@@ -290,14 +295,14 @@ function ProjectForm({
           </div>
         ) : null}
         <div className="yolo-project-form-swatches">
-          {PROJECT_COLORS.map((item) => (
+          {PROJECT_COLOR_IDS.map((item) => (
             <button
               key={item}
               type="button"
               className={`yolo-project-color-option${item === color ? ' is-selected' : ''}`}
-              style={{ '--yolo-project-color': item } as React.CSSProperties}
+              style={projectColorStyle(item)}
               aria-pressed={item === color}
-              aria-label={item}
+              aria-label={t(`chat.projects.colors.${item}`, item)}
               onClick={() => setColor(item)}
             />
           ))}
@@ -310,7 +315,7 @@ function ProjectForm({
         </span>
         <WorkspaceCard
           value={workspaceScope}
-          color={color}
+          color={PROJECT_COLORS[color]}
           onChange={setWorkspaceScope}
         />
       </div>

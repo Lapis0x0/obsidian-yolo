@@ -113,6 +113,11 @@ type UseChatHistory = {
   ) => Promise<boolean>
   /** 删除项目时调用：清掉所有属于它的对话的 projectId，对话回到「最近」。 */
   clearConversationsProject: (projectId: string) => Promise<void>
+  /**
+   * 在侧边栏里拖动排序后，写下对话的新位置（见 `ChatConversation.sortKey`）。
+   * 同样不动 updatedAt。
+   */
+  setConversationSortKey: (id: string, sortKey: number) => Promise<void>
   generateConversationTitle: (
     id: string,
     messages: ChatMessage[],
@@ -529,24 +534,28 @@ export function useChatHistory(): UseChatHistory {
         throw new Error('Conversation not found')
       }
       const isPinned = !conversation.isPinned
-      const pinnedAt = isPinned ? Date.now() : undefined
-      setChatList((prev) => {
-        const now = Date.now()
-        return prev.map((chat) =>
+      const now = Date.now()
+      const pinnedAt = isPinned ? now : undefined
+      // 置顶和取消置顶都落到新所在那一组的最上面
+      const sortKey = now
+      setChatList((prev) =>
+        prev.map((chat) =>
           chat.id === id
             ? {
                 ...chat,
                 isPinned,
                 pinnedAt,
+                sortKey,
                 updatedAt: now,
               }
             : chat,
-        )
-      })
+        ),
+      )
       try {
         await chatManager.updateChat(conversation.id, {
           isPinned,
           pinnedAt,
+          sortKey,
         })
       } finally {
         emitChatHistoryUpdated()
@@ -561,6 +570,14 @@ export function useChatHistory(): UseChatHistory {
       const conversation = await chatManager.findById(id)
       if (!conversation) return false
       if ((conversation.projectId ?? null) === projectId) return true
+      // 先改列表：拖进项目时，对话应当在松手的同时离开原来的列表
+      setChatList((prev) =>
+        prev.map((chat) =>
+          chat.id === id
+            ? { ...chat, projectId: projectId ?? undefined }
+            : chat,
+        ),
+      )
       await chatManager.updateChat(
         id,
         { projectId: projectId ?? undefined },
@@ -569,6 +586,21 @@ export function useChatHistory(): UseChatHistory {
       emitChatHistoryUpdated()
       await fetchChatList()
       return true
+    },
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
+  )
+
+  const setConversationSortKey = useCallback(
+    async (id: string, sortKey: number): Promise<void> => {
+      setChatList((prev) =>
+        prev.map((chat) => (chat.id === id ? { ...chat, sortKey } : chat)),
+      )
+      try {
+        await chatManager.updateChat(id, { sortKey }, { touchUpdatedAt: false })
+      } finally {
+        emitChatHistoryUpdated()
+        await fetchChatList()
+      }
     },
     [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
@@ -741,6 +773,7 @@ export function useChatHistory(): UseChatHistory {
     toggleConversationPinned,
     setConversationProject,
     clearConversationsProject,
+    setConversationSortKey,
     generateConversationTitle,
     chatList,
   }

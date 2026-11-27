@@ -35,9 +35,9 @@ import {
   MOTION_DURATION_ENTER_S,
   MOTION_EASE_OUT_CSS,
 } from '../../../styles/tokens/motion'
+import { useSortableDragSensors } from '../../common/useSortableDragSensors'
 
 import { useOptimisticOrder } from './useOptimisticOrder'
-import { useSortableDragSensors } from './useSortableDragSensors'
 
 /**
  * Card grid whose cards reorder by dragging the card itself — no handle.

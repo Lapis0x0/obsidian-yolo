@@ -111,6 +111,7 @@ export type TranslationKeys = {
       }
       groups?: {
         pinned?: string
+        conversations?: string
         today?: string
         yesterday?: string
         week?: string
@@ -1585,6 +1586,16 @@ export type TranslationKeys = {
       excluded?: string
       accessibleFiles?: string
       chooseIcon?: string
+      colors?: {
+        blue?: string
+        violet?: string
+        teal?: string
+        green?: string
+        amber?: string
+        terracotta?: string
+        rose?: string
+        slate?: string
+      }
       noDefaultAgent?: string
       instructionsExists?: string
       open?: string

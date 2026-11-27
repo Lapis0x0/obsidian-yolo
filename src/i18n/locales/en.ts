@@ -102,6 +102,7 @@ export const en: TranslationKeys = {
       },
       groups: {
         pinned: 'Pinned',
+        conversations: 'Chats',
         today: 'Today',
         yesterday: 'Yesterday',
         week: 'Previous 7 days',
@@ -1850,6 +1851,16 @@ export const en: TranslationKeys = {
       excluded: 'Excluded',
       accessibleFiles: '{matched} / {total} files accessible',
       chooseIcon: 'Choose icon',
+      colors: {
+        blue: 'Blue',
+        violet: 'Violet',
+        teal: 'Teal',
+        green: 'Green',
+        amber: 'Amber',
+        terracotta: 'Terracotta',
+        rose: 'Rose',
+        slate: 'Slate',
+      },
       noDefaultAgent: 'Not set',
       instructionsExists:
         'Exists · every conversation in this project reads it',

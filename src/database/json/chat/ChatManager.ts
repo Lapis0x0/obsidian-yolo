@@ -16,6 +16,7 @@ import {
   ChatConversation,
   ChatConversationMetadata,
   getChatConversationOrigin,
+  getLegacyChatSortKey,
 } from './types'
 
 export class ChatManager extends AbstractJsonRepository<
@@ -111,6 +112,8 @@ export class ChatManager extends AbstractJsonRepository<
       messages: [],
       createdAt: now,
       updatedAt: now,
+      // New conversations go to the top of the list
+      sortKey: now,
       schemaVersion: CHAT_SCHEMA_VERSION,
       ...initialData,
       origin: getChatConversationOrigin(initialData),
@@ -220,6 +223,14 @@ export class ChatManager extends AbstractJsonRepository<
           return this.toMetadata(conversation ?? meta)
         }),
       ),
+    ).map((entry) =>
+      // A conversation from before the list was user-ordered keeps the place
+      // it has now. Frozen into the index only: its file gets a key the first
+      // time it is dragged, and upsertIndex carries the frozen one over until
+      // then.
+      entry.sortKey === undefined
+        ? { ...entry, sortKey: getLegacyChatSortKey(entry) }
+        : entry,
     )
 
     await this.writeIndexIfChanged(cachedList, reconciled)
@@ -294,7 +305,12 @@ export class ChatManager extends AbstractJsonRepository<
     source: Pick<
       ChatConversation,
       'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin' | 'cliSession'
-    > & { isPinned?: boolean; pinnedAt?: number; projectId?: string },
+    > & {
+      isPinned?: boolean
+      pinnedAt?: number
+      projectId?: string
+      sortKey?: number
+    },
   ): ChatConversationMetadata {
     return {
       id: source.id,
@@ -304,6 +320,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: source.isPinned ?? false,
       pinnedAt: source.pinnedAt,
       projectId: source.projectId,
+      sortKey: source.sortKey,
       origin: getChatConversationOrigin(source),
       cliSession: source.cliSession,
     }
@@ -368,6 +385,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: chat.isPinned ?? false,
       pinnedAt: chat.pinnedAt,
       projectId: chat.projectId,
+      sortKey: chat.sortKey ?? normalized[targetIndex]?.sortKey,
       origin: getChatConversationOrigin(chat),
       cliSession: chat.cliSession,
     }

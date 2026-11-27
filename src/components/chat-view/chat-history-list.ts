@@ -2,6 +2,7 @@ import {
   type ChatConversationMetadata,
   type ChatConversationOrigin,
   getChatConversationOrigin,
+  getLegacyChatSortKey,
 } from '../../database/json/chat/types'
 
 export type ChatHistorySection = 'user' | 'task'
@@ -9,9 +10,10 @@ export type TaskConversationOrigin = Exclude<ChatConversationOrigin, 'user'>
 export type TaskOriginFilter = 'all' | TaskConversationOrigin
 
 /**
- * 会话的 `updatedAt` 会随 agent 运行持续刷新，直接用它实时排序会让并行运行的
- * 多个会话在面板打开期间反复换位。快照把每个会话的排序时间固定在它进入当前
- * 这次浏览时的取值，排序因此只在面板重新打开时更新。
+ * 任务对话按活动时间排。会话的 `updatedAt` 会随 agent 运行持续刷新，直接用它
+ * 实时排序会让并行运行的多个会话在面板打开期间反复换位。快照把每个会话的排序
+ * 时间固定在它进入当前这次浏览时的取值，排序因此只在面板重新打开时更新。
+ * 用户自己的对话由用户拖动排序（`sortKey`），用不到快照。
  */
 export type ChatListOrderSnapshot = ReadonlyMap<string, number>
 
@@ -42,25 +44,62 @@ export function sortChatListForDisplay({
   orderSnapshot: ChatListOrderSnapshot | null
 }): ChatConversationMetadata[] {
   if (chatList.length === 0) return chatList
-  const canPin = section === 'user'
+  if (section === 'user') return sortUserChatList(chatList)
   const recencyOf = (chat: ChatConversationMetadata) =>
     orderSnapshot?.get(chat.id) ?? chat.updatedAt
+  return [...chatList].sort((a, b) => recencyOf(b) - recencyOf(a))
+}
+
+export const getChatSortKey = (chat: ChatConversationMetadata): number =>
+  chat.sortKey ?? getLegacyChatSortKey(chat)
+
+/** 项目里的对话，按用户拖出来的顺序（项目里不分置顶） */
+export const selectProjectConversations = (
+  chatList: readonly ChatConversationMetadata[],
+  projectId: string,
+): ChatConversationMetadata[] =>
+  chatList
+    .filter(
+      (chat) =>
+        chat.projectId === projectId &&
+        getChatConversationOrigin(chat) === 'user',
+    )
+    .sort(
+      (a, b) =>
+        getChatSortKey(b) - getChatSortKey(a) || a.id.localeCompare(b.id),
+    )
+
+/** 用户自己的对话：置顶的在前，两组各自按用户拖出来的顺序 */
+export function sortUserChatList<T extends ChatConversationMetadata>(
+  chatList: readonly T[],
+): T[] {
   return [...chatList].sort((a, b) => {
-    // 置顶由用户主动触发，允许立即重排，因此不进入快照。
-    const aPinned = canPin && a.isPinned ? 1 : 0
-    const bPinned = canPin && b.isPinned ? 1 : 0
-    if (aPinned !== bPinned) {
-      return bPinned - aPinned
-    }
-    if (aPinned && bPinned) {
-      const aPinnedAt = a.pinnedAt ?? 0
-      const bPinnedAt = b.pinnedAt ?? 0
-      if (aPinnedAt !== bPinnedAt) {
-        return bPinnedAt - aPinnedAt
-      }
-    }
-    return recencyOf(b) - recencyOf(a)
+    const aPinned = a.isPinned ? 1 : 0
+    const bPinned = b.isPinned ? 1 : 0
+    if (aPinned !== bPinned) return bPinned - aPinned
+    return getChatSortKey(b) - getChatSortKey(a) || a.id.localeCompare(b.id)
   })
+}
+
+/**
+ * 把 `list` 里的一项从 `fromIndex` 拖到 `toIndex` 之后，它的新 sortKey：取落位后
+ * 上下两个邻居的中间值，只改被拖的这一项。`list` 是它所在那一组的完整列表
+ * （没折叠、没截断），按显示顺序排好，即 sortKey 从大到小。
+ */
+export function getSortKeyAfterMove(
+  list: readonly ChatConversationMetadata[],
+  fromIndex: number,
+  toIndex: number,
+): number {
+  const rest = list.filter((_, index) => index !== fromIndex)
+  const above = rest[toIndex - 1]
+  const below = rest[toIndex]
+  if (above && below) {
+    return (getChatSortKey(above) + getChatSortKey(below)) / 2
+  }
+  if (above) return getChatSortKey(above) - 1
+  if (below) return getChatSortKey(below) + 1
+  return getChatSortKey(list[fromIndex])
 }
 
 export function partitionChatHistory({
@@ -128,6 +167,8 @@ export function partitionChatHistory({
 
 export type ChatHistoryTimeGroup =
   | 'pinned'
+  /** 用户对话里置顶之外的其余对话 */
+  | 'conversations'
   | 'today'
   | 'yesterday'
   | 'week'
@@ -137,7 +178,10 @@ export type ChatHistoryTimeGroup =
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * 给按显示顺序排好的列表标出每个时间分组的第一条。只记分组起点，分组标题因此
+ * 给按显示顺序排好的列表标出每个分组的第一条。用户对话由用户排序，只分置顶
+ * 和其余两组；任务对话按时间分组。
+ *
+ * 以下说的是任务对话：标出每个时间分组的第一条。只记分组起点，分组标题因此
  * 能插在同一个扁平列表里，不打断删除 / 置顶补位用的连续索引。
  *
  * 时间按本地日历日算：「今天」从本地零点起，「前 7 天」「前 30 天」从今天零点往前
@@ -159,7 +203,7 @@ export function groupChatHistoryByTime({
   startOfToday.setHours(0, 0, 0, 0)
   const today = startOfToday.getTime()
   const groupOf = (chat: ChatConversationMetadata): ChatHistoryTimeGroup => {
-    if (section === 'user' && chat.isPinned) return 'pinned'
+    if (section === 'user') return chat.isPinned ? 'pinned' : 'conversations'
     const time = orderSnapshot?.get(chat.id) ?? chat.updatedAt
     if (time >= today) return 'today'
     if (time >= today - DAY_MS) return 'yesterday'

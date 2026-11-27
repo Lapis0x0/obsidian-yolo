@@ -20,6 +20,20 @@ jest.mock('react', () => {
   }
 })
 
+// 同理，拖动排序不在断言范围内：useSortable 需要 dnd-kit 的上下文，退化成
+// 不可拖动的空实现
+jest.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: unknown }) => children,
+  useSortable: () => ({
+    setNodeRef: () => undefined,
+    listeners: undefined,
+    transform: null,
+    transition: undefined,
+    isDragging: false,
+  }),
+  verticalListSortingStrategy: () => null,
+}))
+
 // 这些用例把 ChatListItem 当普通函数调用，拿不到 framer-motion 需要的 React
 // dispatcher；动效不在断言范围内，直接退化成原生标签即可。
 jest.mock('framer-motion', () => ({
@@ -282,8 +296,8 @@ describe('ChatHistoryList', () => {
     expect(deleteButtonTag).not.toContain('tabindex')
   })
 
-  // issue #567：点击误触治理。选中会话是靠 motion.li 的 onMouseDown
-  // 触发的（不是 onClick），所以每个操作图标点击不得冒泡到条目本身——断言的
+  // issue #567：点击误触治理。选中会话是靠 motion.li 的 onClick 触发的，
+  // 所以每个操作图标点击不得冒泡到条目本身——断言的
   // 落点是「点完操作图标之后 onSelect 没被调过」，而不是检查某个内部布尔值。
   // 覆盖面是行内剩下的两个按钮：删除与 ⋯。
   describe('action icon clicks do not select the row or leak past the actions area', () => {
@@ -313,7 +327,7 @@ describe('ChatHistoryList', () => {
       return { rendered: renderRow(row), mocks }
     }
 
-    it('stops mousedown at the actions container before it can reach the row', () => {
+    it('stops clicks at the actions container before they can reach the row', () => {
       const { rendered, mocks } = buildRow()
       const actions = findDivByClass(
         rendered,
@@ -322,8 +336,8 @@ describe('ChatHistoryList', () => {
       expect(actions).toBeDefined()
       const stopPropagation = jest.fn()
       ;(
-        actions?.props as { onMouseDown?: (e: unknown) => void } | undefined
-      )?.onMouseDown?.({ stopPropagation })
+        actions?.props as { onClick?: (e: unknown) => void } | undefined
+      )?.onClick?.({ stopPropagation })
       expect(stopPropagation).toHaveBeenCalledTimes(1)
       expect(mocks.onSelect).not.toHaveBeenCalled()
     })
