@@ -29,6 +29,13 @@
   font-size: var(--yolo-font-ui);
 }
 
+/* 关掉浏览器的滚动锚定：滚到底时展开 Hermes，浏览器会以下方某一行为锚点
+ * 自动往下滚，把刚点的 Hermes 行顶上去。关掉后点的那一行原地不动，profile
+ * 在它下面展开 */
+.yolo-agent-picker .yolo-assistant-selector-list {
+  overflow-anchor: none;
+}
+
 .yolo-agent-picker li.yolo-agent-picker-group {
   padding: var(--size-4-2) var(--size-4-2) var(--size-2-1);
   color: var(--text-faint);
@@ -130,7 +137,7 @@ button.yolo-agent-picker-pin.is-disabled {
 /* 不占位：编辑按钮排在图钉左边，悬停时才出现，图钉始终贴右不动 */
 .yolo-assistant-selector-item:not(:hover):not(:focus-within)
   .yolo-assistant-selector-item-actions
-  > :not(.is-pinned) {
+  > :not(.is-pinned, .yolo-agent-picker-expand) {
   display: none !important;
 }
 
@@ -146,6 +153,12 @@ button.yolo-agent-picker-pin.is-disabled {
 .yolo-assistant-selector-item:not(:hover):not(:focus-within)
   .yolo-agent-picker-pin-action {
   display: none;
+}
+
+/* Hermes 行尾的展开箭头常显，不然看不出这一行能展开 */
+.yolo-assistant-selector-item:has(.yolo-agent-picker-expand)
+  .yolo-assistant-selector-item-actions {
+  opacity: 1;
 }
 
 .yolo-agent-picker-expand {

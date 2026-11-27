@@ -144,11 +144,6 @@ export function AgentPicker({
   const assistants = (settings.assistants ?? []).filter((assistant) =>
     matches(assistant.name),
   )
-  const cliRows = cliRuntimeScope
-    ? CLI_RUNTIME_DESCRIPTORS.filter((descriptor) =>
-        matches(t(descriptor.labelKey, descriptor.defaultLabel)),
-      )
-    : []
   const hermesProfileRows =
     hermesProfiles.length > 1
       ? hermesProfiles.filter(
@@ -157,6 +152,14 @@ export function AgentPicker({
             matches(t('sidebar.runtimeSelector.hermesLabel', 'Hermes')),
         )
       : []
+  // 搜到某个 Hermes profile 时，它所在的 Hermes 行也要留着，profile 挂在它下面
+  const cliRows = cliRuntimeScope
+    ? CLI_RUNTIME_DESCRIPTORS.filter(
+        (descriptor) =>
+          matches(t(descriptor.labelKey, descriptor.defaultLabel)) ||
+          (descriptor.id === 'hermes' && hermesProfileRows.length > 0),
+      )
+    : []
   // 搜索时 profile 命中就自动展开，不用再点一下
   const showHermesProfiles =
     hermesProfileRows.length > 0 && (hermesExpanded || normalizedQuery !== '')
@@ -374,7 +377,7 @@ export function AgentPicker({
               ),
             })
           })}
-          {cliRows.length > 0 || hermesProfileRows.length > 0 ? (
+          {cliRows.length > 0 ? (
             <li className="yolo-agent-picker-group" aria-hidden="true">
               {t('chat.agentPicker.cliGroup', 'CLI')}
             </li>
@@ -438,33 +441,32 @@ export function AgentPicker({
                   />
                 ),
               }),
+              // 展开的 profile 紧跟在 Hermes 行下面
+              ...(showHermesProfiles
+                ? hermesProfileRows.map((profile) => {
+                    const ref: AgentRef = {
+                      kind: 'hermes',
+                      profileId:
+                        profile.id === DEFAULT_HERMES_PROFILE_ID
+                          ? undefined
+                          : profile.id,
+                    }
+                    return renderRow({
+                      key: serializeAgentRef(ref),
+                      ref,
+                      name: `${hermesLabel} · ${profile.displayName}`,
+                      icon: <Bot size={14} />,
+                      meta: profile.model
+                        ? renderMeta(toModelLabel(profile.model))
+                        : undefined,
+                      onSelect: () => pick(ref),
+                      nested: true,
+                    })
+                  })
+                : []),
             ]
           })}
-          {showHermesProfiles
-            ? hermesProfileRows.map((profile) => {
-                const ref: AgentRef = {
-                  kind: 'hermes',
-                  profileId:
-                    profile.id === DEFAULT_HERMES_PROFILE_ID
-                      ? undefined
-                      : profile.id,
-                }
-                return renderRow({
-                  key: serializeAgentRef(ref),
-                  ref,
-                  name: `${hermesLabel} · ${profile.displayName}`,
-                  icon: <Bot size={14} />,
-                  meta: profile.model
-                    ? renderMeta(toModelLabel(profile.model))
-                    : undefined,
-                  onSelect: () => pick(ref),
-                  nested: true,
-                })
-              })
-            : null}
-          {assistants.length === 0 &&
-          cliRows.length === 0 &&
-          hermesProfileRows.length === 0 ? (
+          {assistants.length === 0 && cliRows.length === 0 ? (
             <li className="yolo-agent-picker-empty">
               {t('common.noResults', 'No matches found')}
             </li>
