@@ -31,11 +31,12 @@ import { AgentPicker, useAgentDisplay } from '../agent-picker/AgentPicker'
 import { parseAgentRef, serializeAgentRef } from '../agent-picker/agentRef'
 
 import {
-  PROJECT_COLORS,
   PROJECT_COLOR_IDS,
   PROJECT_ICONS,
-  getProjectColorId,
+  isCustomProjectColor,
+  normalizeProjectColor,
   projectColorStyle,
+  resolveProjectColor,
 } from './projectAppearance'
 
 type ProjectFormProps = {
@@ -211,7 +212,8 @@ function ProjectForm({
   const app = useApp()
   const [name, setName] = useState(project?.name ?? '')
   const [icon, setIcon] = useState(project?.icon ?? PROJECT_ICONS[0])
-  const [color, setColor] = useState(getProjectColorId(project?.color))
+  const [color, setColor] = useState(normalizeProjectColor(project?.color))
+  const customColor = isCustomProjectColor(color)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [workspaceScope, setWorkspaceScope] = useState<
     ChatProject['workspaceScope']
@@ -306,6 +308,20 @@ function ProjectForm({
               onClick={() => setColor(item)}
             />
           ))}
+          {/* 自选颜色：系统取色器。选过之后这一格显示选中的颜色 */}
+          <label
+            className={`yolo-project-color-option yolo-project-color-custom${
+              customColor ? ' is-selected' : ''
+            }`}
+            style={customColor ? projectColorStyle(color) : undefined}
+            aria-label={t('chat.projects.customColor', 'Custom color')}
+          >
+            <input
+              type="color"
+              value={resolveProjectColor(color)}
+              onChange={(event) => setColor(event.target.value)}
+            />
+          </label>
         </div>
       </div>
 
@@ -315,7 +331,7 @@ function ProjectForm({
         </span>
         <WorkspaceCard
           value={workspaceScope}
-          color={PROJECT_COLORS[color]}
+          color={resolveProjectColor(color)}
           onChange={setWorkspaceScope}
         />
       </div>

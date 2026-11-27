@@ -1761,6 +1761,7 @@ export const zh: TranslationKeys = {
       excluded: '排除',
       accessibleFiles: '可访问 {matched} / {total} 个文件',
       chooseIcon: '选择图标',
+      customColor: '自定义颜色',
       colors: {
         blue: '蓝',
         violet: '紫',

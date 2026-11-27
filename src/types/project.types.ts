@@ -17,7 +17,7 @@ export const chatProjectSchema = z.object({
   name: z.string(),
   /** lucide 图标名 */
   icon: z.string().optional(),
-  /** 颜色名（见 projectAppearance.ts 的 PROJECT_COLORS），不是色值 */
+  /** 色板里的颜色名，或用户自选的 `#rrggbb`（见 projectAppearance.ts） */
   color: z.string().optional(),
   workspaceScope: assistantWorkspaceScopeSchema,
   /** 序列化的 AgentRef（见 agent-picker/agentRef.ts）；不设则沿用当前 Agent */

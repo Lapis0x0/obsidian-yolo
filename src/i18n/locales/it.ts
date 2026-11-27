@@ -1709,6 +1709,7 @@ export const it: DeepPartial<TranslationKeys> = {
       excluded: 'Escluso',
       accessibleFiles: '{matched} / {total} file accessibili',
       chooseIcon: 'Scegli icona',
+      customColor: 'Colore personalizzato',
       colors: {
         blue: 'Blu',
         violet: 'Viola',

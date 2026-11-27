@@ -1586,6 +1586,7 @@ export type TranslationKeys = {
       excluded?: string
       accessibleFiles?: string
       chooseIcon?: string
+      customColor?: string
       colors?: {
         blue?: string
         violet?: string

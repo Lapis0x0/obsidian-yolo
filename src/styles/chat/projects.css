@@ -829,17 +829,52 @@ button.yolo-project-icon-option svg {
   height: 16px;
 }
 
-button.yolo-project-color-option {
+/* 色板是按钮、自选那一格是包着取色器的 label，两者要同样的特异性才压得住
+ * Obsidian 的 button 底色。macOS 上 Obsidian 给按钮的是超椭圆圆角，色点要
+ * 正圆，和 Obsidian 自己的胶囊一样用 corner-shape: round */
+:is(button, label).yolo-project-color-option {
   width: 18px;
   height: 18px;
   border-radius: 50%;
+  corner-shape: round;
   background: var(--yolo-project-color);
 }
 
-button.yolo-project-color-option.is-selected {
+:is(button, label).yolo-project-color-option.is-selected {
   box-shadow:
     0 0 0 2px var(--background-primary),
     0 0 0 3.5px var(--yolo-project-color);
+}
+
+/* 自选颜色：没选过时是一圈色相环，表示「任意颜色」；选过之后和其他色块一样
+ * 显示选中的颜色。取色器本身是盖满这一格的透明 input[type=color] */
+.yolo-project-color-custom {
+  position: relative;
+  cursor: pointer;
+}
+
+label.yolo-project-color-custom:not(.is-selected) {
+  background: conic-gradient(
+    #f87171,
+    #fbbf24,
+    #4ade80,
+    #38bdf8,
+    #a78bfa,
+    #f472b6,
+    #f87171
+  );
+}
+
+.yolo-project-color-custom input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* 卡片：工作区、项目指令共用 */

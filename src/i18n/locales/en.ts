@@ -1851,6 +1851,7 @@ export const en: TranslationKeys = {
       excluded: 'Excluded',
       accessibleFiles: '{matched} / {total} files accessible',
       chooseIcon: 'Choose icon',
+      customColor: 'Custom color',
       colors: {
         blue: 'Blue',
         violet: 'Violet',
