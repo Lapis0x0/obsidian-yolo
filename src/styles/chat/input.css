@@ -406,9 +406,10 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 /*
- * Empty↔docked FLIP Play. Invert 帧把 inline transition:none 摁在 transform 上；
- * 这一帧松手后由这条过渡收到 0。时长走 L2 enter token：L3 的 spring 只存在于
- * JS，这里和会话列表补位一样是 CSS 近似，只动 transform。
+ * 输入框在三种状态之间的位移（FLIP，见 ChatConversationPane.tsx 的
+ * ComposerDock）：反推的 translateY 生效后，由这条过渡收到 0。时长走 L2 enter
+ * token：L3 的 spring 只存在于 JS，这里和会话列表补位一样是 CSS 近似，只动
+ * transform。
  */
 .yolo-chat-footer--dock-flipping {
   transition: transform var(--yolo-anim-duration-enter)
@@ -663,7 +664,18 @@ button.yolo-chat-quick-access-picker-row > svg {
   pointer-events: none;
 }
 
+/* 切换对话或主页时，旧内容立刻撤下，新内容淡入（会话面板按对话 id 重新挂载，
+ * 动画随挂载播放）。只动透明度：面板里有滚动容器和虚拟化测量，位移会干扰它们
+ * 读到的几何。输入框不在面板里，它的位移见 ComposerDock。 */
+@keyframes yolo-chat-surface-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 .yolo-chat-conversation-surface {
+  animation: yolo-chat-surface-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
   position: relative;
   display: flex;
   flex: 1 1 auto;

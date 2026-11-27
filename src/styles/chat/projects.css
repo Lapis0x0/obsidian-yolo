@@ -291,6 +291,9 @@ button.yolo-chat-sidebar-project-empty:hover {
 }
 
 .yolo-project-home-below {
+  /* 和会话面板一起淡入，见 input.css 的 yolo-chat-surface-enter */
+  animation: yolo-chat-surface-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
   flex: 5 1 0;
   min-height: 0;
   overflow-y: auto;

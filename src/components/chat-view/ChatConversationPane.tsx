@@ -6,13 +6,7 @@ import {
   MessageCircle,
   Zap,
 } from 'lucide-react'
-import {
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-} from 'react'
+import { Component, type ReactNode, type RefObject, createRef } from 'react'
 
 import type { ChatMode } from '../../core/agent/chat-mode'
 import { isToolChatMode } from '../../core/agent/chat-mode'
@@ -35,88 +29,77 @@ import { SharedConversationSurface } from './SharedConversationSurface'
 const DOCK_FLIP_EPSILON_PX = 1
 const FOOTER_DOCK_FLIPPING_CLASS = 'yolo-chat-footer--dock-flipping'
 
+type ComposerDockProps = {
+  /**
+   * 对话页的三种状态（有内容的对话、项目主页、普通主页）之间切换时它会变：
+   * 换了对话，或换了一种状态。不变的提交（流式输出、输入框长高）不量位置。
+   */
+  flipKey: string
+  reduceMotion: boolean
+  children: ReactNode
+}
+
 /**
- * One-shot FLIP for the empty-state rest-position change. The two rest
- * states stay CSS flex; this only inverts/plays `translateY` on the footer
- * so the composer does not pay framer-motion layout projection on the
- * first-message frame.
+ * 输入框所在的底栏。它是三种状态之间不变的那个东西：对话里贴底，两种主页里
+ * 居中（项目主页更靠上），切换时从旧位置平滑移到新位置，而不是一帧跳过去。
+ *
+ * 两处静止位置仍由 CSS flex 决定，这里只在切换那一次做 FLIP：
+ * getSnapshotBeforeUpdate 在这次提交改 DOM 之前量出它此刻的视觉位置（包括
+ * 还没走完的上一次位移，所以连续快速切换会从当前位置接着走），提交后量出新
+ * 位置，用 translateY 反推回去再过渡到 0。用类组件是因为只有它能在 DOM 变更前
+ * 拿到快照；起点不能用上一次切换时记下的位置，那之后它可能已经因为别的切换
+ * （比如两种主页之间）挪过了。
  */
-function useEmptyStateDockFlip(
-  showEmptyState: boolean,
-  reduceMotion: boolean | null,
-): RefObject<HTMLDivElement> {
-  const footerRef = useRef<HTMLDivElement>(null)
-  const prevShowEmptyStateRef = useRef(showEmptyState)
-  const prevTopRef = useRef<number | null>(null)
-  const pendingPlayRef = useRef(false)
+class ComposerDock extends Component<ComposerDockProps> {
+  private readonly ref = createRef<HTMLDivElement>()
 
-  useLayoutEffect(() => {
-    const el = footerRef.current
-    if (!el) {
-      return
+  getSnapshotBeforeUpdate(previous: ComposerDockProps): number | null {
+    if (previous.flipKey === this.props.flipKey || this.props.reduceMotion) {
+      return null
     }
+    return this.ref.current?.getBoundingClientRect().top ?? null
+  }
 
-    const depChanged = prevShowEmptyStateRef.current !== showEmptyState
-    prevShowEmptyStateRef.current = showEmptyState
-    pendingPlayRef.current = false
-
-    if (depChanged) {
-      // Drop an in-flight invert so Last is the new flex rest position.
-      el.setCssProps({ transition: 'none', transform: '' })
-      el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
-    }
-
-    const lastTop = el.getBoundingClientRect().top
-    const firstTop = prevTopRef.current
-    prevTopRef.current = lastTop
-
-    if (depChanged && firstTop != null && !reduceMotion) {
-      const delta = firstTop - lastTop
-      if (Math.abs(delta) >= DOCK_FLIP_EPSILON_PX) {
-        el.setCssProps({ transform: `translateY(${delta}px)` })
-        pendingPlayRef.current = true
-      }
-    }
-
-    if (!pendingPlayRef.current) {
-      return
-    }
-    return () => {
-      pendingPlayRef.current = false
-      el.setCssProps({ transition: 'none', transform: '' })
-      el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
-      // Do not restore prevTopRef: it already holds Last, which is First for
-      // the reverse empty↔docked flip. React 18 StrictMode only replays mount.
-    }
-  }, [showEmptyState, reduceMotion])
-
-  useEffect(() => {
-    if (!pendingPlayRef.current) {
-      return
-    }
-    pendingPlayRef.current = false
-    const el = footerRef.current
-    if (!el) {
-      return
-    }
-
+  componentDidUpdate(
+    _previous: ComposerDockProps,
+    _state: unknown,
+    firstTop: number | null,
+  ) {
+    const el = this.ref.current
+    if (!el || firstTop === null) return
+    // 撤掉进行中的位移，量出新的静止位置
+    el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
+    el.setCssProps({ transition: 'none', transform: '' })
+    const delta = firstTop - el.getBoundingClientRect().top
+    if (Math.abs(delta) < DOCK_FLIP_EPSILON_PX) return
+    el.setCssProps({ transform: `translateY(${delta}px)` })
+    // 先让反推的位置生效，再交给过渡收回 0
+    el.getBoundingClientRect()
     el.classList.add(FOOTER_DOCK_FLIPPING_CLASS)
     el.setCssProps({ transition: '', transform: '' })
+  }
 
-    const onEnd = (event: TransitionEvent) => {
-      if (event.target !== el || event.propertyName !== 'transform') {
-        return
-      }
-      el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
-    }
-    el.addEventListener('transitionend', onEnd)
-    return () => {
-      el.removeEventListener('transitionend', onEnd)
-      el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
-    }
-  }, [showEmptyState])
+  componentWillUnmount() {
+    this.ref.current?.removeEventListener('transitionend', this.handleEnd)
+  }
 
-  return footerRef
+  componentDidMount() {
+    this.ref.current?.addEventListener('transitionend', this.handleEnd)
+  }
+
+  private readonly handleEnd = (event: TransitionEvent) => {
+    const el = this.ref.current
+    if (!el || event.target !== el || event.propertyName !== 'transform') return
+    el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
+  }
+
+  render() {
+    return (
+      <div ref={this.ref} className="yolo-chat-footer">
+        {this.props.children}
+      </div>
+    )
+  }
 }
 
 export type ChatConversationPaneProps = {
@@ -232,7 +215,13 @@ export function ChatConversationPane({
   bottomSpacerHeight,
 }: ChatConversationPaneProps) {
   const reduceMotion = useReducedMotion()
-  const footerRef = useEmptyStateDockFlip(showEmptyState, reduceMotion)
+  // 有内容的对话、自带布局的空白页（项目主页）、普通空白页：输入框的静止位置
+  // 各不相同。新对话的项目归属可能晚一次提交才判定，所以单看对话 id 不够
+  const surfaceState = !showEmptyState
+    ? 'content'
+    : emptyStateOverride && 'content' in emptyStateOverride
+      ? 'custom-empty'
+      : 'empty'
   const showScrollToBottomButton =
     !showEmptyState &&
     groupedChatMessagesLength > 0 &&
@@ -371,9 +360,10 @@ export function ChatConversationPane({
         historyWindowKey={historyWindowKey}
         bottomSpacerHeight={bottomSpacerHeight}
       />
-      {/* Rest states stay CSS flex. Empty↔docked is a one-shot translateY
-       * FLIP on this node — not framer-motion layout projection. */}
-      <div ref={footerRef} className="yolo-chat-footer">
+      <ComposerDock
+        flipKey={`${currentConversationId}:${surfaceState}`}
+        reduceMotion={reduceMotion ?? false}
+      >
         <div className="yolo-chat-floating-actions">
           <AnimatePresence initial={false}>
             {showScrollToBottomButton ? (
@@ -413,7 +403,7 @@ export function ChatConversationPane({
           </AnimatePresence>
         </div>
         {footerContent}
-      </div>
+      </ComposerDock>
     </>
   )
 }

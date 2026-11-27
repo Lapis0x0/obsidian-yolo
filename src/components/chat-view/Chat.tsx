@@ -2459,7 +2459,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             </SubagentDetailRequestContext.Provider>
           )}
           {projectHomeBody && activeSurfaceEmpty && !isSidebarPlacement ? (
-            <div className="yolo-project-home-below">{projectHomeBody}</div>
+            // 按对话挂载：换到另一个项目主页时重新淡入
+            <div
+              key={activeHistoryConversationId}
+              className="yolo-project-home-below"
+            >
+              {projectHomeBody}
+            </div>
           ) : null}
         </div>
       </div>
