@@ -1,10 +1,4 @@
 import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS as DndCSS } from '@dnd-kit/utilities'
-import {
   AnimatePresence,
   motion,
   useIsPresent,
@@ -76,11 +70,7 @@ import {
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { showMoveToProjectMenu } from './projects/moveToProjectMenu'
-import {
-  type ConversationDragData,
-  SORT_TRANSITION,
-  useSuppressClickAfterDrag,
-} from './sidebar/SidebarConversationDnd'
+import { sortableRowAttributes } from './sidebar/useSidebarConversationSort'
 
 function useLatestRef<T>(value: T) {
   const ref = useRef(value)
@@ -669,7 +659,7 @@ const ChatListItem = memo(function ChatListItem({
   isReordering: boolean
   /**
    * 这一行可以拖动时所在的组：在组里拖动排序，或拖进侧边栏的项目（见
-   * SidebarConversationDnd）。不传则不能拖。
+   * useSidebarConversationSort）。不传则不能拖。
    */
   sortGroup?: 'pinned' | 'conversations'
 }) {
@@ -713,34 +703,6 @@ const ChatListItem = memo(function ChatListItem({
   }, [isEditing, title])
 
   useEffect(() => clearPress, [clearPress])
-
-  // attributes 不挂：它给行补上键盘排序用的 role / tabIndex，这里不提供
-  // 键盘排序，行的焦点和键盘导航由列表自己管
-  const {
-    setNodeRef: setSortableNodeRef,
-    listeners: sortListeners,
-    transform: sortTransform,
-    transition: sortTransition,
-    isDragging,
-  } = useSortable({
-    id: conversationId,
-    disabled: !sortGroup || isEditing,
-    transition: SORT_TRANSITION,
-    data: {
-      kind: 'conversation',
-      title: resolvedTitle,
-      group: sortGroup ?? 'conversations',
-      projectId: null,
-    } satisfies ConversationDragData,
-  })
-  const setItemRef = useCallback(
-    (element: HTMLLIElement | null) => {
-      itemRef.current = element
-      setSortableNodeRef(element)
-    },
-    [setSortableNodeRef],
-  )
-  const suppressClickUntil = useSuppressClickAfterDrag(isDragging)
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLLIElement>) => {
@@ -796,7 +758,7 @@ const ChatListItem = memo(function ChatListItem({
 
   return (
     <motion.li
-      ref={setItemRef}
+      ref={itemRef}
       data-conversation-id={conversationId}
       // L2 显隐：退场切到 absolute，当帧就把空间让给后面的条目，「让位」和「补位」
       // 因此同一时刻发生，不会先淡完再跳。
@@ -807,22 +769,19 @@ const ChatListItem = memo(function ChatListItem({
       exit={{ opacity: 0 }}
       style={
         isPresent
-          ? sortTransform || sortTransition
-            ? {
-                transform: DndCSS.Translate.toString(sortTransform),
-                transition: sortTransition,
-              }
-            : shiftY
-              ? { transform: `translateY(${shiftY}px)` }
-              : undefined
+          ? shiftY
+            ? { transform: `translateY(${shiftY}px)` }
+            : undefined
           : { position: 'absolute', left: 0, right: 0 }
       }
       transition={reduceMotion ? { duration: 0 } : CHAT_LIST_MOTION.exit}
       tabIndex={-1}
-      {...(sortGroup ? sortListeners : undefined)}
+      {...(sortGroup && !isEditing
+        ? sortableRowAttributes(conversationId, sortGroup)
+        : undefined)}
       // 松开才选中：按下后拖动是在拖这一行，不该先把对话打开
       onClick={(e) => {
-        if (isMobile || Date.now() < suppressClickUntil.current) {
+        if (isMobile) {
           return
         }
         if (e.target instanceof Element && e.target.closest('button')) {
@@ -884,7 +843,7 @@ const ChatListItem = memo(function ChatListItem({
         isContextMenuOpen ? ' is-ctx-open' : ''
       }${isReordering ? ' is-pin-moving' : ''}${
         isEditing ? ' is-editing' : ''
-      }${isDragging ? ' yolo-chat-sidebar-sort-slot' : ''}`}
+      }`}
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
@@ -1113,7 +1072,7 @@ export function ChatHistoryList({
     projectId: string | null,
   ) => unknown
   /**
-   * 对话可以拖动排序、拖进项目（侧边栏里，外面包着 SidebarConversationDnd）。
+   * 对话可以拖动排序、拖进项目（侧边栏里，见 useSidebarConversationSort）。
    * 只有用户对话、不在搜索时可以拖。
    */
   sortable?: boolean
@@ -2266,78 +2225,73 @@ export function ChatHistoryList({
                 重渲，ChatListItem 的 memo 形同虚设——流式回复期间列表就会退回
                 每帧全量重渲。该开关只服务于 framer 的 layout 动画（退场时让兄弟
                 条目重测布局），本列表的补位是手写 FLIP（shiftY），不依赖它。 */}
-            <SortableContext
-              items={canSort ? renderedChatList.map((chat) => chat.id) : []}
-              strategy={verticalListSortingStrategy}
-            >
-              <AnimatePresence initial={false} presenceAffectsLayout={false}>
-                {renderedChatList.flatMap((chat) => {
-                  const group = timeGroupStarts.get(chat.id)
-                  const shiftY = resolveShiftY(chat.id)
-                  const row = (
-                    <ChatListItem
-                      key={chat.id}
-                      title={chat.title}
-                      displayTitle={getDisplayTitle(chat)}
-                      cliRuntimeId={chat.cliSession?.runtimeId}
-                      runSummary={runSummariesByConversationId.get(chat.id)}
-                      isCurrent={chat.id === currentConversationId}
-                      isFocused={
-                        interacting &&
-                        focusedConversationId === chat.id &&
-                        !isHoveringArchiveRow &&
-                        activeMenuId === null
-                      }
-                      shouldScrollIntoView={
-                        scrollIntoViewConversationId === chat.id
-                      }
-                      isEditing={editingId === chat.id}
-                      isUpdatingTitle={updatingTitleIds.has(chat.id)}
-                      isPinned={Boolean(chat.isPinned)}
-                      canPin={activeSection === 'user'}
-                      isRetrying={retryingConversationIds.has(chat.id)}
-                      isConfirmingDelete={confirmingDeleteId === chat.id}
-                      isContextMenuOpen={activeMenuId === chat.id}
-                      isMobile={isMobile}
-                      conversationId={chat.id}
-                      shiftY={shiftY}
-                      isReordering={pinShift?.conversationId === chat.id}
-                      onMouseEnter={itemHandlers.onMouseEnter}
-                      onMouseLeave={itemHandlers.onMouseLeave}
-                      onSelect={itemHandlers.onSelect}
-                      onRequestDelete={itemHandlers.onRequestDelete}
-                      onFinishEdit={itemHandlers.onFinishEdit}
-                      onOpenMenu={itemHandlers.onOpenMenu}
-                      onContextMenu={itemHandlers.onContextMenu}
-                      sortGroup={
-                        canSort
-                          ? chat.isPinned
-                            ? 'pinned'
-                            : 'conversations'
-                          : undefined
-                      }
-                    />
-                  )
-                  if (!group) return [row]
-                  // 分组标题跟着它下面那一行一起位移，补位时不会被行盖住
-                  return [
-                    <li
-                      key={`group-${chat.id}`}
-                      className="yolo-chat-history-group"
-                      style={
-                        shiftY
-                          ? { transform: `translateY(${shiftY}px)` }
-                          : undefined
-                      }
-                      aria-hidden="true"
-                    >
-                      {groupLabels[group]}
-                    </li>,
-                    row,
-                  ]
-                })}
-              </AnimatePresence>
-            </SortableContext>
+            <AnimatePresence initial={false} presenceAffectsLayout={false}>
+              {renderedChatList.flatMap((chat) => {
+                const group = timeGroupStarts.get(chat.id)
+                const shiftY = resolveShiftY(chat.id)
+                const row = (
+                  <ChatListItem
+                    key={chat.id}
+                    title={chat.title}
+                    displayTitle={getDisplayTitle(chat)}
+                    cliRuntimeId={chat.cliSession?.runtimeId}
+                    runSummary={runSummariesByConversationId.get(chat.id)}
+                    isCurrent={chat.id === currentConversationId}
+                    isFocused={
+                      interacting &&
+                      focusedConversationId === chat.id &&
+                      !isHoveringArchiveRow &&
+                      activeMenuId === null
+                    }
+                    shouldScrollIntoView={
+                      scrollIntoViewConversationId === chat.id
+                    }
+                    isEditing={editingId === chat.id}
+                    isUpdatingTitle={updatingTitleIds.has(chat.id)}
+                    isPinned={Boolean(chat.isPinned)}
+                    canPin={activeSection === 'user'}
+                    isRetrying={retryingConversationIds.has(chat.id)}
+                    isConfirmingDelete={confirmingDeleteId === chat.id}
+                    isContextMenuOpen={activeMenuId === chat.id}
+                    isMobile={isMobile}
+                    conversationId={chat.id}
+                    shiftY={shiftY}
+                    isReordering={pinShift?.conversationId === chat.id}
+                    onMouseEnter={itemHandlers.onMouseEnter}
+                    onMouseLeave={itemHandlers.onMouseLeave}
+                    onSelect={itemHandlers.onSelect}
+                    onRequestDelete={itemHandlers.onRequestDelete}
+                    onFinishEdit={itemHandlers.onFinishEdit}
+                    onOpenMenu={itemHandlers.onOpenMenu}
+                    onContextMenu={itemHandlers.onContextMenu}
+                    sortGroup={
+                      canSort
+                        ? chat.isPinned
+                          ? 'pinned'
+                          : 'conversations'
+                        : undefined
+                    }
+                  />
+                )
+                if (!group) return [row]
+                // 分组标题跟着它下面那一行一起位移，补位时不会被行盖住
+                return [
+                  <li
+                    key={`group-${chat.id}`}
+                    className="yolo-chat-history-group"
+                    style={
+                      shiftY
+                        ? { transform: `translateY(${shiftY}px)` }
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  >
+                    {groupLabels[group]}
+                  </li>,
+                  row,
+                ]
+              })}
+            </AnimatePresence>
             {shouldUseArchive && archivedChatList.length > 0 && (
               <li
                 className="yolo-chat-list-dropdown-archive-row"

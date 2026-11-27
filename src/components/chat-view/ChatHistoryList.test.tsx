@@ -20,20 +20,6 @@ jest.mock('react', () => {
   }
 })
 
-// 同理，拖动排序不在断言范围内：useSortable 需要 dnd-kit 的上下文，退化成
-// 不可拖动的空实现
-jest.mock('@dnd-kit/sortable', () => ({
-  SortableContext: ({ children }: { children: unknown }) => children,
-  useSortable: () => ({
-    setNodeRef: () => undefined,
-    listeners: undefined,
-    transform: null,
-    transition: undefined,
-    isDragging: false,
-  }),
-  verticalListSortingStrategy: () => null,
-}))
-
 // 这些用例把 ChatListItem 当普通函数调用，拿不到 framer-motion 需要的 React
 // dispatcher；动效不在断言范围内，直接退化成原生标签即可。
 jest.mock('framer-motion', () => ({

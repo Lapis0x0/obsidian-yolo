@@ -567,10 +567,8 @@ export function useChatHistory(): UseChatHistory {
 
   const setConversationProject = useCallback(
     async (id: string, projectId: string | null): Promise<boolean> => {
-      const conversation = await chatManager.findById(id)
-      if (!conversation) return false
-      if ((conversation.projectId ?? null) === projectId) return true
-      // 先改列表：拖进项目时，对话应当在松手的同时离开原来的列表
+      // 先改列表，并且在第一个 await 之前：侧边栏拖进项目时在松手的同一帧
+      // 提交（flushSync），对话要在那一帧就离开原来的列表
       setChatList((prev) =>
         prev.map((chat) =>
           chat.id === id
@@ -578,6 +576,12 @@ export function useChatHistory(): UseChatHistory {
             : chat,
         ),
       )
+      const conversation = await chatManager.findById(id)
+      if (!conversation) {
+        await fetchChatList()
+        return false
+      }
+      if ((conversation.projectId ?? null) === projectId) return true
       await chatManager.updateChat(
         id,
         { projectId: projectId ?? undefined },

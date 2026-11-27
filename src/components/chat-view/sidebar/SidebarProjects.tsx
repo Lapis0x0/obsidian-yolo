@@ -1,9 +1,3 @@
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { ChevronRight, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
@@ -19,12 +13,10 @@ import { showMoveToProjectMenu } from '../projects/moveToProjectMenu'
 import { PROJECT_ICONS, projectColorStyle } from '../projects/projectAppearance'
 
 import {
-  type ConversationDragData,
-  SORT_TRANSITION,
+  DROP_PROJECT_ATTRIBUTE,
   projectSortGroup,
-  useProjectDropTarget,
-  useSuppressClickAfterDrag,
-} from './SidebarConversationDnd'
+  sortableRowAttributes,
+} from './useSidebarConversationSort'
 
 /** 展开一个项目时列出的最近对话数，更多的从项目主页看 */
 const EXPANDED_CONVERSATION_LIMIT = 3
@@ -71,7 +63,7 @@ type SidebarProjectsProps = {
  * 有对话在运行或等你确认时换成状态点。
  *
  * 对话可以从下面的列表拖进项目，也可以在项目里拖动排序，见
- * SidebarConversationDnd。
+ * useSidebarConversationSort。
  */
 export function SidebarProjects({
   projects,
@@ -189,7 +181,6 @@ function SidebarProjectItem({
   onMoveToProject: (conversationId: string, projectId: string | null) => unknown
 }) {
   const { t } = useLanguage()
-  const dropTarget = useProjectDropTarget(project.id)
   const shown = conversations.slice(0, EXPANDED_CONVERSATION_LIMIT)
   const runStates = conversations.map((chat) =>
     getRunState(runSummariesByConversationId.get(chat.id)),
@@ -204,11 +195,11 @@ function SidebarProjectItem({
     // 展开的项目连同它的对话是一张项目色的淡色卡片；拖着别处的对话悬停时
     // 整个项目（展开时是整张卡片）高亮，松手就放进这个项目
     <li
-      ref={dropTarget.setNodeRef}
       className={`yolo-chat-sidebar-project-item${
         expanded ? ' is-expanded' : ''
-      }${dropTarget.isOver ? ' is-drop-target' : ''}`}
+      }`}
       style={projectColorStyle(project.color)}
+      {...{ [DROP_PROJECT_ATTRIBUTE]: project.id }}
     >
       <div
         className={`yolo-chat-sidebar-project${active ? ' is-active' : ''}${
@@ -256,25 +247,18 @@ function SidebarProjectItem({
               {t('chat.projects.noConversations', 'No conversations yet')}
             </li>
           ) : null}
-          <SortableContext
-            items={shown.map((chat) => chat.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {shown.map((chat) => (
-              <ProjectConversationRow
-                key={chat.id}
-                chat={chat}
-                projectId={project.id}
-                projects={projects}
-                active={chat.id === currentConversationId}
-                runState={getRunState(
-                  runSummariesByConversationId.get(chat.id),
-                )}
-                onSelect={onSelectConversation}
-                onMoveToProject={onMoveToProject}
-              />
-            ))}
-          </SortableContext>
+          {shown.map((chat) => (
+            <ProjectConversationRow
+              key={chat.id}
+              chat={chat}
+              projectId={project.id}
+              projects={projects}
+              active={chat.id === currentConversationId}
+              runState={getRunState(runSummariesByConversationId.get(chat.id))}
+              onSelect={onSelectConversation}
+              onMoveToProject={onMoveToProject}
+            />
+          ))}
           {conversations.length > EXPANDED_CONVERSATION_LIMIT ? (
             <li>
               <button
@@ -317,37 +301,16 @@ function ProjectConversationRow({
     chat.title,
     t('chat.untitledConversation', 'New chat'),
   )
-  // attributes 不挂：它给行补上键盘排序用的 role / tabIndex，这里不提供键盘
-  // 排序，而这一行本身就是按钮
-  const { setNodeRef, listeners, transform, transition, isDragging } =
-    useSortable({
-      id: chat.id,
-      transition: SORT_TRANSITION,
-      data: {
-        kind: 'conversation',
-        title,
-        group: projectSortGroup(projectId),
-        projectId,
-      } satisfies ConversationDragData,
-    })
-  const suppressClickUntil = useSuppressClickAfterDrag(isDragging)
-
   return (
-    <li
-      ref={setNodeRef}
-      className={isDragging ? 'yolo-chat-sidebar-sort-slot' : undefined}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-    >
+    <li>
+      {/* 拖动排序见 useSidebarConversationSort，拖动的是这个按钮 */}
       <button
         type="button"
         className={`yolo-chat-sidebar-project-conversation${
           active ? ' is-active' : ''
         }`}
-        {...listeners}
-        onClick={() => {
-          if (Date.now() < suppressClickUntil.current) return
-          onSelect(chat.id)
-        }}
+        {...sortableRowAttributes(chat.id, projectSortGroup(projectId))}
+        onClick={() => onSelect(chat.id)}
         onContextMenu={(event) => {
           event.preventDefault()
           showMoveToProjectMenu({

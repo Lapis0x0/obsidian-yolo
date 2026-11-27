@@ -479,13 +479,17 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   color: var(--text-normal) !important;
 }
 
-/* :not(.is-pin-moving)：飞行中的行有自己的一套底色（见下方 .is-pin-moving），
+/* :not(.is-pin-moving, [data-sort-state])：飞行中的行有自己的一套底色（见下方 .is-pin-moving），
    悬停/高亮那套底色是半透明的，会让它在与被越过的行交错时透出重影。 */
-.yolo-chat-list-dropdown-item:hover:not(.is-pin-moving),
-.yolo-chat-list-dropdown-item:focus-within:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item:hover:not(.is-pin-moving, [data-sort-state]),
+.yolo-chat-list-dropdown-item:focus-within:not(
+    .is-pin-moving,
+    [data-sort-state]
+  ),
 .yolo-chat-history
   li.yolo-chat-list-dropdown-item:is(:hover, :focus-within, :has(:hover)):not(
-    .is-pin-moving
+    .is-pin-moving,
+    [data-sort-state]
   ) {
   --yolo-chat-list-row-tint: color-mix(
     in srgb,
@@ -498,11 +502,20 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   color: var(--text-normal) !important;
 }
 
-.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving),
-.yolo-chat-list-dropdown-item[data-highlighted='true']:not(.is-pin-moving),
-.yolo-chat-list-dropdown-item.is-ctx-open:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving, [data-sort-state]),
+.yolo-chat-list-dropdown-item[data-highlighted='true']:not(
+    .is-pin-moving,
+    [data-sort-state]
+  ),
+.yolo-chat-list-dropdown-item.is-ctx-open:not(
+    .is-pin-moving,
+    [data-sort-state]
+  ),
 .yolo-chat-history
-  li.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving) {
+  li.yolo-chat-list-dropdown-item.selected:not(
+    .is-pin-moving,
+    [data-sort-state]
+  ) {
   --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
@@ -601,6 +614,10 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   align-items: center;
   gap: var(--size-4-1);
   pointer-events: none;
+  /* 平时始终是 1；只在侧边栏拖动落定、整块重新显出时起作用（见下方
+     li[data-sort-state]），让按钮淡入而不是蹦出来 */
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
 
   svg {
     height: var(--icon-xs);
@@ -653,6 +670,22 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   .yolo-chat-list-dropdown-item-actions,
 .yolo-chat-list-dropdown-item-actions.is-more-open {
   pointer-events: auto;
+}
+
+/*
+ * 侧边栏里正被拖动、正在落位的行（见 useSidebarConversationSort）：操作按钮
+ * 不显形，这时也点不了它们。松手时指针捕获交还，行会立刻重新进入悬停，不藏
+ * 起来的话按钮连同遮罩会在落位途中冒出来。状态色设成它自己的浅灰底（见
+ * sidebar.css），依赖状态色的遮罩也就和它一致。
+ */
+.yolo-chat-history li[data-sort-state] {
+  --yolo-chat-list-row-tint: var(--background-modifier-hover);
+}
+
+/* 用 opacity 而不是 visibility：图标自己写了 visibility: visible，会从隐藏的
+   容器里重新显出来；opacity 子元素抵消不了 */
+.yolo-chat-history li[data-sort-state] .yolo-chat-list-dropdown-item-actions {
+  opacity: 0;
 }
 
 /*
@@ -896,7 +929,10 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 
 /* 当前对话：静息态就有底色，和悬停同一档但不随指针离开消失 */
 .yolo-chat-history
-  li.yolo-chat-list-dropdown-item.is-current:not(.is-pin-moving) {
+  li.yolo-chat-list-dropdown-item.is-current:not(
+    .is-pin-moving,
+    [data-sort-state]
+  ) {
   --yolo-chat-list-row-tint: var(--background-modifier-hover);
 
   background: var(--yolo-chat-list-row-tint) !important;

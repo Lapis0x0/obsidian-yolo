@@ -13,15 +13,15 @@ import type { AgentRef } from '../agent-picker/agentRef'
 import { ChatHistoryList, type ChatHistoryListHandle } from '../ChatHistoryList'
 
 import { PinnedAgents } from './PinnedAgents'
-import {
-  HistoryDropZone,
-  SidebarConversationDnd,
-} from './SidebarConversationDnd'
 import { SidebarProjects } from './SidebarProjects'
 import type {
   ChatSidebarLayout,
   ChatSidebarResizeHandleProps,
 } from './useChatSidebarLayout'
+import {
+  DROP_HISTORY_ATTRIBUTE,
+  useSidebarConversationSort,
+} from './useSidebarConversationSort'
 
 export type ChatSidebarHandle = {
   /** 让侧边栏可见（展开窄轨 / 打开抽屉）并唤出历史搜索。 */
@@ -103,11 +103,9 @@ export function ChatSidebar({
   const { t } = useLanguage()
   const app = useApp()
   const asideRef = useRef<HTMLElement | null>(null)
-  const [ownerDocument, setOwnerDocument] = useState<Document | null>(null)
   const setAside = useCallback(
     (element: HTMLElement | null) => {
       asideRef.current = element
-      setOwnerDocument(element?.ownerDocument ?? null)
       registerSidebar(element)
     },
     [registerSidebar],
@@ -115,6 +113,16 @@ export function ChatSidebar({
   const historyHandleRef = useRef<ChatHistoryListHandle | null>(null)
   // 历史列表在显示搜索结果或任务对话时占满滚动区，项目区让开
   const [historyExclusive, setHistoryExclusive] = useState(false)
+  // 对话的拖动排序挂在滚动区上，行和放下目标都在里面
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
+  useSidebarConversationSort({
+    app,
+    scrollElement,
+    chatList,
+    projects: projects ?? [],
+    onMoveToProject,
+    onReorder: onReorderConversation,
+  })
   // 窄轨上点搜索要先展开、等历史列表挂载后再唤出搜索
   const pendingSearchRef = useRef(false)
 
@@ -286,58 +294,57 @@ export function ChatSidebar({
             }}
           />
         </div>
-        <div className="yolo-chat-sidebar-scroll yolo-scrollbar-autohide">
-          <SidebarConversationDnd
-            chatList={chatList}
-            projects={projects ?? []}
-            ownerDocument={ownerDocument}
-            onMoveToProject={onMoveToProject}
-            onReorder={onReorderConversation}
+        <div
+          ref={setScrollElement}
+          className="yolo-chat-sidebar-scroll yolo-scrollbar-autohide"
+        >
+          {historyExclusive ? null : (
+            <SidebarProjects
+              projects={projects ?? []}
+              chatList={chatList}
+              currentConversationId={currentConversationId}
+              currentProjectId={currentProjectId}
+              runSummariesByConversationId={runSummariesByConversationId}
+              onOpenProject={(project) => {
+                onOpenProject(project)
+                closeIfDrawer()
+              }}
+              onCreateProject={() => onOpenProjectSettings()}
+              onMoveToProject={onMoveToProject}
+              onSelectConversation={(conversationId) => {
+                closeIfDrawer()
+                if (conversationId === currentConversationId) return
+                void onSelectConversation(conversationId)
+              }}
+            />
+          )}
+          {/* 项目里的对话拖到这里移出项目 */}
+          <div
+            className="yolo-chat-history-drop-zone"
+            {...{ [DROP_HISTORY_ATTRIBUTE]: '' }}
           >
-            {historyExclusive ? null : (
-              <SidebarProjects
-                projects={projects ?? []}
-                chatList={chatList}
-                currentConversationId={currentConversationId}
-                currentProjectId={currentProjectId}
-                runSummariesByConversationId={runSummariesByConversationId}
-                onOpenProject={(project) => {
-                  onOpenProject(project)
-                  closeIfDrawer()
-                }}
-                onCreateProject={() => onOpenProjectSettings()}
-                onMoveToProject={onMoveToProject}
-                onSelectConversation={(conversationId) => {
-                  closeIfDrawer()
-                  if (conversationId === currentConversationId) return
-                  void onSelectConversation(conversationId)
-                }}
-              />
-            )}
-            <HistoryDropZone>
-              <ChatHistoryList
-                chatList={chatList}
-                projects={projects}
-                onMoveToProject={onMoveToProject}
-                sortable
-                onExclusiveViewChange={setHistoryExclusive}
-                currentConversationId={currentConversationId}
-                runSummariesByConversationId={runSummariesByConversationId}
-                onSelect={(conversationId) => {
-                  closeIfDrawer()
-                  if (conversationId === currentConversationId) return
-                  return onSelectConversation(conversationId)
-                }}
-                onDelete={onDeleteConversation}
-                onUpdateTitle={onUpdateTitle}
-                onTogglePinned={onTogglePinned}
-                onRetryTitle={onRetryTitle}
-                onExportConversation={onExportConversation}
-                onIdleEscape={isDrawer ? onCloseDrawer : undefined}
-                handleRef={historyHandleRef}
-              />
-            </HistoryDropZone>
-          </SidebarConversationDnd>
+            <ChatHistoryList
+              chatList={chatList}
+              projects={projects}
+              onMoveToProject={onMoveToProject}
+              sortable
+              onExclusiveViewChange={setHistoryExclusive}
+              currentConversationId={currentConversationId}
+              runSummariesByConversationId={runSummariesByConversationId}
+              onSelect={(conversationId) => {
+                closeIfDrawer()
+                if (conversationId === currentConversationId) return
+                return onSelectConversation(conversationId)
+              }}
+              onDelete={onDeleteConversation}
+              onUpdateTitle={onUpdateTitle}
+              onTogglePinned={onTogglePinned}
+              onRetryTitle={onRetryTitle}
+              onExportConversation={onExportConversation}
+              onIdleEscape={isDrawer ? onCloseDrawer : undefined}
+              handleRef={historyHandleRef}
+            />
+          </div>
         </div>
         {layout === 'column' ? (
           <div
